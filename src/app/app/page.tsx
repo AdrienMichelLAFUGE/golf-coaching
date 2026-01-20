@@ -1,68 +1,60 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import Link from "next/link";
 
 export default function AppPage() {
-  const router = useRouter();
-  const [email, setEmail] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-
-    const loadSession = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (!active) return;
-
-      if (!data.session) {
-        router.replace("/");
-        return;
-      }
-
-      setEmail(data.session.user.email ?? null);
-      setLoading(false);
-    };
-
-    loadSession();
-
-    return () => {
-      active = false;
-    };
-  }, [router]);
-
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    router.replace("/");
-  };
-
-  if (loading) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-zinc-50 px-6 text-zinc-900">
-        <p className="text-sm text-zinc-600">Loading your session...</p>
-      </main>
-    );
-  }
-
   return (
-    <main className="min-h-screen bg-zinc-50 px-6 py-12 text-zinc-900">
-      <div className="mx-auto max-w-2xl rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
-        <p className="mt-2 text-sm text-zinc-600">
-          You are signed in{email ? ` as ${email}` : ""}.
+    <div className="space-y-6">
+      <section className="panel rounded-2xl p-6">
+        <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+          Accueil
         </p>
-        <div className="mt-6 rounded-lg border border-dashed border-zinc-300 bg-zinc-50 p-4 text-sm text-zinc-600">
-          Protected content goes here.
-        </div>
-        <button
-          type="button"
-          onClick={handleSignOut}
-          className="mt-6 rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100"
+        <h2 className="mt-3 font-[var(--font-display)] text-3xl font-semibold">
+          Choisis ton espace de travail
+        </h2>
+        <p className="mt-3 max-w-2xl text-sm text-[var(--muted)]">
+          Cet espace sert de point de depart. Les dashboards coach et eleve
+          arriveront dans les prochaines etapes.
+        </p>
+      </section>
+
+      <section className="grid gap-6 md:grid-cols-2">
+        <Link
+          href="/app/coach"
+          className="panel-soft group rounded-2xl p-6 transition hover:-translate-y-1 hover:border-white/30"
         >
-          Sign out
-        </button>
-      </div>
-    </main>
+          <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+            Coach
+          </p>
+          <h3 className="mt-3 text-2xl font-semibold text-[var(--text)]">
+            Gérer les eleves
+          </h3>
+          <p className="mt-2 text-sm text-[var(--muted)]">
+            Suivi des eleves, rapports et progression globale.
+          </p>
+          <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)]">
+            Ouvrir l espace coach
+            <span>→</span>
+          </div>
+        </Link>
+
+        <Link
+          href="/app/eleve"
+          className="panel-soft group rounded-2xl p-6 transition hover:-translate-y-1 hover:border-white/30"
+        >
+          <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+            Eleve
+          </p>
+          <h3 className="mt-3 text-2xl font-semibold text-[var(--text)]">
+            Consulter les rapports
+          </h3>
+          <p className="mt-2 text-sm text-[var(--muted)]">
+            Acces rapide aux insights et a l historique.
+          </p>
+          <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)]">
+            Ouvrir l espace eleve
+            <span>→</span>
+          </div>
+        </Link>
+      </section>
+    </div>
   );
 }

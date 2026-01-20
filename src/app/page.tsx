@@ -60,46 +60,54 @@ export default function Home() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-zinc-50 px-6 text-zinc-900">
-      <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-        <h1 className="text-2xl font-semibold">Golf Coaching</h1>
-        <p className="mt-2 text-sm text-zinc-600">
-          Sign in with your email to receive a magic link.
-        </p>
-        <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
-          <label className="block text-sm font-medium" htmlFor="email">
-            Email
-          </label>
-          <input
-            id="email"
-            name="email"
-            type="email"
-            autoComplete="email"
-            placeholder="you@email.com"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
-          />
-          <button
-            type="submit"
-            disabled={status === "sending"}
-            className="w-full rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            {status === "sending" ? "Sending..." : "Send magic link"}
-          </button>
-        </form>
-        {message ? (
-          <p
-            className={`mt-4 text-sm ${
-              status === "error" ? "text-red-600" : "text-zinc-700"
-            }`}
-          >
-            {message}
+    <main className="flex min-h-screen items-center justify-center px-6 text-[var(--text)]">
+      <div className="w-full max-w-md space-y-6">
+        <div className="panel rounded-3xl px-6 py-8">
+          <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+            Golf Coaching
           </p>
-        ) : null}
-        <p className="mt-6 text-xs text-zinc-500">
-          We will create your account if it does not exist yet.
-        </p>
+          <h1 className="mt-3 font-[var(--font-display)] text-3xl font-semibold">
+            Connexion par magic link
+          </h1>
+          <p className="mt-2 text-sm text-[var(--muted)]">
+            Entre ton email pour recevoir un lien de connexion.
+          </p>
+          <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+            <label className="block text-xs uppercase tracking-wide text-[var(--muted)]" htmlFor="email">
+              Email
+            </label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              autoComplete="email"
+              placeholder="toi@email.com"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              className="mt-1 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-3 text-sm text-[var(--text)] placeholder:text-zinc-500 focus:border-[var(--accent)] focus:outline-none"
+            />
+            <button
+              type="submit"
+              disabled={status === "sending"}
+              className="w-full rounded-xl bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-3 text-sm font-semibold text-zinc-900 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {status === "sending" ? "Envoi..." : "Envoyer le magic link"}
+            </button>
+          </form>
+          {message ? (
+            <p
+              className={`mt-4 text-sm ${
+                status === "error" ? "text-red-400" : "text-[var(--muted)]"
+              }`}
+            >
+              {message}
+            </p>
+          ) : null}
+        </div>
+        <div className="panel-outline rounded-2xl px-5 py-4 text-xs text-[var(--muted)]">
+          Pas encore de compte ? Il sera cree automatiquement a la premiere
+          connexion.
+        </div>
       </div>
     </main>
   );

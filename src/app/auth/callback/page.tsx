@@ -43,10 +43,13 @@ export default function AuthCallbackPage() {
   }, [router]);
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-zinc-50 px-6 text-zinc-900">
-      <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-        <h1 className="text-xl font-semibold">Almost there</h1>
-        <p className="mt-3 text-sm text-zinc-700">{message}</p>
+    <main className="flex min-h-screen items-center justify-center px-6 text-[var(--text)]">
+      <div className="panel rounded-3xl px-6 py-8">
+        <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+          Connexion
+        </p>
+        <h1 className="mt-3 text-2xl font-semibold">Validation du lien</h1>
+        <p className="mt-3 text-sm text-[var(--muted)]">{message}</p>
       </div>
     </main>
   );
