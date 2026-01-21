@@ -1,6 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
 
 const defaultSections = [
   "Resume de la seance",
@@ -12,17 +13,39 @@ const defaultSections = [
   "Plan pour la semaine",
 ];
 
+type ReportSection = {
+  id: string;
+  title: string;
+  content: string;
+};
+
+type StudentOption = {
+  id: string;
+  first_name: string;
+  last_name: string | null;
+  email: string | null;
+};
+
 const defaultReportSections = [
   "Resume de la seance",
   "Technique",
   "Plan pour la semaine",
 ];
 
+const createSection = (title: string): ReportSection => ({
+  id:
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+  title,
+  content: "",
+});
+
 export default function CoachReportBuilderPage() {
   const [availableSections, setAvailableSections] =
     useState<string[]>(defaultSections);
   const [reportSections, setReportSections] =
-    useState<string[]>(defaultReportSections);
+    useState<ReportSection[]>(defaultReportSections.map(createSection));
   const [customSection, setCustomSection] = useState("");
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -30,14 +53,15 @@ export default function CoachReportBuilderPage() {
   const positions = useRef(new Map<string, DOMRect>());
   const shouldAnimate = useRef(false);
   const showSlots = dragIndex !== null;
-
-  const handleAutoResize = (
-    event: React.FormEvent<HTMLTextAreaElement>
-  ) => {
-    const target = event.currentTarget;
-    target.style.height = "auto";
-    target.style.height = `${target.scrollHeight}px`;
-  };
+  const [students, setStudents] = useState<StudentOption[]>([]);
+  const [studentId, setStudentId] = useState("");
+  const [title, setTitle] = useState("");
+  const [reportDate, setReportDate] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
+  const [statusType, setStatusType] = useState<"idle" | "error" | "success">(
+    "idle"
+  );
+  const [saving, setSaving] = useState(false);
 
   const handleAddCustomSection = () => {
     const next = customSection.trim();
@@ -55,20 +79,26 @@ export default function CoachReportBuilderPage() {
   };
 
   const handleAddToReport = (section: string) => {
-    setReportSections((prev) =>
-      prev.includes(section) ? prev : [...prev, section]
-    );
+    setReportSections((prev) => {
+      const exists = prev.some(
+        (item) => item.title.toLowerCase() === section.toLowerCase()
+      );
+      if (exists) return prev;
+      return [...prev, createSection(section)];
+    });
     shouldAnimate.current = true;
   };
 
-  const handleRemoveFromReport = (section: string) => {
-    setReportSections((prev) => prev.filter((item) => item !== section));
+  const handleRemoveFromReport = (id: string) => {
+    setReportSections((prev) => prev.filter((item) => item.id !== id));
     shouldAnimate.current = true;
   };
 
   const handleRemoveFromAvailable = (section: string) => {
     setAvailableSections((prev) => prev.filter((item) => item !== section));
-    setReportSections((prev) => prev.filter((item) => item !== section));
+    setReportSections((prev) =>
+      prev.filter((item) => item.title !== section)
+    );
     shouldAnimate.current = true;
   };
 
@@ -78,7 +108,7 @@ export default function CoachReportBuilderPage() {
   ) => {
     setDragIndex(index);
     event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", reportSections[index]);
+    event.dataTransfer.setData("text/plain", reportSections[index].id);
   };
 
   const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
@@ -109,20 +139,118 @@ export default function CoachReportBuilderPage() {
     setHoverIndex(null);
   };
 
+  const handleSectionInput = (
+    id: string,
+    event: React.FormEvent<HTMLTextAreaElement>
+  ) => {
+    const target = event.currentTarget;
+    const value = target.value;
+    target.style.height = "auto";
+    target.style.height = `${target.scrollHeight}px`;
+    setReportSections((prev) =>
+      prev.map((section) =>
+        section.id === id ? { ...section, content: value } : section
+      )
+    );
+  };
+
+  const loadStudents = async () => {
+    const { data, error } = await supabase
+      .from("students")
+      .select("id, first_name, last_name, email")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      setStatusMessage(error.message);
+      setStatusType("error");
+      return;
+    }
+
+    setStudents(data ?? []);
+  };
+
+  const handleSaveReport = async (send: boolean) => {
+    if (!studentId) {
+      setStatusMessage("Choisis un eleve.");
+      setStatusType("error");
+      return;
+    }
+
+    if (!title.trim()) {
+      setStatusMessage("Ajoute un titre au rapport.");
+      setStatusType("error");
+      return;
+    }
+
+    if (reportSections.length === 0) {
+      setStatusMessage("Ajoute au moins une section.");
+      setStatusType("error");
+      return;
+    }
+
+    setSaving(true);
+    setStatusMessage("");
+    setStatusType("idle");
+
+    const { data: report, error: reportError } = await supabase
+      .from("reports")
+      .insert([
+        {
+          student_id: studentId,
+          title: title.trim(),
+          report_date: reportDate ? reportDate : null,
+          sent_at: send ? new Date().toISOString() : null,
+        },
+      ])
+      .select("id")
+      .single();
+
+    if (reportError) {
+      setStatusMessage(reportError.message);
+      setStatusType("error");
+      setSaving(false);
+      return;
+    }
+
+    const sectionsPayload = reportSections.map((section, index) => ({
+      report_id: report.id,
+      title: section.title,
+      content: section.content || null,
+      position: index,
+    }));
+
+    const { error: sectionsError } = await supabase
+      .from("report_sections")
+      .insert(sectionsPayload);
+
+    if (sectionsError) {
+      setStatusMessage(sectionsError.message);
+      setStatusType("error");
+      setSaving(false);
+      return;
+    }
+
+    setStatusMessage(
+      send ? "Rapport envoye avec succes." : "Brouillon sauvegarde."
+    );
+    setStatusType("success");
+    setSaving(false);
+  };
+
   useLayoutEffect(() => {
     const nextPositions = new Map<string, DOMRect>();
     reportSections.forEach((section) => {
-      const element = itemRefs.current.get(section);
+      const element = itemRefs.current.get(section.id);
       if (element) {
-        nextPositions.set(section, element.getBoundingClientRect());
+        nextPositions.set(section.id, element.getBoundingClientRect());
       }
     });
 
     if (shouldAnimate.current && positions.current.size > 0) {
       reportSections.forEach((section) => {
-        const element = itemRefs.current.get(section);
-        const prev = positions.current.get(section);
-        const next = nextPositions.get(section);
+        const element = itemRefs.current.get(section.id);
+        const prev = positions.current.get(section.id);
+        const next = nextPositions.get(section.id);
         if (!element || !prev || !next) return;
 
         const deltaX = prev.left - next.left;
@@ -143,6 +271,10 @@ export default function CoachReportBuilderPage() {
     positions.current = nextPositions;
     shouldAnimate.current = false;
   }, [reportSections]);
+
+  useLayoutEffect(() => {
+    loadStudents();
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -165,11 +297,17 @@ export default function CoachReportBuilderPage() {
             <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
               Eleve
             </label>
-            <select className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]">
-              <option>Choisir un eleve</option>
-              <option>Camille Dupont</option>
-              <option>Liam Martin</option>
-              <option>Nora Petit</option>
+            <select
+              value={studentId}
+              onChange={(event) => setStudentId(event.target.value)}
+              className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+            >
+              <option value="">Choisir un eleve</option>
+              {students.map((student) => (
+                <option key={student.id} value={student.id}>
+                  {student.first_name} {student.last_name ?? ""}
+                </option>
+              ))}
             </select>
           </div>
           <div>
@@ -178,6 +316,8 @@ export default function CoachReportBuilderPage() {
             </label>
             <input
               type="text"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
               placeholder="Bilan swing du 20/01"
               className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
             />
@@ -188,6 +328,8 @@ export default function CoachReportBuilderPage() {
             </label>
             <input
               type="date"
+              value={reportDate}
+              onChange={(event) => setReportDate(event.target.value)}
               className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
             />
           </div>
@@ -260,7 +402,7 @@ export default function CoachReportBuilderPage() {
           </p>
           <div className="mt-4 space-y-3">
             {reportSections.map((section, index) => (
-              <div key={`${section}-slot`} className="space-y-3">
+              <div key={`${section.id}-slot`} className="space-y-3">
                 <div
                   onDragOver={handleDragOver}
                   onDragEnter={() => setHoverIndex(index)}
@@ -285,9 +427,9 @@ export default function CoachReportBuilderPage() {
                 <div
                   ref={(node) => {
                     if (node) {
-                      itemRefs.current.set(section, node);
+                      itemRefs.current.set(section.id, node);
                     } else {
-                      itemRefs.current.delete(section);
+                      itemRefs.current.delete(section.id);
                     }
                   }}
                   onDragEnd={() => {
@@ -313,12 +455,12 @@ export default function CoachReportBuilderPage() {
                         Glisser
                       </button>
                       <p className="text-sm font-semibold text-[var(--text)]">
-                        {section}
+                        {section.title}
                       </p>
                     </div>
                     <button
                       type="button"
-                      onClick={() => handleRemoveFromReport(section)}
+                      onClick={() => handleRemoveFromReport(section.id)}
                       className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
                     >
                       Retirer
@@ -327,7 +469,8 @@ export default function CoachReportBuilderPage() {
                   <textarea
                     rows={4}
                     placeholder="Ecris le contenu de cette section..."
-                    onInput={handleAutoResize}
+                    value={section.content}
+                    onInput={(event) => handleSectionInput(section.id, event)}
                     className="mt-3 w-full resize-none overflow-hidden rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
                   />
                 </div>
@@ -357,17 +500,30 @@ export default function CoachReportBuilderPage() {
           <div className="mt-6 flex flex-wrap items-center gap-3">
             <button
               type="button"
-              className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900"
+              disabled={saving}
+              onClick={() => handleSaveReport(true)}
+              className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
             >
-              Envoyer le rapport
+              {saving ? "Envoi..." : "Envoyer le rapport"}
             </button>
             <button
               type="button"
-              className="rounded-full border border-white/10 bg-white/5 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)]"
+              disabled={saving}
+              onClick={() => handleSaveReport(false)}
+              className="rounded-full border border-white/10 bg-white/5 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10 disabled:opacity-60"
             >
               Sauvegarder le brouillon
             </button>
           </div>
+          {statusMessage ? (
+            <p
+              className={`mt-4 text-sm ${
+                statusType === "error" ? "text-red-400" : "text-[var(--muted)]"
+              }`}
+            >
+              {statusMessage}
+            </p>
+          ) : null}
         </div>
       </section>
     </div>

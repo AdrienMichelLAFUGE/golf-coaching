@@ -5,10 +5,13 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 type Status = "idle" | "sending" | "sent" | "error";
+type AuthMode = "password" | "magic";
 
 export default function Home() {
   const router = useRouter();
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [mode, setMode] = useState<AuthMode>("password");
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState("");
 
@@ -30,18 +33,7 @@ export default function Home() {
     };
   }, [router]);
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setStatus("sending");
-    setMessage("");
-
-    const trimmedEmail = email.trim();
-    if (!trimmedEmail) {
-      setStatus("error");
-      setMessage("Please enter an email address.");
-      return;
-    }
-
+  const sendMagicLink = async (trimmedEmail: string) => {
     const { error } = await supabase.auth.signInWithOtp({
       email: trimmedEmail,
       options: {
@@ -56,7 +48,79 @@ export default function Home() {
     }
 
     setStatus("sent");
-    setMessage("Magic link sent. Check your inbox.");
+    setMessage("Magic link envoye. Verifie ta boite mail.");
+  };
+
+  const signInWithPassword = async (
+    trimmedEmail: string,
+    trimmedPassword: string
+  ) => {
+    const { error } = await supabase.auth.signInWithPassword({
+      email: trimmedEmail,
+      password: trimmedPassword,
+    });
+
+    if (error) {
+      setStatus("error");
+      setMessage(error.message);
+      return;
+    }
+
+    router.replace("/app");
+  };
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setStatus("sending");
+    setMessage("");
+
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setStatus("error");
+      setMessage("Ajoute un email.");
+      return;
+    }
+
+    if (mode === "password") {
+      const trimmedPassword = password.trim();
+      if (!trimmedPassword) {
+        setStatus("error");
+        setMessage("Ajoute un mot de passe.");
+        return;
+      }
+      await signInWithPassword(trimmedEmail, trimmedPassword);
+      return;
+    }
+
+    await sendMagicLink(trimmedEmail);
+  };
+
+  const handlePasswordReset = async () => {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setStatus("error");
+      setMessage("Ajoute un email pour reinitialiser le mot de passe.");
+      return;
+    }
+
+    setStatus("sending");
+    setMessage("");
+
+    const { error } = await supabase.auth.resetPasswordForEmail(
+      trimmedEmail,
+      {
+        redirectTo: `${window.location.origin}/auth/reset`,
+      }
+    );
+
+    if (error) {
+      setStatus("error");
+      setMessage(error.message);
+      return;
+    }
+
+    setStatus("sent");
+    setMessage("Email de reinitialisation envoye.");
   };
 
   return (
@@ -67,11 +131,35 @@ export default function Home() {
             Golf Coaching
           </p>
           <h1 className="mt-3 font-[var(--font-display)] text-3xl font-semibold">
-            Connexion par magic link
+            Connexion
           </h1>
           <p className="mt-2 text-sm text-[var(--muted)]">
-            Entre ton email pour recevoir un lien de connexion.
+            Choisis ta methode de connexion.
           </p>
+          <div className="mt-6 grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/5 p-1 text-xs uppercase tracking-wide text-[var(--muted)]">
+            <button
+              type="button"
+              onClick={() => setMode("password")}
+              className={`rounded-xl px-3 py-2 transition ${
+                mode === "password"
+                  ? "bg-white/15 text-[var(--text)]"
+                  : "hover:text-[var(--text)]"
+              }`}
+            >
+              Mot de passe
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("magic")}
+              className={`rounded-xl px-3 py-2 transition ${
+                mode === "magic"
+                  ? "bg-white/15 text-[var(--text)]"
+                  : "hover:text-[var(--text)]"
+              }`}
+            >
+              Magic link
+            </button>
+          </div>
           <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
             <label className="block text-xs uppercase tracking-wide text-[var(--muted)]" htmlFor="email">
               Email
@@ -86,14 +174,47 @@ export default function Home() {
               onChange={(event) => setEmail(event.target.value)}
               className="mt-1 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-3 text-sm text-[var(--text)] placeholder:text-zinc-500 focus:border-[var(--accent)] focus:outline-none"
             />
+            {mode === "password" ? (
+              <>
+                <label
+                  className="block text-xs uppercase tracking-wide text-[var(--muted)]"
+                  htmlFor="password"
+                >
+                  Mot de passe
+                </label>
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="Votre mot de passe"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-3 text-sm text-[var(--text)] placeholder:text-zinc-500 focus:border-[var(--accent)] focus:outline-none"
+                />
+              </>
+            ) : null}
             <button
               type="submit"
               disabled={status === "sending"}
               className="w-full rounded-xl bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-3 text-sm font-semibold text-zinc-900 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {status === "sending" ? "Envoi..." : "Envoyer le magic link"}
+              {status === "sending"
+                ? "Traitement..."
+                : mode === "password"
+                ? "Se connecter"
+                : "Envoyer le magic link"}
             </button>
           </form>
+          {mode === "password" ? (
+            <button
+              type="button"
+              onClick={handlePasswordReset}
+              className="mt-3 text-left text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+            >
+              Mot de passe oublie ?
+            </button>
+          ) : null}
           {message ? (
             <p
               className={`mt-4 text-sm ${

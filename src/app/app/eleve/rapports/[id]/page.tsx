@@ -1,9 +1,93 @@
-type ReportDetailPageProps = {
-  params: { id: string };
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
+
+type Report = {
+  id: string;
+  title: string;
+  report_date: string | null;
+  created_at: string;
 };
 
-export default function ReportDetailPage({ params }: ReportDetailPageProps) {
-  const reportTitle = params?.id ? params.id.replace(/-/g, " ") : "rapport";
+type ReportSection = {
+  id: string;
+  title: string;
+  content: string | null;
+  position: number;
+};
+
+const formatDate = (value?: string | null) => {
+  if (!value) return "—";
+  return new Date(value).toLocaleDateString("fr-FR");
+};
+
+export default function ReportDetailPage() {
+  const params = useParams();
+  const reportId = Array.isArray(params?.id) ? params.id[0] : params?.id;
+  const [report, setReport] = useState<Report | null>(null);
+  const [sections, setSections] = useState<ReportSection[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!reportId) return;
+
+    const loadReport = async () => {
+      setLoading(true);
+      setError("");
+
+      const { data: reportData, error: reportError } = await supabase
+        .from("reports")
+        .select("id, title, report_date, created_at")
+        .eq("id", reportId)
+        .single();
+
+      if (reportError) {
+        setError(reportError.message);
+        setLoading(false);
+        return;
+      }
+
+      setReport(reportData);
+
+      const { data: sectionsData, error: sectionsError } = await supabase
+        .from("report_sections")
+        .select("id, title, content, position")
+        .eq("report_id", reportId)
+        .order("position", { ascending: true });
+
+      if (sectionsError) {
+        setError(sectionsError.message);
+        setLoading(false);
+        return;
+      }
+
+      setSections(sectionsData ?? []);
+      setLoading(false);
+    };
+
+    loadReport();
+  }, [reportId]);
+
+  if (loading) {
+    return (
+      <section className="panel rounded-2xl p-6">
+        <p className="text-sm text-[var(--muted)]">Chargement du rapport...</p>
+      </section>
+    );
+  }
+
+  if (error || !report) {
+    return (
+      <section className="panel rounded-2xl p-6">
+        <p className="text-sm text-red-400">
+          {error || "Rapport introuvable."}
+        </p>
+      </section>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -12,57 +96,51 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
           Rapport detaille
         </p>
         <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
-          {reportTitle}
+          {report.title}
         </h2>
         <p className="mt-2 text-sm text-[var(--muted)]">
-          Resume et recommandations personnalisees.
+          Date : {formatDate(report.report_date ?? report.created_at)}
         </p>
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-        <div className="panel rounded-2xl p-6">
-          <h3 className="text-lg font-semibold text-[var(--text)]">Resume</h3>
-          <p className="mt-3 text-sm text-[var(--muted)]">
-            Cette seance s est concentree sur la stabilite du bas du corps et
-            l alignement du club. Bon rythme global, a maintenir sur les swings
-            longs.
+      {sections.length === 0 ? (
+        <section className="panel rounded-2xl p-6">
+          <p className="text-sm text-[var(--muted)]">
+            Aucune section disponible pour ce rapport.
           </p>
-          <h3 className="mt-6 text-lg font-semibold text-[var(--text)]">
-            Exercices recommandes
-          </h3>
-          <ul className="mt-3 space-y-2 text-sm text-[var(--muted)]">
-            <li className="rounded-xl border border-white/5 bg-white/5 px-4 py-2">
-              20 swings sans balle pour fixer le tempo
-            </li>
-            <li className="rounded-xl border border-white/5 bg-white/5 px-4 py-2">
-              Routine putting 3 distances
-            </li>
-            <li className="rounded-xl border border-white/5 bg-white/5 px-4 py-2">
-              Drill alignement avec 2 clubs au sol
-            </li>
-          </ul>
-        </div>
-
-        <div className="panel-soft rounded-2xl p-6">
-          <h3 className="text-lg font-semibold text-[var(--text)]">
-            Points clefs
-          </h3>
-          <div className="mt-4 space-y-3">
-            {[
-              "Garder le poids sur l avant pied a l impact.",
-              "Stabiliser le poignet gauche dans le backswing.",
-              "Respiration lente avant chaque swing.",
-            ].map((note) => (
-              <div
-                key={note}
-                className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--text)]"
-              >
-                {note}
+        </section>
+      ) : (
+        <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="panel rounded-2xl p-6">
+            {sections.map((section) => (
+              <div key={section.id} className="mb-6 last:mb-0">
+                <h3 className="text-lg font-semibold text-[var(--text)]">
+                  {section.title}
+                </h3>
+                <p className="mt-3 text-sm text-[var(--muted)] whitespace-pre-wrap">
+                  {section.content || "Aucun contenu pour cette section."}
+                </p>
               </div>
             ))}
           </div>
-        </div>
-      </section>
+
+          <div className="panel-soft rounded-2xl p-6">
+            <h3 className="text-lg font-semibold text-[var(--text)]">
+              Resume express
+            </h3>
+            <div className="mt-4 space-y-3">
+              {sections.slice(0, 3).map((section) => (
+                <div
+                  key={section.id}
+                  className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--text)]"
+                >
+                  {section.title}
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
