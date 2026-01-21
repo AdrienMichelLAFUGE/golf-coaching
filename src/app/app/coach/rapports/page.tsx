@@ -10,7 +10,10 @@ type ReportRow = {
   title: string;
   report_date: string | null;
   created_at: string;
-  students: { id: string; first_name: string; last_name: string | null } | null;
+  students:
+    | { id: string; first_name: string; last_name: string | null }
+    | { id: string; first_name: string; last_name: string | null }[]
+    | null;
 };
 
 const formatDate = (value?: string | null) => {
@@ -113,18 +116,30 @@ export default function CoachReportsPage() {
                   </div>
                   <div>
                     <p className="text-sm text-[var(--muted)]">
-                      {report.students
-                        ? `${report.students.first_name} ${report.students.last_name ?? ""}`.trim()
-                        : "-"}
+                      {(() => {
+                        const student = Array.isArray(report.students)
+                          ? report.students[0]
+                          : report.students;
+                        if (!student) return "-";
+                        return `${student.first_name} ${
+                          student.last_name ?? ""
+                        }`.trim();
+                      })()}
                     </p>
-                    {report.students?.id ? (
-                      <Link
-                        href={`/app/coach/eleves/${report.students.id}`}
-                        className="mt-1 inline-flex text-xs uppercase tracking-wide text-[var(--muted)] hover:text-[var(--text)]"
-                      >
-                        Voir eleve -&gt;
-                      </Link>
-                    ) : null}
+                    {(() => {
+                      const student = Array.isArray(report.students)
+                        ? report.students[0]
+                        : report.students;
+                      if (!student?.id) return null;
+                      return (
+                        <Link
+                          href={`/app/coach/eleves/${student.id}`}
+                          className="mt-1 inline-flex text-xs uppercase tracking-wide text-[var(--muted)] hover:text-[var(--text)]"
+                        >
+                          Voir eleve -&gt;
+                        </Link>
+                      );
+                    })()}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Link
