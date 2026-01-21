@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import RoleGuard from "../../_components/role-guard";
+import { useProfile } from "../../_components/profile-context";
 
 type ReportRow = {
   id: string;
@@ -16,16 +17,24 @@ type ReportRow = {
     | null;
 };
 
-const formatDate = (value?: string | null) => {
+const formatDate = (
+  value?: string | null,
+  locale?: string | null,
+  timezone?: string | null
+) => {
   if (!value) return "-";
-  return new Date(value).toLocaleDateString("fr-FR");
+  const options = timezone ? { timeZone: timezone } : undefined;
+  return new Date(value).toLocaleDateString(locale ?? "fr-FR", options);
 };
 
 export default function CoachReportsPage() {
+  const { organization } = useProfile();
   const [reports, setReports] = useState<ReportRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const locale = organization?.locale ?? "fr-FR";
+  const timezone = organization?.timezone ?? "Europe/Paris";
 
   const loadReports = async () => {
     setLoading(true);
@@ -111,7 +120,11 @@ export default function CoachReportsPage() {
                   <div>
                     <p className="font-medium">{report.title}</p>
                     <p className="mt-1 text-xs text-[var(--muted)]">
-                      {formatDate(report.report_date ?? report.created_at)}
+                      {formatDate(
+                        report.report_date ?? report.created_at,
+                        locale,
+                        timezone
+                      )}
                     </p>
                   </div>
                   <div>

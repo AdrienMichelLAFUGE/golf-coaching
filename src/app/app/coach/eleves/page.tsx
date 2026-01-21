@@ -12,6 +12,7 @@ type Student = {
   email: string | null;
   created_at: string;
   invited_at: string | null;
+  activated_at: string | null;
 };
 
 type StudentForm = {
@@ -68,7 +69,9 @@ export default function CoachStudentsPage() {
     setError("");
     const { data, error: fetchError } = await supabase
       .from("students")
-      .select("id, first_name, last_name, email, created_at, invited_at")
+      .select(
+        "id, first_name, last_name, email, created_at, invited_at, activated_at"
+      )
       .order("created_at", { ascending: false });
 
     if (fetchError) {
@@ -347,11 +350,19 @@ export default function CoachStudentsPage() {
                     >
                       {invitingId === student.id ? "Envoi..." : "Inviter"}
                     </button>
-                    {student.invited_at ? (
-                      <span className="text-[0.65rem] uppercase tracking-wide text-[var(--muted)]">
+                    {student.activated_at ? (
+                      <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-emerald-200">
+                        Actif
+                      </span>
+                    ) : student.invited_at ? (
+                      <span className="rounded-full border border-amber-300/30 bg-amber-400/10 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-amber-200">
                         Invite
                       </span>
-                    ) : null}
+                    ) : (
+                      <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)]">
+                        A inviter
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={() => handleDeleteStudent(student)}

@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useRef } from "react";
+import { supabase } from "@/lib/supabaseClient";
 import { useProfile } from "./profile-context";
 
 type RoleGuardProps = {
@@ -14,6 +16,35 @@ export default function RoleGuard({
   fallback,
 }: RoleGuardProps) {
   const { profile, loading } = useProfile();
+  const didUpdateStudent = useRef(false);
+
+  useEffect(() => {
+    if (didUpdateStudent.current) return;
+    if (!profile || profile.role !== "student") return;
+
+    didUpdateStudent.current = true;
+
+    const markStudentActive = async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      const email = userData.user?.email;
+      if (!email) return;
+
+      const { data: student } = await supabase
+        .from("students")
+        .select("id, activated_at")
+        .ilike("email", email)
+        .maybeSingle();
+
+      if (!student || student.activated_at) return;
+
+      await supabase
+        .from("students")
+        .update({ activated_at: new Date().toISOString() })
+        .eq("id", student.id);
+    };
+
+    markStudentActive();
+  }, [profile]);
 
   if (loading) {
     return (

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import RoleGuard from "../../../_components/role-guard";
+import { useProfile } from "../../../_components/profile-context";
 
 type Student = {
   id: string;
@@ -12,6 +13,7 @@ type Student = {
   last_name: string | null;
   email: string | null;
   invited_at: string | null;
+  activated_at: string | null;
   created_at: string;
 };
 
@@ -22,12 +24,18 @@ type Report = {
   created_at: string;
 };
 
-const formatDate = (value?: string | null) => {
+const formatDate = (
+  value?: string | null,
+  locale?: string | null,
+  timezone?: string | null
+) => {
   if (!value) return "-";
-  return new Date(value).toLocaleDateString("fr-FR");
+  const options = timezone ? { timeZone: timezone } : undefined;
+  return new Date(value).toLocaleDateString(locale ?? "fr-FR", options);
 };
 
 export default function CoachStudentDetailPage() {
+  const { organization } = useProfile();
   const params = useParams();
   const studentId = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const [student, setStudent] = useState<Student | null>(null);
@@ -35,6 +43,8 @@ export default function CoachStudentDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const locale = organization?.locale ?? "fr-FR";
+  const timezone = organization?.timezone ?? "Europe/Paris";
 
   useEffect(() => {
     if (!studentId) return;
@@ -45,7 +55,9 @@ export default function CoachStudentDetailPage() {
 
       const { data: studentData, error: studentError } = await supabase
         .from("students")
-        .select("id, first_name, last_name, email, invited_at, created_at")
+        .select(
+          "id, first_name, last_name, email, invited_at, activated_at, created_at"
+        )
         .eq("id", studentId)
         .single();
 
@@ -122,9 +134,24 @@ export default function CoachStudentDetailPage() {
             <p className="mt-2 text-sm text-[var(--muted)]">
               {student.email || "-"}
             </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs uppercase tracking-wide">
+              {student.activated_at ? (
+                <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-emerald-200">
+                  Actif
+                </span>
+              ) : student.invited_at ? (
+                <span className="rounded-full border border-amber-300/30 bg-amber-400/10 px-2 py-1 text-amber-200">
+                  Invite
+                </span>
+              ) : (
+                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[var(--muted)]">
+                  A inviter
+                </span>
+              )}
+            </div>
             <p className="mt-2 text-xs text-[var(--muted)]">
-              Invite le {formatDate(student.invited_at)} - Cree le{" "}
-              {formatDate(student.created_at)}
+              Invite le {formatDate(student.invited_at, locale, timezone)} -
+              Cree le {formatDate(student.created_at, locale, timezone)}
             </p>
           </section>
 
@@ -154,7 +181,11 @@ export default function CoachStudentDetailPage() {
                     <div>
                       <p className="font-medium">{report.title}</p>
                       <p className="mt-1 text-xs text-[var(--muted)]">
-                        {formatDate(report.report_date ?? report.created_at)}
+                        {formatDate(
+                          report.report_date ?? report.created_at,
+                          locale,
+                          timezone
+                        )}
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">

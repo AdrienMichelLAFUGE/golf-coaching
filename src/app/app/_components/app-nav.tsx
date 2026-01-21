@@ -42,6 +42,7 @@ export default function AppNav() {
           { label: "Eleves", href: "/app/coach/eleves" },
           { label: "Rapports", href: "/app/coach/rapports" },
           { label: "Nouveau rapport", href: "/app/coach/rapports/nouveau" },
+          { label: "Parametres", href: "/app/coach/parametres" },
         ],
       });
     }

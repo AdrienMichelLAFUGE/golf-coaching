@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import RoleGuard from "../../../_components/role-guard";
+import { useProfile } from "../../../_components/profile-context";
 
 type Report = {
   id: string;
@@ -21,12 +22,18 @@ type ReportSection = {
   position: number;
 };
 
-const formatDate = (value?: string | null) => {
+const formatDate = (
+  value?: string | null,
+  locale?: string | null,
+  timezone?: string | null
+) => {
   if (!value) return "-";
-  return new Date(value).toLocaleDateString("fr-FR");
+  const options = timezone ? { timeZone: timezone } : undefined;
+  return new Date(value).toLocaleDateString(locale ?? "fr-FR", options);
 };
 
 export default function CoachReportDetailPage() {
+  const { organization } = useProfile();
   const params = useParams();
   const router = useRouter();
   const reportId = Array.isArray(params?.id) ? params.id[0] : params?.id;
@@ -35,6 +42,8 @@ export default function CoachReportDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const locale = organization?.locale ?? "fr-FR";
+  const timezone = organization?.timezone ?? "Europe/Paris";
 
   useEffect(() => {
     if (!reportId) return;
@@ -122,7 +131,12 @@ export default function CoachReportDetailPage() {
                   {report.title}
                 </h2>
                 <p className="mt-2 text-sm text-[var(--muted)]">
-                  Date : {formatDate(report.report_date ?? report.created_at)}
+                  Date :{" "}
+                  {formatDate(
+                    report.report_date ?? report.created_at,
+                    locale,
+                    timezone
+                  )}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import RoleGuard from "../_components/role-guard";
+import { useProfile } from "../_components/profile-context";
 
 type Student = {
   id: string;
@@ -19,17 +20,25 @@ type Report = {
   created_at: string;
 };
 
-const formatDate = (value?: string | null) => {
+const formatDate = (
+  value?: string | null,
+  locale?: string | null,
+  timezone?: string | null
+) => {
   if (!value) return "-";
-  return new Date(value).toLocaleDateString("fr-FR");
+  const options = timezone ? { timeZone: timezone } : undefined;
+  return new Date(value).toLocaleDateString(locale ?? "fr-FR", options);
 };
 
 export default function StudentDashboardPage() {
+  const { organization } = useProfile();
   const [student, setStudent] = useState<Student | null>(null);
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [noStudent, setNoStudent] = useState(false);
+  const locale = organization?.locale ?? "fr-FR";
+  const timezone = organization?.timezone ?? "Europe/Paris";
 
   const latestReport = useMemo(() => reports[0], [reports]);
   const studentName = useMemo(() => {
@@ -139,7 +148,9 @@ export default function StudentDashboardPage() {
           {
             label: "Dernier rapport",
             value: formatDate(
-              latestReport?.report_date ?? latestReport?.created_at
+              latestReport?.report_date ?? latestReport?.created_at,
+              locale,
+              timezone
             ),
           },
           {
@@ -149,7 +160,9 @@ export default function StudentDashboardPage() {
           {
             label: "Mise a jour",
             value: formatDate(
-              latestReport?.report_date ?? latestReport?.created_at
+              latestReport?.report_date ?? latestReport?.created_at,
+              locale,
+              timezone
             ),
           },
         ].map((item) => (
@@ -194,7 +207,11 @@ export default function StudentDashboardPage() {
                 <div>
                   <p className="font-medium">{report.title}</p>
                   <p className="mt-1 text-xs text-[var(--muted)]">
-                    {formatDate(report.report_date ?? report.created_at)}
+                    {formatDate(
+                      report.report_date ?? report.created_at,
+                      locale,
+                      timezone
+                    )}
                   </p>
                 </div>
                 <span className="text-xs text-[var(--muted)]">Lire -&gt;</span>

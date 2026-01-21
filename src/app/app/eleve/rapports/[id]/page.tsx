@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import RoleGuard from "../../../_components/role-guard";
+import { useProfile } from "../../../_components/profile-context";
 
 type Report = {
   id: string;
@@ -19,18 +20,26 @@ type ReportSection = {
   position: number;
 };
 
-const formatDate = (value?: string | null) => {
+const formatDate = (
+  value?: string | null,
+  locale?: string | null,
+  timezone?: string | null
+) => {
   if (!value) return "-";
-  return new Date(value).toLocaleDateString("fr-FR");
+  const options = timezone ? { timeZone: timezone } : undefined;
+  return new Date(value).toLocaleDateString(locale ?? "fr-FR", options);
 };
 
 export default function ReportDetailPage() {
+  const { organization } = useProfile();
   const params = useParams();
   const reportId = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const [report, setReport] = useState<Report | null>(null);
   const [sections, setSections] = useState<ReportSection[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const locale = organization?.locale ?? "fr-FR";
+  const timezone = organization?.timezone ?? "Europe/Paris";
 
   useEffect(() => {
     if (!reportId) return;
@@ -105,7 +114,12 @@ export default function ReportDetailPage() {
               {report.title}
             </h2>
             <p className="mt-2 text-sm text-[var(--muted)]">
-              Date : {formatDate(report.report_date ?? report.created_at)}
+              Date :{" "}
+              {formatDate(
+                report.report_date ?? report.created_at,
+                locale,
+                timezone
+              )}
             </p>
           </section>
 

@@ -10,8 +10,17 @@ export type Profile = {
   full_name: string | null;
 };
 
+export type OrganizationSettings = {
+  id: string;
+  name: string | null;
+  accent_color: string | null;
+  locale: string | null;
+  timezone: string | null;
+};
+
 type ProfileState = {
   profile: Profile | null;
+  organization: OrganizationSettings | null;
   loading: boolean;
   error: string;
   refresh: () => Promise<void>;
@@ -21,6 +30,8 @@ const ProfileContext = createContext<ProfileState | null>(null);
 
 export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [organization, setOrganization] =
+    useState<OrganizationSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -33,11 +44,12 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 
     if (!userId) {
       setProfile(null);
+      setOrganization(null);
       setLoading(false);
       return;
     }
 
-    const { data, error: profileError } = await supabase
+    const { data: profileData, error: profileError } = await supabase
       .from("profiles")
       .select("id, org_id, role, full_name")
       .eq("id", userId)
@@ -46,8 +58,20 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     if (profileError) {
       setError(profileError.message);
       setProfile(null);
+      setOrganization(null);
     } else {
-      setProfile(data);
+      setProfile(profileData);
+      const { data: orgData, error: orgError } = await supabase
+        .from("organizations")
+        .select("id, name, accent_color, locale, timezone")
+        .eq("id", profileData.org_id)
+        .single();
+
+      if (orgError) {
+        setOrganization(null);
+      } else {
+        setOrganization(orgData);
+      }
     }
 
     setLoading(false);
@@ -57,9 +81,15 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     loadProfile();
   }, []);
 
+  useEffect(() => {
+    if (organization?.locale && typeof document !== "undefined") {
+      document.documentElement.lang = organization.locale;
+    }
+  }, [organization?.locale]);
+
   const value = useMemo(
-    () => ({ profile, loading, error, refresh: loadProfile }),
-    [profile, loading, error]
+    () => ({ profile, organization, loading, error, refresh: loadProfile }),
+    [profile, organization, loading, error]
   );
 
   return (
