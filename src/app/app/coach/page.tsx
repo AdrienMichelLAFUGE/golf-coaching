@@ -10,7 +10,10 @@ type ReportRow = {
   title: string;
   report_date: string | null;
   created_at: string;
-  students: { first_name: string; last_name: string | null } | null;
+  students:
+    | { first_name: string; last_name: string | null }
+    | { first_name: string; last_name: string | null }[]
+    | null;
 };
 
 const formatDate = (value?: string | null) => {
@@ -122,9 +125,15 @@ export default function CoachDashboardPage() {
                     <div>
                       <p className="font-medium">{report.title}</p>
                       <p className="mt-1 text-xs text-[var(--muted)]">
-                        {report.students
-                          ? `${report.students.first_name} ${report.students.last_name ?? ""}`.trim()
-                          : "Eleve"}
+                        {(() => {
+                          const student = Array.isArray(report.students)
+                            ? report.students[0]
+                            : report.students;
+                          if (!student) return "Eleve";
+                          return `${student.first_name} ${
+                            student.last_name ?? ""
+                          }`.trim();
+                        })()}
                         {" - "}
                         {formatDate(report.report_date ?? report.created_at)}
                       </p>
