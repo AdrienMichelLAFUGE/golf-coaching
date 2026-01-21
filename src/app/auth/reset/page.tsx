@@ -1,10 +1,10 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+
+export const dynamic = "force-dynamic";
 
 function ResetPasswordContent() {
   const router = useRouter();
@@ -88,27 +88,9 @@ function ResetPasswordContent() {
             <p className="mt-3 text-sm text-red-400">{message}</p>
           ) : null}
         </div>
-    </main>
-  );
-}
-
-export default function ResetPasswordPage() {
-  return (
-    <Suspense
-      fallback={
-        <main className="flex min-h-screen items-center justify-center px-6 text-[var(--text)]">
-          <div className="panel rounded-3xl px-6 py-8">
-            <p className="text-sm text-[var(--muted)]">
-              Chargement du formulaire...
-            </p>
-          </div>
-        </main>
-      }
-    >
-      <ResetPasswordContent />
-    </Suspense>
-  );
-}
+      </main>
+    );
+  }
 
   return (
     <main className="flex min-h-screen items-center justify-center px-6 text-[var(--text)]">
@@ -168,5 +150,23 @@ export default function ResetPasswordPage() {
         ) : null}
       </div>
     </main>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center px-6 text-[var(--text)]">
+          <div className="panel rounded-3xl px-6 py-8">
+            <p className="text-sm text-[var(--muted)]">
+              Chargement du formulaire...
+            </p>
+          </div>
+        </main>
+      }
+    >
+      <ResetPasswordContent />
+    </Suspense>
   );
 }
