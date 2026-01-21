@@ -3,10 +3,15 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { useProfile } from "./profile-context";
 
 export default function AppHeader() {
   const router = useRouter();
   const [email, setEmail] = useState<string | null>(null);
+  const { profile } = useProfile();
+
+  const roleLabel =
+    profile?.role === "student" ? "Eleve" : "Coach";
 
   useEffect(() => {
     let active = true;
@@ -43,6 +48,11 @@ export default function AppHeader() {
         <div className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs text-[var(--muted)]">
           {email ?? "Session active"}
         </div>
+        {profile ? (
+          <div className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs text-[var(--muted)]">
+            {roleLabel}
+          </div>
+        ) : null}
         <button
           type="button"
           onClick={handleSignOut}

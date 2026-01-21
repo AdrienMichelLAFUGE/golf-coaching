@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { ProfileProvider } from "./profile-context";
 
 type AuthGateProps = {
   children: React.ReactNode;
@@ -40,5 +41,5 @@ export default function AuthGate({ children }: AuthGateProps) {
     );
   }
 
-  return <>{children}</>;
+  return <ProfileProvider>{children}</ProfileProvider>;
 }

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import RoleGuard from "../_components/role-guard";
 
 type Student = {
   id: string;
@@ -19,7 +20,7 @@ type Report = {
 };
 
 const formatDate = (value?: string | null) => {
-  if (!value) return "—";
+  if (!value) return "-";
   return new Date(value).toLocaleDateString("fr-FR");
 };
 
@@ -91,35 +92,36 @@ export default function StudentDashboardPage() {
     loadDashboard();
   }, []);
 
-  if (loading) {
-    return (
-      <section className="panel rounded-2xl p-6">
-        <p className="text-sm text-[var(--muted)]">Chargement du dashboard...</p>
-      </section>
-    );
-  }
-
-  if (error) {
-    return (
-      <section className="panel rounded-2xl p-6">
-        <p className="text-sm text-red-400">{error}</p>
-      </section>
-    );
-  }
-
-  if (noStudent) {
-    return (
-      <section className="panel rounded-2xl p-6">
-        <p className="text-sm text-[var(--muted)]">
-          Ce compte n est pas associe a un eleve. Connecte toi avec un email
-          eleve ou demande au coach de t associer.
-        </p>
-      </section>
-    );
-  }
-
   return (
-    <div className="space-y-6">
+    <RoleGuard
+      allowedRoles={["student"]}
+      fallback={
+        <section className="panel rounded-2xl p-6">
+          <p className="text-sm text-[var(--muted)]">
+            Acces reserve aux eleves.
+          </p>
+        </section>
+      }
+    >
+      {loading ? (
+        <section className="panel rounded-2xl p-6">
+          <p className="text-sm text-[var(--muted)]">
+            Chargement du dashboard...
+          </p>
+        </section>
+      ) : error ? (
+        <section className="panel rounded-2xl p-6">
+          <p className="text-sm text-red-400">{error}</p>
+        </section>
+      ) : noStudent ? (
+        <section className="panel rounded-2xl p-6">
+          <p className="text-sm text-[var(--muted)]">
+            Ce compte n est pas associe a un eleve. Connecte toi avec un email
+            eleve ou demande au coach de t associer.
+          </p>
+        </section>
+      ) : (
+        <div className="space-y-6">
       <section className="panel rounded-2xl p-6">
         <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
           Dashboard eleve
@@ -195,12 +197,14 @@ export default function StudentDashboardPage() {
                     {formatDate(report.report_date ?? report.created_at)}
                   </p>
                 </div>
-                <span className="text-xs text-[var(--muted)]">Lire →</span>
+                <span className="text-xs text-[var(--muted)]">Lire -&gt;</span>
               </Link>
             ))
           )}
         </div>
       </section>
-    </div>
+        </div>
+      )}
+    </RoleGuard>
   );
 }

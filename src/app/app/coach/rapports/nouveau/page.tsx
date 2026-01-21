@@ -1,7 +1,9 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import RoleGuard from "../../../_components/role-guard";
 
 const defaultSections = [
   "Resume de la seance",
@@ -32,6 +34,14 @@ const defaultReportSections = [
   "Plan pour la semaine",
 ];
 
+const initialAvailableSections = defaultSections.filter(
+  (section) =>
+    !defaultReportSections.some(
+      (reportSection) =>
+        reportSection.toLowerCase() === section.toLowerCase()
+    )
+);
+
 const createSection = (title: string): ReportSection => ({
   id:
     typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -41,56 +51,144 @@ const createSection = (title: string): ReportSection => ({
   content: "",
 });
 
+const formatDateInput = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 export default function CoachReportBuilderPage() {
+  const searchParams = useSearchParams();
   const [availableSections, setAvailableSections] =
-    useState<string[]>(defaultSections);
+    useState<string[]>(initialAvailableSections);
   const [reportSections, setReportSections] =
     useState<ReportSection[]>(defaultReportSections.map(createSection));
   const [customSection, setCustomSection] = useState("");
+  const [draggingAvailable, setDraggingAvailable] = useState<string | null>(
+    null
+  );
+  const [sectionsMessage, setSectionsMessage] = useState("");
+  const [sectionsMessageType, setSectionsMessageType] = useState<
+    "idle" | "error" | "success"
+  >("idle");
+  const [editingSection, setEditingSection] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState("");
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const itemRefs = useRef(new Map<string, HTMLDivElement | null>());
   const positions = useRef(new Map<string, DOMRect>());
   const shouldAnimate = useRef(false);
-  const showSlots = dragIndex !== null;
+  const showSlots = dragIndex !== null || draggingAvailable !== null;
   const [students, setStudents] = useState<StudentOption[]>([]);
   const [studentId, setStudentId] = useState("");
   const [title, setTitle] = useState("");
-  const [reportDate, setReportDate] = useState("");
+  const [reportDate, setReportDate] = useState(() =>
+    formatDateInput(new Date())
+  );
   const [statusMessage, setStatusMessage] = useState("");
   const [statusType, setStatusType] = useState<"idle" | "error" | "success">(
     "idle"
   );
   const [saving, setSaving] = useState(false);
 
+  const setSectionsNotice = (
+    message: string,
+    type: "idle" | "error" | "success"
+  ) => {
+    setSectionsMessage(message);
+    setSectionsMessageType(type);
+  };
+
   const handleAddCustomSection = () => {
     const next = customSection.trim();
-    if (!next) return;
+    if (!next) {
+      setSectionsNotice("Saisis un nom de section.", "error");
+      return;
+    }
 
     const exists = availableSections.some(
       (section) => section.toLowerCase() === next.toLowerCase()
     );
 
-    if (!exists) {
-      setAvailableSections((prev) => [...prev, next]);
+    if (exists) {
+      setSectionsNotice("Cette section existe deja.", "error");
+      return;
     }
 
+    setAvailableSections((prev) => [...prev, next]);
+    setSectionsNotice("Section ajoutee.", "success");
     setCustomSection("");
   };
 
+  const handleEditSection = (section: string) => {
+    setEditingSection(section);
+    setEditingValue(section);
+    setSectionsNotice("", "idle");
+  };
+
+  const handleCancelEdit = () => {
+    setEditingSection(null);
+    setEditingValue("");
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingSection) return;
+    const next = editingValue.trim();
+
+    if (!next) {
+      setSectionsNotice("Saisis un nom de section.", "error");
+      return;
+    }
+
+    const conflict = availableSections.some(
+      (section) =>
+        section.toLowerCase() === next.toLowerCase() &&
+        section !== editingSection
+    );
+
+    if (conflict) {
+      setSectionsNotice("Cette section existe deja.", "error");
+      return;
+    }
+
+    setAvailableSections((prev) =>
+      prev.map((section) => (section === editingSection ? next : section))
+    );
+    setReportSections((prev) =>
+      prev.map((section) =>
+        section.title === editingSection ? { ...section, title: next } : section
+      )
+    );
+    setSectionsNotice("Section modifiee.", "success");
+    setEditingSection(null);
+    setEditingValue("");
+  };
+
   const handleAddToReport = (section: string) => {
+    const normalized = section.toLowerCase();
     setReportSections((prev) => {
       const exists = prev.some(
-        (item) => item.title.toLowerCase() === section.toLowerCase()
+        (item) => item.title.toLowerCase() === normalized
       );
       if (exists) return prev;
       return [...prev, createSection(section)];
     });
+    setAvailableSections((prev) =>
+      prev.filter((item) => item.toLowerCase() !== normalized)
+    );
     shouldAnimate.current = true;
   };
 
-  const handleRemoveFromReport = (id: string) => {
+  const handleRemoveFromReport = (id: string, title: string) => {
     setReportSections((prev) => prev.filter((item) => item.id !== id));
+    setAvailableSections((prev) => {
+      const exists = prev.some(
+        (section) => section.toLowerCase() === title.toLowerCase()
+      );
+      if (exists) return prev;
+      return [...prev, title];
+    });
     shouldAnimate.current = true;
   };
 
@@ -99,6 +197,10 @@ export default function CoachReportBuilderPage() {
     setReportSections((prev) =>
       prev.filter((item) => item.title !== section)
     );
+    if (editingSection === section) {
+      setEditingSection(null);
+      setEditingValue("");
+    }
     shouldAnimate.current = true;
   };
 
@@ -107,15 +209,54 @@ export default function CoachReportBuilderPage() {
     event: React.DragEvent<HTMLElement>
   ) => {
     setDragIndex(index);
+    setDraggingAvailable(null);
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", reportSections[index].id);
+  };
+
+  const handleAvailableDragStart = (
+    section: string,
+    event: React.DragEvent<HTMLElement>
+  ) => {
+    setDraggingAvailable(section);
+    setDragIndex(null);
+    event.dataTransfer.effectAllowed = "copy";
+    event.dataTransfer.setData("text/plain", section);
   };
 
   const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
   };
 
+  const handleDragEnd = () => {
+    setDragIndex(null);
+    setDraggingAvailable(null);
+    setHoverIndex(null);
+  };
+
   const handleDrop = (index: number) => {
+    if (draggingAvailable) {
+      const droppedTitle = draggingAvailable;
+      const normalized = droppedTitle.toLowerCase();
+      shouldAnimate.current = true;
+      setReportSections((prev) => {
+        const exists = prev.some(
+          (item) => item.title.toLowerCase() === normalized
+        );
+        if (exists) return prev;
+        const next = [...prev];
+        next.splice(index, 0, createSection(droppedTitle));
+        return next;
+      });
+      setAvailableSections((prev) =>
+        prev.filter((item) => item.toLowerCase() !== normalized)
+      );
+      setDraggingAvailable(null);
+      setDragIndex(null);
+      setHoverIndex(null);
+      return;
+    }
+
     if (dragIndex === null) {
       setHoverIndex(null);
       return;
@@ -276,7 +417,17 @@ export default function CoachReportBuilderPage() {
     loadStudents();
   }, []);
 
+  useLayoutEffect(() => {
+    const studentFromQuery = searchParams.get("studentId");
+    if (!studentFromQuery || studentId) return;
+    const match = students.find((student) => student.id === studentFromQuery);
+    if (match) {
+      setStudentId(match.id);
+    }
+  }, [searchParams, students, studentId]);
+
   return (
+    <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
     <div className="space-y-6">
       <section className="panel rounded-2xl p-6">
         <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
@@ -369,28 +520,169 @@ export default function CoachReportBuilderPage() {
             {availableSections.map((section) => (
               <div
                 key={section}
-                className="flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--text)]"
+                className="relative flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-4 py-3 pl-11 pr-12 text-sm text-[var(--text)]"
               >
-                <span>{section}</span>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleAddToReport(section)}
-                    className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
+                <button
+                  type="button"
+                  onClick={() => handleRemoveFromAvailable(section)}
+                  className="absolute left-0 top-0 flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-[var(--bg-elevated)] text-[var(--muted)] shadow transition hover:border-red-400/40 hover:bg-red-500/20 hover:text-red-300"
+                  aria-label="Supprimer la section"
+                  title="Supprimer"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-3 w-3"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                   >
-                    Ajouter
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveFromAvailable(section)}
-                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
-                  >
-                    Supprimer
-                  </button>
+                    <path d="M18 6L6 18" />
+                    <path d="M6 6l12 12" />
+                  </svg>
+                </button>
+                <div className="flex-1">
+                  {editingSection === section ? (
+                    <input
+                      type="text"
+                      value={editingValue}
+                      onChange={(event) => setEditingValue(event.target.value)}
+                      className="w-full rounded-lg border border-white/10 bg-[var(--bg-elevated)] px-3 py-1 text-sm text-[var(--text)]"
+                    />
+                  ) : (
+                    <span>{section}</span>
+                  )}
                 </div>
+                <div className="flex items-center gap-2">
+                  {editingSection === section ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleSaveEdit}
+                        className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--text)] transition hover:bg-white/20"
+                        aria-label="Valider"
+                        title="Valider"
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M5 12l4 4L19 6" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelEdit}
+                        className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                        aria-label="Annuler"
+                        title="Annuler"
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M15 6l-6 6 6 6" />
+                        </svg>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleAddToReport(section)}
+                        className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--text)] transition hover:bg-white/20"
+                        aria-label="Ajouter au rapport"
+                        title="Ajouter"
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M12 5v14" />
+                          <path d="M5 12h14" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleEditSection(section)}
+                        className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                        aria-label="Modifier la section"
+                        title="Modifier"
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-4 w-4"
+                          fill="currentColor"
+                          aria-hidden="true"
+                        >
+                          <circle cx="5" cy="12" r="1.8" />
+                          <circle cx="12" cy="12" r="1.8" />
+                          <circle cx="19" cy="12" r="1.8" />
+                        </svg>
+                      </button>
+                    </>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  draggable
+                  disabled={editingSection === section}
+                  onDragStart={(event) =>
+                    handleAvailableDragStart(section, event)
+                  }
+                  onDragEnd={handleDragEnd}
+                  className={`absolute right-3 top-3 bottom-3 flex w-7 items-center justify-center rounded-lg border border-dashed border-white/10 bg-white/5 text-[var(--muted)] transition hover:border-[var(--accent)] hover:text-[var(--text)] ${
+                    editingSection === section
+                      ? "cursor-not-allowed opacity-40"
+                      : "cursor-grab"
+                  }`}
+                  aria-label="Glisser vers le rapport"
+                  title="Glisser vers le rapport"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <circle cx="9" cy="6" r="1.4" />
+                    <circle cx="9" cy="12" r="1.4" />
+                    <circle cx="9" cy="18" r="1.4" />
+                    <circle cx="15" cy="6" r="1.4" />
+                    <circle cx="15" cy="12" r="1.4" />
+                    <circle cx="15" cy="18" r="1.4" />
+                  </svg>
+                </button>
               </div>
             ))}
           </div>
+          {sectionsMessage ? (
+            <p
+              className={`mt-4 text-xs ${
+                sectionsMessageType === "error"
+                  ? "text-red-400"
+                  : "text-[var(--muted)]"
+              }`}
+            >
+              {sectionsMessage}
+            </p>
+          ) : null}
         </div>
 
         <div className="panel rounded-2xl p-6">
@@ -432,10 +724,7 @@ export default function CoachReportBuilderPage() {
                       itemRefs.current.delete(section.id);
                     }
                   }}
-                  onDragEnd={() => {
-                    setDragIndex(null);
-                    setHoverIndex(null);
-                  }}
+                  onDragEnd={handleDragEnd}
                   className={`rounded-2xl border bg-white/5 px-4 py-4 transition ${
                     dragIndex === index
                       ? "border-white/20 bg-white/10 opacity-80 shadow-[0_20px_45px_rgba(0,0,0,0.45)]"
@@ -460,7 +749,9 @@ export default function CoachReportBuilderPage() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => handleRemoveFromReport(section.id)}
+                      onClick={() =>
+                        handleRemoveFromReport(section.id, section.title)
+                      }
                       className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
                     >
                       Retirer
@@ -527,5 +818,6 @@ export default function CoachReportBuilderPage() {
         </div>
       </section>
     </div>
+    </RoleGuard>
   );
 }
