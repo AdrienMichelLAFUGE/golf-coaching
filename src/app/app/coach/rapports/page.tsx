@@ -107,7 +107,7 @@ export default function CoachReportsPage() {
             </div>
           ) : (
             <div className="grid gap-3 text-sm text-[var(--muted)]">
-              <div className="grid grid-cols-[1.4fr_1fr_0.8fr] gap-3 uppercase tracking-wide text-[0.7rem] text-[var(--muted)]">
+              <div className="hidden gap-3 uppercase tracking-wide text-[0.7rem] text-[var(--muted)] md:grid md:grid-cols-[1.4fr_1fr_0.8fr]">
                 <span>Rapport</span>
                 <span>Eleve</span>
                 <span>Actions</span>
@@ -115,7 +115,7 @@ export default function CoachReportsPage() {
               {reports.map((report) => (
                 <div
                   key={report.id}
-                  className="grid grid-cols-[1.4fr_1fr_0.8fr] gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-[var(--text)]"
+                  className="grid gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-[var(--text)] md:grid-cols-[1.4fr_1fr_0.8fr]"
                 >
                   <div>
                     <p className="font-medium">{report.title}</p>

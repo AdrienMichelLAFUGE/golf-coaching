@@ -74,6 +74,11 @@ export default function CoachSettingsPage() {
   const [logoDragging, setLogoDragging] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSuccess, setPasswordSuccess] = useState("");
 
   const previewSections = useMemo(
     () => normalizeSections(reportDefaultSections),
@@ -256,6 +261,42 @@ export default function CoachSettingsPage() {
     await refresh();
     setSuccess("Parametres sauvegardes.");
     setSaving(false);
+  };
+
+  const handleUpdatePassword = async () => {
+    setPasswordError("");
+    setPasswordSuccess("");
+
+    if (!password || !passwordConfirm) {
+      setPasswordError("Renseigne les deux champs.");
+      return;
+    }
+
+    if (password.length < 8) {
+      setPasswordError("Minimum 8 caracteres.");
+      return;
+    }
+
+    if (password !== passwordConfirm) {
+      setPasswordError("Les mots de passe ne correspondent pas.");
+      return;
+    }
+
+    setPasswordSaving(true);
+    const { error: updateError } = await supabase.auth.updateUser({
+      password,
+    });
+
+    if (updateError) {
+      setPasswordError(updateError.message);
+      setPasswordSaving(false);
+      return;
+    }
+
+    setPassword("");
+    setPasswordConfirm("");
+    setPasswordSuccess("Mot de passe mis a jour.");
+    setPasswordSaving(false);
   };
 
   return (
@@ -613,6 +654,57 @@ export default function CoachSettingsPage() {
                 </div>
               </div>
             </div>
+          </section>
+
+          <section className="panel rounded-2xl p-6">
+            <h3 className="text-lg font-semibold text-[var(--text)]">
+              Mot de passe
+            </h3>
+            <p className="mt-2 text-xs text-[var(--muted)]">
+              Cree ou modifie ton mot de passe pour te connecter sans magic link.
+            </p>
+            <div className="mt-4 grid gap-4 md:grid-cols-[1fr_1fr_auto]">
+              <div>
+                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                  Nouveau mot de passe
+                </label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="********"
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                  Confirmation
+                </label>
+                <input
+                  type="password"
+                  value={passwordConfirm}
+                  onChange={(event) => setPasswordConfirm(event.target.value)}
+                  placeholder="********"
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleUpdatePassword}
+                disabled={passwordSaving}
+                className="self-end rounded-full border border-white/10 bg-white/10 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20 disabled:opacity-60"
+              >
+                {passwordSaving ? "Mise a jour..." : "Mettre a jour"}
+              </button>
+            </div>
+            {passwordError ? (
+              <p className="mt-3 text-sm text-red-400">{passwordError}</p>
+            ) : null}
+            {passwordSuccess ? (
+              <p className="mt-3 text-sm text-emerald-200">
+                {passwordSuccess}
+              </p>
+            ) : null}
           </section>
 
           <section className="panel-soft rounded-2xl p-5">

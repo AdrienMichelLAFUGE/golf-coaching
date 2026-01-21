@@ -62,4 +62,5 @@ body {
   color: var(--text);
   font-family: var(--font-ui), "Segoe UI", sans-serif;
   min-height: 100vh;
+  overflow-x: hidden;
 }

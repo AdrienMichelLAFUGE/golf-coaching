@@ -8,11 +8,13 @@ export type Profile = {
   org_id: string;
   role: "owner" | "coach" | "staff" | "student";
   full_name: string | null;
+  avatar_url?: string | null;
 };
 
 export type OrganizationSettings = {
   id: string;
   name: string | null;
+  logo_url: string | null;
   accent_color: string | null;
   locale: string | null;
   timezone: string | null;
@@ -51,7 +53,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 
     const { data: profileData, error: profileError } = await supabase
       .from("profiles")
-      .select("id, org_id, role, full_name")
+      .select("id, org_id, role, full_name, avatar_url")
       .eq("id", userId)
       .single();
 
@@ -63,7 +65,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       setProfile(profileData);
       const { data: orgData, error: orgError } = await supabase
         .from("organizations")
-        .select("id, name, accent_color, locale, timezone")
+        .select("id, name, logo_url, accent_color, locale, timezone")
         .eq("id", profileData.org_id)
         .single();
 

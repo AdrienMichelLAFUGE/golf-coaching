@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import RoleGuard from "../../../_components/role-guard";
@@ -76,10 +76,11 @@ export default function CoachReportBuilderPage() {
   const [editingValue, setEditingValue] = useState("");
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [dragEnabled, setDragEnabled] = useState(false);
   const itemRefs = useRef(new Map<string, HTMLDivElement | null>());
   const positions = useRef(new Map<string, DOMRect>());
   const shouldAnimate = useRef(false);
-  const showSlots = dragIndex !== null || draggingAvailable !== null;
+  const showSlots = dragEnabled && (dragIndex !== null || draggingAvailable !== null);
   const [students, setStudents] = useState<StudentOption[]>([]);
   const [studentId, setStudentId] = useState("");
   const [title, setTitle] = useState("");
@@ -208,6 +209,10 @@ export default function CoachReportBuilderPage() {
     index: number,
     event: React.DragEvent<HTMLElement>
   ) => {
+    if (!dragEnabled) {
+      event.preventDefault();
+      return;
+    }
     setDragIndex(index);
     setDraggingAvailable(null);
     event.dataTransfer.effectAllowed = "move";
@@ -218,6 +223,10 @@ export default function CoachReportBuilderPage() {
     section: string,
     event: React.DragEvent<HTMLElement>
   ) => {
+    if (!dragEnabled) {
+      event.preventDefault();
+      return;
+    }
     setDraggingAvailable(section);
     setDragIndex(null);
     event.dataTransfer.effectAllowed = "copy";
@@ -293,6 +302,18 @@ export default function CoachReportBuilderPage() {
         section.id === id ? { ...section, content: value } : section
       )
     );
+  };
+
+  const handleMoveSection = (index: number, direction: "up" | "down") => {
+    setReportSections((prev) => {
+      const next = [...prev];
+      const targetIndex = direction === "up" ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= next.length) return prev;
+      const [moved] = next.splice(index, 1);
+      next.splice(targetIndex, 0, moved);
+      return next;
+    });
+    shouldAnimate.current = true;
   };
 
   const loadStudents = async () => {
@@ -417,6 +438,25 @@ export default function CoachReportBuilderPage() {
     loadStudents();
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(min-width: 1024px) and (hover: hover)");
+    const updateDragEnabled = () => setDragEnabled(media.matches);
+    updateDragEnabled();
+    if ("addEventListener" in media) {
+      media.addEventListener("change", updateDragEnabled);
+    } else {
+      media.addListener(updateDragEnabled);
+    }
+    return () => {
+      if ("removeEventListener" in media) {
+        media.removeEventListener("change", updateDragEnabled);
+      } else {
+        media.removeListener(updateDragEnabled);
+      }
+    };
+  }, []);
+
   useLayoutEffect(() => {
     const studentFromQuery = searchParams.get("studentId");
     if (!studentFromQuery || studentId) return;
@@ -520,7 +560,7 @@ export default function CoachReportBuilderPage() {
             {availableSections.map((section) => (
               <div
                 key={section}
-                className="relative flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-4 py-3 pl-11 pr-12 text-sm text-[var(--text)]"
+                className="relative flex flex-col gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 pl-11 text-sm text-[var(--text)] sm:flex-row sm:items-center sm:justify-between sm:pr-16"
               >
                 <button
                   type="button"
@@ -542,7 +582,7 @@ export default function CoachReportBuilderPage() {
                     <path d="M6 6l12 12" />
                   </svg>
                 </button>
-                <div className="flex-1">
+                <div className="min-w-0 flex-1">
                   {editingSection === section ? (
                     <input
                       type="text"
@@ -551,10 +591,10 @@ export default function CoachReportBuilderPage() {
                       className="w-full rounded-lg border border-white/10 bg-[var(--bg-elevated)] px-3 py-1 text-sm text-[var(--text)]"
                     />
                   ) : (
-                    <span>{section}</span>
+                    <span className="block break-words">{section}</span>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {editingSection === section ? (
                     <>
                       <button
@@ -639,36 +679,38 @@ export default function CoachReportBuilderPage() {
                     </>
                   )}
                 </div>
-                <button
-                  type="button"
-                  draggable
-                  disabled={editingSection === section}
-                  onDragStart={(event) =>
-                    handleAvailableDragStart(section, event)
-                  }
-                  onDragEnd={handleDragEnd}
-                  className={`absolute right-3 top-3 bottom-3 flex w-7 items-center justify-center rounded-lg border border-dashed border-white/10 bg-white/5 text-[var(--muted)] transition hover:border-[var(--accent)] hover:text-[var(--text)] ${
-                    editingSection === section
-                      ? "cursor-not-allowed opacity-40"
-                      : "cursor-grab"
-                  }`}
-                  aria-label="Glisser vers le rapport"
-                  title="Glisser vers le rapport"
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-4 w-4"
-                    fill="currentColor"
-                    aria-hidden="true"
+                {dragEnabled ? (
+                  <button
+                    type="button"
+                    draggable={editingSection !== section}
+                    disabled={editingSection === section}
+                    onDragStart={(event) =>
+                      handleAvailableDragStart(section, event)
+                    }
+                    onDragEnd={handleDragEnd}
+                    className={`absolute right-3 top-3 bottom-3 flex w-7 items-center justify-center rounded-lg border border-dashed border-white/10 bg-white/5 text-[var(--muted)] transition hover:border-[var(--accent)] hover:text-[var(--text)] ${
+                      editingSection === section
+                        ? "cursor-not-allowed opacity-40"
+                        : "cursor-grab"
+                    }`}
+                    aria-label="Glisser vers le rapport"
+                    title="Glisser vers le rapport"
                   >
-                    <circle cx="9" cy="6" r="1.4" />
-                    <circle cx="9" cy="12" r="1.4" />
-                    <circle cx="9" cy="18" r="1.4" />
-                    <circle cx="15" cy="6" r="1.4" />
-                    <circle cx="15" cy="12" r="1.4" />
-                    <circle cx="15" cy="18" r="1.4" />
-                  </svg>
-                </button>
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4"
+                      fill="currentColor"
+                      aria-hidden="true"
+                    >
+                      <circle cx="9" cy="6" r="1.4" />
+                      <circle cx="9" cy="12" r="1.4" />
+                      <circle cx="9" cy="18" r="1.4" />
+                      <circle cx="15" cy="6" r="1.4" />
+                      <circle cx="15" cy="12" r="1.4" />
+                      <circle cx="15" cy="18" r="1.4" />
+                    </svg>
+                  </button>
+                ) : null}
               </div>
             ))}
           </div>
@@ -731,31 +773,81 @@ export default function CoachReportBuilderPage() {
                       : "border-white/10"
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        draggable
-                        onDragStart={(event) => handleDragStart(index, event)}
-                        className="flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-2.5 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] active:cursor-grabbing"
-                        title="Glisser pour reordonner"
-                      >
-                        <span className="text-xs">|||</span>
-                        Glisser
-                      </button>
-                      <p className="text-sm font-semibold text-[var(--text)]">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      {dragEnabled ? (
+                        <button
+                          type="button"
+                          draggable
+                          onDragStart={(event) => handleDragStart(index, event)}
+                          className="flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-2.5 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] active:cursor-grabbing"
+                          title="Glisser pour reordonner"
+                        >
+                          <span className="text-xs">|||</span>
+                          Glisser
+                        </button>
+                      ) : null}
+                      <p className="text-sm font-semibold text-[var(--text)] break-words">
                         {section.title}
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleRemoveFromReport(section.id, section.title)
-                      }
-                      className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
-                    >
-                      Retirer
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {!dragEnabled ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleMoveSection(index, "up")}
+                            disabled={index === 0}
+                            className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-40"
+                            aria-label="Monter"
+                            title="Monter"
+                          >
+                            <svg
+                              viewBox="0 0 24 24"
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M12 19V5" />
+                              <path d="M5 12l7-7 7 7" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleMoveSection(index, "down")}
+                            disabled={index === reportSections.length - 1}
+                            className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-40"
+                            aria-label="Descendre"
+                            title="Descendre"
+                          >
+                            <svg
+                              viewBox="0 0 24 24"
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M12 5v14" />
+                              <path d="M5 12l7 7 7-7" />
+                            </svg>
+                          </button>
+                        </>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleRemoveFromReport(section.id, section.title)
+                        }
+                        className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                      >
+                        Retirer
+                      </button>
+                    </div>
                   </div>
                   <textarea
                     rows={4}

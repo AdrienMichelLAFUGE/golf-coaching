@@ -308,7 +308,7 @@ export default function CoachStudentsPage() {
 
         <section className="panel rounded-2xl p-6">
           <div className="grid gap-3 text-sm text-[var(--muted)]">
-            <div className="grid grid-cols-[1.5fr_1fr_1.2fr] gap-3 uppercase tracking-wide text-[0.7rem] text-[var(--muted)]">
+            <div className="hidden gap-3 uppercase tracking-wide text-[0.7rem] text-[var(--muted)] md:grid md:grid-cols-[1.5fr_1fr_1.2fr]">
               <span>Eleve</span>
               <span>Email</span>
               <span>Acces</span>
@@ -325,7 +325,7 @@ export default function CoachStudentsPage() {
               filteredStudents.map((student) => (
                 <div
                   key={student.id}
-                  className="grid grid-cols-[1.5fr_1fr_1.2fr] gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-[var(--text)]"
+                  className="grid gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-[var(--text)] md:grid-cols-[1.5fr_1fr_1.2fr]"
                 >
                   <div>
                     <p className="font-medium">
