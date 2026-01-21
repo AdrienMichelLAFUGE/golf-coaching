@@ -443,17 +443,9 @@ export default function CoachReportBuilderPage() {
     const media = window.matchMedia("(min-width: 1024px) and (hover: hover)");
     const updateDragEnabled = () => setDragEnabled(media.matches);
     updateDragEnabled();
-    if ("addEventListener" in media) {
-      media.addEventListener("change", updateDragEnabled);
-    } else {
-      media.addListener(updateDragEnabled);
-    }
+    media.addEventListener("change", updateDragEnabled);
     return () => {
-      if ("removeEventListener" in media) {
-        media.removeEventListener("change", updateDragEnabled);
-      } else {
-        media.removeListener(updateDragEnabled);
-      }
+      media.removeEventListener("change", updateDragEnabled);
     };
   }, []);
 
