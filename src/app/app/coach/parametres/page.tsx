@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import RoleGuard from "../../_components/role-guard";
 import { useProfile } from "../../_components/profile-context";
+import PageBack from "../../_components/page-back";
 
 type ProfileSettings = {
   id: string;
@@ -345,9 +346,12 @@ export default function CoachSettingsPage() {
       ) : (
         <div className="space-y-6">
           <section className="panel rounded-2xl p-6">
-            <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-              Parametres coach
-            </p>
+            <div className="flex items-center gap-2">
+              <PageBack />
+              <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                Parametres coach
+              </p>
+            </div>
             <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
               Identite et branding
             </h2>

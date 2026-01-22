@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import RoleGuard from "../../_components/role-guard";
+import PageBack from "../../_components/page-back";
 
 type Student = {
   id: string;
@@ -202,9 +203,12 @@ export default function CoachStudentsPage() {
         <section className="panel rounded-2xl p-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                Eleves
-              </p>
+              <div className="flex items-center gap-2">
+                <PageBack />
+                <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                  Eleves
+                </p>
+              </div>
               <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
                 Annuaire eleves
               </h2>

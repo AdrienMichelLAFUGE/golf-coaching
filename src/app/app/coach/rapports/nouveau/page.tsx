@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import RoleGuard from "../../../_components/role-guard";
 import { useProfile } from "../../../_components/profile-context";
+import PageBack from "../../../_components/page-back";
 
 type SectionType = "text" | "image";
 
@@ -26,6 +27,7 @@ const defaultSections: SectionTemplate[] = [
 ];
 
 const CAPTION_LIMIT = 150;
+const CLARIFY_THRESHOLD = 0.8;
 
 type ReportSection = {
   id: string;
@@ -54,12 +56,26 @@ type AiPreview = {
   mode: "improve" | "propagate" | "finalize";
 };
 
+type ClarifyQuestion = {
+  id: string;
+  question: string;
+  type: "text" | "choices";
+  choices?: string[];
+  multi?: boolean;
+  required?: boolean;
+  placeholder?: string;
+};
+
+type ClarifyAnswerValue = string | string[];
+
 type LocalDraft = {
   studentId: string;
   title: string;
   reportDate: string;
   reportSections: ReportSection[];
+  workingObservations: string;
   workingNotes: string;
+  workingClub: string;
   savedAt: string;
 };
 
@@ -240,8 +256,31 @@ export default function CoachReportBuilderPage() {
   const [aiError, setAiError] = useState("");
   const [aiBusyId, setAiBusyId] = useState<string | null>(null);
   const [aiPreviews, setAiPreviews] = useState<Record<string, AiPreview>>({});
+  const [clarifyOpen, setClarifyOpen] = useState(false);
+  const [clarifyQuestions, setClarifyQuestions] = useState<ClarifyQuestion[]>(
+    []
+  );
+  const [clarifyAnswers, setClarifyAnswers] = useState<
+    Record<string, ClarifyAnswerValue>
+  >({});
+  const [clarifyCustomAnswers, setClarifyCustomAnswers] = useState<
+    Record<string, string>
+  >({});
+  const [clarifyConfidence, setClarifyConfidence] = useState<number | null>(
+    null
+  );
+  const [pendingPropagation, setPendingPropagation] = useState<{
+    sectionTitle: string;
+    sectionContent: string;
+    allSections: { title: string; content: string }[];
+    targetSections: string[];
+    propagateMode: "empty" | "append";
+  } | null>(null);
   const textareaRefs = useRef(new Map<string, HTMLTextAreaElement | null>());
+  const [workingObservations, setWorkingObservations] = useState("");
   const [workingNotes, setWorkingNotes] = useState("");
+  const [workingClub, setWorkingClub] = useState("");
+  const workingObservationsRef = useRef<HTMLTextAreaElement | null>(null);
   const workingNotesRef = useRef<HTMLTextAreaElement | null>(null);
   const [propagateAppend, setPropagateAppend] = useState(false);
   const [uploadingSections, setUploadingSections] = useState<
@@ -782,6 +821,16 @@ export default function CoachReportBuilderPage() {
     setWorkingNotes(value);
   };
 
+  const handleWorkingObservationsInput = (
+    event: React.FormEvent<HTMLTextAreaElement>
+  ) => {
+    const target = event.currentTarget;
+    const value = target.value;
+    target.style.height = "auto";
+    target.style.height = `${target.scrollHeight}px`;
+    setWorkingObservations(value);
+  };
+
   const handleMoveSection = (index: number, direction: "up" | "down") => {
     setReportSections((prev) => {
       const next = [...prev];
@@ -1124,7 +1173,9 @@ export default function CoachReportBuilderPage() {
       setTitle(draft.title ?? "");
       setReportDate(draft.reportDate ?? formatDateInput(new Date()));
       setReportSections(draft.reportSections);
+      setWorkingObservations(draft.workingObservations ?? "");
       setWorkingNotes(draft.workingNotes ?? "");
+      setWorkingClub(draft.workingClub ?? "");
     } catch {
       window.localStorage.removeItem(draftKey);
     }
@@ -1138,7 +1189,9 @@ export default function CoachReportBuilderPage() {
       title,
       reportDate,
       reportSections,
+      workingObservations,
       workingNotes,
+      workingClub,
       savedAt: new Date().toISOString(),
     };
     window.localStorage.setItem(draftKey, JSON.stringify(payload));
@@ -1151,7 +1204,9 @@ export default function CoachReportBuilderPage() {
 
     const { data: reportData, error: reportError } = await supabase
       .from("reports")
-      .select("id, title, report_date, created_at, student_id, sent_at")
+      .select(
+        "id, title, report_date, created_at, student_id, sent_at, coach_observations, coach_work, coach_club"
+      )
       .eq("id", reportId)
       .single();
 
@@ -1201,6 +1256,9 @@ export default function CoachReportBuilderPage() {
     setStudentId(reportData.student_id ?? "");
     setTitle(reportData.title ?? "");
     setSentAt(reportData.sent_at ?? null);
+    setWorkingObservations(reportData.coach_observations ?? "");
+    setWorkingNotes(reportData.coach_work ?? "");
+    setWorkingClub(reportData.coach_club ?? "");
     setReportDate(
       reportData.report_date
         ? formatDateInputValue(reportData.report_date)
@@ -1220,7 +1278,9 @@ export default function CoachReportBuilderPage() {
     setReportDate(formatDateInput(new Date()));
     setSentAt(null);
     setReportSections(defaultReportSections.map(createSection));
+    setWorkingObservations("");
     setWorkingNotes("");
+    setWorkingClub("");
     setAiPreviews({});
     setAiSummary("");
     setAiError("");
@@ -1272,11 +1332,17 @@ export default function CoachReportBuilderPage() {
         student_id: string;
         title: string;
         report_date: string | null;
+        coach_observations?: string | null;
+        coach_work?: string | null;
+        coach_club?: string | null;
         sent_at?: string;
       } = {
         student_id: studentId,
         title: title.trim(),
         report_date: reportDate ? reportDate : null,
+        coach_observations: workingObservations.trim() || null,
+        coach_work: workingNotes.trim() || null,
+        coach_club: workingClub.trim() || null,
       };
 
       if (send) {
@@ -1317,6 +1383,9 @@ export default function CoachReportBuilderPage() {
             student_id: studentId,
             title: title.trim(),
             report_date: reportDate ? reportDate : null,
+            coach_observations: workingObservations.trim() || null,
+            coach_work: workingNotes.trim() || null,
+            coach_club: workingClub.trim() || null,
             sent_at: createdSentAt,
           },
         ])
@@ -1466,6 +1535,7 @@ export default function CoachReportBuilderPage() {
     allSections: { title: string; content: string }[];
     targetSections: string[];
     propagateMode: "empty" | "append";
+    clarifications?: { question: string; answer: string }[];
   }) => {
     setAiError("");
     try {
@@ -1489,6 +1559,7 @@ export default function CoachReportBuilderPage() {
           allSections: payload.allSections,
           targetSections: payload.targetSections,
           propagateMode: payload.propagateMode,
+          clarifications: payload.clarifications,
           settings: {
             tone: aiTone,
             techLevel: aiTechLevel,
@@ -1526,6 +1597,83 @@ export default function CoachReportBuilderPage() {
       }
 
       return data.suggestions ?? null;
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "Erreur IA.");
+      return null;
+    }
+  };
+
+  const callAiClarify = async (payload: {
+    sectionTitle: string;
+    sectionContent: string;
+    allSections: { title: string; content: string }[];
+    targetSections: string[];
+    propagateMode: "empty" | "append";
+  }) => {
+    setAiError("");
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        setAiError("Session invalide.");
+        return null;
+      }
+
+      const response = await fetch("/api/ai", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          action: "clarify",
+          sectionTitle: payload.sectionTitle,
+          sectionContent: payload.sectionContent,
+          allSections: payload.allSections,
+          targetSections: payload.targetSections,
+          propagateMode: payload.propagateMode,
+          settings: {
+            tone: aiTone,
+            techLevel: aiTechLevel,
+            style: aiStyle,
+            length: aiLength,
+            imagery: aiImagery,
+            focus: aiFocus,
+          },
+        }),
+      });
+
+      const raw = await response.text();
+      if (!raw) {
+        setAiError("Reponse vide.");
+        return null;
+      }
+
+      let data: {
+        confidence?: number;
+        questions?: ClarifyQuestion[];
+        error?: string;
+      };
+      try {
+        data = JSON.parse(raw) as {
+          confidence?: number;
+          questions?: ClarifyQuestion[];
+          error?: string;
+        };
+      } catch {
+        setAiError(raw.slice(0, 160));
+        return null;
+      }
+
+      if (!response.ok) {
+        setAiError(data.error ?? "Erreur IA.");
+        return null;
+      }
+
+      return {
+        confidence: data.confidence ?? 0,
+        questions: data.questions ?? [],
+      };
     } catch (error) {
       setAiError(error instanceof Error ? error.message : "Erreur IA.");
       return null;
@@ -1591,41 +1739,29 @@ export default function CoachReportBuilderPage() {
     setAiBusyId(null);
   };
 
-  const handleAiPropagateFromWorking = async () => {
-    if (!canUseAi) return;
-    if (!workingNotes.trim()) {
-      setAiError("Ajoute des notes dans Travail en cours.");
-      return;
-    }
-    const targets = reportSections
-      .filter((item) => !aiPreviews[item.id])
-      .filter((item) => item.type === "text")
-      .filter((item) => !isSummaryTitle(item.title))
-      .filter((item) => !isPlanTitle(item.title))
-      .filter((item) => (propagateAppend ? true : !item.content.trim()))
-      .map((item) => item.title);
+  const closeClarifyModal = () => {
+    setClarifyOpen(false);
+    setClarifyQuestions([]);
+    setClarifyAnswers({});
+    setClarifyCustomAnswers({});
+    setClarifyConfidence(null);
+    setPendingPropagation(null);
+  };
 
-    if (targets.length === 0) {
-      setAiError(
-        propagateAppend
-          ? "Aucune section disponible."
-          : "Aucune section vide a remplir. Active Ajouter pour completer."
-      );
-      return;
-    }
-
+  const runPropagation = async (
+    payload: {
+      sectionTitle: string;
+      sectionContent: string;
+      allSections: { title: string; content: string }[];
+      targetSections: string[];
+      propagateMode: "empty" | "append";
+    },
+    clarifications?: { question: string; answer: string }[]
+  ) => {
     setAiBusyId("propagate");
     const suggestions = await callAiPropagation({
-      sectionTitle: "Travail en cours",
-      sectionContent: workingNotes,
-      allSections: reportSections
-        .filter((item) => item.type === "text")
-        .map((item) => ({
-          title: item.title,
-          content: item.content,
-        })),
-      targetSections: targets,
-      propagateMode: propagateAppend ? "append" : "empty",
+      ...payload,
+      clarifications,
     });
 
     if (suggestions) {
@@ -1654,6 +1790,110 @@ export default function CoachReportBuilderPage() {
     setAiBusyId(null);
   };
 
+  const handleAiPropagateFromWorking = async () => {
+    if (!canUseAi) return;
+    const hasObservations = !!workingObservations.trim();
+    const hasWork = !!workingNotes.trim();
+    if (!hasObservations && !hasWork) {
+      setAiError("Ajoute des constats ou un travail en cours.");
+      return;
+    }
+    const targets = reportSections
+      .filter((item) => !aiPreviews[item.id])
+      .filter((item) => item.type === "text")
+      .filter((item) => !isSummaryTitle(item.title))
+      .filter((item) => !isPlanTitle(item.title))
+      .filter((item) => (propagateAppend ? true : !item.content.trim()))
+      .map((item) => item.title);
+
+    if (targets.length === 0) {
+      setAiError(
+        propagateAppend
+          ? "Aucune section disponible."
+          : "Aucune section vide a remplir. Active Ajouter pour completer."
+      );
+      return;
+    }
+
+    const sourceParts = [];
+    if (workingClub.trim()) {
+      sourceParts.push(`Club concerne: ${workingClub.trim()}`);
+    }
+    if (workingObservations.trim()) {
+      sourceParts.push(`Constats:\n${workingObservations.trim()}`);
+    }
+    if (workingNotes.trim()) {
+      sourceParts.push(`Travail en cours:\n${workingNotes.trim()}`);
+    }
+    const sectionContent = sourceParts.join("\n\n");
+
+    const payload = {
+      sectionTitle: "Travail en cours",
+      sectionContent,
+      allSections: reportSections
+        .filter((item) => item.type === "text")
+        .map((item) => ({
+          title: item.title,
+          content: item.content,
+        })),
+      targetSections: targets,
+      propagateMode: propagateAppend ? "append" : "empty",
+    };
+
+    setAiBusyId("propagate");
+    const clarification = await callAiClarify(payload);
+    setAiBusyId(null);
+    if (!clarification) return;
+
+    const missingWork = !workingNotes.trim();
+    const missingObservations = !workingObservations.trim();
+    const forcedQuestions: ClarifyQuestion[] = [];
+
+    if (missingWork) {
+      forcedQuestions.push({
+        id: "forced-work",
+        question:
+          "Quel travail veux-tu mettre en place ? (objectif, consigne, exercice)",
+        type: "text",
+        choices: [],
+        multi: false,
+        required: true,
+        placeholder: "Ex: stabiliser l'appui pied droit au backswing.",
+      });
+    }
+
+    if (missingObservations) {
+      forcedQuestions.push({
+        id: "forced-observations",
+        question: "Constats observes (si tu en as)",
+        type: "text",
+        choices: [],
+        multi: false,
+        required: false,
+        placeholder: "Ex: chemin trop a gauche, perte de posture...",
+      });
+    }
+
+    const questions = [...clarification.questions, ...forcedQuestions];
+    const needsClarify =
+      missingWork ||
+      missingObservations ||
+      clarification.confidence < CLARIFY_THRESHOLD ||
+      clarification.questions.length > 0;
+
+    setClarifyConfidence(clarification.confidence);
+    if (!needsClarify) {
+      await runPropagation(payload);
+      return;
+    }
+
+    setClarifyQuestions(questions);
+    setClarifyAnswers({});
+    setClarifyCustomAnswers({});
+    setPendingPropagation(payload);
+    setClarifyOpen(true);
+  };
+
   const handleAiFinalize = async () => {
     if (!canUseAi) return;
     const summaryTargets = reportSections.filter(
@@ -1673,6 +1913,12 @@ export default function CoachReportBuilderPage() {
       .filter((item) => !isPlanTitle(item.title))
       .filter((item) => item.content.trim())
       .map((item) => ({ title: item.title, content: item.content }));
+    if (workingObservations.trim()) {
+      contextSections.push({
+        title: "Constats",
+        content: workingObservations.trim(),
+      });
+    }
 
     if (contextSections.length === 0) {
       setAiError("Ajoute du contenu avant de finaliser.");
@@ -1733,19 +1979,77 @@ export default function CoachReportBuilderPage() {
   const handleAiSummary = async () => {
     if (!canUseAi) return;
     setAiBusyId("summary");
+    const summarySections = reportSections
+      .filter((item) => item.type === "text")
+      .map((item) => ({
+        title: item.title,
+        content: item.content,
+      }));
+    if (workingObservations.trim()) {
+      summarySections.push({
+        title: "Constats",
+        content: workingObservations.trim(),
+      });
+    }
     const text = await callAi({
       action: "summary",
-      allSections: reportSections
-        .filter((item) => item.type === "text")
-        .map((item) => ({
-          title: item.title,
-          content: item.content,
-        })),
+      allSections: summarySections,
     });
     if (text) {
       setAiSummary(text);
     }
     setAiBusyId(null);
+  };
+
+  const isClarifyComplete = useMemo(() => {
+    if (!clarifyOpen) return false;
+    return clarifyQuestions.every((question) => {
+      if (question.required === false) return true;
+      const value = clarifyAnswers[question.id];
+      const customValue = clarifyCustomAnswers[question.id]?.trim();
+      if (question.type === "choices") {
+        if (Array.isArray(value)) {
+          return value.length > 0 || !!customValue;
+        }
+        return Boolean(value) || !!customValue;
+      }
+      return typeof value === "string" && value.trim().length > 0;
+    });
+  }, [clarifyOpen, clarifyQuestions, clarifyAnswers, clarifyCustomAnswers]);
+
+  const handleConfirmClarify = async () => {
+    if (!pendingPropagation) return;
+    const answers = clarifyQuestions
+      .map((question) => {
+        const value = clarifyAnswers[question.id];
+        const customValue = clarifyCustomAnswers[question.id]?.trim();
+        if (!value || (Array.isArray(value) && value.length === 0)) {
+          if (!customValue) return null;
+        }
+        if (question.type === "choices") {
+          const selected = Array.isArray(value)
+            ? value
+            : value
+            ? [String(value)]
+            : [];
+          const combined = customValue
+            ? [...selected, customValue]
+            : selected;
+          if (combined.length === 0) return null;
+          return { question: question.question, answer: combined.join(", ") };
+        }
+        const text = Array.isArray(value)
+          ? value.join(", ")
+          : value ?? customValue ?? "";
+        return { question: question.question, answer: text };
+      })
+      .filter(
+        (item): item is { question: string; answer: string } => item !== null
+      );
+
+    const payload = pendingPropagation;
+    closeClarifyModal();
+    await runPropagation(payload, answers);
   };
 
   const handleAiApply = (id: string) => {
@@ -1838,6 +2142,8 @@ export default function CoachReportBuilderPage() {
     reportDate,
     reportSections,
     workingNotes,
+    workingObservations,
+    workingClub,
     isNewReport,
     loadingReport,
   ]);
@@ -1869,6 +2175,12 @@ export default function CoachReportBuilderPage() {
     workingNotesRef.current.style.height = "auto";
     workingNotesRef.current.style.height = `${workingNotesRef.current.scrollHeight}px`;
   }, [workingNotes]);
+
+  useLayoutEffect(() => {
+    if (!workingObservationsRef.current) return;
+    workingObservationsRef.current.style.height = "auto";
+    workingObservationsRef.current.style.height = `${workingObservationsRef.current.scrollHeight}px`;
+  }, [workingObservations]);
 
   useEffect(() => {
     if (!organization) return;
@@ -1916,11 +2228,15 @@ export default function CoachReportBuilderPage() {
 
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
-    <div className="space-y-6">
-      <section className="panel rounded-2xl p-6">
-        <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-          Rapport
-        </p>
+      <>
+        <div className="space-y-6">
+        <section className="panel rounded-2xl p-6">
+          <div className="flex items-center gap-2">
+            <PageBack />
+            <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+              Rapport
+            </p>
+          </div>
         <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
           {isEditing ? "Modifier le rapport" : "Nouveau rapport"}
         </h2>
@@ -1934,7 +2250,7 @@ export default function CoachReportBuilderPage() {
             Chargement du rapport...
           </p>
         ) : null}
-      </section>
+        </section>
 
       <section className="panel-soft rounded-2xl p-5">
         <div className="grid gap-4 md:grid-cols-3">
@@ -1983,51 +2299,86 @@ export default function CoachReportBuilderPage() {
 
       <section className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
         <div className="panel relative rounded-2xl p-6">
-          <h3 className="text-lg font-semibold text-[var(--text)]">
-            Sections disponibles
-          </h3>
-          <span className="group absolute right-4 top-4">
-            <button
-              type="button"
-              className="flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[0.7rem] text-[var(--muted)] transition hover:text-[var(--text)]"
-              aria-label="Aide sur les sections disponibles"
-            >
-              ?
-            </button>
-            <span className="pointer-events-none absolute right-0 top-full z-20 mt-2 w-64 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text)] opacity-0 shadow-xl transition group-hover:opacity-100 group-focus-within:opacity-100">
-              <span className="block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                Ce que c est
-              </span>
-              <span className="mt-1 block">
-                Bibliotheque de blocs reutilisables par coach.
-              </span>
-              <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                Pourquoi
-              </span>
-              <span className="mt-1 block">
-                Chaque section structure le rapport et guide l IA.
-              </span>
-              <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                Impact
-              </span>
-              <span className="mt-1 block">
-                Plus tu enrichis la liste, plus tes rapports sont sur mesure et
-                rapides a produire.
+          <div className="flex items-start justify-between gap-3">
+            <h3 className="text-lg font-semibold text-[var(--text)]">
+              Sections disponibles
+            </h3>
+            <span className="group relative shrink-0">
+              <button
+                type="button"
+                className="flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[0.7rem] text-[var(--muted)] transition hover:text-[var(--text)]"
+                aria-label="Aide sur les sections disponibles"
+              >
+                ?
+              </button>
+              <span className="pointer-events-none absolute right-0 top-full z-20 mt-2 w-64 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text)] opacity-0 shadow-xl transition group-hover:opacity-100 group-focus-within:opacity-100">
+                <span className="block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                  Ce que c est
+                </span>
+                <span className="mt-1 block">
+                  Bibliotheque de blocs reutilisables par coach.
+                </span>
+                <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                  Pourquoi
+                </span>
+                <span className="mt-1 block">
+                  Chaque section structure le rapport et guide l IA.
+                </span>
+                <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                  Impact
+                </span>
+                <span className="mt-1 block">
+                  Plus tu enrichis la liste, plus tes rapports sont sur mesure et
+                  rapides a produire.
+                </span>
               </span>
             </span>
-          </span>
+          </div>
           <p className="mt-2 text-xs text-[var(--muted)]">
             Clique pour ajouter une section au rapport ou cree la tienne.
           </p>
-          <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 relative">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Layouts
-                </p>
-                <p className="mt-1 text-xs text-[var(--muted)]">
-                  Applique un ensemble de sections en 1 clic.
-                </p>
+          <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="flex items-start gap-2">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                    Layouts
+                  </p>
+                  <p className="mt-1 text-xs text-[var(--muted)]">
+                    Applique un ensemble de sections en 1 clic.
+                  </p>
+                </div>
+                <span className="group relative mt-0.5 shrink-0">
+                  <button
+                    type="button"
+                    className="flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[0.7rem] text-[var(--muted)] transition hover:text-[var(--text)]"
+                    aria-label="Aide sur les layouts"
+                  >
+                    ?
+                  </button>
+                  <span className="pointer-events-none absolute right-0 top-full z-20 mt-2 w-64 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text)] opacity-0 shadow-xl transition group-hover:opacity-100 group-focus-within:opacity-100">
+                    <span className="block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                      Ce que c est
+                    </span>
+                    <span className="mt-1 block">
+                      Pack de sections preconfigure (ex: seance practice, parcours).
+                    </span>
+                    <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                      Usage
+                    </span>
+                    <span className="mt-1 block">
+                      Un clic pour charger la structure, puis tu ajustes au cas par
+                      cas.
+                    </span>
+                    <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                      Impact
+                    </span>
+                    <span className="mt-1 block">
+                      Rapports coherents et ultra-personnalises sans repartir de
+                      zero.
+                    </span>
+                  </span>
+                </span>
               </div>
               <button
                 type="button"
@@ -2037,37 +2388,6 @@ export default function CoachReportBuilderPage() {
                 Creer un layout
               </button>
             </div>
-            <span className="group absolute right-4 top-4">
-              <button
-                type="button"
-                className="flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[0.7rem] text-[var(--muted)] transition hover:text-[var(--text)]"
-                aria-label="Aide sur les layouts"
-              >
-                ?
-              </button>
-              <span className="pointer-events-none absolute right-0 top-full z-20 mt-2 w-64 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text)] opacity-0 shadow-xl transition group-hover:opacity-100 group-focus-within:opacity-100">
-                <span className="block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                  Ce que c est
-                </span>
-                <span className="mt-1 block">
-                  Pack de sections preconfigure (ex: seance practice, parcours).
-                </span>
-                <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                  Usage
-                </span>
-                <span className="mt-1 block">
-                  Un clic pour charger la structure, puis tu ajustes au cas par
-                  cas.
-                </span>
-                <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                  Impact
-                </span>
-                <span className="mt-1 block">
-                  Rapports coherents et ultra-personnalises sans repartir de
-                  zero.
-                </span>
-              </span>
-            </span>
             <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
               <select
                 value={selectedLayoutId}
@@ -2709,41 +3029,43 @@ export default function CoachReportBuilderPage() {
         </div>
 
         <div className="panel relative rounded-2xl p-6">
-          <h3 className="text-lg font-semibold text-[var(--text)]">
-            Rapport en cours
-          </h3>
-          <span className="group absolute right-4 top-4">
-            <button
-              type="button"
-              className="flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[0.7rem] text-[var(--muted)] transition hover:text-[var(--text)]"
-              aria-label="Aide sur le rapport en cours"
-            >
-              ?
-            </button>
-            <span className="pointer-events-none absolute right-0 top-full z-20 mt-2 w-64 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text)] opacity-0 shadow-xl transition group-hover:opacity-100 group-focus-within:opacity-100">
-              <span className="block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                Construction
-              </span>
-              <span className="mt-1 block">
-                Tu saisis des notes de travail en cours. Le rapport se construit
-                au fur et a mesure selon les sections presentes.
-              </span>
-              <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                Propagation
-              </span>
-              <span className="mt-1 block">
-                L IA relit, complete et propage les idees pour accelerer la
-                redaction.
-              </span>
-              <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                Finalisation
-              </span>
-              <span className="mt-1 block">
-                Le resume et les sections de planification se generent a la fin,
-                selon le titre des sections (ex: plan 3 mois, plan 7 jours).
+          <div className="flex items-start justify-between gap-3">
+            <h3 className="text-lg font-semibold text-[var(--text)]">
+              Rapport en cours
+            </h3>
+            <span className="group relative shrink-0">
+              <button
+                type="button"
+                className="flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[0.7rem] text-[var(--muted)] transition hover:text-[var(--text)]"
+                aria-label="Aide sur le rapport en cours"
+              >
+                ?
+              </button>
+              <span className="pointer-events-none absolute right-0 top-full z-20 mt-2 w-64 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text)] opacity-0 shadow-xl transition group-hover:opacity-100 group-focus-within:opacity-100">
+                <span className="block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                  Construction
+                </span>
+                <span className="mt-1 block">
+                  Tu saisis des notes de travail en cours. Le rapport se construit
+                  au fur et a mesure selon les sections presentes.
+                </span>
+                <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                  Propagation
+                </span>
+                <span className="mt-1 block">
+                  L IA relit, complete et propage les idees pour accelerer la
+                  redaction.
+                </span>
+                <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                  Finalisation
+                </span>
+                <span className="mt-1 block">
+                  Le resume et les sections de planification se generent a la fin,
+                  selon le titre des sections (ex: plan 3 mois, plan 7 jours).
+                </span>
               </span>
             </span>
-          </span>
+          </div>
           <p className="mt-2 text-xs text-[var(--muted)]">
             Organise les sections et remplis le contenu. Drag & drop actif.
           </p>
@@ -3034,18 +3356,52 @@ export default function CoachReportBuilderPage() {
                 </div>
               ) : null}
               <p className="mt-2 text-xs text-[var(--muted)]">
-                Notes rapides de la seance. L IA propage vers les sections vides.
+                Constats + travail en cours. L IA propage vers les sections vides.
               </p>
-              <textarea
-                ref={(node) => {
-                  workingNotesRef.current = node;
-                }}
-                rows={3}
-                placeholder="Ex: Travail sur les appuis: pied droit interieur au backswing pour eviter le sway."
-                value={workingNotes}
-                onInput={handleWorkingNotesInput}
-                className="mt-3 w-full resize-none overflow-hidden rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
-              />
+              <div className="mt-3 grid gap-3 md:grid-cols-[0.6fr_1.4fr]">
+                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                  Club concerne
+                </label>
+                <input
+                  type="text"
+                  value={workingClub}
+                  onChange={(event) => setWorkingClub(event.target.value)}
+                  placeholder="Ex: Fer 7, Driver, Putter..."
+                  className="w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                />
+              </div>
+              <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Constats
+                  </label>
+                  <textarea
+                    ref={(node) => {
+                      workingObservationsRef.current = node;
+                    }}
+                    rows={3}
+                    placeholder="Ex: chemin de club trop a gauche, perte de posture..."
+                    value={workingObservations}
+                    onInput={handleWorkingObservationsInput}
+                    className="mt-2 w-full resize-none overflow-hidden rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Travail en cours
+                  </label>
+                  <textarea
+                    ref={(node) => {
+                      workingNotesRef.current = node;
+                    }}
+                    rows={3}
+                    placeholder="Ex: stabiliser l'appui pied droit au backswing."
+                    value={workingNotes}
+                    onInput={handleWorkingNotesInput}
+                    className="mt-2 w-full resize-none overflow-hidden rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                  />
+                </div>
+              </div>
             </div>
           </div>
           <div className="mt-3 flex justify-end">
@@ -3550,7 +3906,172 @@ export default function CoachReportBuilderPage() {
           ) : null}
         </div>
       </section>
-    </div>
+        </div>
+        {clarifyOpen ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-8">
+            <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-[var(--bg-elevated)] p-6 shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                    Assistant IA
+                  </p>
+                  <h3 className="mt-2 text-xl font-semibold text-[var(--text)]">
+                    Precisions rapides
+                  </h3>
+                  <p className="mt-2 text-sm text-[var(--muted)]">
+                    Quelques questions pour affiner la propagation et eviter
+                    toute approximation.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeClarifyModal}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                  aria-label="Fermer"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M18 6L6 18" />
+                    <path d="M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 uppercase tracking-wide">
+                  {clarifyQuestions.length} question
+                  {clarifyQuestions.length > 1 ? "s" : ""}
+                </span>
+                {clarifyConfidence !== null ? (
+                  <span
+                    className={`rounded-full border px-3 py-1 uppercase tracking-wide ${
+                      clarifyConfidence >= CLARIFY_THRESHOLD
+                        ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-200"
+                        : "border-amber-300/30 bg-amber-400/10 text-amber-200"
+                    }`}
+                  >
+                    Certitude {Math.round(clarifyConfidence * 100)}%
+                  </span>
+                ) : null}
+              </div>
+              <div className="mt-5 space-y-4">
+                {clarifyQuestions.map((question, index) => {
+                  const value = clarifyAnswers[question.id];
+                  const customValue = clarifyCustomAnswers[question.id] ?? "";
+                  return (
+                    <div
+                      key={question.id}
+                      className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                    >
+                      <p className="text-sm font-semibold text-[var(--text)]">
+                        {index + 1}. {question.question}
+                      </p>
+                      {question.type === "choices" &&
+                      question.choices &&
+                      question.choices.length > 0 ? (
+                        <div className="mt-3 space-y-3">
+                          <div className="flex flex-wrap gap-2">
+                            {question.choices.map((choice) => {
+                              const selected = Array.isArray(value)
+                                ? value.includes(choice)
+                                : value === choice;
+                              return (
+                                <button
+                                  key={`${question.id}-${choice}`}
+                                  type="button"
+                                  onClick={() => {
+                                    setClarifyAnswers((prev) => {
+                                      const current = prev[question.id];
+                                      if (question.multi) {
+                                        const list = Array.isArray(current)
+                                          ? current
+                                          : [];
+                                        const next = list.includes(choice)
+                                          ? list.filter(
+                                              (item) => item !== choice
+                                            )
+                                          : [...list, choice];
+                                        return { ...prev, [question.id]: next };
+                                      }
+                                      return { ...prev, [question.id]: choice };
+                                    });
+                                  }}
+                                  className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
+                                    selected
+                                      ? "border-emerald-300/40 bg-emerald-400/20 text-emerald-100"
+                                      : "border-white/10 bg-white/5 text-[var(--muted)] hover:text-[var(--text)]"
+                                  }`}
+                                >
+                                  {choice}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <div>
+                            <label className="text-[0.65rem] uppercase tracking-wide text-[var(--muted)]">
+                              Autre (optionnel)
+                            </label>
+                            <input
+                              type="text"
+                              value={customValue}
+                              onChange={(event) =>
+                                setClarifyCustomAnswers((prev) => ({
+                                  ...prev,
+                                  [question.id]: event.target.value,
+                                }))
+                              }
+                              placeholder="Ta reponse perso..."
+                              className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <textarea
+                          rows={2}
+                          value={typeof value === "string" ? value : ""}
+                          onChange={(event) =>
+                            setClarifyAnswers((prev) => ({
+                              ...prev,
+                              [question.id]: event.target.value,
+                            }))
+                          }
+                          placeholder={question.placeholder ?? "Ta reponse..."}
+                          className="mt-3 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-6 flex flex-wrap items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={closeClarifyModal}
+                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmClarify}
+                  disabled={!isClarifyComplete || aiBusyId === "propagate"}
+                  className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
+                >
+                  {aiBusyId === "propagate"
+                    ? "Propagation..."
+                    : "Continuer la propagation"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </>
     </RoleGuard>
   );
 }

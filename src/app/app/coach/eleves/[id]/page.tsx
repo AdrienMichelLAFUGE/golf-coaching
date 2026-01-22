@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import RoleGuard from "../../../_components/role-guard";
 import { useProfile } from "../../../_components/profile-context";
+import PageBack from "../../../_components/page-back";
 
 type Student = {
   id: string;
@@ -126,9 +127,12 @@ export default function CoachStudentDetailPage() {
       ) : (
         <div className="space-y-6">
           <section className="panel rounded-2xl p-6">
-            <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-              Eleve
-            </p>
+            <div className="flex items-center gap-2">
+              <PageBack />
+              <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                Eleve
+              </p>
+            </div>
             <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
               {student.first_name} {student.last_name ?? ""}
             </h2>

@@ -4,7 +4,13 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
-type AiAction = "improve" | "write" | "summary" | "propagate" | "plan";
+type AiAction =
+  | "improve"
+  | "write"
+  | "summary"
+  | "propagate"
+  | "plan"
+  | "clarify";
 
 type AiSection = {
   title: string;
@@ -27,6 +33,7 @@ type AiPayload = {
   allSections?: AiSection[];
   targetSections?: string[];
   propagateMode?: "empty" | "append";
+  clarifications?: { question: string; answer: string }[];
   settings?: Partial<AiSettings>;
 };
 
@@ -157,6 +164,31 @@ const buildSystemPrompt = (
       ` ${modeHint}` +
       " Si tu n as rien de pertinent, renvoie une chaine vide." +
       " Ne mets pas de titre dans les contenus."
+    );
+  }
+
+  if (action === "clarify") {
+    return (
+      `${base} Tu dois poser 2 a 4 questions courtes pour lever les doutes.` +
+      " Evalue ta certitude sur la propagation (0 a 1)." +
+      " Si la certitude est >= 0.85, renvoie une liste de questions vide." +
+      " Les questions doivent etre directement actionnables et techniques." +
+      " Propose des choix quand c est pertinent, sinon une question texte." +
+      " Si plusieurs choix peuvent etre selectionnes, ajoute multi: true." +
+      " Pour les questions texte, renvoie choices: [] et placeholder: \"\"." +
+      " Ne donne pas de reponse, ne reformule pas les notes." +
+      " Ne mets pas de titre."
+    );
+  }
+
+  if (action === "summary") {
+    return (
+      `${base} ${lengthHint} ` +
+      "Resume le rapport en 4 a 6 points essentiels." +
+      " Ecris en phrases courtes separees par des retours a la ligne." +
+      " N utilise pas de Markdown, pas d asterisques, pas de listes avec * ou -." +
+      " Si des constats sont fournis, termine par une ligne 'Constats cles: ...' concise." +
+      " N utilise pas de titres."
     );
   }
 
@@ -301,6 +333,95 @@ const extractSuggestions = (response: {
   return null;
 };
 
+const extractClarify = (response: {
+  output_text?: string;
+  output?: Array<{
+    type?: string;
+    content?: unknown;
+  }>;
+}):
+  | {
+      confidence: number;
+      questions: Array<{
+        id: string;
+        question: string;
+        type: "text" | "choices";
+        choices?: string[];
+        multi?: boolean;
+        required?: boolean;
+        placeholder?: string;
+      }>;
+    }
+  | null => {
+  const raw = response.output_text?.trim();
+  if (!raw && response.output) {
+    const parts: string[] = [];
+    response.output.forEach((item) => {
+      const content = item.content;
+      if (typeof content === "string") {
+        parts.push(content);
+      } else if (Array.isArray(content)) {
+        content.forEach((chunk) => {
+          if (typeof chunk === "string") {
+            parts.push(chunk);
+          } else if (
+            chunk &&
+            typeof chunk === "object" &&
+            "text" in chunk
+          ) {
+            const typed = chunk as { text?: string };
+            if (typed.text) parts.push(typed.text);
+          }
+        });
+      }
+    });
+    if (parts.length > 0) {
+      try {
+        return parseJsonPayload(parts.join("\n").trim()) as {
+          confidence: number;
+          questions: Array<{
+            id: string;
+            question: string;
+            type: "text" | "choices";
+            choices?: string[];
+            multi?: boolean;
+            required?: boolean;
+            placeholder?: string;
+          }>;
+        };
+      } catch (error) {
+        console.error("Clarify parse error:", error, {
+          outputSnippet: parts.join("\n").slice(0, 800),
+        });
+        return null;
+      }
+    }
+  }
+
+  if (!raw) return null;
+
+  try {
+    return parseJsonPayload(raw) as {
+      confidence: number;
+      questions: Array<{
+        id: string;
+        question: string;
+        type: "text" | "choices";
+        choices?: string[];
+        multi?: boolean;
+        required?: boolean;
+        placeholder?: string;
+      }>;
+    };
+  } catch (error) {
+    console.error("Clarify parse error:", error, {
+      outputSnippet: raw.slice(0, 800),
+    });
+  }
+
+  return null;
+};
+
 export async function POST(request: Request) {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -419,6 +540,21 @@ export async function POST(request: Request) {
       }
     }
 
+    if (payload.action === "clarify") {
+      if (!payload.sectionTitle || !payload.sectionContent?.trim()) {
+        return NextResponse.json(
+          { error: "Section source manquante." },
+          { status: 400 }
+        );
+      }
+      if (!payload.targetSections || payload.targetSections.length === 0) {
+        return NextResponse.json(
+          { error: "Aucune section cible." },
+          { status: 400 }
+        );
+      }
+    }
+
     const settings = resolveSettings(org, payload.settings);
     const context = buildContext(payload.allSections ?? []);
     const systemPrompt = buildSystemPrompt(
@@ -428,17 +564,27 @@ export async function POST(request: Request) {
       payload.propagateMode
     );
 
+    const clarificationsText = (payload.clarifications ?? [])
+      .map((item) => `- ${item.question}: ${item.answer}`)
+      .join("\n");
+
     const userPrompt =
       payload.action === "improve"
         ? `${payload.sectionContent}`
         : payload.action === "write"
         ? `Section: ${payload.sectionTitle}\nNotes de la section:\n${payload.sectionContent ?? ""}\n\nAutres sections (pour coherence, ne pas resumer):\n${context || "(aucune)"}\n\nSi les notes sont vides, propose une version basee sur le contexte.`
+        : payload.action === "clarify"
+        ? `Section source: ${payload.sectionTitle}\nNotes source:\n${payload.sectionContent}\n\nMode de propagation: ${payload.propagateMode ?? "empty"}\n\nSections presentes:\n${(payload.allSections ?? [])
+            .map((section) => `- ${section.title}`)
+            .join("\n")}\n\nSections cibles a remplir:\n${(payload.targetSections ?? [])
+            .map((title) => `- ${title}`)
+            .join("\n")}`
         : payload.action === "propagate"
         ? `Section source: ${payload.sectionTitle}\nNotes source:\n${payload.sectionContent}\n\nSections presentes:\n${(payload.allSections ?? [])
             .map((section) => `- ${section.title}`)
             .join("\n")}\n\nSections cibles a remplir:\n${(payload.targetSections ?? [])
             .map((title) => `- ${title}`)
-            .join("\n")}`
+            .join("\n")}${clarificationsText ? `\n\nClarifications du coach:\n${clarificationsText}` : ""}`
         : `Sections:\n${context}`;
 
     const openai = new OpenAI({ apiKey: openaiKey });
@@ -451,6 +597,8 @@ export async function POST(request: Request) {
     const maxTokens =
       payload.action === "improve"
         ? 600
+        : payload.action === "clarify"
+        ? 500
         : payload.action === "propagate"
         ? propagateMaxTokens
         : maxTokensForLength(settings.length);
@@ -480,6 +628,52 @@ export async function POST(request: Request) {
                   },
                 },
                 required: ["suggestions"],
+              },
+              strict: true,
+            },
+          }
+        : payload.action === "clarify"
+        ? {
+            format: {
+              type: "json_schema" as const,
+              name: "clarify",
+              description:
+                "Retourne un objet JSON avec confidence (0-1) et questions.",
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  confidence: { type: "number", minimum: 0, maximum: 1 },
+                  questions: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      additionalProperties: false,
+                      properties: {
+                        id: { type: "string" },
+                        question: { type: "string" },
+                        type: { type: "string", enum: ["text", "choices"] },
+                        choices: {
+                          type: "array",
+                          items: { type: "string" },
+                        },
+                        multi: { type: "boolean" },
+                        required: { type: "boolean" },
+                        placeholder: { type: "string" },
+                      },
+                      required: [
+                        "id",
+                        "question",
+                        "type",
+                        "choices",
+                        "multi",
+                        "required",
+                        "placeholder",
+                      ],
+                    },
+                  },
+                },
+                required: ["confidence", "questions"],
               },
               strict: true,
             },
@@ -543,6 +737,24 @@ export async function POST(request: Request) {
         : {}),
       ...(reasoning ? { reasoning } : {}),
     });
+
+    if (payload.action === "clarify") {
+      const clarified = extractClarify(response);
+      if (clarified) {
+        const confidence = Number.isFinite(clarified.confidence)
+          ? Math.min(1, Math.max(0, clarified.confidence))
+          : 0.5;
+        return NextResponse.json({
+          confidence,
+          questions: clarified.questions ?? [],
+        });
+      }
+
+      return NextResponse.json(
+        { error: "JSON invalide." },
+        { status: 502 }
+      );
+    }
 
     if (payload.action === "propagate") {
       const suggestions = extractSuggestions(response);
