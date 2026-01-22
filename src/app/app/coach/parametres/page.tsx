@@ -25,6 +25,14 @@ type OrganizationSettings = {
   report_default_sections: string[] | null;
   locale: string | null;
   timezone: string | null;
+  ai_enabled: boolean | null;
+  ai_model: string | null;
+  ai_tone: string | null;
+  ai_tech_level: string | null;
+  ai_style: string | null;
+  ai_length: string | null;
+  ai_imagery: string | null;
+  ai_focus: string | null;
 };
 
 const STORAGE_BUCKET = "coach-assets";
@@ -68,6 +76,14 @@ export default function CoachSettingsPage() {
   const [reportDefaultSections, setReportDefaultSections] = useState("");
   const [locale, setLocale] = useState("fr-FR");
   const [timezone, setTimezone] = useState("Europe/Paris");
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [aiModel, setAiModel] = useState("gpt-5-mini");
+  const [aiTone, setAiTone] = useState("bienveillant");
+  const [aiTechLevel, setAiTechLevel] = useState("intermediaire");
+  const [aiStyle, setAiStyle] = useState("redactionnel");
+  const [aiLength, setAiLength] = useState("normal");
+  const [aiImagery, setAiImagery] = useState("equilibre");
+  const [aiFocus, setAiFocus] = useState("mix");
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [avatarDragging, setAvatarDragging] = useState(false);
@@ -104,7 +120,7 @@ export default function CoachSettingsPage() {
       const { data: orgData, error: orgError } = await supabase
         .from("organizations")
         .select(
-          "id, name, logo_url, accent_color, email_sender_name, email_reply_to, report_title_template, report_signature, report_default_sections, locale, timezone"
+          "id, name, logo_url, accent_color, email_sender_name, email_reply_to, report_title_template, report_signature, report_default_sections, locale, timezone, ai_enabled, ai_model, ai_tone, ai_tech_level, ai_style, ai_length, ai_imagery, ai_focus"
         )
         .eq("id", profileData.org_id)
         .single();
@@ -131,6 +147,14 @@ export default function CoachSettingsPage() {
       setReportDefaultSections((orgData.report_default_sections ?? []).join("\n"));
       setLocale(orgData.locale ?? "fr-FR");
       setTimezone(orgData.timezone ?? "Europe/Paris");
+      setAiEnabled(orgData.ai_enabled ?? false);
+      setAiModel(orgData.ai_model ?? "gpt-5-mini");
+      setAiTone(orgData.ai_tone ?? "bienveillant");
+      setAiTechLevel(orgData.ai_tech_level ?? "intermediaire");
+      setAiStyle(orgData.ai_style ?? "redactionnel");
+      setAiLength(orgData.ai_length ?? "normal");
+      setAiImagery(orgData.ai_imagery ?? "equilibre");
+      setAiFocus(orgData.ai_focus ?? "mix");
 
       setLoading(false);
     };
@@ -249,6 +273,14 @@ export default function CoachSettingsPage() {
         report_default_sections: sections.length ? sections : null,
         locale,
         timezone,
+        ai_enabled: aiEnabled,
+        ai_model: aiModel.trim() || null,
+        ai_tone: aiTone,
+        ai_tech_level: aiTechLevel,
+        ai_style: aiStyle,
+        ai_length: aiLength,
+        ai_imagery: aiImagery,
+        ai_focus: aiFocus,
       })
       .eq("id", organization.id);
 
@@ -581,6 +613,131 @@ export default function CoachSettingsPage() {
                     <option value="America/Montreal">America/Montreal</option>
                   </select>
                 </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="panel rounded-2xl p-6">
+            <h3 className="text-lg font-semibold text-[var(--text)]">
+              Assistant IA
+            </h3>
+            <p className="mt-2 text-xs text-[var(--muted)]">
+              Parametres par defaut utilises par l IA. Les actions IA sont
+              reservees aux comptes premium.
+            </p>
+            <div className="mt-4 grid gap-4 md:grid-cols-[1fr_1fr]">
+              <div>
+                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                  IA active
+                </label>
+                <select
+                  value={aiEnabled ? "on" : "off"}
+                  onChange={(event) =>
+                    setAiEnabled(event.target.value === "on")
+                  }
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                >
+                  <option value="off">Desactive</option>
+                  <option value="on">Premium actif</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                  Modele IA
+                </label>
+                <select
+                  value={aiModel}
+                  onChange={(event) => setAiModel(event.target.value)}
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                >
+                  <option value="gpt-5-mini">gpt-5-mini</option>
+                  <option value="gpt-5">gpt-5</option>
+                  <option value="gpt-5.2">gpt-5.2</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                  Ton
+                </label>
+                <select
+                  value={aiTone}
+                  onChange={(event) => setAiTone(event.target.value)}
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                >
+                  <option value="bienveillant">Bienveillant</option>
+                  <option value="direct">Direct</option>
+                  <option value="motivant">Motivant</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                  Technicite
+                </label>
+                <select
+                  value={aiTechLevel}
+                  onChange={(event) => setAiTechLevel(event.target.value)}
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                >
+                  <option value="debutant">Debutant</option>
+                  <option value="intermediaire">Intermediaire</option>
+                  <option value="avance">Avance</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                  Style
+                </label>
+                <select
+                  value={aiStyle}
+                  onChange={(event) => setAiStyle(event.target.value)}
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                >
+                  <option value="redactionnel">Redactionnel</option>
+                  <option value="structure">Structure</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                  Longueur
+                </label>
+                <select
+                  value={aiLength}
+                  onChange={(event) => setAiLength(event.target.value)}
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                >
+                  <option value="court">Court</option>
+                  <option value="normal">Normal</option>
+                  <option value="long">Long</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                  Metaphores
+                </label>
+                <select
+                  value={aiImagery}
+                  onChange={(event) => setAiImagery(event.target.value)}
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                >
+                  <option value="faible">Faible</option>
+                  <option value="equilibre">Equilibre</option>
+                  <option value="fort">Fort</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                  Focus
+                </label>
+                <select
+                  value={aiFocus}
+                  onChange={(event) => setAiFocus(event.target.value)}
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                >
+                  <option value="mix">Mix</option>
+                  <option value="technique">Technique</option>
+                  <option value="mental">Mental</option>
+                  <option value="strategie">Strategie</option>
+                </select>
               </div>
             </div>
           </section>

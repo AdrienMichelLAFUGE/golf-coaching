@@ -68,6 +68,7 @@ export default function StudentReportsPage() {
         .from("reports")
         .select("id, title, report_date, created_at")
         .eq("student_id", studentData.id)
+        .not("sent_at", "is", null)
         .order("report_date", { ascending: false, nullsFirst: false })
         .order("created_at", { ascending: false });
 

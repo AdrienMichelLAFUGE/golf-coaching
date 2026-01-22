@@ -11,6 +11,7 @@ type ReportRow = {
   title: string;
   report_date: string | null;
   created_at: string;
+  sent_at: string | null;
   students:
     | { id: string; first_name: string; last_name: string | null }
     | { id: string; first_name: string; last_name: string | null }[]
@@ -42,7 +43,7 @@ export default function CoachReportsPage() {
 
     const { data, error: fetchError } = await supabase
       .from("reports")
-      .select("id, title, report_date, created_at, students(id, first_name, last_name)")
+      .select("id, title, report_date, created_at, sent_at, students(id, first_name, last_name)")
       .order("created_at", { ascending: false });
 
     if (fetchError) {
@@ -118,7 +119,14 @@ export default function CoachReportsPage() {
                   className="grid gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-[var(--text)] md:grid-cols-[1.4fr_1fr_0.8fr]"
                 >
                   <div>
-                    <p className="font-medium">{report.title}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-medium">{report.title}</p>
+                      {!report.sent_at ? (
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                          Brouillon
+                        </span>
+                      ) : null}
+                    </div>
                     <p className="mt-1 text-xs text-[var(--muted)]">
                       {formatDate(
                         report.report_date ?? report.created_at,
@@ -160,6 +168,12 @@ export default function CoachReportsPage() {
                       className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
                     >
                       Ouvrir
+                    </Link>
+                    <Link
+                      href={`/app/coach/rapports/nouveau?reportId=${report.id}`}
+                      className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                    >
+                      Modifier
                     </Link>
                     <button
                       type="button"

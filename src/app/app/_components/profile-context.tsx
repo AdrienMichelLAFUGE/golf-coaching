@@ -18,6 +18,14 @@ export type OrganizationSettings = {
   accent_color: string | null;
   locale: string | null;
   timezone: string | null;
+  ai_enabled: boolean | null;
+  ai_model: string | null;
+  ai_tone: string | null;
+  ai_tech_level: string | null;
+  ai_style: string | null;
+  ai_length: string | null;
+  ai_imagery: string | null;
+  ai_focus: string | null;
 };
 
 type ProfileState = {
@@ -65,7 +73,9 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       setProfile(profileData);
       const { data: orgData, error: orgError } = await supabase
         .from("organizations")
-        .select("id, name, logo_url, accent_color, locale, timezone")
+        .select(
+          "id, name, logo_url, accent_color, locale, timezone, ai_enabled, ai_model, ai_tone, ai_tech_level, ai_style, ai_length, ai_imagery, ai_focus"
+        )
         .eq("id", profileData.org_id)
         .single();
 
