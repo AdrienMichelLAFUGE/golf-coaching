@@ -705,7 +705,7 @@ export default function CoachReportBuilderPage() {
           type,
           content: type === "image" ? "" : section.content ?? "",
           mediaUrls,
-          mediaCaptions: mediaUrls.map((_, index) =>
+          mediaCaptions: mediaUrls.map((url, index) =>
             (captions[index] ?? "").slice(0, CAPTION_LIMIT)
           ),
         } as ReportSection;
