@@ -100,6 +100,7 @@ export default function CoachSettingsPage() {
     () => normalizeSections(reportDefaultSections),
     [reportDefaultSections]
   );
+  const aiLocked = !(organization?.ai_enabled ?? false);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -618,14 +619,37 @@ export default function CoachSettingsPage() {
           </section>
 
           <section className="panel rounded-2xl p-6">
-            <h3 className="text-lg font-semibold text-[var(--text)]">
-              Assistant IA
-            </h3>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-lg font-semibold text-[var(--text)]">
+                Assistant IA
+              </h3>
+              {aiLocked ? (
+                <span className="flex items-center gap-2 rounded-full border border-amber-300/30 bg-amber-400/10 px-2 py-1 text-[0.6rem] uppercase tracking-wide text-amber-200">
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-3.5 w-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <rect x="3" y="11" width="18" height="11" rx="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                  Premium
+                </span>
+              ) : null}
+            </div>
             <p className="mt-2 text-xs text-[var(--muted)]">
               Parametres par defaut utilises par l IA. Les actions IA sont
               reservees aux comptes premium.
             </p>
-            <div className="mt-4 grid gap-4 md:grid-cols-[1fr_1fr]">
+            <div
+              className={`mt-4 grid gap-4 md:grid-cols-[1fr_1fr] ${
+                aiLocked ? "pointer-events-none opacity-60" : ""
+              }`}
+            >
               <div>
                 <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
                   IA active
@@ -818,7 +842,7 @@ export default function CoachSettingsPage() {
               Mot de passe
             </h3>
             <p className="mt-2 text-xs text-[var(--muted)]">
-              Cree ou modifie ton mot de passe pour te connecter sans magic link.
+              Cree ou modifie ton mot de passe pour te connecter.
             </p>
             <div className="mt-4 grid gap-4 md:grid-cols-[1fr_1fr_auto]">
               <div>

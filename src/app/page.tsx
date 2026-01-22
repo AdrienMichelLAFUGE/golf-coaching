@@ -5,13 +5,15 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 type Status = "idle" | "sending" | "sent" | "error";
-type AuthMode = "password" | "magic";
+type AccountType = "coach" | "student";
+type CoachFlow = "signin" | "signup";
 
 export default function Home() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [mode, setMode] = useState<AuthMode>("password");
+  const [accountType, setAccountType] = useState<AccountType>("coach");
+  const [coachFlow, setCoachFlow] = useState<CoachFlow>("signin");
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState("");
 
@@ -33,22 +35,32 @@ export default function Home() {
     };
   }, [router]);
 
-  const sendMagicLink = async (trimmedEmail: string) => {
-    const { error } = await supabase.auth.signInWithOtp({
-      email: trimmedEmail,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
+  useEffect(() => {
+    if (accountType === "student") {
+      setCoachFlow("signin");
+    }
+  }, [accountType]);
 
-    if (error) {
-      setStatus("error");
-      setMessage(error.message);
-      return;
+  useEffect(() => {
+    if (coachFlow === "signup") return;
+  }, [coachFlow]);
+
+  const ensureProfile = async () => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      return { ok: false, error: "Session invalide." };
     }
 
-    setStatus("sent");
-    setMessage("Magic link envoye. Verifie ta boite mail.");
+    const response = await fetch("/api/onboarding/ensure-profile", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = (await response.json()) as { error?: string };
+    if (!response.ok) {
+      return { ok: false, error: data.error ?? "Acces refuse." };
+    }
+    return { ok: true };
   };
 
   const signInWithPassword = async (
@@ -63,6 +75,51 @@ export default function Home() {
     if (error) {
       setStatus("error");
       setMessage(error.message);
+      return;
+    }
+
+    const ensured = await ensureProfile();
+    if (!ensured.ok) {
+      await supabase.auth.signOut();
+      setStatus("error");
+      setMessage(ensured.error ?? "Acces refuse.");
+      return;
+    }
+
+    router.replace("/app");
+  };
+
+  const signUpCoach = async (
+    trimmedEmail: string,
+    trimmedPassword: string
+  ) => {
+    const { data, error } = await supabase.auth.signUp({
+      email: trimmedEmail,
+      password: trimmedPassword,
+      options: {
+        data: { role: "coach" },
+      },
+    });
+
+    if (error) {
+      setStatus("error");
+      setMessage(error.message);
+      return;
+    }
+
+    if (!data.session) {
+      setStatus("sent");
+      setMessage(
+        "Compte cree. Verifie ta boite mail pour confirmer, puis connecte-toi."
+      );
+      return;
+    }
+
+    const ensured = await ensureProfile();
+    if (!ensured.ok) {
+      await supabase.auth.signOut();
+      setStatus("error");
+      setMessage(ensured.error ?? "Acces refuse.");
       return;
     }
 
@@ -81,18 +138,24 @@ export default function Home() {
       return;
     }
 
-    if (mode === "password") {
+    if (accountType === "coach" && coachFlow === "signup") {
       const trimmedPassword = password.trim();
       if (!trimmedPassword) {
         setStatus("error");
         setMessage("Ajoute un mot de passe.");
         return;
       }
-      await signInWithPassword(trimmedEmail, trimmedPassword);
+      await signUpCoach(trimmedEmail, trimmedPassword);
       return;
     }
 
-    await sendMagicLink(trimmedEmail);
+    const trimmedPassword = password.trim();
+    if (!trimmedPassword) {
+      setStatus("error");
+      setMessage("Ajoute un mot de passe.");
+      return;
+    }
+    await signInWithPassword(trimmedEmail, trimmedPassword);
   };
 
   const handlePasswordReset = async () => {
@@ -131,35 +194,67 @@ export default function Home() {
             Golf Coaching
           </p>
           <h1 className="mt-3 font-[var(--font-display)] text-3xl font-semibold">
-            Connexion
+            {accountType === "coach" && coachFlow === "signup"
+              ? "Creation coach"
+              : "Connexion"}
           </h1>
           <p className="mt-2 text-sm text-[var(--muted)]">
-            Choisis ta methode de connexion.
+            {accountType === "student"
+              ? "Acces eleve uniquement sur invitation."
+              : "Choisis ton mode d acces."}
           </p>
           <div className="mt-6 grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/5 p-1 text-xs uppercase tracking-wide text-[var(--muted)]">
             <button
               type="button"
-              onClick={() => setMode("password")}
+              onClick={() => setAccountType("coach")}
               className={`rounded-xl px-3 py-2 transition ${
-                mode === "password"
+                accountType === "coach"
                   ? "bg-white/15 text-[var(--text)]"
                   : "hover:text-[var(--text)]"
               }`}
             >
-              Mot de passe
+              Coach
             </button>
             <button
               type="button"
-              onClick={() => setMode("magic")}
+              onClick={() => setAccountType("student")}
               className={`rounded-xl px-3 py-2 transition ${
-                mode === "magic"
+                accountType === "student"
                   ? "bg-white/15 text-[var(--text)]"
                   : "hover:text-[var(--text)]"
               }`}
             >
-              Magic link
+              Eleve
             </button>
           </div>
+          {accountType === "coach" ? (
+            <div className="mt-4 grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/5 p-1 text-xs uppercase tracking-wide text-[var(--muted)]">
+              <button
+                type="button"
+                onClick={() => setCoachFlow("signin")}
+                className={`rounded-xl px-3 py-2 transition ${
+                  coachFlow === "signin"
+                    ? "bg-white/15 text-[var(--text)]"
+                    : "hover:text-[var(--text)]"
+                }`}
+              >
+                Se connecter
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCoachFlow("signup");
+                }}
+                className={`rounded-xl px-3 py-2 transition ${
+                  coachFlow === "signup"
+                    ? "bg-white/15 text-[var(--text)]"
+                    : "hover:text-[var(--text)]"
+                }`}
+              >
+                Creer un compte
+              </button>
+            </div>
+          ) : null}
           <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
             <label className="block text-xs uppercase tracking-wide text-[var(--muted)]" htmlFor="email">
               Email
@@ -174,26 +269,22 @@ export default function Home() {
               onChange={(event) => setEmail(event.target.value)}
               className="mt-1 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-3 text-sm text-[var(--text)] placeholder:text-zinc-500 focus:border-[var(--accent)] focus:outline-none"
             />
-            {mode === "password" ? (
-              <>
-                <label
-                  className="block text-xs uppercase tracking-wide text-[var(--muted)]"
-                  htmlFor="password"
-                >
-                  Mot de passe
-                </label>
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  autoComplete="current-password"
-                  placeholder="Votre mot de passe"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  className="mt-1 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-3 text-sm text-[var(--text)] placeholder:text-zinc-500 focus:border-[var(--accent)] focus:outline-none"
-                />
-              </>
-            ) : null}
+            <label
+              className="block text-xs uppercase tracking-wide text-[var(--muted)]"
+              htmlFor="password"
+            >
+              Mot de passe
+            </label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              placeholder="Votre mot de passe"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className="mt-1 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-3 text-sm text-[var(--text)] placeholder:text-zinc-500 focus:border-[var(--accent)] focus:outline-none"
+            />
             <button
               type="submit"
               disabled={status === "sending"}
@@ -201,20 +292,20 @@ export default function Home() {
             >
               {status === "sending"
                 ? "Traitement..."
-                : mode === "password"
-                ? "Se connecter"
-                : "Envoyer le magic link"}
+                : accountType === "coach" && coachFlow === "signup"
+                ? "Creer un compte coach"
+                : accountType === "student"
+                ? "Connexion eleve"
+                : "Se connecter"}
             </button>
           </form>
-          {mode === "password" ? (
-            <button
-              type="button"
-              onClick={handlePasswordReset}
-              className="mt-3 text-left text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
-            >
-              Mot de passe oublie ?
-            </button>
-          ) : null}
+          <button
+            type="button"
+            onClick={handlePasswordReset}
+            className="mt-3 text-left text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+          >
+            Mot de passe oublie ?
+          </button>
           {message ? (
             <p
               className={`mt-4 text-sm ${
@@ -226,8 +317,9 @@ export default function Home() {
           ) : null}
         </div>
         <div className="panel-outline rounded-2xl px-5 py-4 text-xs text-[var(--muted)]">
-          Pas encore de compte ? Il sera cree automatiquement a la premiere
-          connexion.
+          {accountType === "student"
+            ? "Un compte eleve est cree uniquement via une invitation coach."
+            : "Creer un compte coach pour demarrer en freemium."}
         </div>
       </div>
     </main>

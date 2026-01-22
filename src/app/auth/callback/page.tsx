@@ -28,11 +28,23 @@ export default function AuthCallbackPage() {
       if (!active) return;
 
       if (data.session) {
+        const token = data.session.access_token;
+        const response = await fetch("/api/onboarding/ensure-profile", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) {
+          const payload = (await response.json()) as { error?: string };
+          await supabase.auth.signOut();
+          setMessage(payload.error ?? "Acces refuse.");
+          return;
+        }
+
         router.replace("/app");
         return;
       }
 
-      setMessage("No session found. Please request a new magic link.");
+      setMessage("No session found. Please sign in again.");
     };
 
     completeSignIn();
