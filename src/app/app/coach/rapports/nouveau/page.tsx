@@ -1029,7 +1029,7 @@ export default function CoachReportBuilderPage() {
     }
 
     await loadLayouts();
-    setSelectedLayoutId(layoutId);
+    setSelectedLayoutId(layoutId ?? "");
     setLayoutSaving(false);
     resetLayoutEditor();
   };
