@@ -82,15 +82,25 @@ export default function CoachReportsPage() {
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       <div className="space-y-6">
         <section className="panel rounded-2xl p-6">
-          <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-            Rapports
-          </p>
-          <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
-            Historique coach
-          </h2>
-          <p className="mt-2 text-sm text-[var(--muted)]">
-            Consulte et supprime les rapports par eleve.
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                Rapports
+              </p>
+              <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
+                Historique coach
+              </h2>
+              <p className="mt-2 text-sm text-[var(--muted)]">
+                Consulte et supprime les rapports par eleve.
+              </p>
+            </div>
+            <Link
+              href="/app/coach/rapports/nouveau"
+              className="rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
+            >
+              Nouveau rapport
+            </Link>
+          </div>
         </section>
 
         <section className="panel rounded-2xl p-6">
