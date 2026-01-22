@@ -1827,6 +1827,9 @@ export default function CoachReportBuilderPage() {
     }
     const sectionContent = sourceParts.join("\n\n");
 
+    const propagateMode: "empty" | "append" = propagateAppend
+      ? "append"
+      : "empty";
     const payload = {
       sectionTitle: "Travail en cours",
       sectionContent,
@@ -1837,7 +1840,7 @@ export default function CoachReportBuilderPage() {
           content: item.content,
         })),
       targetSections: targets,
-      propagateMode: propagateAppend ? "append" : "empty",
+      propagateMode,
     };
 
     setAiBusyId("propagate");
