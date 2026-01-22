@@ -57,6 +57,26 @@ const resolveSettings = (
   focus: overrides?.focus ?? org.ai_focus ?? "mix",
 });
 
+const inferPlanHorizon = (title?: string) => {
+  const text = (title ?? "").toLowerCase();
+  const match = text.match(
+    /(\d+)\s*(jour|jours|semaine|semaines|mois|an|ans|annee|annees)/
+  );
+  if (match) {
+    const count = match[1];
+    const unit = match[2]
+      .replace("annees", "ans")
+      .replace("annee", "an");
+    return `${count} ${unit}`;
+  }
+  if (text.includes("trimestre")) return "3 mois";
+  if (text.includes("saison")) return "3 mois";
+  if (text.includes("mois")) return "1 mois";
+  if (text.includes("semaine")) return "1 semaine";
+  if (text.includes("jour")) return "7 jours";
+  return "1 semaine";
+};
+
 const buildSystemPrompt = (
   action: AiAction,
   settings: AiSettings,
@@ -141,9 +161,14 @@ const buildSystemPrompt = (
   }
 
   if (action === "plan") {
+    const horizon = inferPlanHorizon(sectionTitle);
+    const planTitle = sectionTitle ?? "Plan";
     return (
       `${base} ${styleHint} ` +
-      "Genere un plan pour la semaine base sur les sections du rapport." +
+      `Genere un plan "${planTitle}" base sur les sections du rapport.` +
+      ` Planifie sur ${horizon}.` +
+      " Si l horizon est en mois, structure en phases et evite le detail jour par jour." +
+      " Ne parle pas de semaine si le titre indique une autre duree." +
       " Donne 4 a 6 actions courtes et concretes, une phrase max chacune." +
       " Sois realiste et progressif, evite les details inutiles." +
       " N inclus pas de titre."

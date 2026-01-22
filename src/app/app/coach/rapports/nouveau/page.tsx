@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import RoleGuard from "../../../_components/role-guard";
@@ -9,6 +9,7 @@ import { useProfile } from "../../../_components/profile-context";
 type SectionType = "text" | "image";
 
 type SectionTemplate = {
+  id?: string;
   title: string;
   type: SectionType;
 };
@@ -53,19 +54,26 @@ type AiPreview = {
   mode: "improve" | "propagate" | "finalize";
 };
 
+type LocalDraft = {
+  studentId: string;
+  title: string;
+  reportDate: string;
+  reportSections: ReportSection[];
+  workingNotes: string;
+  savedAt: string;
+};
+
+type SectionLayout = {
+  id: string;
+  title: string;
+  templateIds: string[];
+};
+
 const defaultReportSections: SectionTemplate[] = [
   { title: "Resume de la seance", type: "text" },
   { title: "Technique", type: "text" },
   { title: "Plan pour la semaine", type: "text" },
 ];
-
-const initialAvailableSections = defaultSections.filter(
-  (section) =>
-    !defaultReportSections.some(
-      (reportSection) =>
-        reportSection.title.toLowerCase() === section.title.toLowerCase()
-    )
-);
 
 const createSection = (template: SectionTemplate): ReportSection => ({
   id:
@@ -78,15 +86,6 @@ const createSection = (template: SectionTemplate): ReportSection => ({
   mediaUrls: [],
   mediaCaptions: [],
 });
-
-const buildAvailableSections = (sections: ReportSection[]) => {
-  const existing = new Set(
-    sections.map((section) => section.title.toLowerCase())
-  );
-  return defaultSections.filter(
-    (section) => !existing.has(section.title.toLowerCase())
-  );
-};
 
 const formatDateInput = (date: Date) => {
   const year = date.getFullYear();
@@ -175,12 +174,31 @@ export default function CoachReportBuilderPage() {
   const [editingReportId, setEditingReportId] = useState<string | null>(null);
   const [loadingReport, setLoadingReport] = useState(false);
   const isEditing = Boolean(editingReportId);
-  const [availableSections, setAvailableSections] =
-    useState<SectionTemplate[]>(initialAvailableSections);
+  const isNewReport = !editingReportId;
+  const draftKey = "gc.reportDraft.new";
+  const draftTimer = useRef<number | null>(null);
+  const [sectionTemplates, setSectionTemplates] =
+    useState<SectionTemplate[]>(defaultSections);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [layouts, setLayouts] = useState<SectionLayout[]>([]);
+  const [selectedLayoutId, setSelectedLayoutId] = useState("");
+  const [layoutMessage, setLayoutMessage] = useState("");
+  const [layoutMessageType, setLayoutMessageType] = useState<
+    "idle" | "error" | "success"
+  >("idle");
+  const [layoutEditorOpen, setLayoutEditorOpen] = useState(false);
+  const [layoutEditingId, setLayoutEditingId] = useState<string | null>(null);
+  const [layoutTitle, setLayoutTitle] = useState("");
+  const [layoutTemplateIds, setLayoutTemplateIds] = useState<string[]>([]);
+  const [layoutSaving, setLayoutSaving] = useState(false);
+  const [layoutCustomTitle, setLayoutCustomTitle] = useState("");
+  const [layoutCustomIsImage, setLayoutCustomIsImage] = useState(false);
   const [reportSections, setReportSections] =
     useState<ReportSection[]>(defaultReportSections.map(createSection));
   const [customSection, setCustomSection] = useState("");
   const [customIsImage, setCustomIsImage] = useState(false);
+  const [sectionSearch, setSectionSearch] = useState("");
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [draggingAvailable, setDraggingAvailable] =
     useState<SectionTemplate | null>(null);
   const [sectionsMessage, setSectionsMessage] = useState("");
@@ -245,6 +263,64 @@ export default function CoachReportBuilderPage() {
     ? "Enregistrer le brouillon"
     : "Enregistrer les modifications";
 
+  const availableSections = useMemo(() => {
+    const inReport = new Set(
+      reportSections.map((section) => section.title.toLowerCase())
+    );
+    return sectionTemplates.filter(
+      (section) => !inReport.has(section.title.toLowerCase())
+    );
+  }, [sectionTemplates, reportSections]);
+
+  const normalizedSectionSearch = sectionSearch.trim().toLowerCase();
+  const filteredAvailableSections = useMemo(() => {
+    if (!normalizedSectionSearch) return availableSections;
+    return availableSections.filter((section) =>
+      section.title.toLowerCase().includes(normalizedSectionSearch)
+    );
+  }, [availableSections, normalizedSectionSearch]);
+
+  const visibleAvailableSections = useMemo(() => {
+    if (!normalizedSectionSearch) return filteredAvailableSections.slice(0, 5);
+    return filteredAvailableSections;
+  }, [filteredAvailableSections, normalizedSectionSearch]);
+
+  const hiddenAvailableCount = Math.max(
+    0,
+    filteredAvailableSections.length - visibleAvailableSections.length
+  );
+
+  const templateById = useMemo(() => {
+    const map = new Map<string, SectionTemplate>();
+    sectionTemplates.forEach((section) => {
+      if (section.id) {
+        map.set(section.id, section);
+      }
+    });
+    return map;
+  }, [sectionTemplates]);
+
+  const selectedLayout = useMemo(
+    () => layouts.find((layout) => layout.id === selectedLayoutId) ?? null,
+    [layouts, selectedLayoutId]
+  );
+
+  const selectedLayoutTemplates = useMemo(() => {
+    if (!selectedLayout) return [];
+    return selectedLayout.templateIds
+      .map((templateId) => templateById.get(templateId))
+      .filter((template): template is SectionTemplate => Boolean(template));
+  }, [selectedLayout, templateById]);
+
+  const layoutAvailableTemplates = useMemo(
+    () =>
+      sectionTemplates.filter(
+        (template) =>
+          !!template.id && !layoutTemplateIds.includes(template.id)
+      ),
+    [sectionTemplates, layoutTemplateIds]
+  );
+
   const resizeTextareaById = (id: string) => {
     const textarea = textareaRefs.current.get(id);
     if (!textarea) return;
@@ -260,14 +336,104 @@ export default function CoachReportBuilderPage() {
     setSectionsMessageType(type);
   };
 
-  const handleAddCustomSection = () => {
+  const setLayoutNotice = (
+    message: string,
+    type: "idle" | "error" | "success"
+  ) => {
+    setLayoutMessage(message);
+    setLayoutMessageType(type);
+  };
+
+  const createSectionTemplate = async (
+    title: string,
+    type: SectionType
+  ) => {
+    if (!organization?.id) {
+      setSectionsNotice("Organisation introuvable.", "error");
+      return null;
+    }
+
+    const { data, error } = await supabase
+      .from("section_templates")
+      .insert([{ org_id: organization.id, title, type }])
+      .select("id, title, type")
+      .single();
+
+    if (error) {
+      setSectionsNotice(error.message, "error");
+      return null;
+    }
+
+    setSectionTemplates((prev) => [...prev, data]);
+    setSectionsNotice("Section ajoutee.", "success");
+    return data as SectionTemplate;
+  };
+
+  const updateSectionTemplate = async (
+    templateId: string | undefined,
+    nextTitle: string
+  ) => {
+    if (!templateId) {
+      setSectionTemplates((prev) =>
+        prev.map((section) =>
+          section.title === editingSection
+            ? { ...section, title: nextTitle }
+            : section
+        )
+      );
+      return true;
+    }
+
+    const { error } = await supabase
+      .from("section_templates")
+      .update({ title: nextTitle })
+      .eq("id", templateId);
+
+    if (error) {
+      setSectionsNotice(error.message, "error");
+      return false;
+    }
+
+    setSectionTemplates((prev) =>
+      prev.map((section) =>
+        section.id === templateId ? { ...section, title: nextTitle } : section
+      )
+    );
+    return true;
+  };
+
+  const deleteSectionTemplate = async (template: SectionTemplate) => {
+    if (!template.id) {
+      setSectionTemplates((prev) =>
+        prev.filter((section) => section.title !== template.title)
+      );
+      return true;
+    }
+
+    const { error } = await supabase
+      .from("section_templates")
+      .delete()
+      .eq("id", template.id);
+
+    if (error) {
+      setSectionsNotice(error.message, "error");
+      return false;
+    }
+
+    setSectionTemplates((prev) =>
+      prev.filter((section) => section.id !== template.id)
+    );
+    return true;
+  };
+
+  const handleAddCustomSection = async () => {
     const next = customSection.trim();
     if (!next) {
       setSectionsNotice("Saisis un nom de section.", "error");
       return;
     }
 
-    const exists = availableSections.some(
+    const exists = sectionTemplates.some(
       (section) => section.title.toLowerCase() === next.toLowerCase()
     );
 
@@ -276,11 +442,11 @@ export default function CoachReportBuilderPage() {
       return;
     }
 
-    setAvailableSections((prev) => [
-      ...prev,
-      { title: next, type: customIsImage ? "image" : "text" },
-    ]);
-    setSectionsNotice("Section ajoutee.", "success");
+    const created = await createSectionTemplate(
+      next,
+      customIsImage ? "image" : "text"
+    );
+    if (!created) return;
     setCustomSection("");
     setCustomIsImage(false);
   };
@@ -288,15 +454,17 @@ export default function CoachReportBuilderPage() {
   const handleEditSection = (section: SectionTemplate) => {
     setEditingSection(section.title);
     setEditingValue(section.title);
+    setEditingTemplateId(section.id ?? null);
     setSectionsNotice("", "idle");
   };
 
   const handleCancelEdit = () => {
     setEditingSection(null);
     setEditingValue("");
+    setEditingTemplateId(null);
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!editingSection) return;
     const next = editingValue.trim();
 
@@ -305,7 +473,7 @@ export default function CoachReportBuilderPage() {
       return;
     }
 
-    const conflict = availableSections.some(
+    const conflict = sectionTemplates.some(
       (section) =>
         section.title.toLowerCase() === next.toLowerCase() &&
         section.title !== editingSection
@@ -316,13 +484,8 @@ export default function CoachReportBuilderPage() {
       return;
     }
 
-    setAvailableSections((prev) =>
-      prev.map((section) =>
-        section.title === editingSection
-          ? { ...section, title: next }
-          : section
-      )
-    );
+    const saved = await updateSectionTemplate(editingTemplateId ?? undefined, next);
+    if (!saved) return;
     setReportSections((prev) =>
       prev.map((section) =>
         section.title === editingSection ? { ...section, title: next } : section
@@ -331,6 +494,7 @@ export default function CoachReportBuilderPage() {
     setSectionsNotice("Section modifiee.", "success");
     setEditingSection(null);
     setEditingValue("");
+    setEditingTemplateId(null);
   };
 
   const handleAddToReport = (section: SectionTemplate) => {
@@ -342,9 +506,6 @@ export default function CoachReportBuilderPage() {
       if (exists) return prev;
       return [...prev, createSection(section)];
     });
-    setAvailableSections((prev) =>
-      prev.filter((item) => item.title.toLowerCase() !== normalized)
-    );
     shouldAnimate.current = true;
   };
 
@@ -374,26 +535,30 @@ export default function CoachReportBuilderPage() {
       delete next[section.id];
       return next;
     });
-    setAvailableSections((prev) => {
-      const exists = prev.some(
-        (item) => item.title.toLowerCase() === section.title.toLowerCase()
-      );
-      if (exists) return prev;
-      return [...prev, { title: section.title, type: section.type }];
-    });
     shouldAnimate.current = true;
   };
 
-  const handleRemoveFromAvailable = (section: SectionTemplate) => {
-    setAvailableSections((prev) =>
-      prev.filter((item) => item.title !== section.title)
-    );
+  const handleClearReportSections = () => {
+    if (reportSections.length === 0) return;
+    if (!window.confirm("Retirer toutes les sections du rapport ?")) return;
+    setReportSections([]);
+    setAiPreviews({});
+    setCollapsedSections({});
+    setImageErrors({});
+    setUploadingSections({});
+    shouldAnimate.current = true;
+  };
+
+  const handleRemoveFromAvailable = async (section: SectionTemplate) => {
+    const removed = await deleteSectionTemplate(section);
+    if (!removed) return;
     setReportSections((prev) =>
       prev.filter((item) => item.title !== section.title)
     );
     if (editingSection === section.title) {
       setEditingSection(null);
       setEditingValue("");
+      setEditingTemplateId(null);
     }
     shouldAnimate.current = true;
   };
@@ -450,9 +615,6 @@ export default function CoachReportBuilderPage() {
         next.splice(index, 0, createSection(droppedTemplate));
         return next;
       });
-      setAvailableSections((prev) =>
-        prev.filter((item) => item.title.toLowerCase() !== normalized)
-      );
       setDraggingAvailable(null);
       setDragIndex(null);
       setHoverIndex(null);
@@ -663,6 +825,325 @@ export default function CoachReportBuilderPage() {
     setStudents(data ?? []);
   };
 
+  const loadSectionTemplates = async () => {
+    if (!organization?.id) return;
+    setTemplatesLoading(true);
+    setSectionsNotice("", "idle");
+
+    const { data, error } = await supabase
+      .from("section_templates")
+      .select("id, title, type")
+      .eq("org_id", organization.id)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      setSectionsNotice(error.message, "error");
+      setSectionTemplates(defaultSections);
+      setTemplatesLoading(false);
+      return;
+    }
+
+    if (!data || data.length === 0) {
+      setSectionsNotice(
+        "Aucune section sauvegardee. Pense a lancer le SQL.",
+        "error"
+      );
+      setSectionTemplates(defaultSections);
+      setTemplatesLoading(false);
+      return;
+    }
+
+    setSectionTemplates(
+      data.map((item) => ({
+        id: item.id,
+        title: item.title,
+        type: item.type === "image" ? "image" : "text",
+      }))
+    );
+    setTemplatesLoading(false);
+  };
+
+  const loadLayouts = async () => {
+    if (!organization?.id) return;
+    setLayoutNotice("", "idle");
+
+    const { data: layoutData, error: layoutError } = await supabase
+      .from("section_layouts")
+      .select("id, title")
+      .eq("org_id", organization.id)
+      .order("created_at", { ascending: true });
+
+    if (layoutError) {
+      setLayoutNotice(layoutError.message, "error");
+      return;
+    }
+
+    const layoutsList = layoutData ?? [];
+    if (layoutsList.length === 0) {
+      setLayouts([]);
+      setSelectedLayoutId("");
+      return;
+    }
+
+    const layoutIds = layoutsList.map((layout) => layout.id);
+    const { data: itemsData, error: itemsError } = await supabase
+      .from("section_layout_items")
+      .select("layout_id, template_id, position")
+      .in("layout_id", layoutIds)
+      .order("position", { ascending: true });
+
+    if (itemsError) {
+      setLayoutNotice(itemsError.message, "error");
+      return;
+    }
+
+    const itemsByLayout = new Map<string, string[]>();
+    (itemsData ?? []).forEach((item) => {
+      const list = itemsByLayout.get(item.layout_id) ?? [];
+      list.push(item.template_id);
+      itemsByLayout.set(item.layout_id, list);
+    });
+
+    setLayouts(
+      layoutsList.map((layout) => ({
+        id: layout.id,
+        title: layout.title,
+        templateIds: itemsByLayout.get(layout.id) ?? [],
+      }))
+    );
+  };
+
+  const resetLayoutEditor = () => {
+    setLayoutEditingId(null);
+    setLayoutTitle("");
+    setLayoutTemplateIds([]);
+    setLayoutCustomTitle("");
+    setLayoutCustomIsImage(false);
+    setLayoutEditorOpen(false);
+    setLayoutNotice("", "idle");
+  };
+
+  const startCreateLayout = () => {
+    setLayoutEditingId(null);
+    setLayoutTitle("");
+    setLayoutTemplateIds([]);
+    setLayoutCustomTitle("");
+    setLayoutCustomIsImage(false);
+    setLayoutEditorOpen(true);
+    setLayoutNotice("", "idle");
+  };
+
+  const startEditLayout = (layout: SectionLayout) => {
+    setLayoutEditingId(layout.id);
+    setLayoutTitle(layout.title);
+    setLayoutTemplateIds(layout.templateIds);
+    setLayoutEditorOpen(true);
+    setLayoutNotice("", "idle");
+  };
+
+  const handleAddTemplateToLayout = (templateId: string) => {
+    setLayoutTemplateIds((prev) =>
+      prev.includes(templateId) ? prev : [...prev, templateId]
+    );
+  };
+
+  const handleRemoveTemplateFromLayout = (templateId: string) => {
+    setLayoutTemplateIds((prev) => prev.filter((id) => id !== templateId));
+  };
+
+  const handleMoveLayoutTemplate = (index: number, direction: "up" | "down") => {
+    setLayoutTemplateIds((prev) => {
+      const next = [...prev];
+      const targetIndex = direction === "up" ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= next.length) return prev;
+      const [moved] = next.splice(index, 1);
+      next.splice(targetIndex, 0, moved);
+      return next;
+    });
+  };
+
+  const handleSaveLayout = async () => {
+    if (!organization?.id) {
+      setLayoutNotice("Organisation introuvable.", "error");
+      return;
+    }
+    const trimmedTitle = layoutTitle.trim();
+    if (!trimmedTitle) {
+      setLayoutNotice("Ajoute un titre au layout.", "error");
+      return;
+    }
+    if (layoutTemplateIds.length === 0) {
+      setLayoutNotice("Ajoute au moins une section.", "error");
+      return;
+    }
+
+    setLayoutSaving(true);
+    setLayoutNotice("", "idle");
+
+    let layoutId = layoutEditingId;
+    if (!layoutId) {
+      const { data, error } = await supabase
+        .from("section_layouts")
+        .insert([{ org_id: organization.id, title: trimmedTitle }])
+        .select("id")
+        .single();
+
+      if (error || !data) {
+        setLayoutNotice(error?.message ?? "Creation impossible.", "error");
+        setLayoutSaving(false);
+        return;
+      }
+      layoutId = data.id;
+    } else {
+      const { error } = await supabase
+        .from("section_layouts")
+        .update({ title: trimmedTitle })
+        .eq("id", layoutId);
+
+      if (error) {
+        setLayoutNotice(error.message, "error");
+        setLayoutSaving(false);
+        return;
+      }
+
+      await supabase
+        .from("section_layout_items")
+        .delete()
+        .eq("layout_id", layoutId);
+    }
+
+    const itemsPayload = layoutTemplateIds.map((templateId, index) => ({
+      layout_id: layoutId,
+      template_id: templateId,
+      position: index,
+    }));
+
+    const { error: itemsError } = await supabase
+      .from("section_layout_items")
+      .insert(itemsPayload);
+
+    if (itemsError) {
+      setLayoutNotice(itemsError.message, "error");
+      setLayoutSaving(false);
+      return;
+    }
+
+    await loadLayouts();
+    setSelectedLayoutId(layoutId);
+    setLayoutSaving(false);
+    resetLayoutEditor();
+  };
+
+  const handleDeleteLayout = async (layout: SectionLayout) => {
+    const confirmed = window.confirm(
+      `Supprimer le layout "${layout.title}" ?`
+    );
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("section_layouts")
+      .delete()
+      .eq("id", layout.id);
+
+    if (error) {
+      setLayoutNotice(error.message, "error");
+      return;
+    }
+
+    await loadLayouts();
+    if (selectedLayoutId === layout.id) {
+      setSelectedLayoutId("");
+    }
+  };
+
+  const handleApplyLayout = () => {
+    const layout = layouts.find((item) => item.id === selectedLayoutId);
+    if (!layout) {
+      setLayoutNotice("Selectionne un layout.", "error");
+      return;
+    }
+    if (layout.templateIds.length === 0) {
+      setLayoutNotice("Ce layout est vide.", "error");
+      return;
+    }
+
+    setLayoutNotice("", "idle");
+    setReportSections((prev) => {
+      const existing = new Set(
+        prev.map((section) => section.title.toLowerCase())
+      );
+      const next = [...prev];
+      layout.templateIds.forEach((templateId) => {
+        const template = templateById.get(templateId);
+        if (!template) return;
+        const key = template.title.toLowerCase();
+        if (existing.has(key)) return;
+        next.push(createSection(template));
+        existing.add(key);
+      });
+      return next;
+    });
+    shouldAnimate.current = true;
+  };
+
+  const handleAddCustomTemplateToLayout = async () => {
+    const next = layoutCustomTitle.trim();
+    if (!next) {
+      setLayoutNotice("Saisis un nom de section.", "error");
+      return;
+    }
+
+    const exists = sectionTemplates.some(
+      (section) => section.title.toLowerCase() === next.toLowerCase()
+    );
+    if (exists) {
+      setLayoutNotice("Cette section existe deja.", "error");
+      return;
+    }
+
+    const created = await createSectionTemplate(
+      next,
+      layoutCustomIsImage ? "image" : "text"
+    );
+    if (!created?.id) return;
+
+    setLayoutTemplateIds((prev) => [...prev, created.id as string]);
+    setLayoutCustomTitle("");
+    setLayoutCustomIsImage(false);
+  };
+
+  const loadLocalDraft = () => {
+    if (typeof window === "undefined") return;
+    if (!isNewReport || loadingReport) return;
+    const raw = window.localStorage.getItem(draftKey);
+    if (!raw) return;
+    try {
+      const draft = JSON.parse(raw) as LocalDraft;
+      if (!draft || !Array.isArray(draft.reportSections)) return;
+      setStudentId(draft.studentId ?? "");
+      setTitle(draft.title ?? "");
+      setReportDate(draft.reportDate ?? formatDateInput(new Date()));
+      setReportSections(draft.reportSections);
+      setWorkingNotes(draft.workingNotes ?? "");
+    } catch {
+      window.localStorage.removeItem(draftKey);
+    }
+  };
+
+  const persistLocalDraft = () => {
+    if (typeof window === "undefined") return;
+    if (!isNewReport || loadingReport) return;
+    const payload: LocalDraft = {
+      studentId,
+      title,
+      reportDate,
+      reportSections,
+      workingNotes,
+      savedAt: new Date().toISOString(),
+    };
+    window.localStorage.setItem(draftKey, JSON.stringify(payload));
+  };
+
   const loadReportForEdit = async (reportId: string) => {
     setLoadingReport(true);
     setStatusMessage("");
@@ -726,7 +1207,6 @@ export default function CoachReportBuilderPage() {
         : formatDateInputValue(reportData.created_at)
     );
     setReportSections(nextSections);
-    setAvailableSections(buildAvailableSections(nextSections));
     setAiPreviews({});
     setAiSummary("");
     setAiError("");
@@ -740,7 +1220,6 @@ export default function CoachReportBuilderPage() {
     setReportDate(formatDateInput(new Date()));
     setSentAt(null);
     setReportSections(defaultReportSections.map(createSection));
-    setAvailableSections(initialAvailableSections);
     setWorkingNotes("");
     setAiPreviews({});
     setAiSummary("");
@@ -897,6 +1376,9 @@ export default function CoachReportBuilderPage() {
     );
     setStatusType("success");
     setSaving(false);
+    if (typeof window !== "undefined" && isNewReport) {
+      window.localStorage.removeItem(draftKey);
+    }
   };
 
   const getAiDefaults = () => ({
@@ -1198,35 +1680,50 @@ export default function CoachReportBuilderPage() {
     }
 
     setAiBusyId("finalize");
-    const summaryText =
-      summaryTargets.length > 0
-        ? await callAi({ action: "summary", allSections: contextSections })
-        : null;
-    const planText =
-      planTargets.length > 0
-        ? await callAi({ action: "plan", allSections: contextSections })
-        : null;
+    const summaryMap = new Map<string, string>();
+    for (const target of summaryTargets) {
+      const summaryText = await callAi({
+        action: "summary",
+        sectionTitle: target.title,
+        allSections: contextSections,
+      });
+      if (summaryText) {
+        summaryMap.set(target.id, summaryText);
+      }
+    }
+
+    const planMap = new Map<string, string>();
+    for (const target of planTargets) {
+      const planText = await callAi({
+        action: "plan",
+        sectionTitle: target.title,
+        allSections: contextSections,
+      });
+      if (planText) {
+        planMap.set(target.id, planText);
+      }
+    }
 
     setAiPreviews((prev) => {
       const next = { ...prev };
-      if (summaryText) {
-        summaryTargets.forEach((target) => {
-          next[target.id] = {
-            original: target.content,
-            suggestion: summaryText,
-            mode: "finalize",
-          };
-        });
-      }
-      if (planText) {
-        planTargets.forEach((target) => {
-          next[target.id] = {
-            original: target.content,
-            suggestion: planText,
-            mode: "finalize",
-          };
-        });
-      }
+      summaryTargets.forEach((target) => {
+        const text = summaryMap.get(target.id);
+        if (!text) return;
+        next[target.id] = {
+          original: target.content,
+          suggestion: text,
+          mode: "finalize",
+        };
+      });
+      planTargets.forEach((target) => {
+        const text = planMap.get(target.id);
+        if (!text) return;
+        next[target.id] = {
+          original: target.content,
+          suggestion: text,
+          mode: "finalize",
+        };
+      });
       return next;
     });
 
@@ -1318,6 +1815,34 @@ export default function CoachReportBuilderPage() {
   }, []);
 
   useEffect(() => {
+    loadLocalDraft();
+  }, [isNewReport, loadingReport]);
+
+  useEffect(() => {
+    if (!isNewReport || loadingReport) return;
+    if (typeof window === "undefined") return;
+    if (draftTimer.current) {
+      window.clearTimeout(draftTimer.current);
+    }
+    draftTimer.current = window.setTimeout(() => {
+      persistLocalDraft();
+    }, 800);
+    return () => {
+      if (draftTimer.current) {
+        window.clearTimeout(draftTimer.current);
+      }
+    };
+  }, [
+    studentId,
+    title,
+    reportDate,
+    reportSections,
+    workingNotes,
+    isNewReport,
+    loadingReport,
+  ]);
+
+  useEffect(() => {
     const reportId = searchParams.get("reportId");
     if (!reportId || reportId === editingReportId) return;
     loadReportForEdit(reportId);
@@ -1362,6 +1887,12 @@ export default function CoachReportBuilderPage() {
     organization?.ai_focus,
     organization,
   ]);
+
+  useEffect(() => {
+    if (!organization?.id) return;
+    loadSectionTemplates();
+    loadLayouts();
+  }, [organization?.id]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1451,209 +1982,718 @@ export default function CoachReportBuilderPage() {
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-        <div className="panel rounded-2xl p-6">
+        <div className="panel relative rounded-2xl p-6">
           <h3 className="text-lg font-semibold text-[var(--text)]">
             Sections disponibles
           </h3>
+          <span className="group absolute right-4 top-4">
+            <button
+              type="button"
+              className="flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[0.7rem] text-[var(--muted)] transition hover:text-[var(--text)]"
+              aria-label="Aide sur les sections disponibles"
+            >
+              ?
+            </button>
+            <span className="pointer-events-none absolute right-0 top-full z-20 mt-2 w-64 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text)] opacity-0 shadow-xl transition group-hover:opacity-100 group-focus-within:opacity-100">
+              <span className="block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                Ce que c est
+              </span>
+              <span className="mt-1 block">
+                Bibliotheque de blocs reutilisables par coach.
+              </span>
+              <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                Pourquoi
+              </span>
+              <span className="mt-1 block">
+                Chaque section structure le rapport et guide l IA.
+              </span>
+              <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                Impact
+              </span>
+              <span className="mt-1 block">
+                Plus tu enrichis la liste, plus tes rapports sont sur mesure et
+                rapides a produire.
+              </span>
+            </span>
+          </span>
           <p className="mt-2 text-xs text-[var(--muted)]">
             Clique pour ajouter une section au rapport ou cree la tienne.
           </p>
-          <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-            <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-              Nouvelle section
-            </label>
-            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
-              <input
-                type="text"
-                value={customSection}
-                onChange={(event) => setCustomSection(event.target.value)}
-                placeholder="Ex: Routine pre-shot"
-                className="w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
-              />
+          <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 relative">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                  Layouts
+                </p>
+                <p className="mt-1 text-xs text-[var(--muted)]">
+                  Applique un ensemble de sections en 1 clic.
+                </p>
+              </div>
               <button
                 type="button"
-                onClick={() => setCustomIsImage((prev) => !prev)}
-                className={`rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-wide transition ${
-                  customIsImage
-                    ? "border-sky-300/40 bg-sky-400/20 text-sky-100"
-                    : "border-white/10 bg-white/10 text-[var(--muted)] hover:text-[var(--text)]"
-                }`}
+                onClick={startCreateLayout}
+                className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
               >
-                Image
-              </button>
-              <button
-                type="button"
-                onClick={handleAddCustomSection}
-                className="rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
-              >
-                Ajouter
+                Creer un layout
               </button>
             </div>
-          </div>
-          <div className="mt-4 space-y-3">
-            {availableSections.map((section) => (
-              <div
-                key={`${section.title}-${section.type}`}
-                className="relative flex flex-col gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 pl-11 text-sm text-[var(--text)] sm:flex-row sm:items-center sm:justify-between sm:pr-16"
+            <span className="group absolute right-4 top-4">
+              <button
+                type="button"
+                className="flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[0.7rem] text-[var(--muted)] transition hover:text-[var(--text)]"
+                aria-label="Aide sur les layouts"
               >
+                ?
+              </button>
+              <span className="pointer-events-none absolute right-0 top-full z-20 mt-2 w-64 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text)] opacity-0 shadow-xl transition group-hover:opacity-100 group-focus-within:opacity-100">
+                <span className="block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                  Ce que c est
+                </span>
+                <span className="mt-1 block">
+                  Pack de sections preconfigure (ex: seance practice, parcours).
+                </span>
+                <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                  Usage
+                </span>
+                <span className="mt-1 block">
+                  Un clic pour charger la structure, puis tu ajustes au cas par
+                  cas.
+                </span>
+                <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                  Impact
+                </span>
+                <span className="mt-1 block">
+                  Rapports coherents et ultra-personnalises sans repartir de
+                  zero.
+                </span>
+              </span>
+            </span>
+            <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+              <select
+                value={selectedLayoutId}
+                onChange={(event) => setSelectedLayoutId(event.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+              >
+                <option value="">Selectionner un layout</option>
+                {layouts.map((layout) => (
+                  <option key={layout.id} value={layout.id}>
+                    {layout.title}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={handleApplyLayout}
+                className="rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
+              >
+                Appliquer
+              </button>
+            </div>
+            {selectedLayoutTemplates.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {selectedLayoutTemplates.map((template) => (
+                  <span
+                    key={`layout-preview-${template.id ?? template.title}`}
+                    className="rounded-md border border-dashed border-white/15 bg-white/5 px-2 py-0.5 text-[0.55rem] uppercase tracking-wide text-[var(--muted)] select-none"
+                  >
+                    {template.title}
+                  </span>
+                ))}
+              </div>
+            ) : selectedLayoutId ? (
+              <p className="mt-3 text-xs text-[var(--muted)]">
+                Aucune section dans ce layout.
+              </p>
+            ) : null}
+            {selectedLayout ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => handleRemoveFromAvailable(section)}
-                  className="absolute left-0 top-0 flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-[var(--bg-elevated)] text-[var(--muted)] shadow transition hover:border-red-400/40 hover:bg-red-500/20 hover:text-red-300"
-                  aria-label="Supprimer la section"
-                  title="Supprimer"
+                  onClick={() => startEditLayout(selectedLayout)}
+                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                >
+                  Modifier
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteLayout(selectedLayout)}
+                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:text-red-200"
+                >
+                  Supprimer
+                </button>
+              </div>
+            ) : null}
+            {layoutMessage ? (
+              <p
+                className={`mt-3 text-xs ${
+                  layoutMessageType === "error"
+                    ? "text-red-400"
+                    : "text-[var(--muted)]"
+                }`}
+              >
+                {layoutMessage}
+              </p>
+            ) : null}
+          </div>
+          {layoutEditorOpen ? (
+            <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                  {layoutEditingId ? "Modifier un layout" : "Nouveau layout"}
+                </p>
+                <button
+                  type="button"
+                  onClick={resetLayoutEditor}
+                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                >
+                  Fermer
+                </button>
+              </div>
+              <div className="mt-3">
+                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                  Titre du layout
+                </label>
+                <input
+                  type="text"
+                  value={layoutTitle}
+                  onChange={(event) => setLayoutTitle(event.target.value)}
+                  placeholder="Seance practice - jeu de fers"
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                />
+              </div>
+              <div className="mt-4 space-y-3">
+                <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                  Sections du layout
+                </p>
+                {layoutTemplateIds.length === 0 ? (
+                  <p className="text-xs text-[var(--muted)]">
+                    Aucune section ajoutee pour l instant.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {layoutTemplateIds.map((templateId, index) => {
+                      const template = templateById.get(templateId);
+                      const label = template?.title ?? "Section inconnue";
+                      return (
+                        <div
+                          key={`layout-item-${templateId}`}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)]"
+                        >
+                          <span>{label}</span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleMoveLayoutTemplate(index, "up")
+                              }
+                              disabled={index === 0}
+                              className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-40"
+                              aria-label="Monter"
+                              title="Monter"
+                            >
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="h-3.5 w-3.5"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M12 19V5" />
+                                <path d="M5 12l7-7 7 7" />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleMoveLayoutTemplate(index, "down")
+                              }
+                              disabled={index === layoutTemplateIds.length - 1}
+                              className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-40"
+                              aria-label="Descendre"
+                              title="Descendre"
+                            >
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="h-3.5 w-3.5"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M12 5v14" />
+                                <path d="M5 12l7 7 7-7" />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleRemoveTemplateFromLayout(templateId)
+                              }
+                              className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-red-200"
+                              aria-label="Retirer"
+                              title="Retirer"
+                            >
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="h-3.5 w-3.5"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M18 6L6 18" />
+                                <path d="M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <div className="mt-4">
+                <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                  Ajouter une section existante
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {layoutAvailableTemplates.length === 0 ? (
+                    <span className="text-xs text-[var(--muted)]">
+                      Toutes les sections sont deja dans ce layout.
+                    </span>
+                  ) : (
+                    layoutAvailableTemplates.map((template) => (
+                      <button
+                        key={`layout-add-${template.id}`}
+                        type="button"
+                        onClick={() =>
+                          handleAddTemplateToLayout(template.id as string)
+                        }
+                        className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
+                      >
+                        {template.title}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+              <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-3">
+                <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                  Nouvelle section
+                </p>
+                <p className="mt-1 text-xs text-[var(--muted)]">
+                  Un titre clair guide la generation IA.
+                </p>
+                <label className="mt-3 block text-xs uppercase tracking-wide text-[var(--muted)]">
+                  Nom de la section
+                </label>
+                <input
+                  type="text"
+                  value={layoutCustomTitle}
+                  onChange={(event) => setLayoutCustomTitle(event.target.value)}
+                  placeholder="Ex: Plan 3 mois"
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                />
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <span className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Type
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setLayoutCustomIsImage(false)}
+                    className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
+                      layoutCustomIsImage
+                        ? "border-white/10 bg-white/5 text-[var(--muted)]"
+                        : "border-emerald-300/40 bg-emerald-400/15 text-emerald-100"
+                    }`}
+                    aria-pressed={!layoutCustomIsImage}
+                  >
+                    Texte
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLayoutCustomIsImage(true)}
+                    className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
+                      layoutCustomIsImage
+                        ? "border-sky-300/40 bg-sky-400/20 text-sky-100"
+                        : "border-white/10 bg-white/5 text-[var(--muted)]"
+                    }`}
+                    aria-pressed={layoutCustomIsImage}
+                  >
+                    Image
+                  </button>
+                </div>
+                {layoutCustomIsImage ? (
+                  <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-sky-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-sky-100/80 select-none">
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-3.5 w-3.5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M4 7h3l2-2h6l2 2h3v12H4z" />
+                      <circle cx="12" cy="13" r="3" />
+                    </svg>
+                    Image: upload d images et legendes.
+                  </div>
+                ) : (
+                  <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-emerald-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-emerald-100/80 select-none">
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-3.5 w-3.5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M4 6h16" />
+                      <path d="M4 12h16" />
+                      <path d="M4 18h10" />
+                    </svg>
+                    Texte: section ecrite libre.
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={handleAddCustomTemplateToLayout}
+                  className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10"
                 >
                   <svg
                     viewBox="0 0 24 24"
-                    className="h-3 w-3"
+                    className="h-3.5 w-3.5"
                     fill="none"
                     stroke="currentColor"
                     strokeWidth="2"
                     strokeLinecap="round"
                     strokeLinejoin="round"
                   >
-                    <path d="M18 6L6 18" />
-                    <path d="M6 6l12 12" />
+                    <path d="M12 5v14" />
+                    <path d="M5 12h14" />
                   </svg>
+                  Ajouter au layout
                 </button>
-                <div className="min-w-0 flex-1">
-                  {editingSection === section.title ? (
-                    <input
-                      type="text"
-                      value={editingValue}
-                      onChange={(event) => setEditingValue(event.target.value)}
-                      className="w-full rounded-lg border border-white/10 bg-[var(--bg-elevated)] px-3 py-1 text-sm text-[var(--text)]"
-                    />
-                  ) : (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="block break-words">{section.title}</span>
-                      {section.type === "image" ? (
-                        <span className="rounded-full border border-sky-300/40 bg-sky-400/10 px-2 py-0.5 text-[0.6rem] uppercase tracking-wide text-sky-100">
-                          Image
-                        </span>
-                      ) : null}
-                    </div>
-                  )}
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {editingSection === section.title ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={handleSaveEdit}
-                        className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--text)] transition hover:bg-white/20"
-                        aria-label="Valider"
-                        title="Valider"
-                      >
-                        <svg
-                          viewBox="0 0 24 24"
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M5 12l4 4L19 6" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleCancelEdit}
-                        className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
-                        aria-label="Annuler"
-                        title="Annuler"
-                      >
-                        <svg
-                          viewBox="0 0 24 24"
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M15 6l-6 6 6 6" />
-                        </svg>
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => handleAddToReport(section)}
-                        className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--text)] transition hover:bg-white/20"
-                        aria-label="Ajouter au rapport"
-                        title="Ajouter"
-                      >
-                        <svg
-                          viewBox="0 0 24 24"
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M12 5v14" />
-                          <path d="M5 12h14" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleEditSection(section)}
-                        className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
-                        aria-label="Modifier la section"
-                        title="Modifier"
-                      >
-                        <svg
-                          viewBox="0 0 24 24"
-                          className="h-4 w-4"
-                          fill="currentColor"
-                          aria-hidden="true"
-                        >
-                          <circle cx="5" cy="12" r="1.8" />
-                          <circle cx="12" cy="12" r="1.8" />
-                          <circle cx="19" cy="12" r="1.8" />
-                        </svg>
-                      </button>
-                    </>
-                  )}
-                </div>
-                {dragEnabled ? (
+              </div>
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={layoutSaving}
+                  onClick={handleSaveLayout}
+                  className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
+                >
+                  {layoutSaving ? "Sauvegarde..." : "Enregistrer le layout"}
+                </button>
+                <button
+                  type="button"
+                  onClick={resetLayoutEditor}
+                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                >
+                  Annuler
+                </button>
+              </div>
+            </div>
+          ) : null}
+          <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+            <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+              Nouvelle section
+            </p>
+            <p className="mt-1 text-xs text-[var(--muted)]">
+              Un titre clair aide l assistant IA a etre plus pertinent.
+            </p>
+            <label className="mt-3 block text-xs uppercase tracking-wide text-[var(--muted)]">
+              Nom de la section
+            </label>
+            <input
+              type="text"
+              value={customSection}
+              onChange={(event) => setCustomSection(event.target.value)}
+              placeholder="Ex: Routine pre-shot"
+              className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+            />
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                Type
+              </span>
+              <button
+                type="button"
+                onClick={() => setCustomIsImage(false)}
+                className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
+                  customIsImage
+                    ? "border-white/10 bg-white/5 text-[var(--muted)]"
+                    : "border-emerald-300/40 bg-emerald-400/15 text-emerald-100"
+                }`}
+                aria-pressed={!customIsImage}
+              >
+                Texte
+              </button>
+              <button
+                type="button"
+                onClick={() => setCustomIsImage(true)}
+                className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
+                  customIsImage
+                    ? "border-sky-300/40 bg-sky-400/20 text-sky-100"
+                    : "border-white/10 bg-white/5 text-[var(--muted)]"
+                }`}
+                aria-pressed={customIsImage}
+              >
+                Image
+              </button>
+            </div>
+            {customIsImage ? (
+              <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-sky-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-sky-100/80 select-none">
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-3.5 w-3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M4 7h3l2-2h6l2 2h3v12H4z" />
+                  <circle cx="12" cy="13" r="3" />
+                </svg>
+                Image: upload d images et legendes.
+              </div>
+            ) : (
+              <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-emerald-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-emerald-100/80 select-none">
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-3.5 w-3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M4 6h16" />
+                  <path d="M4 12h16" />
+                  <path d="M4 18h10" />
+                </svg>
+                Texte: section ecrite libre.
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={handleAddCustomSection}
+              className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="h-3.5 w-3.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 5v14" />
+                <path d="M5 12h14" />
+              </svg>
+              Ajouter
+            </button>
+          </div>
+          <div className="mt-4 space-y-3">
+            <div className="mt-4 -mx-6 border-y border-white/10 bg-gradient-to-r from-white/5 via-white/5 to-sky-400/10 px-6 py-4">
+              <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                Recherche
+              </label>
+              <input
+                type="search"
+                value={sectionSearch}
+                onChange={(event) => setSectionSearch(event.target.value)}
+                placeholder="Chercher une section"
+                className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+              />
+            </div>
+            {templatesLoading ? (
+              <p className="text-xs text-[var(--muted)]">
+                Chargement des sections...
+              </p>
+            ) : filteredAvailableSections.length === 0 ? (
+              <p className="text-xs text-[var(--muted)]">
+                Aucune section disponible. Cree-en une ou applique un layout.
+              </p>
+            ) : (
+              visibleAvailableSections.map((section) => (
+                <div
+                  key={`${section.title}-${section.type}`}
+                  className="relative flex flex-col gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 pl-11 text-sm text-[var(--text)] sm:flex-row sm:items-center sm:justify-between sm:pr-16"
+                >
                   <button
                     type="button"
-                    draggable={editingSection !== section.title}
-                    disabled={editingSection === section.title}
-                    onDragStart={(event) =>
-                      handleAvailableDragStart(section, event)
-                    }
-                    onDragEnd={handleDragEnd}
-                    className={`absolute right-3 top-3 bottom-3 flex w-7 items-center justify-center rounded-lg border border-dashed border-white/10 bg-white/5 text-[var(--muted)] transition hover:border-[var(--accent)] hover:text-[var(--text)] ${
-                      editingSection === section.title
-                        ? "cursor-not-allowed opacity-40"
-                        : "cursor-grab"
-                    }`}
-                    aria-label="Glisser vers le rapport"
-                    title="Glisser vers le rapport"
+                    onClick={() => handleRemoveFromAvailable(section)}
+                    className="absolute left-0 top-0 flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-[var(--bg-elevated)] text-[var(--muted)] shadow transition hover:border-red-400/40 hover:bg-red-500/20 hover:text-red-300"
+                    aria-label="Supprimer la section"
+                    title="Supprimer"
                   >
                     <svg
                       viewBox="0 0 24 24"
-                      className="h-4 w-4"
-                      fill="currentColor"
-                      aria-hidden="true"
+                      className="h-3 w-3"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
                     >
-                      <circle cx="9" cy="6" r="1.4" />
-                      <circle cx="9" cy="12" r="1.4" />
-                      <circle cx="9" cy="18" r="1.4" />
-                      <circle cx="15" cy="6" r="1.4" />
-                      <circle cx="15" cy="12" r="1.4" />
-                      <circle cx="15" cy="18" r="1.4" />
+                      <path d="M18 6L6 18" />
+                      <path d="M6 6l12 12" />
                     </svg>
                   </button>
-                ) : null}
-              </div>
-            ))}
+                  <div className="min-w-0 flex-1">
+                    {editingSection === section.title ? (
+                      <input
+                        type="text"
+                        value={editingValue}
+                        onChange={(event) => setEditingValue(event.target.value)}
+                        className="w-full rounded-lg border border-white/10 bg-[var(--bg-elevated)] px-3 py-1 text-sm text-[var(--text)]"
+                      />
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="block break-words">
+                          {section.title}
+                        </span>
+                        {section.type === "image" ? (
+                        <span className="rounded-md border border-dashed border-sky-300/30 bg-sky-400/10 px-2 py-0.5 text-[0.55rem] uppercase tracking-wide text-sky-100/70 select-none">
+                            Image
+                          </span>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {editingSection === section.title ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handleSaveEdit}
+                          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--text)] transition hover:bg-white/20"
+                          aria-label="Valider"
+                          title="Valider"
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-4 w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M5 12l4 4L19 6" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCancelEdit}
+                          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                          aria-label="Annuler"
+                          title="Annuler"
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-4 w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M15 6l-6 6 6 6" />
+                          </svg>
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleAddToReport(section)}
+                          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--text)] transition hover:bg-white/20"
+                          aria-label="Ajouter au rapport"
+                          title="Ajouter"
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-4 w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M12 5v14" />
+                            <path d="M5 12h14" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleEditSection(section)}
+                          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                          aria-label="Modifier la section"
+                          title="Modifier"
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-4 w-4"
+                            fill="currentColor"
+                            aria-hidden="true"
+                          >
+                            <circle cx="5" cy="12" r="1.8" />
+                            <circle cx="12" cy="12" r="1.8" />
+                            <circle cx="19" cy="12" r="1.8" />
+                          </svg>
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {dragEnabled ? (
+                    <button
+                      type="button"
+                      draggable={editingSection !== section.title}
+                      disabled={editingSection === section.title}
+                      onDragStart={(event) =>
+                        handleAvailableDragStart(section, event)
+                      }
+                      onDragEnd={handleDragEnd}
+                      className={`absolute right-3 top-3 bottom-3 flex w-7 items-center justify-center rounded-lg border border-dashed border-white/10 bg-white/5 text-[var(--muted)] transition hover:border-[var(--accent)] hover:text-[var(--text)] ${
+                        editingSection === section.title
+                          ? "cursor-not-allowed opacity-40"
+                          : "cursor-grab"
+                      }`}
+                      aria-label="Glisser vers le rapport"
+                      title="Glisser vers le rapport"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-4 w-4"
+                        fill="currentColor"
+                        aria-hidden="true"
+                      >
+                        <circle cx="9" cy="6" r="1.4" />
+                        <circle cx="9" cy="12" r="1.4" />
+                        <circle cx="9" cy="18" r="1.4" />
+                        <circle cx="15" cy="6" r="1.4" />
+                        <circle cx="15" cy="12" r="1.4" />
+                        <circle cx="15" cy="18" r="1.4" />
+                      </svg>
+                    </button>
+                  ) : null}
+                </div>
+              ))
+            )}
+            {!normalizedSectionSearch && hiddenAvailableCount > 0 ? (
+              <p className="text-xs text-[var(--muted)]">
+                {hiddenAvailableCount} autres sections disponibles via la
+                recherche.
+              </p>
+            ) : null}
           </div>
           {sectionsMessage ? (
             <p
@@ -1668,13 +2708,62 @@ export default function CoachReportBuilderPage() {
           ) : null}
         </div>
 
-        <div className="panel rounded-2xl p-6">
+        <div className="panel relative rounded-2xl p-6">
           <h3 className="text-lg font-semibold text-[var(--text)]">
             Rapport en cours
           </h3>
+          <span className="group absolute right-4 top-4">
+            <button
+              type="button"
+              className="flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[0.7rem] text-[var(--muted)] transition hover:text-[var(--text)]"
+              aria-label="Aide sur le rapport en cours"
+            >
+              ?
+            </button>
+            <span className="pointer-events-none absolute right-0 top-full z-20 mt-2 w-64 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text)] opacity-0 shadow-xl transition group-hover:opacity-100 group-focus-within:opacity-100">
+              <span className="block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                Construction
+              </span>
+              <span className="mt-1 block">
+                Tu saisis des notes de travail en cours. Le rapport se construit
+                au fur et a mesure selon les sections presentes.
+              </span>
+              <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                Propagation
+              </span>
+              <span className="mt-1 block">
+                L IA relit, complete et propage les idees pour accelerer la
+                redaction.
+              </span>
+              <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                Finalisation
+              </span>
+              <span className="mt-1 block">
+                Le resume et les sections de planification se generent a la fin,
+                selon le titre des sections (ex: plan 3 mois, plan 7 jours).
+              </span>
+            </span>
+          </span>
           <p className="mt-2 text-xs text-[var(--muted)]">
             Organise les sections et remplis le contenu. Drag & drop actif.
           </p>
+          <div className="mt-2 inline-flex items-center gap-2 rounded-md border border-dashed border-white/20 bg-white/5 px-3 py-1 text-[0.55rem] uppercase tracking-wide text-[var(--muted)] select-none">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-3.5 w-3.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="9" y="4" width="6" height="10" rx="3" />
+              <path d="M5 11a7 7 0 0 0 14 0" />
+              <path d="M12 18v2" />
+              <path d="M8 20h8" />
+            </svg>
+            Dictee vocale compatible: redaction ultra-rapide sur mobile.
+          </div>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             {showPublish ? (
               <button
@@ -1696,9 +2785,9 @@ export default function CoachReportBuilderPage() {
             </button>
             {isEditing ? (
               <span
-                className={`rounded-full border px-2 py-1 text-[0.6rem] uppercase tracking-wide ${
+                className={`rounded-md border border-dashed px-2 py-1 text-[0.55rem] uppercase tracking-wide select-none ${
                   isDraft
-                    ? "border-white/10 bg-white/5 text-[var(--muted)]"
+                    ? "border-white/15 bg-white/5 text-[var(--muted)]"
                     : "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
                 }`}
               >
@@ -1706,13 +2795,13 @@ export default function CoachReportBuilderPage() {
               </span>
             ) : null}
           </div>
-          <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+          <div className="mt-5 -mx-6 border-y border-white/10 bg-gradient-to-r from-white/5 via-white/5 to-emerald-400/10 px-6 py-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
                 Assistant IA
               </p>
               <span
-                className={`rounded-full border px-2 py-1 text-[0.6rem] uppercase tracking-wide ${
+                className={`rounded-md border border-dashed px-2 py-1 text-[0.55rem] uppercase tracking-wide select-none ${
                   aiEnabled
                     ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
                     : "border-amber-300/30 bg-amber-400/10 text-amber-200"
@@ -1959,6 +3048,16 @@ export default function CoachReportBuilderPage() {
               />
             </div>
           </div>
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              disabled={saving || loadingReport || reportSections.length === 0}
+              onClick={handleClearReportSections}
+              className="rounded-full border border-rose-300/30 bg-rose-400/10 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-rose-100 transition hover:bg-rose-400/20 disabled:opacity-50"
+            >
+              Retirer tout
+            </button>
+          </div>
           {aiSummary ? (
             <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
               <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
@@ -2040,7 +3139,7 @@ export default function CoachReportBuilderPage() {
                           {section.title}
                         </p>
                         {section.type === "image" ? (
-                          <span className="rounded-full border border-sky-300/40 bg-sky-400/10 px-2 py-0.5 text-[0.6rem] uppercase tracking-wide text-sky-100">
+                          <span className="rounded-md border border-dashed border-sky-300/30 bg-sky-400/10 px-2 py-0.5 text-[0.55rem] uppercase tracking-wide text-sky-100/70 select-none">
                             Image
                           </span>
                         ) : null}
