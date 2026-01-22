@@ -627,18 +627,49 @@ export async function POST(request: Request) {
         ...(reasoning ? { reasoning } : {}),
       });
 
+      const retryParts: string[] = [];
+      const retryOutput = retry.output ?? [];
+      for (const item of retryOutput) {
+        const content = (item as { content?: unknown }).content;
+        if (typeof content === "string") {
+          retryParts.push(content);
+        } else if (Array.isArray(content)) {
+          for (const chunk of content) {
+            if (typeof chunk === "string") {
+              retryParts.push(chunk);
+            } else if (chunk && typeof chunk === "object" && "type" in chunk) {
+              const typed = chunk as {
+                type: string;
+                text?: string;
+                refusal?: string;
+              };
+              if (typed.type === "output_text" && typed.text) {
+                retryParts.push(typed.text);
+              } else if (typed.type === "text" && typed.text) {
+                retryParts.push(typed.text);
+              } else if (typed.type === "refusal" && typed.refusal) {
+                retryParts.push(`Refus: ${typed.refusal}`);
+              }
+            }
+          }
+        }
+
+        if (item && typeof item === "object" && "type" in item) {
+          const typedItem = item as {
+            type?: string;
+            text?: string;
+            refusal?: string;
+          };
+          if (typedItem.type === "output_text" && typedItem.text) {
+            retryParts.push(typedItem.text);
+          } else if (typedItem.type === "refusal" && typedItem.refusal) {
+            retryParts.push(`Refus: ${typedItem.refusal}`);
+          }
+        }
+      }
+
       const retryText =
-        retry.output_text?.trim() ??
-        retry.output
-          ?.flatMap((item) => item.content ?? [])
-          .map((item) => {
-            if (item.type === "output_text") return item.text;
-            if (item.type === "refusal") return `Refus: ${item.refusal}`;
-            return "";
-          })
-          .filter(Boolean)
-          .join("\n")
-          .trim();
+        retry.output_text?.trim() ?? retryParts.join("\n").trim();
 
       text = retryText;
       if (!text) {
