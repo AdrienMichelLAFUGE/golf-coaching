@@ -24,6 +24,7 @@ type Report = {
 type TpiReport = {
   id: string;
   status: "processing" | "ready" | "error";
+  created_at?: string;
 };
 
 type TpiTest = {
@@ -108,7 +109,7 @@ export default function StudentDashboardPage() {
       if (studentData.tpi_report_id) {
         const { data } = await supabase
           .from("tpi_reports")
-          .select("id, status")
+          .select("id, status, created_at")
           .eq("id", studentData.tpi_report_id)
           .single();
         if (data) reportData = data as TpiReport;
@@ -117,7 +118,7 @@ export default function StudentDashboardPage() {
       if (!reportData) {
         const { data } = await supabase
           .from("tpi_reports")
-          .select("id, status")
+          .select("id, status, created_at")
           .eq("student_id", studentData.id)
           .order("created_at", { ascending: false })
           .limit(1)
@@ -128,7 +129,7 @@ export default function StudentDashboardPage() {
       if (reportData && reportData.status !== "ready") {
         const { data } = await supabase
           .from("tpi_reports")
-          .select("id, status")
+          .select("id, status, created_at")
           .eq("student_id", studentData.id)
           .eq("status", "ready")
           .order("created_at", { ascending: false })
