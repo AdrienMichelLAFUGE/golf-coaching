@@ -287,6 +287,10 @@ export default function CoachReportBuilderPage() {
     Record<string, boolean>
   >({});
   const [imageErrors, setImageErrors] = useState<Record<string, string>>({});
+  const [activeTooltip, setActiveTooltip] = useState<
+    "sections" | "layouts" | "report" | null
+  >(null);
+  const tooltipRefs = useRef(new Map<string, HTMLSpanElement | null>());
   const [draftId] = useState(() =>
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
@@ -2186,6 +2190,20 @@ export default function CoachReportBuilderPage() {
   }, [workingObservations]);
 
   useEffect(() => {
+    if (!activeTooltip) return;
+    const handlePointer = (event: PointerEvent) => {
+      const target = event.target as Node;
+      const node = tooltipRefs.current.get(activeTooltip);
+      if (node && node.contains(target)) return;
+      setActiveTooltip(null);
+    };
+    document.addEventListener("pointerdown", handlePointer);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointer);
+    };
+  }, [activeTooltip]);
+
+  useEffect(() => {
     if (!organization) return;
     setAiTone(organization.ai_tone ?? "bienveillant");
     setAiTechLevel(organization.ai_tech_level ?? "intermediaire");
@@ -2306,15 +2324,36 @@ export default function CoachReportBuilderPage() {
             <h3 className="text-lg font-semibold text-[var(--text)]">
               Sections disponibles
             </h3>
-            <span className="group relative shrink-0">
+            <span
+              ref={(node) => {
+                if (node) {
+                  tooltipRefs.current.set("sections", node);
+                } else {
+                  tooltipRefs.current.delete("sections");
+                }
+              }}
+              className="group relative shrink-0"
+            >
               <button
                 type="button"
+                onClick={() =>
+                  setActiveTooltip((prev) =>
+                    prev === "sections" ? null : "sections"
+                  )
+                }
                 className="flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[0.7rem] text-[var(--muted)] transition hover:text-[var(--text)]"
                 aria-label="Aide sur les sections disponibles"
+                aria-expanded={activeTooltip === "sections"}
               >
                 ?
               </button>
-              <span className="pointer-events-none absolute right-0 top-full z-20 mt-2 w-64 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text)] opacity-0 shadow-xl transition group-hover:opacity-100 group-focus-within:opacity-100">
+              <span
+                className={`absolute right-0 top-full z-20 mt-2 w-64 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text)] shadow-xl transition ${
+                  activeTooltip === "sections"
+                    ? "pointer-events-auto opacity-100"
+                    : "pointer-events-none opacity-0"
+                } group-hover:opacity-100 group-focus-within:opacity-100`}
+              >
                 <span className="block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
                   Ce que c est
                 </span>
@@ -2342,24 +2381,45 @@ export default function CoachReportBuilderPage() {
           </p>
           <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className="flex items-start gap-2">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                    Layouts
-                  </p>
-                  <p className="mt-1 text-xs text-[var(--muted)]">
-                    Applique un ensemble de sections en 1 clic.
-                  </p>
-                </div>
-                <span className="group relative mt-0.5 shrink-0">
+                <div className="flex items-start gap-2">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                      Layouts
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--muted)]">
+                      Applique un ensemble de sections en 1 clic.
+                    </p>
+                  </div>
+                <span
+                  ref={(node) => {
+                    if (node) {
+                      tooltipRefs.current.set("layouts", node);
+                    } else {
+                      tooltipRefs.current.delete("layouts");
+                    }
+                  }}
+                  className="group relative mt-0.5 shrink-0"
+                >
                   <button
                     type="button"
+                    onClick={() =>
+                      setActiveTooltip((prev) =>
+                        prev === "layouts" ? null : "layouts"
+                      )
+                    }
                     className="flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[0.7rem] text-[var(--muted)] transition hover:text-[var(--text)]"
                     aria-label="Aide sur les layouts"
+                    aria-expanded={activeTooltip === "layouts"}
                   >
                     ?
                   </button>
-                  <span className="pointer-events-none absolute right-0 top-full z-20 mt-2 w-64 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text)] opacity-0 shadow-xl transition group-hover:opacity-100 group-focus-within:opacity-100">
+                  <span
+                    className={`absolute right-0 top-full z-20 mt-2 w-64 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text)] shadow-xl transition ${
+                      activeTooltip === "layouts"
+                        ? "pointer-events-auto opacity-100"
+                        : "pointer-events-none opacity-0"
+                    } group-hover:opacity-100 group-focus-within:opacity-100`}
+                  >
                     <span className="block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
                       Ce que c est
                     </span>
@@ -3036,15 +3096,36 @@ export default function CoachReportBuilderPage() {
             <h3 className="text-lg font-semibold text-[var(--text)]">
               Rapport en cours
             </h3>
-            <span className="group relative shrink-0">
+            <span
+              ref={(node) => {
+                if (node) {
+                  tooltipRefs.current.set("report", node);
+                } else {
+                  tooltipRefs.current.delete("report");
+                }
+              }}
+              className="group relative shrink-0"
+            >
               <button
                 type="button"
+                onClick={() =>
+                  setActiveTooltip((prev) =>
+                    prev === "report" ? null : "report"
+                  )
+                }
                 className="flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[0.7rem] text-[var(--muted)] transition hover:text-[var(--text)]"
                 aria-label="Aide sur le rapport en cours"
+                aria-expanded={activeTooltip === "report"}
               >
                 ?
               </button>
-              <span className="pointer-events-none absolute right-0 top-full z-20 mt-2 w-64 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text)] opacity-0 shadow-xl transition group-hover:opacity-100 group-focus-within:opacity-100">
+              <span
+                className={`absolute right-0 top-full z-20 mt-2 w-64 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text)] shadow-xl transition ${
+                  activeTooltip === "report"
+                    ? "pointer-events-auto opacity-100"
+                    : "pointer-events-none opacity-0"
+                } group-hover:opacity-100 group-focus-within:opacity-100`}
+              >
                 <span className="block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
                   Construction
                 </span>
@@ -3911,9 +3992,9 @@ export default function CoachReportBuilderPage() {
       </section>
         </div>
         {clarifyOpen ? (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-8">
-            <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-[var(--bg-elevated)] p-6 shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
-              <div className="flex items-start justify-between gap-4">
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 px-4 py-10">
+            <div className="mx-auto flex w-full max-w-2xl flex-col rounded-3xl border border-white/10 bg-[var(--bg-elevated)] shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
+              <div className="flex items-start justify-between gap-4 p-6">
                 <div>
                   <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
                     Assistant IA
@@ -3946,7 +4027,7 @@ export default function CoachReportBuilderPage() {
                   </svg>
                 </button>
               </div>
-              <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
+              <div className="flex flex-wrap items-center gap-2 px-6 text-xs text-[var(--muted)]">
                 <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 uppercase tracking-wide">
                   {clarifyQuestions.length} question
                   {clarifyQuestions.length > 1 ? "s" : ""}
@@ -3963,7 +4044,7 @@ export default function CoachReportBuilderPage() {
                   </span>
                 ) : null}
               </div>
-              <div className="mt-5 space-y-4">
+              <div className="mt-5 max-h-[60vh] space-y-4 overflow-y-auto px-6 pb-6">
                 {clarifyQuestions.map((question, index) => {
                   const value = clarifyAnswers[question.id];
                   const customValue = clarifyCustomAnswers[question.id] ?? "";
@@ -4052,7 +4133,7 @@ export default function CoachReportBuilderPage() {
                   );
                 })}
               </div>
-              <div className="mt-6 flex flex-wrap items-center justify-end gap-3">
+              <div className="flex flex-wrap items-center justify-end gap-3 border-t border-white/10 px-6 py-4">
                 <button
                   type="button"
                   onClick={closeClarifyModal}
