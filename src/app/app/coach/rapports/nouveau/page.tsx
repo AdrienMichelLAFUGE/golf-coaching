@@ -43,6 +43,7 @@ type StudentOption = {
   first_name: string;
   last_name: string | null;
   email: string | null;
+  tpi_report_id: string | null;
 };
 
 type DiffSegment = {
@@ -62,6 +63,7 @@ type PropagationPayload = {
   allSections: { title: string; content: string }[];
   targetSections: string[];
   propagateMode: "empty" | "append";
+  tpiContext?: string;
 };
 
 type ClarifyQuestion = {
@@ -243,6 +245,7 @@ export default function CoachReportBuilderPage() {
   const skipResetRef = useRef(false);
   const showSlots = dragEnabled && (dragIndex !== null || draggingAvailable !== null);
   const [students, setStudents] = useState<StudentOption[]>([]);
+  const [tpiContext, setTpiContext] = useState("");
   const [studentId, setStudentId] = useState("");
   const [title, setTitle] = useState("");
   const [reportDate, setReportDate] = useState(() =>
@@ -867,10 +870,10 @@ export default function CoachReportBuilderPage() {
   };
 
   const loadStudents = async () => {
-    const { data, error } = await supabase
-      .from("students")
-      .select("id, first_name, last_name, email")
-      .order("created_at", { ascending: false });
+      const { data, error } = await supabase
+        .from("students")
+        .select("id, first_name, last_name, email, tpi_report_id")
+        .order("created_at", { ascending: false });
 
     if (error) {
       setStatusMessage(error.message);
@@ -879,6 +882,40 @@ export default function CoachReportBuilderPage() {
     }
 
     setStudents(data ?? []);
+  };
+
+  const loadTpiContext = async (reportId?: string | null) => {
+    if (!reportId) {
+      setTpiContext("");
+      return;
+    }
+    const { data, error } = await supabase
+      .from("tpi_tests")
+      .select(
+        "test_name, result_color, mini_summary, details, details_translated, position"
+      )
+      .eq("report_id", reportId)
+      .order("position", { ascending: true });
+
+    if (error) {
+      setTpiContext("");
+      return;
+    }
+
+    const context =
+      data
+        ?.map((test, index) => {
+          const color = test.result_color;
+          const details = (
+            test.details_translated ||
+            test.details ||
+            test.mini_summary ||
+            ""
+          ).trim();
+          return `${index + 1}. ${test.test_name} (${color})\n${details}`.trim();
+        })
+        .join("\n\n") ?? "";
+    setTpiContext(context);
   };
 
   const loadSectionTemplates = async () => {
@@ -1514,6 +1551,7 @@ export default function CoachReportBuilderPage() {
     sectionTitle?: string;
     sectionContent?: string;
     allSections?: { title: string; content: string }[];
+    tpiContext?: string;
   }) => {
     setAiError("");
     try {
@@ -1532,6 +1570,7 @@ export default function CoachReportBuilderPage() {
         },
         body: JSON.stringify({
           ...payload,
+          tpiContext: tpiContext || undefined,
           settings: {
             tone: aiTone,
             techLevel: aiTechLevel,
@@ -1597,6 +1636,7 @@ export default function CoachReportBuilderPage() {
           targetSections: payload.targetSections,
           propagateMode: payload.propagateMode,
           clarifications: payload.clarifications,
+          tpiContext: tpiContext || undefined,
           settings: {
             tone: aiTone,
             techLevel: aiTechLevel,
@@ -1663,6 +1703,7 @@ export default function CoachReportBuilderPage() {
           allSections: payload.allSections,
           targetSections: payload.targetSections,
           propagateMode: payload.propagateMode,
+          tpiContext: tpiContext || undefined,
           settings: {
             tone: aiTone,
             techLevel: aiTechLevel,
@@ -1861,18 +1902,19 @@ export default function CoachReportBuilderPage() {
       }
       const sectionContent = sourceParts.join("\n\n");
 
-      const clarifyPayload: PropagationPayload = {
-        sectionTitle: "Travail en cours",
-        sectionContent,
-        allSections: reportSections
-          .filter((item) => item.type === "text")
-          .map((item) => ({
-            title: item.title,
-            content: item.content,
-          })),
-        targetSections: targets,
-        propagateMode: appendTargets.length > 0 ? "append" : "empty",
-      };
+    const clarifyPayload: PropagationPayload = {
+      sectionTitle: "Travail en cours",
+      sectionContent,
+      allSections: reportSections
+        .filter((item) => item.type === "text")
+        .map((item) => ({
+          title: item.title,
+          content: item.content,
+        })),
+      targetSections: targets,
+      propagateMode: appendTargets.length > 0 ? "append" : "empty",
+      tpiContext: tpiContext || undefined,
+    };
 
       setAiBusyId("propagate");
       const clarification = await callAiClarify(clarifyPayload);
@@ -2303,6 +2345,19 @@ export default function CoachReportBuilderPage() {
       setStudentId(match.id);
     }
   }, [searchParams, students, studentId]);
+
+  useEffect(() => {
+    if (!studentId) {
+      setTpiContext("");
+      return;
+    }
+    const match = students.find((student) => student.id === studentId);
+    if (!match) {
+      setTpiContext("");
+      return;
+    }
+    loadTpiContext(match.tpi_report_id);
+  }, [studentId, students]);
 
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>

@@ -33,6 +33,7 @@ type AiPayload = {
   allSections?: AiSection[];
   targetSections?: string[];
   propagateMode?: "empty" | "append";
+  tpiContext?: string;
   clarifications?: { question: string; answer: string }[];
   settings?: Partial<AiSettings>;
 };
@@ -568,8 +569,12 @@ export async function POST(request: Request) {
       .map((item) => `- ${item.question}: ${item.answer}`)
       .join("\n");
 
+    const tpiBlock = payload.tpiContext?.trim()
+      ? `\n\nProfil TPI (a utiliser si pertinent):\n${payload.tpiContext.trim()}`
+      : "";
+
     const userPrompt =
-      payload.action === "improve"
+      (payload.action === "improve"
         ? `${payload.sectionContent}`
         : payload.action === "write"
         ? `Section: ${payload.sectionTitle}\nNotes de la section:\n${payload.sectionContent ?? ""}\n\nAutres sections (pour coherence, ne pas resumer):\n${context || "(aucune)"}\n\nSi les notes sont vides, propose une version basee sur le contexte.`
@@ -585,7 +590,7 @@ export async function POST(request: Request) {
             .join("\n")}\n\nSections cibles a remplir:\n${(payload.targetSections ?? [])
             .map((title) => `- ${title}`)
             .join("\n")}${clarificationsText ? `\n\nClarifications du coach:\n${clarificationsText}` : ""}`
-        : `Sections:\n${context}`;
+        : `Sections:\n${context}`) + tpiBlock;
 
     const openai = new OpenAI({ apiKey: openaiKey });
     const model = org.ai_model ?? "gpt-5-mini";
