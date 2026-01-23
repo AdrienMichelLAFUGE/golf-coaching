@@ -47,6 +47,7 @@ export default function CoachReportDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const locale = organization?.locale ?? "fr-FR";
   const timezone = organization?.timezone ?? "Europe/Paris";
 
@@ -112,6 +113,31 @@ export default function CoachReportDetailPage() {
     router.push("/app/coach/rapports");
   };
 
+  const handlePublish = async () => {
+    if (!report || report.sent_at) return;
+    const confirmed = window.confirm(
+      `Publier le rapport "${report.title}" ?`
+    );
+    if (!confirmed) return;
+
+    setPublishing(true);
+    setError("");
+    const now = new Date().toISOString();
+    const { error: updateError } = await supabase
+      .from("reports")
+      .update({ sent_at: now })
+      .eq("id", report.id);
+
+    if (updateError) {
+      setError(updateError.message);
+      setPublishing(false);
+      return;
+    }
+
+    setReport((prev) => (prev ? { ...prev, sent_at: now } : prev));
+    setPublishing(false);
+  };
+
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       {loading ? (
@@ -167,6 +193,16 @@ export default function CoachReportDetailPage() {
                 >
                   Modifier
                 </Link>
+                {!report.sent_at ? (
+                  <button
+                    type="button"
+                    onClick={handlePublish}
+                    disabled={publishing}
+                    className="rounded-full border border-emerald-200/40 bg-emerald-400/20 px-4 py-2 text-xs uppercase tracking-wide text-emerald-100 transition hover:bg-emerald-400/30 disabled:opacity-60"
+                  >
+                    {publishing ? "Publication..." : "Publier"}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={handleDelete}

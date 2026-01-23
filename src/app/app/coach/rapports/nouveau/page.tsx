@@ -56,6 +56,14 @@ type AiPreview = {
   mode: "improve" | "propagate" | "finalize";
 };
 
+type PropagationPayload = {
+  sectionTitle: string;
+  sectionContent: string;
+  allSections: { title: string; content: string }[];
+  targetSections: string[];
+  propagateMode: "empty" | "append";
+};
+
 type ClarifyQuestion = {
   id: string;
   question: string;
@@ -270,11 +278,7 @@ export default function CoachReportBuilderPage() {
     null
   );
   const [pendingPropagation, setPendingPropagation] = useState<{
-    sectionTitle: string;
-    sectionContent: string;
-    allSections: { title: string; content: string }[];
-    targetSections: string[];
-    propagateMode: "empty" | "append";
+    payloads: PropagationPayload[];
   } | null>(null);
   const textareaRefs = useRef(new Map<string, HTMLTextAreaElement | null>());
   const [workingObservations, setWorkingObservations] = useState("");
@@ -282,7 +286,6 @@ export default function CoachReportBuilderPage() {
   const [workingClub, setWorkingClub] = useState("");
   const workingObservationsRef = useRef<HTMLTextAreaElement | null>(null);
   const workingNotesRef = useRef<HTMLTextAreaElement | null>(null);
-  const [propagateAppend, setPropagateAppend] = useState(false);
   const [uploadingSections, setUploadingSections] = useState<
     Record<string, boolean>
   >({});
@@ -1294,6 +1297,39 @@ export default function CoachReportBuilderPage() {
     setStatusType("idle");
   };
 
+  const resetWorkingContext = () => {
+    setWorkingClub("");
+    setWorkingObservations("");
+    setWorkingNotes("");
+    setAiError("");
+  };
+
+  const handleClearReportContent = () => {
+    if (reportSections.length === 0) return;
+    if (
+      !window.confirm(
+        "Vider le contenu de toutes les sections sans les retirer ?"
+      )
+    )
+      return;
+    setReportSections((prev) =>
+      prev.map((section) => ({
+        ...section,
+        content: "",
+        mediaUrls: [],
+        mediaCaptions: [],
+      }))
+    );
+    setAiPreviews({});
+    setAiSummary("");
+    setAiError("");
+    setSectionsMessage("");
+    setSectionsMessageType("idle");
+    setImageErrors({});
+    setUploadingSections({});
+    shouldAnimate.current = true;
+  };
+
   const handleSaveReport = async (send: boolean) => {
     if (loadingReport) {
       setStatusMessage("Attends le chargement du rapport.");
@@ -1533,14 +1569,11 @@ export default function CoachReportBuilderPage() {
     }
   };
 
-  const callAiPropagation = async (payload: {
-    sectionTitle: string;
-    sectionContent: string;
-    allSections: { title: string; content: string }[];
-    targetSections: string[];
-    propagateMode: "empty" | "append";
-    clarifications?: { question: string; answer: string }[];
-  }) => {
+  const callAiPropagation = async (
+    payload: PropagationPayload & {
+      clarifications?: { question: string; answer: string }[];
+    }
+  ) => {
     setAiError("");
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -1607,13 +1640,7 @@ export default function CoachReportBuilderPage() {
     }
   };
 
-  const callAiClarify = async (payload: {
-    sectionTitle: string;
-    sectionContent: string;
-    allSections: { title: string; content: string }[];
-    targetSections: string[];
-    propagateMode: "empty" | "append";
-  }) => {
+  const callAiClarify = async (payload: PropagationPayload) => {
     setAiError("");
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -1752,72 +1779,75 @@ export default function CoachReportBuilderPage() {
     setPendingPropagation(null);
   };
 
-  const runPropagation = async (
-    payload: {
-      sectionTitle: string;
-      sectionContent: string;
-      allSections: { title: string; content: string }[];
-      targetSections: string[];
-      propagateMode: "empty" | "append";
-    },
+  const applyPropagationSuggestions = (
+    suggestions: { title: string; content: string }[]
+  ) => {
+    setAiPreviews((prev) => {
+      const next = { ...prev };
+      suggestions.forEach((suggestion) => {
+        const target = reportSections.find(
+          (item) => item.title.toLowerCase() === suggestion.title.toLowerCase()
+        );
+        if (!target) return;
+        if (next[target.id]) return;
+        const content = suggestion.content?.trim();
+        if (!content) return;
+        const base = target.content.trim();
+        const combined = base ? `${base}\n\n${content}` : content;
+        next[target.id] = {
+          original: target.content,
+          suggestion: combined,
+          mode: "propagate",
+        };
+      });
+      return next;
+    });
+  };
+
+  const runPropagationBatch = async (
+    payloads: PropagationPayload[],
     clarifications?: { question: string; answer: string }[]
   ) => {
+    if (payloads.length === 0) return;
     setAiBusyId("propagate");
-    const suggestions = await callAiPropagation({
-      ...payload,
-      clarifications,
-    });
-
-    if (suggestions) {
-      setAiPreviews((prev) => {
-        const next = { ...prev };
-        suggestions.forEach((suggestion) => {
-          const target = reportSections.find(
-            (item) =>
-              item.title.toLowerCase() === suggestion.title.toLowerCase()
-          );
-          if (!target) return;
-          if (next[target.id]) return;
-          const content = suggestion.content?.trim();
-          if (!content) return;
-          const base = target.content.trim();
-          const combined = base ? `${base}\n\n${content}` : content;
-          next[target.id] = {
-            original: target.content,
-            suggestion: combined,
-            mode: "propagate",
-          };
-        });
-        return next;
+    for (const payload of payloads) {
+      const suggestions = await callAiPropagation({
+        ...payload,
+        clarifications,
       });
+      if (suggestions) {
+        applyPropagationSuggestions(suggestions);
+      }
     }
     setAiBusyId(null);
   };
 
-  const handleAiPropagateFromWorking = async () => {
-    if (!canUseAi) return;
-    const hasObservations = !!workingObservations.trim();
-    const hasWork = !!workingNotes.trim();
-    if (!hasObservations && !hasWork) {
-      setAiError("Ajoute des constats ou un travail en cours.");
-      return;
-    }
-    const targets = reportSections
-      .filter((item) => !aiPreviews[item.id])
-      .filter((item) => item.type === "text")
-      .filter((item) => !isSummaryTitle(item.title))
-      .filter((item) => !isPlanTitle(item.title))
-      .filter((item) => (propagateAppend ? true : !item.content.trim()))
-      .map((item) => item.title);
+    const handleAiPropagateFromWorking = async () => {
+      if (!canUseAi) return;
+      const hasObservations = !!workingObservations.trim();
+      const hasWork = !!workingNotes.trim();
+      if (!hasObservations && !hasWork) {
+        setAiError("Ajoute des constats ou un travail en cours.");
+        return;
+      }
+      const eligibleSections = reportSections
+        .filter((item) => !aiPreviews[item.id])
+        .filter((item) => item.type === "text")
+        .filter((item) => !isSummaryTitle(item.title))
+        .filter((item) => !isPlanTitle(item.title));
 
-    if (targets.length === 0) {
-      setAiError(
-        propagateAppend
-          ? "Aucune section disponible."
-          : "Aucune section vide a remplir. Active Ajouter pour completer."
-      );
-      return;
-    }
+      const emptyTargets = eligibleSections
+        .filter((item) => !item.content.trim())
+        .map((item) => item.title);
+      const appendTargets = eligibleSections
+        .filter((item) => item.content.trim())
+        .map((item) => item.title);
+      const targets = [...emptyTargets, ...appendTargets];
+
+      if (targets.length === 0) {
+        setAiError("Aucune section disponible.");
+        return;
+      }
 
     const sourceParts = [];
     if (workingClub.trim()) {
@@ -1826,31 +1856,28 @@ export default function CoachReportBuilderPage() {
     if (workingObservations.trim()) {
       sourceParts.push(`Constats:\n${workingObservations.trim()}`);
     }
-    if (workingNotes.trim()) {
-      sourceParts.push(`Travail en cours:\n${workingNotes.trim()}`);
-    }
-    const sectionContent = sourceParts.join("\n\n");
+      if (workingNotes.trim()) {
+        sourceParts.push(`Travail en cours:\n${workingNotes.trim()}`);
+      }
+      const sectionContent = sourceParts.join("\n\n");
 
-    const propagateMode: "empty" | "append" = propagateAppend
-      ? "append"
-      : "empty";
-    const payload = {
-      sectionTitle: "Travail en cours",
-      sectionContent,
-      allSections: reportSections
-        .filter((item) => item.type === "text")
-        .map((item) => ({
-          title: item.title,
-          content: item.content,
-        })),
-      targetSections: targets,
-      propagateMode,
-    };
+      const clarifyPayload: PropagationPayload = {
+        sectionTitle: "Travail en cours",
+        sectionContent,
+        allSections: reportSections
+          .filter((item) => item.type === "text")
+          .map((item) => ({
+            title: item.title,
+            content: item.content,
+          })),
+        targetSections: targets,
+        propagateMode: appendTargets.length > 0 ? "append" : "empty",
+      };
 
-    setAiBusyId("propagate");
-    const clarification = await callAiClarify(payload);
-    setAiBusyId(null);
-    if (!clarification) return;
+      setAiBusyId("propagate");
+      const clarification = await callAiClarify(clarifyPayload);
+      setAiBusyId(null);
+      if (!clarification) return;
 
     const missingWork = !workingNotes.trim();
     const missingObservations = !workingObservations.trim();
@@ -1882,24 +1909,54 @@ export default function CoachReportBuilderPage() {
     }
 
     const questions = [...clarification.questions, ...forcedQuestions];
-    const needsClarify =
-      missingWork ||
-      missingObservations ||
-      clarification.confidence < CLARIFY_THRESHOLD ||
-      clarification.questions.length > 0;
+      const needsClarify =
+        missingWork ||
+        missingObservations ||
+        clarification.confidence < CLARIFY_THRESHOLD ||
+        clarification.questions.length > 0;
 
-    setClarifyConfidence(clarification.confidence);
-    if (!needsClarify) {
-      await runPropagation(payload);
-      return;
-    }
+      setClarifyConfidence(clarification.confidence);
+      if (!needsClarify) {
+        const payloads: PropagationPayload[] = [];
+        if (emptyTargets.length > 0) {
+          payloads.push({
+            ...clarifyPayload,
+            targetSections: emptyTargets,
+            propagateMode: "empty",
+          });
+        }
+        if (appendTargets.length > 0) {
+          payloads.push({
+            ...clarifyPayload,
+            targetSections: appendTargets,
+            propagateMode: "append",
+          });
+        }
+        await runPropagationBatch(payloads);
+        return;
+      }
 
-    setClarifyQuestions(questions);
-    setClarifyAnswers({});
-    setClarifyCustomAnswers({});
-    setPendingPropagation(payload);
-    setClarifyOpen(true);
-  };
+      setClarifyQuestions(questions);
+      setClarifyAnswers({});
+      setClarifyCustomAnswers({});
+      const pendingPayloads: PropagationPayload[] = [];
+      if (emptyTargets.length > 0) {
+        pendingPayloads.push({
+          ...clarifyPayload,
+          targetSections: emptyTargets,
+          propagateMode: "empty",
+        });
+      }
+      if (appendTargets.length > 0) {
+        pendingPayloads.push({
+          ...clarifyPayload,
+          targetSections: appendTargets,
+          propagateMode: "append",
+        });
+      }
+      setPendingPropagation({ payloads: pendingPayloads });
+      setClarifyOpen(true);
+    };
 
   const handleAiFinalize = async () => {
     if (!canUseAi) return;
@@ -2024,8 +2081,8 @@ export default function CoachReportBuilderPage() {
     });
   }, [clarifyOpen, clarifyQuestions, clarifyAnswers, clarifyCustomAnswers]);
 
-  const handleConfirmClarify = async () => {
-    if (!pendingPropagation) return;
+    const handleConfirmClarify = async () => {
+      if (!pendingPropagation) return;
     const answers = clarifyQuestions
       .map((question) => {
         const value = clarifyAnswers[question.id];
@@ -2054,9 +2111,9 @@ export default function CoachReportBuilderPage() {
         (item): item is { question: string; answer: string } => item !== null
       );
 
-    const payload = pendingPropagation;
+    const { payloads } = pendingPropagation;
     closeClarifyModal();
-    await runPropagation(payload, answers);
+    await runPropagationBatch(payloads, answers);
   };
 
   const handleAiApply = (id: string) => {
@@ -3217,11 +3274,11 @@ export default function CoachReportBuilderPage() {
               </span>
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                disabled={aiLocked || !!aiBusyId}
-                onClick={handleAiSummary}
-                className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
+                <button
+                  type="button"
+                  disabled={aiLocked || !!aiBusyId}
+                  onClick={handleAiSummary}
+                  className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
                   aiLocked
                     ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
                     : "border-white/10 bg-white/10 text-[var(--text)]"
@@ -3242,14 +3299,14 @@ export default function CoachReportBuilderPage() {
                       <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                     </svg>
                   ) : null}
-                  {aiBusyId === "summary" ? "IA..." : "Resume du rapport"}
-                </span>
-              </button>
-              <button
-                type="button"
-                disabled={aiLocked || !!aiBusyId}
-                onClick={handleAiFinalize}
-                className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
+                    {aiBusyId === "summary" ? "IA..." : "Resume du rapport"}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  disabled={aiLocked || !!aiBusyId}
+                  onClick={handleAiFinalize}
+                  className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
                   aiLocked
                     ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
                     : "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
@@ -3270,26 +3327,31 @@ export default function CoachReportBuilderPage() {
                       <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                     </svg>
                   ) : null}
-                  {aiBusyId === "finalize" ? "IA..." : "Finaliser"}
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={resetAiSettings}
-                className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
-              >
-                Reinitialiser
-              </button>
-            </div>
-            <details className="mt-3">
-              <summary className="cursor-pointer text-xs uppercase tracking-wide text-[var(--muted)]">
-                Reglages IA
-              </summary>
-              <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1fr]">
-                <div>
-                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                    Ton
-                  </label>
+                    {aiBusyId === "finalize" ? "IA..." : "Finaliser"}
+                  </span>
+                </button>
+              </div>
+              <details className="mt-3">
+                <summary className="cursor-pointer text-xs uppercase tracking-wide text-[var(--muted)]">
+                  Reglages IA
+                </summary>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs text-[var(--muted)]">
+                    Reinitialise les reglages IA aux valeurs par defaut.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={resetAiSettings}
+                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                  >
+                    Reinitialiser IA
+                  </button>
+                </div>
+                <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1fr]">
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Ton
+                    </label>
                   <select
                     value={aiTone}
                     onChange={(event) => setAiTone(event.target.value)}
@@ -3380,31 +3442,19 @@ export default function CoachReportBuilderPage() {
                 <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
                   Travail en cours
                 </p>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    disabled={aiLocked || !!aiBusyId}
-                    onClick={() => setWorkingNotes("")}
-                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-60"
-                  >
-                    Reinitialiser
-                  </button>
-                  <button
-                    type="button"
-                    disabled={aiLocked || !!aiBusyId}
-                    onClick={() => setPropagateAppend((prev) => !prev)}
-                    className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition disabled:opacity-60 ${
-                      propagateAppend
-                        ? "border-sky-300/40 bg-sky-400/20 text-sky-100"
-                        : "border-white/10 bg-white/5 text-[var(--muted)] hover:text-[var(--text)]"
-                    }`}
-                  >
-                    {propagateAppend ? "Ajouter actif" : "Ajouter"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={aiLocked || !!aiBusyId}
-                    onClick={handleAiPropagateFromWorking}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={aiLocked || !!aiBusyId}
+                      onClick={resetWorkingContext}
+                      className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-60"
+                    >
+                      Reinitialiser
+                    </button>
+                    <button
+                      type="button"
+                      disabled={aiLocked || !!aiBusyId}
+                      onClick={handleAiPropagateFromWorking}
                     className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
                       aiLocked
                         ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
@@ -3438,10 +3488,11 @@ export default function CoachReportBuilderPage() {
                   </span>
                   Traitement IA en cours...
                 </div>
-              ) : null}
-              <p className="mt-2 text-xs text-[var(--muted)]">
-                Constats + travail en cours. L IA propage vers les sections vides.
-              </p>
+                ) : null}
+                <p className="mt-2 text-xs text-[var(--muted)]">
+                  Constats + travail en cours. L IA remplit les sections vides et
+                  complete les sections deja remplies.
+                </p>
               <div className="mt-3 grid gap-3 md:grid-cols-[0.6fr_1.4fr]">
                 <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
                   Club concerne
@@ -3488,11 +3539,19 @@ export default function CoachReportBuilderPage() {
               </div>
             </div>
           </div>
-          <div className="mt-3 flex justify-end">
-            <button
-              type="button"
-              disabled={saving || loadingReport || reportSections.length === 0}
-              onClick={handleClearReportSections}
+            <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={saving || loadingReport || reportSections.length === 0}
+                onClick={handleClearReportContent}
+                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-50"
+              >
+                Vider le contenu
+              </button>
+              <button
+                type="button"
+                disabled={saving || loadingReport || reportSections.length === 0}
+                onClick={handleClearReportSections}
               className="rounded-full border border-rose-300/30 bg-rose-400/10 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-rose-100 transition hover:bg-rose-400/20 disabled:opacity-50"
             >
               Retirer tout
