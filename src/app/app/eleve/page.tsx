@@ -144,8 +144,10 @@ export default function StudentDashboardPage() {
           .select("id, test_name, result_color, mini_summary, position")
           .eq("report_id", reportData.id)
           .order("position", { ascending: true });
-        const sorted = [...(testsData ?? [])].sort((a, b) => {
-          const rank = tpiColorRank[a.result_color] - tpiColorRank[b.result_color];
+        const normalizedTests = (testsData ?? []) as TpiTest[];
+        const sorted = [...normalizedTests].sort((a, b) => {
+          const rank =
+            tpiColorRank[a.result_color] - tpiColorRank[b.result_color];
           if (rank !== 0) return rank;
           return a.position - b.position;
         });
