@@ -244,7 +244,7 @@ export async function POST(req: Request) {
               image_url: `data:${fileData.type || "image/png"};base64,${buffer.toString(
                 "base64"
               )}`,
-              detail: "auto",
+              detail: "auto" as const,
             },
           ];
 
