@@ -155,7 +155,8 @@ export default function CoachStudentDetailPage() {
       return;
     }
 
-    const sorted = [...(testsData ?? [])].sort((a, b) => {
+    const normalizedTests = (testsData ?? []) as TpiTest[];
+    const sorted = [...normalizedTests].sort((a, b) => {
       const rank = tpiColorRank[a.result_color] - tpiColorRank[b.result_color];
       if (rank !== 0) return rank;
       return a.position - b.position;
