@@ -218,6 +218,10 @@ export async function POST(req: Request) {
       pdfFileId = uploaded.id;
     }
 
+    if (report.file_type === "pdf" && !pdfFileId) {
+      throw new Error("Fichier PDF TPI manquant.");
+    }
+
     const userContent =
       report.file_type === "pdf"
         ? [
@@ -240,6 +244,7 @@ export async function POST(req: Request) {
               image_url: `data:${fileData.type || "image/png"};base64,${buffer.toString(
                 "base64"
               )}`,
+              detail: "auto",
             },
           ];
 
