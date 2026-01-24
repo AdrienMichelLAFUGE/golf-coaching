@@ -86,6 +86,7 @@ export default function CoachStudentDetailPage() {
   const [tpiDragging, setTpiDragging] = useState(false);
   const tpiInputRef = useRef<HTMLInputElement | null>(null);
   const [tpiDetail, setTpiDetail] = useState<TpiTest | null>(null);
+  const [tpiHelpOpen, setTpiHelpOpen] = useState(false);
   const tpiProgressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const locale = organization?.locale ?? "fr-FR";
@@ -491,7 +492,7 @@ export default function CoachStudentDetailPage() {
               )}
             </section>
 
-            <section className="panel rounded-2xl p-6">
+            <section className="panel relative rounded-2xl p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-semibold text-[var(--text)]">
@@ -512,15 +513,68 @@ export default function CoachStudentDetailPage() {
                     L assistant IA s appuie sur ce profil pour ses analyses.
                   </div>
                 </div>
-                {tpiReport ? (
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                    {tpiReport.status === "processing"
-                      ? "Analyse en cours"
-                      : tpiReport.status === "ready"
-                      ? "Pret"
-                      : "Erreur"}
+              </div>
+              <div className="absolute right-4 top-4 flex items-center gap-2">
+                  <span className="group relative">
+                    <button
+                      type="button"
+                      onClick={() => setTpiHelpOpen((prev) => !prev)}
+                      className="flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[0.7rem] text-[var(--muted)] transition hover:text-[var(--text)]"
+                      aria-label="Aide import TPI"
+                      aria-expanded={tpiHelpOpen}
+                    >
+                      ?
+                    </button>
+                    <span
+                      className={`absolute right-0 top-full z-20 mt-2 w-80 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-3 text-xs text-[var(--text)] shadow-xl transition ${
+                        tpiHelpOpen
+                          ? "pointer-events-auto opacity-100"
+                          : "pointer-events-none opacity-0"
+                      } group-hover:opacity-100 group-focus-within:opacity-100`}
+                    >
+                      <span className="block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                        Tablette / mobile
+                      </span>
+                      <ol className="mt-2 list-decimal space-y-1 pl-4 text-[0.68rem] text-[var(--muted)]">
+                        <li>
+                          Envoie le rapport TPI depuis myTPI Pro a l eleve, en
+                          te mettant en copie (CC to me).
+                        </li>
+                        <li>
+                          Dans ta boite mail, ouvre le mail et clique sur
+                          partager (icone fleche).
+                        </li>
+                        <li>Selectionne Imprimer.</li>
+                        <li>
+                          Dans l ecran d impression, partage a nouveau et choisis
+                          Enregistrer dans Fichiers.
+                        </li>
+                        <li>
+                          Importe le PDF ici. Attends quelques minutes, puis le
+                          profil apparait en dessous dans la langue du compte.
+                        </li>
+                      </ol>
+                      <span className="mt-3 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                        PC
+                      </span>
+                      <ol className="mt-2 list-decimal space-y-1 pl-4 text-[0.68rem] text-[var(--muted)]">
+                        <li>
+                          Envoie le rapport TPI depuis myTPI Pro a l eleve, en
+                          te mettant en copie (CC to me).
+                        </li>
+                        <li>
+                          Ouvre le mail recu et imprime (Ctrl + P).
+                        </li>
+                        <li>
+                          Dans la fenetre d impression, choisis Print to PDF.
+                        </li>
+                        <li>
+                          Importe le PDF ici. Attends quelques minutes, puis le
+                          profil apparait en dessous dans la langue du compte.
+                        </li>
+                      </ol>
+                    </span>
                   </span>
-                ) : null}
               </div>
 
               <div
