@@ -507,6 +507,10 @@ export default function CoachStudentDetailPage() {
                     Ajoute un screening TPI pour obtenir une synthese claire des
                     points a travailler et des points forts.
                   </p>
+                  <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-emerald-100">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
+                    L assistant IA s appuie sur ce profil pour ses analyses.
+                  </div>
                 </div>
                 {tpiReport ? (
                   <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">

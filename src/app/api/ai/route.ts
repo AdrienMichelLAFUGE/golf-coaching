@@ -10,7 +10,8 @@ type AiAction =
   | "summary"
   | "propagate"
   | "plan"
-  | "clarify";
+  | "clarify"
+  | "axes";
 
 type AiSection = {
   title: string;
@@ -35,6 +36,7 @@ type AiPayload = {
   propagateMode?: "empty" | "append";
   tpiContext?: string;
   clarifications?: { question: string; answer: string }[];
+  axesSelections?: { section: string; title: string; summary: string }[];
   settings?: Partial<AiSettings>;
 };
 
@@ -179,6 +181,17 @@ const buildSystemPrompt = (
       " Pour les questions texte, renvoie choices: [] et placeholder: \"\"." +
       " Ne donne pas de reponse, ne reformule pas les notes." +
       " Ne mets pas de titre."
+    );
+  }
+
+  if (action === "axes") {
+    return (
+      `${base} ${styleHint} ` +
+      "Tu dois proposer 2 axes de reponse par section cible." +
+      " Pour chaque section, donne un titre court et un resume d une phrase." +
+      " Utilise le profil TPI: rouge = limitation physique avec compensation probable, orange = limitation moins impactante, vert = capacite ok donc probleme souvent de comprehension/technique." +
+      " Ne propose pas de contenu final, uniquement des axes." +
+      " N utilise pas de guillemets doubles."
     );
   }
 
@@ -423,6 +436,73 @@ const extractClarify = (response: {
   return null;
 };
 
+const extractAxes = (response: {
+  output_text?: string;
+  output?: Array<{
+    type?: string;
+    content?: unknown;
+  }>;
+}):
+  | {
+      axes: Array<{
+        section: string;
+        options: Array<{ title: string; summary: string }>;
+      }>;
+    }
+  | null => {
+  const raw = response.output_text?.trim();
+  if (!raw && response.output) {
+    const parts: string[] = [];
+    response.output.forEach((item) => {
+      const content = item.content;
+      if (typeof content === "string") {
+        parts.push(content);
+      } else if (Array.isArray(content)) {
+        content.forEach((chunk) => {
+          if (typeof chunk === "string") {
+            parts.push(chunk);
+          } else if (chunk && typeof chunk === "object" && "text" in chunk) {
+            const typed = chunk as { text?: string };
+            if (typed.text) parts.push(typed.text);
+          }
+        });
+      }
+    });
+    if (parts.length > 0) {
+      try {
+        return parseJsonPayload(parts.join("\n").trim()) as {
+          axes: Array<{
+            section: string;
+            options: Array<{ title: string; summary: string }>;
+          }>;
+        };
+      } catch (error) {
+        console.error("Axes parse error:", error, {
+          outputSnippet: parts.join("\n").slice(0, 800),
+        });
+        return null;
+      }
+    }
+  }
+
+  if (!raw) return null;
+
+  try {
+    return parseJsonPayload(raw) as {
+      axes: Array<{
+        section: string;
+        options: Array<{ title: string; summary: string }>;
+      }>;
+    };
+  } catch (error) {
+    console.error("Axes parse error:", error, {
+      outputSnippet: raw.slice(0, 800),
+    });
+  }
+
+  return null;
+};
+
 export async function POST(request: Request) {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -569,6 +649,13 @@ export async function POST(request: Request) {
       .map((item) => `- ${item.question}: ${item.answer}`)
       .join("\n");
 
+    const axesText = (payload.axesSelections ?? [])
+      .map(
+        (item) =>
+          `- ${item.section}: ${item.title} — ${item.summary}`.trim()
+      )
+      .join("\n");
+
     const tpiBlock = payload.tpiContext?.trim()
       ? `\n\nProfil TPI (a utiliser si pertinent):\n${payload.tpiContext.trim()}`
       : "";
@@ -584,12 +671,30 @@ export async function POST(request: Request) {
             .join("\n")}\n\nSections cibles a remplir:\n${(payload.targetSections ?? [])
             .map((title) => `- ${title}`)
             .join("\n")}`
+        : payload.action === "axes"
+        ? `Section source: ${payload.sectionTitle}\nNotes source:\n${payload.sectionContent}\n\nSections presentes:\n${(payload.allSections ?? [])
+            .map((section) => `- ${section.title}`)
+            .join("\n")}\n\nSections cibles a remplir:\n${(payload.targetSections ?? [])
+            .map((title) => `- ${title}`)
+            .join("\n")}${
+            clarificationsText
+              ? `\n\nClarifications du coach:\n${clarificationsText}`
+              : ""
+          }`
         : payload.action === "propagate"
         ? `Section source: ${payload.sectionTitle}\nNotes source:\n${payload.sectionContent}\n\nSections presentes:\n${(payload.allSections ?? [])
             .map((section) => `- ${section.title}`)
             .join("\n")}\n\nSections cibles a remplir:\n${(payload.targetSections ?? [])
             .map((title) => `- ${title}`)
-            .join("\n")}${clarificationsText ? `\n\nClarifications du coach:\n${clarificationsText}` : ""}`
+            .join("\n")}${
+            clarificationsText
+              ? `\n\nClarifications du coach:\n${clarificationsText}`
+              : ""
+          }${
+            axesText
+              ? `\n\nAxes choisis par section:\n${axesText}`
+              : ""
+          }`
         : `Sections:\n${context}`) + tpiBlock;
 
     const openai = new OpenAI({ apiKey: openaiKey });
@@ -604,6 +709,8 @@ export async function POST(request: Request) {
         ? 600
         : payload.action === "clarify"
         ? 500
+        : payload.action === "axes"
+        ? 700
         : payload.action === "propagate"
         ? propagateMaxTokens
         : maxTokensForLength(settings.length);
@@ -679,6 +786,46 @@ export async function POST(request: Request) {
                   },
                 },
                 required: ["confidence", "questions"],
+              },
+              strict: true,
+            },
+          }
+        : payload.action === "axes"
+        ? {
+            format: {
+              type: "json_schema" as const,
+              name: "axes",
+              description:
+                "Retourne un objet JSON avec axes (section, options).",
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  axes: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      additionalProperties: false,
+                      properties: {
+                        section: { type: "string" },
+                        options: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            additionalProperties: false,
+                            properties: {
+                              title: { type: "string" },
+                              summary: { type: "string" },
+                            },
+                            required: ["title", "summary"],
+                          },
+                        },
+                      },
+                      required: ["section", "options"],
+                    },
+                  },
+                },
+                required: ["axes"],
               },
               strict: true,
             },
@@ -759,6 +906,15 @@ export async function POST(request: Request) {
         { error: "JSON invalide." },
         { status: 502 }
       );
+    }
+
+    if (payload.action === "axes") {
+      const axes = extractAxes(response);
+      if (axes) {
+        return NextResponse.json({ axes: axes.axes ?? [] });
+      }
+
+      return NextResponse.json({ error: "JSON invalide." }, { status: 502 });
     }
 
     if (payload.action === "propagate") {

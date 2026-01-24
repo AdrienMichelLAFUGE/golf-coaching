@@ -66,6 +66,17 @@ type PropagationPayload = {
   tpiContext?: string;
 };
 
+type AxisOption = {
+  id: string;
+  title: string;
+  summary: string;
+};
+
+type AxesForSection = {
+  section: string;
+  options: AxisOption[];
+};
+
 type ClarifyQuestion = {
   id: string;
   question: string;
@@ -282,7 +293,20 @@ export default function CoachReportBuilderPage() {
   );
   const [pendingPropagation, setPendingPropagation] = useState<{
     payloads: PropagationPayload[];
+    clarifications?: { question: string; answer: string }[];
   } | null>(null);
+  const [axesOpen, setAxesOpen] = useState(false);
+  const [axesLoading, setAxesLoading] = useState(false);
+  const [axesBySection, setAxesBySection] = useState<AxesForSection[]>([]);
+  const [axesSelection, setAxesSelection] = useState<Record<string, string>>(
+    {}
+  );
+  const [axesPayloads, setAxesPayloads] = useState<PropagationPayload[] | null>(
+    null
+  );
+  const [axesClarifications, setAxesClarifications] = useState<
+    { question: string; answer: string }[]
+  >([]);
   const textareaRefs = useRef(new Map<string, HTMLTextAreaElement | null>());
   const [workingObservations, setWorkingObservations] = useState("");
   const [workingNotes, setWorkingNotes] = useState("");
@@ -1611,6 +1635,7 @@ export default function CoachReportBuilderPage() {
   const callAiPropagation = async (
     payload: PropagationPayload & {
       clarifications?: { question: string; answer: string }[];
+      axesSelections?: { section: string; title: string; summary: string }[];
     }
   ) => {
     setAiError("");
@@ -1636,6 +1661,7 @@ export default function CoachReportBuilderPage() {
           targetSections: payload.targetSections,
           propagateMode: payload.propagateMode,
           clarifications: payload.clarifications,
+          axesSelections: payload.axesSelections,
           tpiContext: tpiContext || undefined,
           settings: {
             tone: aiTone,
@@ -1752,6 +1778,76 @@ export default function CoachReportBuilderPage() {
     }
   };
 
+  const callAiAxes = async (
+    payload: PropagationPayload,
+    clarifications?: { question: string; answer: string }[]
+  ) => {
+    setAiError("");
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        setAiError("Session invalide.");
+        return null;
+      }
+
+      const response = await fetch("/api/ai", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          action: "axes",
+          sectionTitle: payload.sectionTitle,
+          sectionContent: payload.sectionContent,
+          allSections: payload.allSections,
+          targetSections: payload.targetSections,
+          clarifications,
+          tpiContext: tpiContext || undefined,
+          settings: {
+            tone: aiTone,
+            techLevel: aiTechLevel,
+            style: aiStyle,
+            length: aiLength,
+            imagery: aiImagery,
+            focus: aiFocus,
+          },
+        }),
+      });
+
+      const raw = await response.text();
+      if (!raw) {
+        setAiError("Reponse vide.");
+        return null;
+      }
+
+      let data: {
+        axes?: { section: string; options: { title: string; summary: string }[] }[];
+        error?: string;
+      };
+      try {
+        data = JSON.parse(raw) as {
+          axes?: { section: string; options: { title: string; summary: string }[] }[];
+          error?: string;
+        };
+      } catch {
+        setAiError(raw.slice(0, 160));
+        return null;
+      }
+
+      if (!response.ok) {
+        setAiError(data.error ?? "Erreur IA.");
+        return null;
+      }
+
+      return data.axes ?? [];
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "Erreur IA.");
+      return null;
+    }
+  };
+
   const handleAiImprove = async (section: ReportSection) => {
     if (!canUseAi) return;
     setAiBusyId(section.id);
@@ -1820,6 +1916,62 @@ export default function CoachReportBuilderPage() {
     setPendingPropagation(null);
   };
 
+  const closeAxesModal = () => {
+    setAxesOpen(false);
+    setAxesBySection([]);
+    setAxesSelection({});
+    setAxesPayloads(null);
+    setAxesClarifications([]);
+  };
+
+  const openAxesModal = async (
+    payloads: PropagationPayload[],
+    clarifications: { question: string; answer: string }[]
+  ) => {
+    if (payloads.length === 0) return;
+    setAxesLoading(true);
+    setAiBusyId("propagate");
+
+    const allTargets = payloads.flatMap((payload) => payload.targetSections);
+    const uniqueTargets = Array.from(new Set(allTargets));
+
+    const basePayload: PropagationPayload = {
+      ...payloads[0],
+      targetSections: uniqueTargets,
+      propagateMode: "empty",
+    };
+
+    const axes = await callAiAxes(basePayload, clarifications);
+    setAiBusyId(null);
+    setAxesLoading(false);
+    if (!axes || axes.length === 0) {
+      setAiError("Aucun axe propose.");
+      return;
+    }
+
+    const withIds: AxesForSection[] = axes.map((entry) => ({
+      section: entry.section,
+      options: entry.options.map((option, index) => ({
+        id: `${entry.section}-${index}`,
+        title: option.title,
+        summary: option.summary,
+      })),
+    }));
+
+    const initialSelection: Record<string, string> = {};
+    withIds.forEach((entry) => {
+      if (entry.options[0]) {
+        initialSelection[entry.section] = entry.options[0].id;
+      }
+    });
+
+    setAxesBySection(withIds);
+    setAxesSelection(initialSelection);
+    setAxesClarifications(clarifications);
+    setAxesPayloads(payloads);
+    setAxesOpen(true);
+  };
+
   const applyPropagationSuggestions = (
     suggestions: { title: string; content: string }[]
   ) => {
@@ -1847,14 +1999,21 @@ export default function CoachReportBuilderPage() {
 
   const runPropagationBatch = async (
     payloads: PropagationPayload[],
-    clarifications?: { question: string; answer: string }[]
+    clarifications?: { question: string; answer: string }[],
+    axesSelections?: { section: string; title: string; summary: string }[]
   ) => {
     if (payloads.length === 0) return;
     setAiBusyId("propagate");
     for (const payload of payloads) {
+      const axesForPayload = axesSelections
+        ? axesSelections.filter((item) =>
+            payload.targetSections.includes(item.section)
+          )
+        : undefined;
       const suggestions = await callAiPropagation({
         ...payload,
         clarifications,
+        axesSelections: axesForPayload,
       });
       if (suggestions) {
         applyPropagationSuggestions(suggestions);
@@ -1974,7 +2133,7 @@ export default function CoachReportBuilderPage() {
             propagateMode: "append",
           });
         }
-        await runPropagationBatch(payloads);
+        await openAxesModal(payloads, []);
         return;
       }
 
@@ -2123,7 +2282,7 @@ export default function CoachReportBuilderPage() {
     });
   }, [clarifyOpen, clarifyQuestions, clarifyAnswers, clarifyCustomAnswers]);
 
-    const handleConfirmClarify = async () => {
+  const handleConfirmClarify = async () => {
       if (!pendingPropagation) return;
     const answers = clarifyQuestions
       .map((question) => {
@@ -2155,7 +2314,31 @@ export default function CoachReportBuilderPage() {
 
     const { payloads } = pendingPropagation;
     closeClarifyModal();
-    await runPropagationBatch(payloads, answers);
+    await openAxesModal(payloads, answers);
+  };
+
+  const handleConfirmAxes = async () => {
+    if (!axesPayloads || axesPayloads.length === 0) return;
+    const selections = axesBySection
+      .map((entry) => {
+        const selectedId = axesSelection[entry.section];
+        const option =
+          entry.options.find((item) => item.id === selectedId) ??
+          entry.options[0];
+        if (!option) return null;
+        return {
+          section: entry.section,
+          title: option.title,
+          summary: option.summary,
+        };
+      })
+      .filter(
+        (item): item is { section: string; title: string; summary: string } =>
+          item !== null
+      );
+
+    closeAxesModal();
+    await runPropagationBatch(axesPayloads, axesClarifications, selections);
   };
 
   const handleAiApply = (id: string) => {
@@ -2358,6 +2541,11 @@ export default function CoachReportBuilderPage() {
     }
     loadTpiContext(match.tpi_report_id);
   }, [studentId, students]);
+
+  const selectedStudent = useMemo(
+    () => students.find((student) => student.id === studentId) ?? null,
+    [students, studentId]
+  );
 
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
@@ -3265,6 +3453,21 @@ export default function CoachReportBuilderPage() {
           <p className="mt-2 text-xs text-[var(--muted)]">
             Organise les sections et remplis le contenu. Drag & drop actif.
           </p>
+          {tpiContext ? (
+            <div className="mt-3 inline-flex flex-wrap items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-emerald-100">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
+              Profil TPI detecte
+              {selectedStudent ? (
+                <span className="text-[0.55rem] text-emerald-100/80">
+                  - {selectedStudent.first_name}{" "}
+                  {selectedStudent.last_name ?? ""}
+                </span>
+              ) : null}
+              <span className="text-[0.55rem] text-emerald-100/80">
+                L assistant IA l utilisera pour ses recommandations.
+              </span>
+            </div>
+          ) : null}
           <div className="mt-2 inline-flex items-center gap-2 rounded-md border border-dashed border-white/20 bg-white/5 px-3 py-1 text-[0.55rem] uppercase tracking-wide text-[var(--muted)] select-none">
             <svg
               viewBox="0 0 24 24"
@@ -4264,6 +4467,106 @@ export default function CoachReportBuilderPage() {
                   {aiBusyId === "propagate"
                     ? "Propagation..."
                     : "Continuer la propagation"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {axesOpen ? (
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 px-4 py-10">
+            <div className="mx-auto flex w-full max-w-3xl flex-col rounded-3xl border border-white/10 bg-[var(--bg-elevated)] shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
+              <div className="flex items-start justify-between gap-4 p-6">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                    Assistant IA
+                  </p>
+                  <h3 className="mt-2 text-xl font-semibold text-[var(--text)]">
+                    Choisir un axe par section
+                  </h3>
+                  <p className="mt-2 text-sm text-[var(--muted)]">
+                    Selectionne l angle de reponse le plus pertinent pour chaque
+                    section. L IA generera ensuite le contenu.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeAxesModal}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                  aria-label="Fermer"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M18 6L6 18" />
+                    <path d="M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="mt-2 max-h-[60vh] space-y-4 overflow-y-auto px-6 pb-6">
+                {axesBySection.map((entry) => (
+                  <div
+                    key={entry.section}
+                    className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                  >
+                    <p className="text-sm font-semibold text-[var(--text)]">
+                      {entry.section}
+                    </p>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      {entry.options.map((option) => {
+                        const selected =
+                          axesSelection[entry.section] === option.id;
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            onClick={() =>
+                              setAxesSelection((prev) => ({
+                                ...prev,
+                                [entry.section]: option.id,
+                              }))
+                            }
+                            className={`rounded-2xl border p-3 text-left text-sm transition ${
+                              selected
+                                ? "border-emerald-300/40 bg-emerald-400/10 text-emerald-100"
+                                : "border-white/10 bg-white/5 text-[var(--muted)] hover:text-[var(--text)]"
+                            }`}
+                          >
+                            <p className="text-sm font-semibold text-[var(--text)]">
+                              {option.title}
+                            </p>
+                            <p className="mt-1 text-xs text-[var(--muted)]">
+                              {option.summary}
+                            </p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-3 border-t border-white/10 px-6 py-4">
+                <button
+                  type="button"
+                  onClick={closeAxesModal}
+                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmAxes}
+                  disabled={aiBusyId === "propagate"}
+                  className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
+                >
+                  {aiBusyId === "propagate"
+                    ? "Propagation..."
+                    : "Lancer la propagation"}
                 </button>
               </div>
             </div>
