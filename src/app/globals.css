@@ -3,6 +3,7 @@
 :root {
   color-scheme: dark;
   --bg: #0b0f14;
+  --overlay: rgba(11, 15, 20, 0.72);
   --bg-elevated: #0f1621;
   --panel: #111b27;
   --panel-strong: #162233;
@@ -20,6 +21,7 @@
 :root[data-theme="light"] {
   color-scheme: light;
   --bg: #f6f7fb;
+  --overlay: rgba(15, 23, 42, 0.2);
   --bg-elevated: #ffffff;
   --panel: #f8fafc;
   --panel-strong: #eef2f7;

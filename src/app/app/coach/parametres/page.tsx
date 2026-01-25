@@ -63,6 +63,7 @@ export default function CoachSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [premiumModalOpen, setPremiumModalOpen] = useState(false);
 
   const [fullName, setFullName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
@@ -102,6 +103,8 @@ export default function CoachSettingsPage() {
     [reportDefaultSections]
   );
   const aiLocked = !(organization?.ai_enabled ?? false);
+  const openPremiumModal = () => setPremiumModalOpen(true);
+  const closePremiumModal = () => setPremiumModalOpen(false);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -628,7 +631,12 @@ export default function CoachSettingsPage() {
                 Assistant IA
               </h3>
               {aiLocked ? (
-                <span className="flex items-center gap-2 rounded-full border border-amber-300/30 bg-amber-400/10 px-2 py-1 text-[0.6rem] uppercase tracking-wide text-amber-200">
+                <button
+                  type="button"
+                  onClick={openPremiumModal}
+                  className="flex items-center gap-2 rounded-full border border-amber-300/30 bg-amber-400/10 px-2 py-1 text-[0.6rem] uppercase tracking-wide text-amber-200 transition hover:bg-amber-400/20"
+                  aria-label="Decouvrir Premium"
+                >
                   <svg
                     viewBox="0 0 24 24"
                     className="h-3.5 w-3.5"
@@ -642,18 +650,57 @@ export default function CoachSettingsPage() {
                     <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                   </svg>
                   Premium
-                </span>
+                </button>
               ) : null}
             </div>
             <p className="mt-2 text-xs text-[var(--muted)]">
               Parametres par defaut utilises par l IA. Les actions IA sont
               reservees aux comptes premium.
             </p>
-            <div
-              className={`mt-4 grid gap-4 md:grid-cols-[1fr_1fr] ${
-                aiLocked ? "pointer-events-none opacity-60" : ""
-              }`}
-            >
+            <div className="relative mt-4">
+              {aiLocked ? (
+                <button
+                  type="button"
+                  onClick={openPremiumModal}
+                  className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-[var(--overlay)] px-4 text-left backdrop-blur-sm"
+                  aria-label="Decouvrir Premium"
+                >
+                  <div className="flex w-full max-w-md items-center justify-between gap-4 rounded-2xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-amber-200 shadow-[0_16px_40px_rgba(15,23,42,0.25)]">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-full border border-amber-300/40 bg-amber-400/20">
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <rect x="3" y="11" width="18" height="11" rx="2" />
+                          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                        </svg>
+                      </span>
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.2em]">
+                          Assistant IA
+                        </p>
+                        <p className="text-sm text-amber-100/80">
+                          Debloque le mode Premium
+                        </p>
+                      </div>
+                    </div>
+                    <span className="rounded-full border border-amber-300/40 bg-amber-400/20 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-amber-200">
+                      Voir les offres
+                    </span>
+                  </div>
+                </button>
+              ) : null}
+              <div
+                className={`grid gap-4 md:grid-cols-[1fr_1fr] ${
+                  aiLocked ? "pointer-events-none opacity-60" : ""
+                }`}
+              >
               <div>
                 <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
                   IA active
@@ -766,6 +813,7 @@ export default function CoachSettingsPage() {
                   <option value="mental">Mental</option>
                   <option value="strategie">Strategie</option>
                 </select>
+              </div>
               </div>
             </div>
           </section>
@@ -908,6 +956,103 @@ export default function CoachSettingsPage() {
               {error ? <span className="text-sm text-red-400">{error}</span> : null}
             </div>
           </section>
+          {premiumModalOpen ? (
+            <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 px-4 py-10">
+              <div className="mx-auto flex w-full max-w-4xl flex-col rounded-3xl border border-white/10 bg-[var(--bg-elevated)] shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
+                <div className="flex items-start justify-between gap-4 p-6">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                      Premium
+                    </p>
+                    <h3 className="mt-2 text-xl font-semibold text-[var(--text)]">
+                      Debloque l assistant IA
+                    </h3>
+                    <p className="mt-2 text-sm text-[var(--muted)]">
+                      Generation de layouts, resume automatique, propagation
+                      multi-sections et outils IA avances.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closePremiumModal}
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                    aria-label="Fermer"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M18 6L6 18" />
+                      <path d="M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="grid gap-4 px-6 pb-6 md:grid-cols-2">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                          Mensuel
+                        </p>
+                        <p className="mt-2 text-2xl font-semibold text-[var(--text)]">
+                          29 EUR / mois
+                        </p>
+                      </div>
+                      <span className="rounded-full border border-amber-300/30 bg-amber-400/10 px-3 py-1 text-[0.55rem] uppercase tracking-wide text-amber-200">
+                        Flexible
+                      </span>
+                    </div>
+                    <ul className="mt-4 space-y-2 text-xs text-[var(--muted)]">
+                      <li>Layouts IA et galerie enrichie</li>
+                      <li>Propagation multi-sections</li>
+                      <li>Resume et finalisation IA</li>
+                    </ul>
+                    <button
+                      type="button"
+                      className="mt-5 w-full rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
+                    >
+                      Choisir mensuel
+                    </button>
+                  </div>
+                  <div className="rounded-2xl border border-emerald-300/30 bg-emerald-400/10 p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.2em] text-emerald-100">
+                          Annuel
+                        </p>
+                        <p className="mt-2 text-2xl font-semibold text-[var(--text)]">
+                          290 EUR / an
+                        </p>
+                      </div>
+                      <span className="rounded-full border border-emerald-300/30 bg-emerald-400/20 px-3 py-1 text-[0.55rem] uppercase tracking-wide text-emerald-100">
+                        2 mois offerts
+                      </span>
+                    </div>
+                    <ul className="mt-4 space-y-2 text-xs text-emerald-100/80">
+                      <li>Tout le mensuel + priorite IA</li>
+                      <li>Personnalisation avancee</li>
+                      <li>Support premium</li>
+                    </ul>
+                    <button
+                      type="button"
+                      className="mt-5 w-full rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90"
+                    >
+                      Passer en annuel
+                    </button>
+                  </div>
+                </div>
+                <div className="border-t border-white/10 px-6 py-4 text-xs text-[var(--muted)]">
+                  Besoin d un plan equipe ou club ? Contacte-nous pour une offre sur
+                  mesure.
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
     </RoleGuard>
