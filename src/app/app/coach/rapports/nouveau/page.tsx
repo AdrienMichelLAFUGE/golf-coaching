@@ -1,8 +1,16 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { defaultSectionTemplates } from "@/lib/default-section-templates";
 import RoleGuard from "../../../_components/role-guard";
 import { useProfile } from "../../../_components/profile-context";
 import PageBack from "../../../_components/page-back";
@@ -13,18 +21,21 @@ type SectionTemplate = {
   id?: string;
   title: string;
   type: SectionType;
+  tags?: string[];
 };
 
-const defaultSections: SectionTemplate[] = [
-  { title: "Resume de la seance", type: "text" },
-  { title: "Objectifs prioritaires", type: "text" },
-  { title: "Technique", type: "text" },
-  { title: "Exercices recommandes", type: "text" },
-  { title: "Feedback mental", type: "text" },
-  { title: "Statistiques", type: "text" },
-  { title: "Plan pour la semaine", type: "text" },
-  { title: "Images", type: "image" },
-];
+const starterSections: SectionTemplate[] = defaultSectionTemplates;
+
+const sectionTagMap = new Map(
+  starterSections.map((section) => [
+    section.title.toLowerCase(),
+    section.tags ?? [],
+  ])
+);
+sectionTagMap.set("technique", ["technique", "swing"]);
+sectionTagMap.set("plan pour la semaine", ["planning"]);
+sectionTagMap.set("images", ["visual", "swing"]);
+sectionTagMap.set("feedback mental", ["mental", "focus"]);
 
 const CAPTION_LIMIT = 150;
 const CLARIFY_THRESHOLD = 0.8;
@@ -106,10 +117,27 @@ type SectionLayout = {
   templateIds: string[];
 };
 
+type LayoutOption = {
+  id: string;
+  title: string;
+  hint: string;
+  templates: SectionTemplate[];
+  source: "suggested" | "saved" | "ai";
+};
+
+type AiLayoutAnswers = {
+  goal: string;
+  focus: string;
+  sector: string;
+  detail: "quick" | "standard" | "complete";
+  images: "auto" | "yes" | "no";
+  sectionCount: number;
+};
+
 const defaultReportSections: SectionTemplate[] = [
   { title: "Resume de la seance", type: "text" },
-  { title: "Technique", type: "text" },
-  { title: "Plan pour la semaine", type: "text" },
+  { title: "Diagnostic swing", type: "text" },
+  { title: "Plan 7 jours", type: "text" },
 ];
 
 const createSection = (template: SectionTemplate): ReportSection => ({
@@ -215,7 +243,7 @@ export default function CoachReportBuilderPage() {
   const draftKey = "gc.reportDraft.new";
   const draftTimer = useRef<number | null>(null);
   const [sectionTemplates, setSectionTemplates] =
-    useState<SectionTemplate[]>(defaultSections);
+    useState<SectionTemplate[]>(starterSections);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [layouts, setLayouts] = useState<SectionLayout[]>([]);
   const [selectedLayoutId, setSelectedLayoutId] = useState("");
@@ -230,6 +258,30 @@ export default function CoachReportBuilderPage() {
   const [layoutSaving, setLayoutSaving] = useState(false);
   const [layoutCustomTitle, setLayoutCustomTitle] = useState("");
   const [layoutCustomIsImage, setLayoutCustomIsImage] = useState(false);
+  const initialBuilderStep = searchParams.get("reportId")
+    ? "report"
+    : "layout";
+  const [builderStep, setBuilderStep] = useState<
+    "layout" | "sections" | "report"
+  >(initialBuilderStep);
+  const [selectedLayoutOptionId, setSelectedLayoutOptionId] = useState("");
+  const [sectionsPanelCollapsed, setSectionsPanelCollapsed] = useState(true);
+  const [aiLayoutOpen, setAiLayoutOpen] = useState(false);
+  const [aiLayoutAnswers, setAiLayoutAnswers] = useState<AiLayoutAnswers>({
+    goal: "",
+    focus: "",
+    sector: "",
+    detail: "standard",
+    images: "auto",
+    sectionCount: 5,
+  });
+  const [aiLayoutCountTouched, setAiLayoutCountTouched] = useState(false);
+  const [aiLayoutOption, setAiLayoutOption] = useState<LayoutOption | null>(
+    null
+  );
+  const [aiLayoutTitle, setAiLayoutTitle] = useState("");
+  const [aiLayoutSaving, setAiLayoutSaving] = useState(false);
+  const [aiLayoutMessage, setAiLayoutMessage] = useState("");
   const [reportSections, setReportSections] =
     useState<ReportSection[]>(defaultReportSections.map(createSection));
   const [customSection, setCustomSection] = useState("");
@@ -394,6 +446,354 @@ export default function CoachReportBuilderPage() {
     [sectionTemplates, layoutTemplateIds]
   );
 
+  const layoutOptions = useMemo(() => {
+    const presets: LayoutOption[] = [];
+    const templateLookup = new Map<string, SectionTemplate>();
+    sectionTemplates.forEach((template) => {
+      templateLookup.set(template.title.toLowerCase(), template);
+    });
+
+    const dedupeTemplates = (templates: SectionTemplate[]) => {
+      const seen = new Set<string>();
+      return templates.filter((template) => {
+        const key = template.id ?? template.title.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    };
+
+    const pickTitles = (titles: string[]) =>
+      titles
+        .map((title) => templateLookup.get(title.toLowerCase()))
+        .filter((template): template is SectionTemplate => Boolean(template));
+
+    const pickTags = (tags: string[]) =>
+      sectionTemplates.filter((template) =>
+        (template.tags ?? []).some((tag) => tags.includes(tag))
+      );
+
+    const addPreset = ({
+      id,
+      title,
+      hint,
+      titles = [],
+      tags = [],
+      limit,
+      fill = false,
+    }: {
+      id: string;
+      title: string;
+      hint: string;
+      titles?: string[];
+      tags?: string[];
+      limit?: number;
+      fill?: boolean;
+    }) => {
+      let templates = dedupeTemplates([
+        ...pickTitles(titles),
+        ...pickTags(tags),
+      ]);
+
+      if (limit && fill) {
+        sectionTemplates.forEach((template) => {
+          if (templates.length >= limit) return;
+          if (!templates.includes(template)) {
+            templates.push(template);
+          }
+        });
+      }
+
+      if (limit) {
+        templates = templates.slice(0, limit);
+      }
+
+      if (templates.length === 0) return;
+      presets.push({ id, title, hint, templates, source: "suggested" });
+    };
+
+    const coreTitles = ["Resume de la seance", "Plan 7 jours"];
+
+    addPreset({
+      id: "suggested:quick",
+      title: "Rapide",
+      hint: "3 sections pour aller vite",
+      titles: ["Resume de la seance", "Diagnostic swing", "Plan 7 jours"],
+      limit: 3,
+      fill: true,
+    });
+    addPreset({
+      id: "suggested:standard",
+      title: "Standard",
+      hint: "Structure equilibree",
+      titles: [
+        "Resume de la seance",
+        "Diagnostic swing",
+        "Exercices recommandes",
+        "Mental - focus",
+        "Plan 7 jours",
+      ],
+      limit: 5,
+      fill: true,
+    });
+    addPreset({
+      id: "suggested:detail",
+      title: "Detaille",
+      hint: "Plus de profondeur",
+      titles: [
+        "Resume de la seance",
+        "Points forts",
+        "Axes d amelioration",
+        "Diagnostic swing",
+        "Statistiques",
+        "Exercices recommandes",
+        "Plan 7 jours",
+        "Routine pre-shot",
+      ],
+      limit: 8,
+      fill: true,
+    });
+    addPreset({
+      id: "suggested:technique",
+      title: "Technique",
+      hint: "Seance technique swing",
+      titles: coreTitles,
+      tags: ["technique", "swing", "setup", "impact"],
+      limit: 6,
+    });
+    addPreset({
+      id: "suggested:shortgame",
+      title: "Petit jeu",
+      hint: "Seance petit jeu et approches",
+      titles: coreTitles,
+      tags: ["short_game", "approach", "chipping", "pitching", "bunker"],
+      limit: 6,
+    });
+    addPreset({
+      id: "suggested:putting",
+      title: "Putting",
+      hint: "Seance putting et greens",
+      titles: coreTitles,
+      tags: ["putting", "green", "distance"],
+      limit: 6,
+    });
+    addPreset({
+      id: "suggested:course",
+      title: "Parcours",
+      hint: "Strategie et gestion du parcours",
+      titles: coreTitles,
+      tags: ["strategy", "club_choice", "driver"],
+      limit: 6,
+    });
+    addPreset({
+      id: "suggested:mental",
+      title: "Mental",
+      hint: "Focus mental et routines",
+      titles: coreTitles,
+      tags: ["mental", "focus", "stress", "confidence", "breathing", "routine"],
+      limit: 6,
+    });
+
+    const saved = layouts.map((layout) => ({
+      id: layout.id,
+      title: layout.title,
+      hint: `Layout sauvegarde - ${layout.templateIds.length} sections`,
+      templates: layout.templateIds
+        .map((templateId) => templateById.get(templateId))
+        .filter((template): template is SectionTemplate => Boolean(template)),
+      source: "saved" as const,
+    }));
+
+    const base = [...presets, ...saved];
+    if (!aiLayoutOption) return base;
+    return [
+      aiLayoutOption,
+      ...base.filter((option) => option.id !== aiLayoutOption.id),
+    ];
+  }, [layouts, sectionTemplates, templateById, aiLayoutOption]);
+
+  const selectedLayoutOption = useMemo(() => {
+    const direct = layoutOptions.find(
+      (option) => option.id === selectedLayoutOptionId
+    );
+    if (direct) return direct;
+    return layoutOptions[0] ?? null;
+  }, [layoutOptions, selectedLayoutOptionId]);
+
+  const maxAiLayoutCount = useMemo(
+    () => Math.max(1, Math.min(12, sectionTemplates.length)),
+    [sectionTemplates.length]
+  );
+  const minAiLayoutCount = Math.min(3, maxAiLayoutCount);
+  const clampAiLayoutCount = useCallback(
+    (value: number) =>
+      Math.min(maxAiLayoutCount, Math.max(minAiLayoutCount, value)),
+    [maxAiLayoutCount, minAiLayoutCount]
+  );
+  const getAiLayoutDefaultCount = useCallback(
+    (detail: AiLayoutAnswers["detail"]) => {
+      const base = detail === "quick" ? 3 : detail === "standard" ? 5 : 8;
+      return clampAiLayoutCount(base);
+    },
+    [clampAiLayoutCount]
+  );
+
+  useEffect(() => {
+    if (aiLayoutCountTouched) return;
+    const nextCount = getAiLayoutDefaultCount(aiLayoutAnswers.detail);
+    setAiLayoutAnswers((prev) =>
+      prev.sectionCount === nextCount ? prev : { ...prev, sectionCount: nextCount }
+    );
+  }, [
+    aiLayoutAnswers.detail,
+    aiLayoutCountTouched,
+    getAiLayoutDefaultCount,
+  ]);
+
+  const aiLayoutSectionCount = clampAiLayoutCount(
+    aiLayoutAnswers.sectionCount ||
+      getAiLayoutDefaultCount(aiLayoutAnswers.detail)
+  );
+
+  const aiLayoutSuggestion = useMemo(() => {
+    const candidates = sectionTemplates;
+    if (candidates.length === 0) return null;
+
+    const goalKeywords: Record<string, string[]> = {
+      technique: ["technique", "swing"],
+      mental: ["mental"],
+      performance: ["stat", "performance", "kpi"],
+      synthese: ["resume", "synthese", "bilan"],
+    };
+    const goalTags: Record<string, string[]> = {
+      technique: ["technique", "swing", "setup", "impact"],
+      mental: ["mental", "focus", "stress", "confidence"],
+      performance: ["stats", "performance", "strategy"],
+      synthese: ["summary", "planning"],
+    };
+    const sectorKeywords: Record<string, string[]> = {
+      swing: ["swing", "technique", "impact"],
+      short_game: ["petit", "approche", "chip", "pitch", "bunker"],
+      putting: ["putt", "green", "dosage"],
+      parcours: ["strategie", "parcours", "tee"],
+      physique: ["physique", "mobilite", "prep"],
+    };
+    const sectorTags: Record<string, string[]> = {
+      swing: ["technique", "swing", "setup", "impact", "driver", "irons"],
+      short_game: ["short_game", "approach", "chipping", "pitching", "bunker"],
+      putting: ["putting", "green", "distance"],
+      parcours: ["strategy", "club_choice", "driver"],
+      physique: ["physical", "mobility", "prep"],
+    };
+    const focusKeywords: Record<string, string[]> = {
+      plan: ["plan", "semaine", "programme", "routine"],
+      exercices: ["exercice"],
+      objectifs: ["objectif"],
+      images: ["image"],
+    };
+    const focusTags: Record<string, string[]> = {
+      plan: ["planning", "routine"],
+      exercices: ["exercises", "practice"],
+      objectifs: ["goals"],
+      images: ["visual"],
+    };
+    const normalizedGoal = aiLayoutAnswers.goal;
+    const normalizedFocus = aiLayoutAnswers.focus;
+    const normalizedSector = aiLayoutAnswers.sector;
+    const goalLabels: Record<string, string> = {
+      synthese: "Synthese",
+      technique: "Technique",
+      mental: "Mental",
+      performance: "Performance",
+    };
+    const focusLabels: Record<string, string> = {
+      plan: "Plan",
+      exercices: "Exercices",
+      objectifs: "Objectifs",
+      images: "Visuel",
+    };
+    const sectorLabels: Record<string, string> = {
+      swing: "Swing",
+      short_game: "Petit jeu",
+      putting: "Putting",
+      parcours: "Parcours",
+      physique: "Physique",
+    };
+    const keywords = [
+      ...(goalKeywords[normalizedGoal] ?? []),
+      ...(focusKeywords[normalizedFocus] ?? []),
+      ...(sectorKeywords[normalizedSector] ?? []),
+    ];
+    const targetTags = new Set<string>([
+      ...(goalTags[normalizedGoal] ?? []),
+      ...(focusTags[normalizedFocus] ?? []),
+      ...(sectorTags[normalizedSector] ?? []),
+    ]);
+
+    const matchesKeyword = (section: SectionTemplate) =>
+      keywords.some((keyword) =>
+        section.title.toLowerCase().includes(keyword)
+      );
+    const matchesTag = (section: SectionTemplate) =>
+      targetTags.size > 0 &&
+      (section.tags ?? []).some((tag) => targetTags.has(tag));
+
+    const picked: SectionTemplate[] = [];
+    candidates.forEach((section) => {
+      if (matchesTag(section) || matchesKeyword(section)) {
+        picked.push(section);
+      }
+    });
+
+    if (aiLayoutAnswers.images !== "no") {
+      candidates.forEach((section) => {
+        if (section.type === "image" && !picked.includes(section)) {
+          picked.push(section);
+        }
+      });
+    }
+
+    const defaultLimit = getAiLayoutDefaultCount(aiLayoutAnswers.detail);
+    const requestedLimit =
+      aiLayoutAnswers.sectionCount > 0
+        ? aiLayoutAnswers.sectionCount
+        : defaultLimit;
+    const limit = Math.min(
+      clampAiLayoutCount(requestedLimit),
+      candidates.length
+    );
+
+    candidates.forEach((section) => {
+      if (picked.length >= limit) return;
+      if (picked.includes(section)) return;
+      picked.push(section);
+    });
+
+    const sectorLabel = sectorLabels[normalizedSector];
+    const goalLabel = goalLabels[normalizedGoal];
+    const focusLabel = focusLabels[normalizedFocus];
+    const baseLabel = sectorLabel || goalLabel;
+    const titleParts = [`Seance ${baseLabel ?? "personnalisee"}`];
+    if (sectorLabel && goalLabel) {
+      titleParts.push(goalLabel);
+    }
+    if (focusLabel) {
+      titleParts.push(focusLabel);
+    }
+    const title = aiLayoutTitle.trim() || titleParts.join(" - ");
+
+    return {
+      title,
+      templates: picked.slice(0, limit),
+    };
+  }, [
+    aiLayoutAnswers,
+    aiLayoutTitle,
+    clampAiLayoutCount,
+    getAiLayoutDefaultCount,
+    sectionTemplates,
+  ]);
+
   const resizeTextareaById = (id: string) => {
     const textarea = textareaRefs.current.get(id);
     if (!textarea) return;
@@ -437,9 +837,11 @@ export default function CoachReportBuilderPage() {
       return null;
     }
 
-    setSectionTemplates((prev) => [...prev, data]);
+    const tags = sectionTagMap.get(title.toLowerCase()) ?? [];
+    const nextTemplate = { ...data, tags } as SectionTemplate;
+    setSectionTemplates((prev) => [...prev, nextTemplate]);
     setSectionsNotice("Section ajoutee.", "success");
-    return data as SectionTemplate;
+    return nextTemplate;
   };
 
   const updateSectionTemplate = async (
@@ -447,10 +849,11 @@ export default function CoachReportBuilderPage() {
     nextTitle: string
   ) => {
     if (!templateId) {
+      const nextTags = sectionTagMap.get(nextTitle.toLowerCase()) ?? [];
       setSectionTemplates((prev) =>
         prev.map((section) =>
           section.title === editingSection
-            ? { ...section, title: nextTitle }
+            ? { ...section, title: nextTitle, tags: nextTags }
             : section
         )
       );
@@ -467,9 +870,12 @@ export default function CoachReportBuilderPage() {
       return false;
     }
 
+    const nextTags = sectionTagMap.get(nextTitle.toLowerCase()) ?? [];
     setSectionTemplates((prev) =>
       prev.map((section) =>
-        section.id === templateId ? { ...section, title: nextTitle } : section
+        section.id === templateId
+          ? { ...section, title: nextTitle, tags: nextTags }
+          : section
       )
     );
     return true;
@@ -949,33 +1355,74 @@ export default function CoachReportBuilderPage() {
 
     const { data, error } = await supabase
       .from("section_templates")
-      .select("id, title, type")
+      .select("id, title, type, tags")
       .eq("org_id", organization.id)
       .order("created_at", { ascending: true });
 
     if (error) {
+      const message = error.message.toLowerCase();
+      if (message.includes("tags") || message.includes("column")) {
+        const fallback = await supabase
+          .from("section_templates")
+          .select("id, title, type")
+          .eq("org_id", organization.id)
+          .order("created_at", { ascending: true });
+        if (fallback.error) {
+          setSectionsNotice(fallback.error.message, "error");
+          setSectionTemplates(starterSections);
+          setTemplatesLoading(false);
+          return;
+        }
+        const fallbackData = fallback.data ?? [];
+        if (fallbackData.length === 0) {
+          setSectionsNotice(
+            "Aucune section sauvegardee. Pack initial charge (non sauvegarde).",
+            "error"
+          );
+          setSectionTemplates(starterSections);
+          setTemplatesLoading(false);
+          return;
+        }
+        setSectionTemplates(
+          fallbackData.map((item) => ({
+            id: item.id,
+            title: item.title,
+            type: item.type === "image" ? "image" : "text",
+            tags: sectionTagMap.get(item.title.toLowerCase()) ?? [],
+          }))
+        );
+        setTemplatesLoading(false);
+        return;
+      }
+
       setSectionsNotice(error.message, "error");
-      setSectionTemplates(defaultSections);
+      setSectionTemplates(starterSections);
       setTemplatesLoading(false);
       return;
     }
 
     if (!data || data.length === 0) {
       setSectionsNotice(
-        "Aucune section sauvegardee. Pense a lancer le SQL.",
+        "Aucune section sauvegardee. Pack initial charge (non sauvegarde).",
         "error"
       );
-      setSectionTemplates(defaultSections);
+      setSectionTemplates(starterSections);
       setTemplatesLoading(false);
       return;
     }
 
     setSectionTemplates(
-      data.map((item) => ({
-        id: item.id,
-        title: item.title,
-        type: item.type === "image" ? "image" : "text",
-      }))
+      data.map((item) => {
+        const itemTags = Array.isArray((item as { tags?: string[] }).tags)
+          ? (item as { tags?: string[] }).tags ?? []
+          : sectionTagMap.get(item.title.toLowerCase()) ?? [];
+        return {
+          id: item.id,
+          title: item.title,
+          type: item.type === "image" ? "image" : "text",
+          tags: itemTags,
+        };
+      })
     );
     setTemplatesLoading(false);
   };
@@ -1079,25 +1526,31 @@ export default function CoachReportBuilderPage() {
     });
   };
 
-  const handleSaveLayout = async () => {
+  const saveLayout = async (
+    title: string,
+    templateIds: string[],
+    editingId: string | null,
+    setSaving: (saving: boolean) => void,
+    onSaved?: (layoutId: string) => void
+  ) => {
     if (!organization?.id) {
       setLayoutNotice("Organisation introuvable.", "error");
-      return;
+      return null;
     }
-    const trimmedTitle = layoutTitle.trim();
+    const trimmedTitle = title.trim();
     if (!trimmedTitle) {
       setLayoutNotice("Ajoute un titre au layout.", "error");
-      return;
+      return null;
     }
-    if (layoutTemplateIds.length === 0) {
+    if (templateIds.length === 0) {
       setLayoutNotice("Ajoute au moins une section.", "error");
-      return;
+      return null;
     }
 
-    setLayoutSaving(true);
+    setSaving(true);
     setLayoutNotice("", "idle");
 
-    let layoutId = layoutEditingId;
+    let layoutId = editingId;
     if (!layoutId) {
       const { data, error } = await supabase
         .from("section_layouts")
@@ -1107,8 +1560,8 @@ export default function CoachReportBuilderPage() {
 
       if (error || !data) {
         setLayoutNotice(error?.message ?? "Creation impossible.", "error");
-        setLayoutSaving(false);
-        return;
+        setSaving(false);
+        return null;
       }
       layoutId = data.id;
     } else {
@@ -1119,8 +1572,8 @@ export default function CoachReportBuilderPage() {
 
       if (error) {
         setLayoutNotice(error.message, "error");
-        setLayoutSaving(false);
-        return;
+        setSaving(false);
+        return null;
       }
 
       await supabase
@@ -1129,7 +1582,7 @@ export default function CoachReportBuilderPage() {
         .eq("layout_id", layoutId);
     }
 
-    const itemsPayload = layoutTemplateIds.map((templateId, index) => ({
+    const itemsPayload = templateIds.map((templateId, index) => ({
       layout_id: layoutId,
       template_id: templateId,
       position: index,
@@ -1141,21 +1594,47 @@ export default function CoachReportBuilderPage() {
 
     if (itemsError) {
       setLayoutNotice(itemsError.message, "error");
-      setLayoutSaving(false);
-      return;
+      setSaving(false);
+      return null;
     }
 
     await loadLayouts();
     setSelectedLayoutId(layoutId ?? "");
-    setLayoutSaving(false);
-    resetLayoutEditor();
+    setSaving(false);
+    if (layoutId) {
+      onSaved?.(layoutId);
+    }
+    return layoutId;
+  };
+
+  const handleSaveLayout = async () => {
+    const saved = await saveLayout(
+      layoutTitle,
+      layoutTemplateIds,
+      layoutEditingId,
+      setLayoutSaving,
+      () => {
+        resetLayoutEditor();
+      }
+    );
+    return saved;
   };
 
   const handleDeleteLayout = async (layout: SectionLayout) => {
     const confirmed = window.confirm(
       `Supprimer le layout "${layout.title}" ?`
     );
-    if (!confirmed) return;
+    if (!confirmed) return false;
+
+    const { error: itemsError } = await supabase
+      .from("section_layout_items")
+      .delete()
+      .eq("layout_id", layout.id);
+
+    if (itemsError) {
+      setLayoutNotice(itemsError.message, "error");
+      return false;
+    }
 
     const { error } = await supabase
       .from("section_layouts")
@@ -1164,14 +1643,165 @@ export default function CoachReportBuilderPage() {
 
     if (error) {
       setLayoutNotice(error.message, "error");
-      return;
+      return false;
     }
 
     await loadLayouts();
     if (selectedLayoutId === layout.id) {
       setSelectedLayoutId("");
     }
+    if (selectedLayoutOptionId === layout.id) {
+      setSelectedLayoutOptionId("");
+    }
+    return true;
   };
+
+  const applyLayoutTemplates = (
+    templates: SectionTemplate[],
+    mode: "append" | "replace"
+  ) => {
+    setLayoutNotice("", "idle");
+    if (mode === "replace") {
+      setReportSections(templates.map(createSection));
+      setAiPreviews({});
+      setCollapsedSections({});
+      setImageErrors({});
+      setUploadingSections({});
+      shouldAnimate.current = true;
+      return;
+    }
+
+    setReportSections((prev) => {
+      const existing = new Set(
+        prev.map((section) => section.title.toLowerCase())
+      );
+      const next = [...prev];
+      templates.forEach((template) => {
+        const key = template.title.toLowerCase();
+        if (existing.has(key)) return;
+        next.push(createSection(template));
+        existing.add(key);
+      });
+      return next;
+    });
+    shouldAnimate.current = true;
+  };
+
+  const applyLayoutOption = (
+    option: LayoutOption,
+    mode: "append" | "replace"
+  ) => {
+    applyLayoutTemplates(option.templates, mode);
+    if (option.source === "saved") {
+      setSelectedLayoutId(option.id);
+      return;
+    }
+    setSelectedLayoutId("");
+  };
+
+  const handleSelectLayoutOption = (option: LayoutOption) => {
+    setSelectedLayoutOptionId(option.id);
+    setLayoutNotice("", "idle");
+    if (option.source === "saved") {
+      setSelectedLayoutId(option.id);
+      return;
+    }
+    setSelectedLayoutId("");
+  };
+
+  const handleContinueFromLayout = () => {
+    if (!selectedLayoutOption) {
+      setLayoutNotice("Selectionne un layout.", "error");
+      return;
+    }
+    applyLayoutOption(selectedLayoutOption, "replace");
+    setBuilderStep("sections");
+  };
+
+  const handleContinueFromSections = () => {
+    setSectionsPanelCollapsed(true);
+    setBuilderStep("report");
+  };
+
+  const handleSkipSetup = () => {
+    setSectionsPanelCollapsed(true);
+    setBuilderStep("report");
+  };
+
+  const handleOpenAiLayout = () => {
+    setAiLayoutCountTouched(false);
+    setAiLayoutAnswers((prev) => ({
+      ...prev,
+      sectionCount: clampAiLayoutCount(
+        prev.sectionCount || getAiLayoutDefaultCount(prev.detail)
+      ),
+    }));
+    setAiLayoutMessage("");
+    setAiLayoutOpen(true);
+  };
+
+  const handleUseAiLayout = () => {
+    if (!aiLayoutSuggestion) {
+      setAiLayoutMessage("Aucune suggestion disponible.");
+      return;
+    }
+    const option: LayoutOption = {
+      id: "ai:current",
+      title: aiLayoutSuggestion.title,
+      hint: "Suggestion IA basee sur tes reponses",
+      templates: aiLayoutSuggestion.templates,
+      source: "ai",
+    };
+    setAiLayoutOption(option);
+    setSelectedLayoutOptionId(option.id);
+    setAiLayoutOpen(false);
+  };
+
+  const handleSaveAiLayout = async () => {
+    if (!aiLayoutSuggestion) {
+      setAiLayoutMessage("Aucune suggestion disponible.");
+      return;
+    }
+    const templateIds = aiLayoutSuggestion.templates
+      .map((template) => template.id)
+      .filter((id): id is string => Boolean(id));
+    if (templateIds.length === 0) {
+      setAiLayoutMessage(
+        "Ajoute des sections sauvegardees avant de pouvoir enregistrer."
+      );
+      return;
+    }
+
+    const savedId = await saveLayout(
+      aiLayoutSuggestion.title,
+      templateIds,
+      null,
+      setAiLayoutSaving,
+      (layoutId) => {
+        setAiLayoutOption(null);
+        setSelectedLayoutOptionId(layoutId);
+        setAiLayoutOpen(false);
+      }
+    );
+
+    if (!savedId) {
+      setAiLayoutMessage("Impossible de sauvegarder le layout.");
+      return;
+    }
+  };
+
+  const handleReportSectionsToggle = useCallback(() => {
+    setSectionsPanelCollapsed((prev) => !prev);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleToggle = () => handleReportSectionsToggle();
+    window.addEventListener("gc:toggle-report-sections", handleToggle);
+    return () => {
+      window.removeEventListener("gc:toggle-report-sections", handleToggle);
+    };
+  }, [handleReportSectionsToggle]);
 
   const handleApplyLayout = () => {
     const layout = layouts.find((item) => item.id === selectedLayoutId);
@@ -1184,23 +1814,15 @@ export default function CoachReportBuilderPage() {
       return;
     }
 
-    setLayoutNotice("", "idle");
-    setReportSections((prev) => {
-      const existing = new Set(
-        prev.map((section) => section.title.toLowerCase())
-      );
-      const next = [...prev];
-      layout.templateIds.forEach((templateId) => {
-        const template = templateById.get(templateId);
-        if (!template) return;
-        const key = template.title.toLowerCase();
-        if (existing.has(key)) return;
-        next.push(createSection(template));
-        existing.add(key);
-      });
-      return next;
-    });
-    shouldAnimate.current = true;
+    const templates = layout.templateIds
+      .map((templateId) => templateById.get(templateId))
+      .filter((template): template is SectionTemplate => Boolean(template));
+    if (templates.length === 0) {
+      setLayoutNotice("Ce layout est vide.", "error");
+      return;
+    }
+
+    applyLayoutTemplates(templates, "append");
   };
 
   const handleAddCustomTemplateToLayout = async () => {
@@ -2546,33 +3168,256 @@ export default function CoachReportBuilderPage() {
     () => students.find((student) => student.id === studentId) ?? null,
     [students, studentId]
   );
+  const hasReportId = Boolean(searchParams.get("reportId"));
+  const activeBuilderStep =
+    hasReportId || isEditing ? "report" : builderStep;
+  const showLayoutTools = false;
+  const isReportStep = activeBuilderStep === "report";
+  const showSectionsPanel = !isReportStep || !sectionsPanelCollapsed;
+  const reportGridClass =
+    isReportStep && sectionsPanelCollapsed
+      ? "lg:grid-cols-1"
+      : "lg:grid-cols-[0.9fr_1.1fr]";
 
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       <>
         <div className="space-y-6">
         <section className="panel rounded-2xl p-6">
-          <div className="flex items-center gap-2">
-            <PageBack />
-            <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-              Rapport
-            </p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <PageBack />
+              <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                Rapport
+              </p>
+            </div>
+            {!isEditing && activeBuilderStep !== "report" ? (
+              <button
+                type="button"
+                onClick={handleSkipSetup}
+                className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+              >
+                Passer
+              </button>
+            ) : null}
           </div>
-        <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
-          {isEditing ? "Modifier le rapport" : "Nouveau rapport"}
-        </h2>
-        <p className="mt-2 text-sm text-[var(--muted)]">
-          {isEditing
-            ? "Mets a jour les sections et le contenu du rapport."
-            : "Compose le rapport avec des sections predefinies, puis remplis le contenu."}
-        </p>
-        {loadingReport ? (
-          <p className="mt-3 text-sm text-[var(--muted)]">
-            Chargement du rapport...
+          <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
+            {isEditing ? "Modifier le rapport" : "Nouveau rapport"}
+          </h2>
+          <p className="mt-2 text-sm text-[var(--muted)]">
+            {isEditing
+              ? "Mets a jour les sections et le contenu du rapport."
+              : activeBuilderStep === "layout"
+              ? "Choisis un layout de depart pour structurer le rapport."
+              : activeBuilderStep === "sections"
+              ? "Selectionne et organise les sections avant la redaction."
+              : "Remplis le contenu et ajuste les sections au fil du rapport."}
           </p>
-        ) : null}
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-[0.6rem] uppercase tracking-[0.25em] text-[var(--muted)]">
+            {[
+              { id: "layout", label: "Layout" },
+              { id: "sections", label: "Sections" },
+              { id: "report", label: "Rapport" },
+            ].map((step, index) => (
+              <span
+                key={step.id}
+                className={`rounded-full border px-3 py-1 ${
+                  activeBuilderStep === step.id
+                    ? "border-emerald-300/40 bg-emerald-400/10 text-emerald-100"
+                    : "border-white/10 bg-white/5"
+                }`}
+              >
+                {index + 1}. {step.label}
+              </span>
+            ))}
+          </div>
+          {loadingReport ? (
+            <p className="mt-3 text-sm text-[var(--muted)]">
+              Chargement du rapport...
+            </p>
+          ) : null}
         </section>
 
+        {activeBuilderStep === "layout" ? (
+          <section className="panel-soft rounded-2xl p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-[var(--text)]">
+                  Choisir un layout
+                </h3>
+                <p className="mt-1 text-xs text-[var(--muted)]">
+                  Selectionne une base, tu pourras ajuster les sections ensuite.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={startCreateLayout}
+                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                >
+                  Creer un layout
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenAiLayout}
+                  className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-emerald-100 transition hover:bg-emerald-400/20"
+                >
+                  Layout IA
+                </button>
+                <span className="text-[0.6rem] uppercase tracking-[0.2em] text-[var(--muted)]">
+                  {layoutOptions.length} option
+                  {layoutOptions.length > 1 ? "s" : ""}
+                </span>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {layoutOptions.map((option) => {
+                  const selected = selectedLayoutOption?.id === option.id;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => handleSelectLayoutOption(option)}
+                      className={`rounded-2xl border p-4 text-left transition ${
+                        selected
+                          ? "border-emerald-300/40 bg-emerald-400/10"
+                          : "border-white/10 bg-white/5 hover:border-white/20"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-[var(--text)]">
+                            {option.title}
+                          </p>
+                          <p className="mt-1 text-xs text-[var(--muted)]">
+                            {option.hint}
+                          </p>
+                        </div>
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[0.55rem] uppercase tracking-wide text-[var(--muted)]">
+                          {option.source === "saved"
+                            ? "Sauvegarde"
+                            : option.source === "ai"
+                            ? "IA"
+                            : "Suggestion"}
+                        </span>
+                      </div>
+                      {option.templates.length === 0 ? (
+                        <p className="mt-3 text-xs text-[var(--muted)]">
+                          Aucune section pour l instant.
+                        </p>
+                      ) : (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {option.templates.slice(0, 4).map((template) => (
+                            <span
+                              key={`${option.id}-${template.title}`}
+                              className="rounded-md border border-dashed border-white/15 bg-white/5 px-2 py-0.5 text-[0.55rem] uppercase tracking-wide text-[var(--muted)]"
+                            >
+                              {template.title}
+                            </span>
+                          ))}
+                          {option.templates.length > 4 ? (
+                            <span className="text-[0.55rem] uppercase tracking-wide text-[var(--muted)]">
+                              +{option.templates.length - 4} autres
+                            </span>
+                          ) : null}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="panel rounded-2xl p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                  Apercu du layout
+                </p>
+                {selectedLayoutOption ? (
+                  <>
+                    <p className="mt-2 text-sm font-semibold text-[var(--text)]">
+                      {selectedLayoutOption.title}
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--muted)]">
+                      {selectedLayoutOption.hint}
+                    </p>
+                    <div className="mt-4 space-y-2">
+                      {selectedLayoutOption.templates.length === 0 ? (
+                        <p className="text-xs text-[var(--muted)]">
+                          Ajoute des sections a l etape suivante.
+                        </p>
+                      ) : (
+                        selectedLayoutOption.templates.map((template) => (
+                          <div
+                            key={`preview-${template.id ?? template.title}`}
+                            className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)]"
+                          >
+                            <span>{template.title}</span>
+                            <span className="text-[0.55rem] uppercase tracking-wide text-[var(--muted)]">
+                              {template.type === "image" ? "Image" : "Texte"}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    {selectedLayout && selectedLayoutOption.source === "saved" ? (
+                      <div className="mt-4 flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => startEditLayout(selectedLayout)}
+                          className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                        >
+                          Modifier le layout
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void handleDeleteLayout(selectedLayout);
+                          }}
+                          className="rounded-full border border-red-400/30 bg-red-500/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-red-200 transition hover:bg-red-500/20"
+                        >
+                          Supprimer le layout
+                        </button>
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="mt-3 text-xs text-[var(--muted)]">
+                    Selectionne un layout pour voir le detail.
+                  </p>
+                )}
+                <div className="mt-5 flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleContinueFromLayout}
+                    disabled={!selectedLayoutOption}
+                    className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
+                  >
+                    Continuer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSkipSetup}
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                  >
+                    Passer au rapport
+                  </button>
+                </div>
+                {layoutMessage ? (
+                  <p
+                    className={`mt-3 text-xs ${
+                      layoutMessageType === "error"
+                        ? "text-red-400"
+                        : "text-[var(--muted)]"
+                    }`}
+                  >
+                    {layoutMessage}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        {activeBuilderStep === "report" ? (
       <section className="panel-soft rounded-2xl p-5">
         <div className="grid gap-4 md:grid-cols-3">
           <div>
@@ -2617,8 +3462,11 @@ export default function CoachReportBuilderPage() {
           </div>
         </div>
       </section>
+        ) : null}
 
-      <section className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+      {activeBuilderStep !== "layout" ? (
+      <section className={`grid gap-6 ${reportGridClass}`}>
+        {showSectionsPanel ? (
         <div className="panel relative rounded-2xl p-6">
           <div className="flex items-start justify-between gap-3">
             <h3 className="text-lg font-semibold text-[var(--text)]">
@@ -2679,6 +3527,8 @@ export default function CoachReportBuilderPage() {
           <p className="mt-2 text-xs text-[var(--muted)]">
             Clique pour ajouter une section au rapport ou cree la tienne.
           </p>
+          {showLayoutTools ? (
+            <>
           <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
             <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="flex items-start gap-2">
@@ -3083,6 +3933,8 @@ export default function CoachReportBuilderPage() {
               </div>
             </div>
           ) : null}
+            </>
+          ) : null}
           <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
             <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
               Nouvelle section
@@ -3390,65 +4242,251 @@ export default function CoachReportBuilderPage() {
             </p>
           ) : null}
         </div>
+        ) : null}
 
+        {activeBuilderStep === "sections" ? (
+        <div className="panel relative rounded-2xl p-6">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-semibold text-[var(--text)]">
+                Apercu du rapport
+              </h3>
+              <p className="mt-1 text-xs text-[var(--muted)]">
+                Ecran de verification avant la redaction. Organise les sections
+                si besoin.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setBuilderStep("layout")}
+              className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+            >
+              Retour layout
+            </button>
+          </div>
+          {selectedLayoutOption ? (
+            <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.55rem] uppercase tracking-wide text-[var(--muted)]">
+              Layout: {selectedLayoutOption.title}
+            </div>
+          ) : null}
+          <div className="mt-4 space-y-3">
+            {reportSections.length === 0 ? (
+              <p className="text-xs text-[var(--muted)]">
+                Ajoute des sections a gauche pour demarrer.
+              </p>
+            ) : (
+              reportSections.map((section, index) => (
+                <div
+                  key={`preview-section-${section.id}`}
+                  ref={(node) => {
+                    if (node) {
+                      itemRefs.current.set(section.id, node);
+                    } else {
+                      itemRefs.current.delete(section.id);
+                    }
+                  }}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-[var(--text)]"
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-[var(--text)]">
+                      {section.title}
+                    </p>
+                    <p className="mt-1 text-[0.55rem] uppercase tracking-wide text-[var(--muted)]">
+                      {section.type === "image" ? "Image" : "Texte"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleMoveSection(index, "up")}
+                      disabled={index === 0}
+                      className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-40"
+                      aria-label="Monter"
+                      title="Monter"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-3.5 w-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M12 19V5" />
+                        <path d="M5 12l7-7 7 7" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleMoveSection(index, "down")}
+                      disabled={index === reportSections.length - 1}
+                      className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-40"
+                      aria-label="Descendre"
+                      title="Descendre"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-3.5 w-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M12 5v14" />
+                        <path d="M5 12l7 7 7-7" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveFromReport(section)}
+                      className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-red-200"
+                      aria-label="Retirer"
+                      title="Retirer"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-3.5 w-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M18 6L6 18" />
+                        <path d="M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => setBuilderStep("layout")}
+              className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+            >
+              Retour
+            </button>
+            <button
+              type="button"
+              onClick={handleContinueFromSections}
+              className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90"
+            >
+              Passer au rapport
+            </button>
+          </div>
+        </div>
+        ) : (
         <div className="panel relative rounded-2xl p-6">
           <div className="flex items-start justify-between gap-3">
             <h3 className="text-lg font-semibold text-[var(--text)]">
               Rapport en cours
             </h3>
-            <span
-              ref={(node) => {
-                if (node) {
-                  tooltipRefs.current.set("report", node);
-                } else {
-                  tooltipRefs.current.delete("report");
-                }
-              }}
-              className="group relative shrink-0"
-            >
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() =>
-                  setActiveTooltip((prev) =>
-                    prev === "report" ? null : "report"
-                  )
-                }
-                className="flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[0.7rem] text-[var(--muted)] transition hover:text-[var(--text)]"
-                aria-label="Aide sur le rapport en cours"
-                aria-expanded={activeTooltip === "report"}
+                onClick={() => setBuilderStep("layout")}
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                aria-label="Revenir aux layouts"
+                title="Layouts"
               >
-                ?
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="3" y="4" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="4" width="7" height="7" rx="1.5" />
+                  <rect x="3" y="13" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="13" width="7" height="7" rx="1.5" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={handleReportSectionsToggle}
+                className={`flex h-9 w-9 items-center justify-center rounded-full border transition ${
+                  sectionsPanelCollapsed
+                    ? "border-emerald-300/40 bg-emerald-400/10 text-emerald-100"
+                    : "border-white/10 bg-white/5 text-[var(--muted)] hover:text-[var(--text)]"
+                }`}
+                aria-label="Afficher les sections"
+                title="Sections"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="3" y="5" width="7" height="14" rx="1.5" />
+                  <rect x="14" y="5" width="7" height="14" rx="1.5" />
+                </svg>
               </button>
               <span
-                className={`absolute right-0 top-full z-20 mt-2 w-64 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text)] shadow-xl transition ${
-                  activeTooltip === "report"
-                    ? "pointer-events-auto opacity-100"
-                    : "pointer-events-none opacity-0"
-                } group-hover:opacity-100 group-focus-within:opacity-100`}
+                ref={(node) => {
+                  if (node) {
+                    tooltipRefs.current.set("report", node);
+                  } else {
+                    tooltipRefs.current.delete("report");
+                  }
+                }}
+                className="group relative shrink-0"
               >
-                <span className="block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                  Construction
-                </span>
-                <span className="mt-1 block">
-                  Tu saisis des notes de travail en cours. Le rapport se construit
-                  au fur et a mesure selon les sections presentes.
-                </span>
-                <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                  Propagation
-                </span>
-                <span className="mt-1 block">
-                  L IA relit, complete et propage les idees pour accelerer la
-                  redaction.
-                </span>
-                <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                  Finalisation
-                </span>
-                <span className="mt-1 block">
-                  Le resume et les sections de planification se generent a la fin,
-                  selon le titre des sections (ex: plan 3 mois, plan 7 jours).
+                <button
+                  type="button"
+                  onClick={() =>
+                    setActiveTooltip((prev) =>
+                      prev === "report" ? null : "report"
+                    )
+                  }
+                  className="flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[0.7rem] text-[var(--muted)] transition hover:text-[var(--text)]"
+                  aria-label="Aide sur le rapport en cours"
+                  aria-expanded={activeTooltip === "report"}
+                >
+                  ?
+                </button>
+                <span
+                  className={`absolute right-0 top-full z-20 mt-2 w-64 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text)] shadow-xl transition ${
+                    activeTooltip === "report"
+                      ? "pointer-events-auto opacity-100"
+                      : "pointer-events-none opacity-0"
+                  } group-hover:opacity-100 group-focus-within:opacity-100`}
+                >
+                  <span className="block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                    Construction
+                  </span>
+                  <span className="mt-1 block">
+                    Tu saisis des notes de travail en cours. Le rapport se construit
+                    au fur et a mesure selon les sections presentes.
+                  </span>
+                  <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                    Propagation
+                  </span>
+                  <span className="mt-1 block">
+                    L IA relit, complete et propage les idees pour accelerer la
+                    redaction.
+                  </span>
+                  <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                    Finalisation
+                  </span>
+                  <span className="mt-1 block">
+                    Le resume et les sections de planification se generent a la fin,
+                    selon le titre des sections (ex: plan 3 mois, plan 7 jours).
+                  </span>
                 </span>
               </span>
-            </span>
+            </div>
           </div>
           <p className="mt-2 text-xs text-[var(--muted)]">
             Organise les sections et remplis le contenu. Drag & drop actif.
@@ -4306,8 +5344,580 @@ export default function CoachReportBuilderPage() {
             </p>
           ) : null}
         </div>
+        )}
       </section>
+      ) : null}
         </div>
+        {layoutEditorOpen ? (
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 px-4 py-10">
+            <div className="mx-auto flex w-full max-w-3xl flex-col rounded-3xl border border-white/10 bg-[var(--bg-elevated)] shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
+              <div className="flex items-start justify-between gap-4 p-6">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                    Layout
+                  </p>
+                  <h3 className="mt-2 text-xl font-semibold text-[var(--text)]">
+                    {layoutEditingId ? "Modifier le layout" : "Creer un layout"}
+                  </h3>
+                  <p className="mt-2 text-sm text-[var(--muted)]">
+                    Compose un layout a partir des sections disponibles ou ajoute
+                    tes propres sections.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={resetLayoutEditor}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                  aria-label="Fermer"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M18 6L6 18" />
+                    <path d="M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="space-y-4 px-6 pb-6">
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Titre du layout
+                  </label>
+                  <input
+                    type="text"
+                    value={layoutTitle}
+                    onChange={(event) => setLayoutTitle(event.target.value)}
+                    placeholder="Seance practice - jeu de fers"
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                  />
+                </div>
+                <div className="space-y-3">
+                  <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Sections du layout
+                  </p>
+                  {layoutTemplateIds.length === 0 ? (
+                    <p className="text-xs text-[var(--muted)]">
+                      Aucune section ajoutee pour l instant.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {layoutTemplateIds.map((templateId, index) => {
+                        const template = templateById.get(templateId);
+                        const label = template?.title ?? "Section inconnue";
+                        return (
+                          <div
+                            key={`layout-item-${templateId}`}
+                            className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)]"
+                          >
+                            <span>{label}</span>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleMoveLayoutTemplate(index, "up")
+                                }
+                                disabled={index === 0}
+                                className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-40"
+                                aria-label="Monter"
+                                title="Monter"
+                              >
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  className="h-3.5 w-3.5"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <path d="M12 19V5" />
+                                  <path d="M5 12l7-7 7 7" />
+                                </svg>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleMoveLayoutTemplate(index, "down")
+                                }
+                                disabled={index === layoutTemplateIds.length - 1}
+                                className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-40"
+                                aria-label="Descendre"
+                                title="Descendre"
+                              >
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  className="h-3.5 w-3.5"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <path d="M12 5v14" />
+                                  <path d="M5 12l7 7 7-7" />
+                                </svg>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleRemoveTemplateFromLayout(templateId)
+                                }
+                                className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-red-200"
+                                aria-label="Retirer"
+                                title="Retirer"
+                              >
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  className="h-3.5 w-3.5"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <path d="M18 6L6 18" />
+                                  <path d="M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Ajouter une section existante
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {layoutAvailableTemplates.length === 0 ? (
+                      <span className="text-xs text-[var(--muted)]">
+                        Toutes les sections sont deja dans ce layout.
+                      </span>
+                    ) : (
+                      layoutAvailableTemplates.map((template) => (
+                        <button
+                          key={`layout-add-${template.id}`}
+                          type="button"
+                          onClick={() =>
+                            handleAddTemplateToLayout(template.id as string)
+                          }
+                          className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
+                        >
+                          {template.title}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                  <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                    Nouvelle section
+                  </p>
+                  <p className="mt-1 text-xs text-[var(--muted)]">
+                    Un titre clair guide la generation IA.
+                  </p>
+                  <label className="mt-3 block text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Nom de la section
+                  </label>
+                  <input
+                    type="text"
+                    value={layoutCustomTitle}
+                    onChange={(event) => setLayoutCustomTitle(event.target.value)}
+                    placeholder="Routine pre-shot"
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                  />
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setLayoutCustomIsImage(false)}
+                      className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
+                        layoutCustomIsImage
+                          ? "border-white/10 bg-white/5 text-[var(--muted)]"
+                          : "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
+                      }`}
+                      aria-pressed={!layoutCustomIsImage}
+                    >
+                      Texte
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLayoutCustomIsImage(true)}
+                      className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
+                        layoutCustomIsImage
+                          ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
+                          : "border-white/10 bg-white/5 text-[var(--muted)]"
+                      }`}
+                      aria-pressed={layoutCustomIsImage}
+                    >
+                      Image
+                    </button>
+                  </div>
+                  {layoutCustomIsImage ? (
+                    <p className="mt-2 text-[0.6rem] text-[var(--muted)]">
+                      Les images seront ajoutees a la fin du rapport.
+                    </p>
+                  ) : null}
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleAddCustomTemplateToLayout}
+                      className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
+                    >
+                      Ajouter au layout
+                    </button>
+                  </div>
+                </div>
+                {layoutMessage ? (
+                  <p
+                    className={`text-xs ${
+                      layoutMessageType === "error"
+                        ? "text-red-400"
+                        : "text-[var(--muted)]"
+                    }`}
+                  >
+                    {layoutMessage}
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-3 border-t border-white/10 px-6 py-4">
+                {layoutEditingId ? (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const layout = layouts.find(
+                        (item) => item.id === layoutEditingId
+                      );
+                      if (!layout) return;
+                      const deleted = await handleDeleteLayout(layout);
+                      if (deleted) {
+                        resetLayoutEditor();
+                      }
+                    }}
+                    className="rounded-full border border-red-400/30 bg-red-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-red-200 transition hover:bg-red-500/20"
+                  >
+                    Supprimer
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={resetLayoutEditor}
+                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveLayout}
+                  disabled={layoutSaving}
+                  className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
+                >
+                  {layoutSaving ? "Sauvegarde..." : "Enregistrer le layout"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {aiLayoutOpen ? (
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 px-4 py-10">
+            <div className="mx-auto flex w-full max-w-3xl flex-col rounded-3xl border border-white/10 bg-[var(--bg-elevated)] shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
+              <div className="flex items-start justify-between gap-4 p-6">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                    Assistant IA
+                  </p>
+                  <h3 className="mt-2 text-xl font-semibold text-[var(--text)]">
+                    Layout optimise
+                  </h3>
+                  <p className="mt-2 text-sm text-[var(--muted)]">
+                    Reponds a quelques questions pour obtenir un layout
+                    pertinent.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAiLayoutOpen(false)}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                  aria-label="Fermer"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M18 6L6 18" />
+                    <path d="M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="grid gap-4 px-6 pb-6 lg:grid-cols-[1.1fr_0.9fr]">
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Objectif principal
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {[
+                        { id: "synthese", label: "Synthese" },
+                        { id: "technique", label: "Technique" },
+                        { id: "mental", label: "Mental" },
+                        { id: "performance", label: "Performance" },
+                      ].map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() =>
+                            setAiLayoutAnswers((prev) => ({
+                              ...prev,
+                              goal: option.id,
+                            }))
+                          }
+                          className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
+                            aiLayoutAnswers.goal === option.id
+                              ? "border-emerald-300/40 bg-emerald-400/10 text-emerald-100"
+                              : "border-white/10 bg-white/5 text-[var(--muted)] hover:text-[var(--text)]"
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Type de seance (secteur de jeu)
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {[
+                        { id: "swing", label: "Swing" },
+                        { id: "short_game", label: "Petit jeu" },
+                        { id: "putting", label: "Putting" },
+                        { id: "parcours", label: "Parcours" },
+                        { id: "physique", label: "Physique" },
+                      ].map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() =>
+                            setAiLayoutAnswers((prev) => ({
+                              ...prev,
+                              sector: option.id,
+                            }))
+                          }
+                          className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
+                            aiLayoutAnswers.sector === option.id
+                              ? "border-emerald-300/40 bg-emerald-400/10 text-emerald-100"
+                              : "border-white/10 bg-white/5 text-[var(--muted)] hover:text-[var(--text)]"
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Focus secondaire
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {[
+                        { id: "plan", label: "Plan" },
+                        { id: "exercices", label: "Exercices" },
+                        { id: "objectifs", label: "Objectifs" },
+                        { id: "images", label: "Visuel" },
+                      ].map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() =>
+                            setAiLayoutAnswers((prev) => ({
+                              ...prev,
+                              focus: option.id,
+                            }))
+                          }
+                          className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
+                            aiLayoutAnswers.focus === option.id
+                              ? "border-emerald-300/40 bg-emerald-400/10 text-emerald-100"
+                              : "border-white/10 bg-white/5 text-[var(--muted)] hover:text-[var(--text)]"
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Niveau de detail
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {[
+                        { id: "quick", label: "Rapide" },
+                        { id: "standard", label: "Standard" },
+                        { id: "complete", label: "Complet" },
+                      ].map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => {
+                            setAiLayoutCountTouched(false);
+                            setAiLayoutAnswers((prev) => ({
+                              ...prev,
+                              detail: option.id as AiLayoutAnswers["detail"],
+                            }));
+                          }}
+                          className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
+                            aiLayoutAnswers.detail === option.id
+                              ? "border-emerald-300/40 bg-emerald-400/10 text-emerald-100"
+                              : "border-white/10 bg-white/5 text-[var(--muted)] hover:text-[var(--text)]"
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                        Nombre de sections
+                      </p>
+                      <span className="text-[0.65rem] text-[var(--muted)]">
+                        {aiLayoutSectionCount} section
+                        {aiLayoutSectionCount > 1 ? "s" : ""}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={minAiLayoutCount}
+                      max={maxAiLayoutCount}
+                      step={1}
+                      value={aiLayoutSectionCount}
+                      onChange={(event) => {
+                        setAiLayoutCountTouched(true);
+                        setAiLayoutAnswers((prev) => ({
+                          ...prev,
+                          sectionCount: clampAiLayoutCount(
+                            Number(event.target.value)
+                          ),
+                        }));
+                      }}
+                      className="mt-3 w-full accent-emerald-300"
+                      aria-label="Nombre de sections"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Sections images
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {[
+                        { id: "auto", label: "Auto" },
+                        { id: "yes", label: "Oui" },
+                        { id: "no", label: "Non" },
+                      ].map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() =>
+                            setAiLayoutAnswers((prev) => ({
+                              ...prev,
+                              images: option.id as AiLayoutAnswers["images"],
+                            }))
+                          }
+                          className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
+                            aiLayoutAnswers.images === option.id
+                              ? "border-emerald-300/40 bg-emerald-400/10 text-emerald-100"
+                              : "border-white/10 bg-white/5 text-[var(--muted)] hover:text-[var(--text)]"
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                    Layout propose
+                  </p>
+                  {aiLayoutSuggestion ? (
+                    <>
+                      <label className="mt-3 block text-xs uppercase tracking-wide text-[var(--muted)]">
+                        Titre
+                      </label>
+                      <input
+                        type="text"
+                        value={aiLayoutTitle}
+                        onChange={(event) => setAiLayoutTitle(event.target.value)}
+                        placeholder={aiLayoutSuggestion.title}
+                        className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                      />
+                      <div className="mt-4 space-y-2">
+                        {aiLayoutSuggestion.templates.map((template) => (
+                          <div
+                            key={`ai-layout-${template.id ?? template.title}`}
+                            className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)]"
+                          >
+                            <span>{template.title}</span>
+                            <span className="text-[0.55rem] uppercase tracking-wide text-[var(--muted)]">
+                              {template.type === "image" ? "Image" : "Texte"}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="mt-3 text-xs text-[var(--muted)]">
+                      Aucune section sauvegardee pour generer un layout.
+                    </p>
+                  )}
+                  {aiLayoutMessage ? (
+                    <p className="mt-3 text-xs text-red-400">
+                      {aiLayoutMessage}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-3 border-t border-white/10 px-6 py-4">
+                <button
+                  type="button"
+                  onClick={() => setAiLayoutOpen(false)}
+                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={handleUseAiLayout}
+                  disabled={!aiLayoutSuggestion}
+                  className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:bg-emerald-400/20 disabled:opacity-60"
+                >
+                  Utiliser ce layout
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveAiLayout}
+                  disabled={!aiLayoutSuggestion || aiLayoutSaving}
+                  className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
+                >
+                  {aiLayoutSaving ? "Sauvegarde..." : "Sauvegarder"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
         {clarifyOpen ? (
           <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 px-4 py-10">
             <div className="mx-auto flex w-full max-w-2xl flex-col rounded-3xl border border-white/10 bg-[var(--bg-elevated)] shadow-[0_30px_80px_rgba(0,0,0,0.45)]">

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { defaultSectionTemplates } from "@/lib/default-section-templates";
 
 export async function POST(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -102,6 +103,36 @@ export async function POST(request: Request) {
 
   if (profileError) {
     return NextResponse.json({ error: profileError.message }, { status: 400 });
+  }
+
+  const templatesPayload = defaultSectionTemplates.map((template) => ({
+    org_id: org.id,
+    title: template.title,
+    type: template.type,
+    tags: template.tags,
+  }));
+  const { error: templatesError } = await admin
+    .from("section_templates")
+    .upsert(templatesPayload, { onConflict: "org_id,title" });
+
+  if (templatesError) {
+    const { error: fallbackError } = await admin
+      .from("section_templates")
+      .upsert(
+        defaultSectionTemplates.map((template) => ({
+          org_id: org.id,
+          title: template.title,
+          type: template.type,
+        })),
+        { onConflict: "org_id,title" }
+      );
+
+    if (fallbackError) {
+      return NextResponse.json(
+        { error: fallbackError.message },
+        { status: 400 }
+      );
+    }
   }
 
   return NextResponse.json({ ok: true, role: "owner" });

@@ -70,6 +70,10 @@ export default function AppNav() {
     return pathname === href || pathname?.startsWith(`${href}/`);
   };
 
+  const showReportSectionsToggle = Boolean(
+    pathname?.startsWith("/app/coach/rapports/nouveau")
+  );
+
   const iconForHref = (href: string) => {
     const sharedProps = {
       className: "h-4 w-4",
@@ -278,6 +282,81 @@ export default function AppNav() {
             </div>
           </div>
         ))}
+        {showReportSectionsToggle ? (
+          <div className="space-y-3">
+            {!collapsed ? (
+              <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                Rapport
+              </p>
+            ) : null}
+            <div
+              className={`space-y-2 ${
+                collapsed ? "" : "border-l border-white/10 pl-3"
+              }`}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  if (typeof window === "undefined") return;
+                  window.dispatchEvent(
+                    new CustomEvent("gc:toggle-report-sections")
+                  );
+                }}
+                className={`group relative flex w-full items-center gap-3 transition ${
+                  collapsed
+                    ? "justify-center rounded-xl border border-white/5 bg-white/5 px-2 py-3 text-[var(--muted)] hover:border-white/20 hover:bg-white/10 hover:text-[var(--text)]"
+                    : "justify-between px-2 py-2 text-[var(--muted)] hover:text-[var(--text)]"
+                }`}
+                aria-label="Sections du rapport"
+                title="Sections"
+              >
+                <span className="flex min-w-0 flex-1 items-center gap-3">
+                  <span
+                    className={`flex h-8 w-8 items-center justify-center text-[var(--muted)] transition ${
+                      collapsed
+                        ? "rounded-lg border border-transparent bg-transparent group-hover:text-[var(--text)]"
+                        : "group-hover:text-[var(--text)]"
+                    }`}
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <rect x="3" y="5" width="7" height="14" rx="1.5" />
+                      <rect x="14" y="5" width="7" height="14" rx="1.5" />
+                    </svg>
+                  </span>
+                  {!collapsed ? (
+                    <span className="whitespace-nowrap">Sections</span>
+                  ) : null}
+                </span>
+                {!collapsed ? (
+                  <span
+                    className="ml-auto flex h-5 w-5 items-center justify-center text-[var(--muted)] transition group-hover:text-[var(--text)]"
+                    aria-hidden="true"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-3.5 w-3.5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M9 6l6 6-6 6" />
+                    </svg>
+                  </span>
+                ) : null}
+              </button>
+            </div>
+          </div>
+        ) : null}
       </nav>
     </aside>
   );
