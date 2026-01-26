@@ -620,7 +620,7 @@ export async function POST(request: Request) {
       const inputTokens = usage?.input_tokens ?? 0;
       const outputTokens = usage?.output_tokens ?? 0;
       const totalTokens =
-        usage?.total_tokens ?? inputTokens + outputTokens ?? 0;
+        usage?.total_tokens ?? (inputTokens + outputTokens);
 
       await admin.from("ai_usage").insert([
         {
