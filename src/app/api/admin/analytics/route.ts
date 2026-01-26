@@ -240,14 +240,13 @@ export async function GET(request: Request) {
     }
 
     const coachEntry =
-      coachMap.get(row.user_id) ??
-      ({
+      coachMap.get(row.user_id) ?? {
         user_id: row.user_id,
         org_id: row.org_id,
         requests: 0,
         tokens: 0,
         costUsd: 0,
-      } as const);
+      };
     coachEntry.requests += 1;
     coachEntry.tokens += tokens;
     coachEntry.costUsd += rowCostUsd;
