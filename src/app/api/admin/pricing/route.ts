@@ -119,7 +119,7 @@ export async function POST(request: Request) {
   }
 
   const plan = normalizePlan(rawPlan as PricingPlanPayload);
-  const id = rawPlan.id ?? null;
+  const id = (rawPlan as PricingPlanPayload).id ?? null;
 
   if (!plan.slug) {
     return NextResponse.json({ error: "Slug requis." }, { status: 400 });
