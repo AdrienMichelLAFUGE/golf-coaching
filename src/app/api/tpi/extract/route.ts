@@ -81,6 +81,16 @@ const buildSchema = () => ({
   required: ["tests"],
 });
 
+const buildVerifySchema = () => ({
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    is_tpi: { type: "boolean" },
+    reason: { type: "string" },
+  },
+  required: ["is_tpi", "reason"],
+});
+
 const extractOutputText = (response: {
   output_text?: string | null;
   output?: Array<unknown>;
@@ -183,11 +193,171 @@ export async function POST(req: Request) {
   }
 
   const buffer = Buffer.from(await fileData.arrayBuffer());
-  const language = toLanguageLabel(orgData?.locale ?? "fr-FR");
+  if (report.file_type !== "pdf") {
+    await admin
+      .from("tpi_reports")
+      .update({ status: "error" })
+      .eq("id", reportId);
+    return Response.json(
+      { error: "Importe uniquement le PDF TPI Pro recu par email." },
+      { status: 400 }
+    );
+  }
+
   const openai = new OpenAI({ apiKey: openaiKey });
+  const language = toLanguageLabel(orgData?.locale ?? "fr-FR");
+  const hasTpiInName = (report.original_name ?? "").toLowerCase().includes("tpi");
 
   let extractedTests: ExtractedTest[] = [];
   let pdfFileId: string | null = null;
+  let usage: { input_tokens?: number; output_tokens?: number; total_tokens?: number } | null = null;
+
+  const recordUsage = async (
+    action: string,
+    usagePayload: { input_tokens?: number; output_tokens?: number; total_tokens?: number } | null,
+    durationMs: number
+  ) => {
+    if (!usagePayload) return;
+    const inputTokens = usagePayload.input_tokens ?? 0;
+    const outputTokens = usagePayload.output_tokens ?? 0;
+    const totalTokens =
+      usagePayload.total_tokens ?? inputTokens + outputTokens ?? 0;
+
+    try {
+      await admin.from("ai_usage").insert([
+        {
+          user_id: userId,
+          org_id: report.org_id,
+          action,
+          model: "gpt-5.2",
+          input_tokens: inputTokens,
+          output_tokens: outputTokens,
+          total_tokens: totalTokens,
+          duration_ms: durationMs,
+        },
+      ]);
+    } catch (error) {
+      console.error("TPI usage logging failed:", error);
+    }
+  };
+
+  const cleanupOpenAiFile = async () => {
+    if (!pdfFileId) return;
+    try {
+      await openai.files.delete(pdfFileId);
+    } catch {
+      // Ignore cleanup errors.
+    }
+  };
+
+  try {
+    const uploaded = await openai.files.create({
+      file: await toFile(buffer, report.original_name ?? "rapport-tpi.pdf"),
+      purpose: "user_data",
+    });
+    pdfFileId = uploaded.id;
+  } catch (error) {
+    await admin
+      .from("tpi_reports")
+      .update({ status: "error" })
+      .eq("id", reportId);
+    console.error("TPI PDF upload error:", error);
+    return Response.json(
+      { error: "Upload PDF impossible. Reessaie avec le PDF TPI Pro." },
+      { status: 500 }
+    );
+  }
+
+  if (!hasTpiInName) {
+    try {
+      const verifyStartedAt = Date.now();
+      const verifyPrompt =
+        "Verifie si ce fichier est un rapport TPI Pro (Titleist Performance Institute) " +
+        "exporte par l application TPI Pro. Repond strictement avec le JSON attendu. " +
+        "Indique is_tpi=true uniquement si tu vois clairement les tests TPI standards.";
+
+      const verifyResponse = await openai.responses.create({
+        model: "gpt-5.2",
+        input: [
+          {
+            role: "system",
+            content: [{ type: "input_text", text: verifyPrompt }],
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: `Voici la liste des tests TPI connus pour t'aider: ${tpiKnownTests.join(
+                  ", "
+                )}.`,
+              },
+              {
+                type: "input_file",
+                file_id: pdfFileId,
+              },
+            ],
+          },
+        ],
+        max_output_tokens: 300,
+        text: {
+          format: {
+            type: "json_schema",
+            name: "tpi_verify",
+            description: "Confirme si le fichier est un rapport TPI Pro.",
+            schema: buildVerifySchema(),
+            strict: true,
+          },
+        },
+      });
+
+      const verifyUsage = verifyResponse.usage ?? null;
+      const verifyText = extractOutputText(verifyResponse);
+      if (!verifyText) {
+        throw new Error("Verification TPI vide.");
+      }
+
+      const verifyParsed = JSON.parse(verifyText) as {
+        is_tpi: boolean;
+        reason: string;
+      };
+
+      await recordUsage(
+        "tpi_verify",
+        verifyUsage,
+        Date.now() - verifyStartedAt
+      );
+
+      if (!verifyParsed.is_tpi) {
+        await admin
+          .from("tpi_reports")
+          .update({ status: "error" })
+          .eq("id", reportId);
+        await cleanupOpenAiFile();
+        return Response.json(
+          {
+            error:
+              verifyParsed.reason ||
+              "PDF TPI non reconnu. Importe le PDF TPI Pro recu par email.",
+          },
+          { status: 400 }
+        );
+      }
+    } catch (error) {
+      await admin
+        .from("tpi_reports")
+        .update({ status: "error" })
+        .eq("id", reportId);
+      console.error("TPI PDF verify error:", error);
+      await cleanupOpenAiFile();
+      return Response.json(
+        { error: "Verification TPI impossible. Reessaie avec le PDF TPI Pro." },
+        { status: 500 }
+      );
+    }
+  }
+
+  const startedAt = Date.now();
 
   try {
     const systemPrompt =
@@ -206,17 +376,6 @@ export async function POST(req: Request) {
       " Liste de tests TPI courants (pour verifier seulement, ne pas inventer si absent): " +
       tpiKnownTests.join(", ") +
       ".";
-
-    if (report.file_type === "pdf") {
-      const uploaded = await openai.files.create({
-        file: await toFile(
-          buffer,
-          report.original_name ?? "rapport-tpi.pdf"
-        ),
-        purpose: "user_data",
-      });
-      pdfFileId = uploaded.id;
-    }
 
     if (report.file_type === "pdf" && !pdfFileId) {
       throw new Error("Fichier PDF TPI manquant.");
@@ -271,6 +430,7 @@ export async function POST(req: Request) {
       });
 
     const response = await callExtract(8000);
+    usage = response.usage ?? usage;
     let outputText = extractOutputText(response);
     if (!outputText) {
       const outputDebug = (response.output ?? []).map((item) => ({
@@ -292,19 +452,12 @@ export async function POST(req: Request) {
       parsed = JSON.parse(outputText) as { tests: ExtractedTest[] };
     } catch (error) {
       const retry = await callExtract(12000);
+      usage = retry.usage ?? usage;
       outputText = extractOutputText(retry);
       if (!outputText) {
         throw new Error("Reponse TPI vide.");
       }
       parsed = JSON.parse(outputText) as { tests: ExtractedTest[] };
-    }
-
-    if (pdfFileId) {
-      try {
-        await openai.files.delete(pdfFileId);
-      } catch {
-        // Ignore cleanup errors.
-      }
     }
 
     extractedTests = (parsed.tests ?? []).map((test, index) => {
@@ -330,14 +483,14 @@ export async function POST(req: Request) {
           typeof test.position === "number" ? test.position : index + 1,
       };
     });
+    await recordUsage(
+      "tpi_extract",
+      usage,
+      Date.now() - startedAt
+    );
+    await cleanupOpenAiFile();
   } catch (error) {
-    if (pdfFileId) {
-      try {
-        await openai.files.delete(pdfFileId);
-      } catch {
-        // Ignore cleanup errors.
-      }
-    }
+    await cleanupOpenAiFile();
     await admin
       .from("tpi_reports")
       .update({ status: "error" })

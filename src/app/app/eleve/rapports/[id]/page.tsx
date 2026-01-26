@@ -174,7 +174,7 @@ export default function ReportDetailPage() {
                         </p>
                       )
                     ) : (
-                      <p className="mt-3 text-sm text-[var(--muted)] whitespace-pre-wrap">
+                      <p className="mt-3 text-sm text-justify text-[var(--muted)] whitespace-pre-wrap">
                         {section.content || "Aucun contenu pour cette section."}
                       </p>
                     )}

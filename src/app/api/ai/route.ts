@@ -508,6 +508,7 @@ export async function POST(request: Request) {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     const openaiKey = process.env.OPENAI_API_KEY;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!supabaseUrl || !supabaseAnonKey || !openaiKey) {
       return NextResponse.json(
@@ -520,6 +521,9 @@ export async function POST(request: Request) {
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
     });
+    const admin = serviceRoleKey
+      ? createClient(supabaseUrl, serviceRoleKey)
+      : null;
 
     const { data: userData, error: userError } = await supabase.auth.getUser();
     if (userError || !userData.user) {
@@ -605,6 +609,32 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+
+    const startedAt = Date.now();
+    const userId = userData.user.id;
+    const orgId = profile.org_id;
+    const recordUsage = async (
+      usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number } | null
+    ) => {
+      if (!admin) return;
+      const inputTokens = usage?.input_tokens ?? 0;
+      const outputTokens = usage?.output_tokens ?? 0;
+      const totalTokens =
+        usage?.total_tokens ?? inputTokens + outputTokens ?? 0;
+
+      await admin.from("ai_usage").insert([
+        {
+          user_id: userId,
+          org_id: orgId,
+          action: payload.action,
+          model: org.ai_model ?? "gpt-5-mini",
+          input_tokens: inputTokens,
+          output_tokens: outputTokens,
+          total_tokens: totalTokens,
+          duration_ms: Date.now() - startedAt,
+        },
+      ]);
+    };
 
     if (payload.action === "propagate") {
       if (!payload.sectionTitle || !payload.sectionContent?.trim()) {
@@ -889,6 +919,7 @@ export async function POST(request: Request) {
         : {}),
       ...(reasoning ? { reasoning } : {}),
     });
+    let usage = response.usage;
 
     if (payload.action === "clarify") {
       const clarified = extractClarify(response);
@@ -896,6 +927,7 @@ export async function POST(request: Request) {
         const confidence = Number.isFinite(clarified.confidence)
           ? Math.min(1, Math.max(0, clarified.confidence))
           : 0.5;
+        await recordUsage(usage);
         return NextResponse.json({
           confidence,
           questions: clarified.questions ?? [],
@@ -911,6 +943,7 @@ export async function POST(request: Request) {
     if (payload.action === "axes") {
       const axes = extractAxes(response);
       if (axes) {
+        await recordUsage(usage);
         return NextResponse.json({ axes: axes.axes ?? [] });
       }
 
@@ -920,6 +953,7 @@ export async function POST(request: Request) {
     if (payload.action === "propagate") {
       const suggestions = extractSuggestions(response);
       if (suggestions) {
+        await recordUsage(usage);
         return NextResponse.json({ suggestions });
       }
 
@@ -941,6 +975,8 @@ export async function POST(request: Request) {
 
       const retrySuggestions = extractSuggestions(retry);
       if (retrySuggestions) {
+        usage = retry.usage ?? usage;
+        await recordUsage(usage);
         return NextResponse.json({ suggestions: retrySuggestions });
       }
 
@@ -1070,6 +1106,9 @@ export async function POST(request: Request) {
         retry.output_text?.trim() ?? retryParts.join("\n").trim();
 
       text = retryText;
+      if (text) {
+        usage = retry.usage ?? usage;
+      }
       if (!text) {
         const outputDebug = (response.output ?? []).map((item) => {
           const content = (item as { content?: unknown }).content;
@@ -1103,6 +1142,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: text }, { status: 403 });
     }
 
+    await recordUsage(usage);
     return NextResponse.json({
       text: stripLeadingTitle(text, payload.sectionTitle),
     });

@@ -58,6 +58,9 @@ const tpiLegendByColor: Record<TpiTest["result_color"], string> = {
   green: "Mobilite optimale",
 };
 
+const formatTpiTestName = (name: string) =>
+  name === "Wrist Flexion/Extension" ? "Wrist Flex./Ext." : name;
+
 const formatDate = (
   value?: string | null,
   locale?: string | null,
@@ -86,6 +89,7 @@ export default function CoachStudentDetailPage() {
   const [tpiDragging, setTpiDragging] = useState(false);
   const tpiInputRef = useRef<HTMLInputElement | null>(null);
   const [tpiDetail, setTpiDetail] = useState<TpiTest | null>(null);
+  const [selectedTpi, setSelectedTpi] = useState<TpiTest | null>(null);
   const [tpiHelpOpen, setTpiHelpOpen] = useState(false);
   const tpiProgressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -173,22 +177,38 @@ export default function CoachStudentDetailPage() {
     }
   };
 
-  const runTpiProgress = (target: number, step: number, delay: number) => {
+  const runTpiProgress = (
+    target: number,
+    step: number,
+    delay: number,
+    onComplete?: () => void
+  ) => {
     stopTpiProgress();
     tpiProgressTimer.current = setInterval(() => {
+      let reached = false;
       setTpiProgress((prev) => {
-        if (prev >= target) return prev;
-        return Math.min(prev + step, target);
+        if (prev >= target) {
+          reached = true;
+          return prev;
+        }
+        const next = Math.min(prev + step, target);
+        if (next >= target) reached = true;
+        return next;
       });
+      if (reached) {
+        stopTpiProgress();
+        if (onComplete) onComplete();
+      }
     }, delay);
   };
 
   const handleTpiFile = async (file: File) => {
     if (!studentId || !organization?.id) return;
-    const isPdf = file.type === "application/pdf";
-    const isImage = file.type.startsWith("image/");
-    if (!isPdf && !isImage) {
-      setTpiError("Format accepte : PDF ou image.");
+    const isPdf =
+      file.type === "application/pdf" ||
+      file.name.toLowerCase().endsWith(".pdf");
+    if (!isPdf) {
+      setTpiError("Importe uniquement le PDF TPI Pro recu par email.");
       return;
     }
 
@@ -259,7 +279,9 @@ export default function CoachStudentDetailPage() {
 
     setTpiProgress(50);
     setTpiPhase("analyse");
-    runTpiProgress(98, 0.6, 700);
+    runTpiProgress(90, 0.4, 600, () => {
+      runTpiProgress(99, 0.1, 1650);
+    });
 
     const response = await fetch("/api/tpi/extract", {
       method: "POST",
@@ -329,6 +351,16 @@ export default function CoachStudentDetailPage() {
   }, [studentId]);
 
   useEffect(() => {
+    if (tpiTests.length === 0) {
+      setSelectedTpi(null);
+      return;
+    }
+    if (!selectedTpi || !tpiTests.some((test) => test.id === selectedTpi.id)) {
+      setSelectedTpi(tpiTests[0]);
+    }
+  }, [tpiTests, selectedTpi]);
+
+  useEffect(() => {
     return () => {
       stopTpiProgress();
     };
@@ -373,10 +405,15 @@ export default function CoachStudentDetailPage() {
           <style jsx>{`
             .tpi-dots {
               display: inline-block;
+              width: 1.5em;
               overflow: hidden;
               vertical-align: bottom;
-              animation: tpiDots 1.4s steps(4, end) infinite;
+            }
+            .tpi-dots::after {
+              content: "...";
+              display: block;
               width: 0;
+              animation: tpiDots 1.4s steps(4, end) infinite;
             }
             @keyframes tpiDots {
               0% {
@@ -514,69 +551,6 @@ export default function CoachStudentDetailPage() {
                   </div>
                 </div>
               </div>
-              <div className="absolute right-4 top-4 flex items-center gap-2">
-                  <span className="group relative">
-                    <button
-                      type="button"
-                      onClick={() => setTpiHelpOpen((prev) => !prev)}
-                      className="flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[0.7rem] text-[var(--muted)] transition hover:text-[var(--text)]"
-                      aria-label="Aide import TPI"
-                      aria-expanded={tpiHelpOpen}
-                    >
-                      ?
-                    </button>
-                    <span
-                      className={`absolute right-0 top-full z-20 mt-2 w-80 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-3 text-xs text-[var(--text)] shadow-xl transition ${
-                        tpiHelpOpen
-                          ? "pointer-events-auto opacity-100"
-                          : "pointer-events-none opacity-0"
-                      } group-hover:opacity-100 group-focus-within:opacity-100`}
-                    >
-                      <span className="block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                        Tablette / mobile
-                      </span>
-                      <ol className="mt-2 list-decimal space-y-1 pl-4 text-[0.68rem] text-[var(--muted)]">
-                        <li>
-                          Envoie le rapport TPI depuis myTPI Pro a l eleve, en
-                          te mettant en copie (CC to me).
-                        </li>
-                        <li>
-                          Dans ta boite mail, ouvre le mail et clique sur
-                          partager (icone fleche).
-                        </li>
-                        <li>Selectionne Imprimer.</li>
-                        <li>
-                          Dans l ecran d impression, partage a nouveau et choisis
-                          Enregistrer dans Fichiers.
-                        </li>
-                        <li>
-                          Importe le PDF ici. Attends quelques minutes, puis le
-                          profil apparait en dessous dans la langue du compte.
-                        </li>
-                      </ol>
-                      <span className="mt-3 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                        PC
-                      </span>
-                      <ol className="mt-2 list-decimal space-y-1 pl-4 text-[0.68rem] text-[var(--muted)]">
-                        <li>
-                          Envoie le rapport TPI depuis myTPI Pro a l eleve, en
-                          te mettant en copie (CC to me).
-                        </li>
-                        <li>
-                          Ouvre le mail recu et imprime (Ctrl + P).
-                        </li>
-                        <li>
-                          Dans la fenetre d impression, choisis Print to PDF.
-                        </li>
-                        <li>
-                          Importe le PDF ici. Attends quelques minutes, puis le
-                          profil apparait en dessous dans la langue du compte.
-                        </li>
-                      </ol>
-                    </span>
-                  </span>
-              </div>
-
               <div
                 className={`mt-4 rounded-xl border border-dashed px-4 py-4 text-sm text-[var(--muted)] transition ${
                   tpiDragging
@@ -598,25 +572,87 @@ export default function CoachStudentDetailPage() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-sm text-[var(--text)]">
-                      Glisse un rapport TPI (PDF ou image).
+                      Glisse le PDF TPI Pro recu par email.
                     </p>
                     <p className="mt-1 text-xs text-[var(--muted)]">
-                      L extraction peut prendre quelques minutes.
+                      Seul le PDF du rapport TPI Pro est accepte.
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    disabled={tpiUploading}
-                    onClick={() => tpiInputRef.current?.click()}
-                    className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20 disabled:opacity-60"
-                  >
-                    Parcourir
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <span className="group relative">
+                      <button
+                        type="button"
+                        onClick={() => setTpiHelpOpen((prev) => !prev)}
+                        className="flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[0.7rem] text-[var(--muted)] transition hover:text-[var(--text)]"
+                        aria-label="Aide import TPI"
+                        aria-expanded={tpiHelpOpen}
+                      >
+                        ?
+                      </button>
+                      <span
+                        className={`absolute right-0 top-full z-20 mt-2 w-80 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-3 text-xs text-[var(--text)] shadow-xl transition ${
+                          tpiHelpOpen
+                            ? "pointer-events-auto opacity-100"
+                            : "pointer-events-none opacity-0"
+                        } group-hover:opacity-100 group-focus-within:opacity-100`}
+                      >
+                        <span className="block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                          Tablette / mobile
+                        </span>
+                        <ol className="mt-2 list-decimal space-y-1 pl-4 text-[0.68rem] text-[var(--muted)]">
+                          <li>
+                            Envoie le rapport TPI depuis myTPI Pro a l eleve, en
+                            te mettant en copie (CC to me).
+                          </li>
+                          <li>
+                            Dans ta boite mail, ouvre le mail et clique sur
+                            partager (icone fleche).
+                          </li>
+                          <li>Selectionne Imprimer.</li>
+                          <li>
+                            Dans l ecran d impression, partage a nouveau et choisis
+                            Enregistrer dans Fichiers.
+                          </li>
+                          <li>
+                            Importe le PDF ici. Attends quelques minutes, puis le
+                            profil apparait en dessous dans la langue du compte.
+                          </li>
+                        </ol>
+                        <span className="mt-3 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                          PC
+                        </span>
+                        <ol className="mt-2 list-decimal space-y-1 pl-4 text-[0.68rem] text-[var(--muted)]">
+                          <li>
+                            Envoie le rapport TPI depuis myTPI Pro a l eleve, en
+                            te mettant en copie (CC to me).
+                          </li>
+                          <li>
+                            Ouvre le mail recu et imprime (Ctrl + P).
+                          </li>
+                          <li>
+                            Dans la fenetre d impression, choisis Print to PDF.
+                          </li>
+                          <li>
+                            Importe le PDF ici. Attends quelques minutes, puis le
+                            profil apparait en dessous dans la langue du compte.
+                          </li>
+                        </ol>
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      disabled={tpiUploading}
+                      onClick={() => tpiInputRef.current?.click()}
+                      className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20 disabled:opacity-60"
+                    >
+                      Parcourir
+                    </button>
+                  </div>
                 </div>
                 <input
                   ref={tpiInputRef}
                   type="file"
-                  accept="application/pdf,image/*"
+                  accept="application/pdf"
                   className="hidden"
                   onChange={(event) => {
                     const file = event.target.files?.[0];
@@ -631,18 +667,17 @@ export default function CoachStudentDetailPage() {
                     <span>
                       {tpiPhase === "upload" ? (
                         <>
-                          Upload du rapport<span className="tpi-dots">...</span>
+                          Upload du rapport<span className="tpi-dots" aria-hidden="true" />
                         </>
                       ) : (
                         <>
-                          Analyse en cours<span className="tpi-dots">...</span>{" "}
-                          <span className="text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                            (jusqu&apos;a 5 min)
-                          </span>
+                          Analyse en cours<span className="tpi-dots" aria-hidden="true" />
                         </>
                       )}
                     </span>
-                    <span>{Math.round(tpiProgress)}%</span>
+                    <span className="min-w-[3ch] text-right text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                      {Math.round(tpiProgress)}%
+                    </span>
                   </div>
                   <div className="mt-2 h-2 w-full rounded-full bg-white/10">
                     <div
@@ -663,66 +698,101 @@ export default function CoachStudentDetailPage() {
 
               {tpiReport && tpiReport.status === "ready" ? (
                 <>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  {tpiTests.length === 0 ? (
-                    <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
-                      Aucun test TPI detecte.
+                  <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+                    <div>
+                      {tpiTests.length === 0 ? (
+                        <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
+                          Aucun test TPI detecte.
+                        </div>
+                      ) : (
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                          {tpiTests.map((test) => {
+                            const colorClass =
+                              test.result_color === "green"
+                                ? "bg-emerald-400"
+                                : test.result_color === "orange"
+                                ? "bg-amber-400"
+                                : "bg-rose-400";
+                            const isSelected = selectedTpi?.id === test.id;
+                            return (
+                              <button
+                                key={test.id}
+                                type="button"
+                                onClick={() => setSelectedTpi(test)}
+                                aria-pressed={isSelected}
+                                className={`flex h-20 items-start gap-2 overflow-hidden rounded-xl border px-4 py-3 text-left transition ${
+                                  isSelected
+                                    ? "border-emerald-300/40 bg-emerald-400/10"
+                                    : "border-white/10 bg-white/5 hover:border-white/20"
+                                }`}
+                              >
+                                <span
+                                  className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${colorClass}`}
+                                />
+                                <span className="max-h-16 min-w-0 overflow-hidden break-words text-sm font-semibold leading-snug text-[var(--text)]">
+                                  {formatTpiTestName(test.test_name)}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-[var(--muted)]">
+                        {(["red", "orange", "green"] as const).map((color) => {
+                          const dotClass =
+                            color === "green"
+                              ? "bg-emerald-400"
+                              : color === "orange"
+                              ? "bg-amber-400"
+                              : "bg-rose-400";
+                          return (
+                            <div key={color} className="flex items-center gap-2">
+                              <span
+                                className={`h-2.5 w-2.5 rounded-full ${dotClass}`}
+                              />
+                              <span>{tpiLegendByColor[color]}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  ) : (
-                    tpiTests.map((test) => {
-                      const colorClass =
-                        test.result_color === "green"
-                          ? "bg-emerald-400"
-                          : test.result_color === "orange"
-                          ? "bg-amber-400"
-                          : "bg-rose-400";
-                      return (
-                        <div
-                          key={test.id}
-                          className="relative rounded-xl border border-white/10 bg-white/5 px-4 py-3"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={`h-2.5 w-2.5 rounded-full ${colorClass}`}
-                            />
-                            <p className="text-sm font-semibold text-[var(--text)]">
-                              {test.test_name}
+                    <div className="panel-soft h-full rounded-2xl p-4">
+                      {selectedTpi ? (
+                        <div className="flex h-full flex-col gap-4">
+                          <div>
+                            <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                              Detail test
                             </p>
+                            <h4 className="mt-2 text-lg font-semibold text-[var(--text)]">
+                              {formatTpiTestName(selectedTpi.test_name)}
+                            </h4>
                           </div>
-                          <p className="mt-1 pb-7 pr-8 text-xs text-[var(--muted)]">
-                            {test.mini_summary || "-"}
+                          <p className="text-sm text-[var(--muted)]">
+                            {selectedTpi.mini_summary || "Resume indisponible."}
                           </p>
-                          {test.details ? (
-                            <button
-                              type="button"
-                              onClick={() => setTpiDetail(test)}
-                              className="absolute bottom-2 right-2 flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-white/10 text-xs font-semibold text-[var(--text)] transition hover:bg-white/20"
-                            >
-                              +
-                            </button>
-                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => setTpiDetail(selectedTpi)}
+                            disabled={
+                              !selectedTpi.details &&
+                              !selectedTpi.details_translated
+                            }
+                            className={`mt-auto w-full rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-wide transition ${
+                              selectedTpi.details ||
+                              selectedTpi.details_translated
+                                ? "border-white/10 bg-white/10 text-[var(--text)] hover:bg-white/20"
+                                : "cursor-not-allowed border-white/5 bg-white/5 text-[var(--muted)]"
+                            }`}
+                          >
+                            Voir le detail complet
+                          </button>
                         </div>
-                      );
-                    })
-                  )}
-                  </div>
-                  <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-[var(--muted)]">
-                    {(["red", "orange", "green"] as const).map((color) => {
-                      const dotClass =
-                        color === "green"
-                          ? "bg-emerald-400"
-                          : color === "orange"
-                          ? "bg-amber-400"
-                          : "bg-rose-400";
-                      return (
-                        <div key={color} className="flex items-center gap-2">
-                          <span
-                            className={`h-2.5 w-2.5 rounded-full ${dotClass}`}
-                          />
-                          <span>{tpiLegendByColor[color]}</span>
+                      ) : (
+                        <div className="text-sm text-[var(--muted)]">
+                          Selectionne un test pour afficher le resume.
                         </div>
-                      );
-                    })}
+                      )}
+                    </div>
                   </div>
                 </>
               ) : null}
@@ -743,7 +813,7 @@ export default function CoachStudentDetailPage() {
                         Test TPI
                       </p>
                       <h4 className="mt-2 text-lg font-semibold text-[var(--text)]">
-                        {tpiDetail.test_name}
+                        {formatTpiTestName(tpiDetail.test_name)}
                       </h4>
                     </div>
                     <button

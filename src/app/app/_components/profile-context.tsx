@@ -31,6 +31,7 @@ export type OrganizationSettings = {
 type ProfileState = {
   profile: Profile | null;
   organization: OrganizationSettings | null;
+  userEmail: string | null;
   loading: boolean;
   error: string;
   refresh: () => Promise<void>;
@@ -42,6 +43,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [organization, setOrganization] =
     useState<OrganizationSettings | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -51,10 +53,12 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 
     const { data: userData } = await supabase.auth.getUser();
     const userId = userData.user?.id;
+    setUserEmail(userData.user?.email ?? null);
 
     if (!userId) {
       setProfile(null);
       setOrganization(null);
+      setUserEmail(null);
       setLoading(false);
       return;
     }
@@ -100,8 +104,15 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   }, [organization?.locale]);
 
   const value = useMemo(
-    () => ({ profile, organization, loading, error, refresh: loadProfile }),
-    [profile, organization, loading, error]
+    () => ({
+      profile,
+      organization,
+      userEmail,
+      loading,
+      error,
+      refresh: loadProfile,
+    }),
+    [profile, organization, userEmail, loading, error]
   );
 
   return (

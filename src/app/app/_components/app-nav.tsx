@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useProfile } from "./profile-context";
+import { isAdminEmail } from "@/lib/admin";
 
 type NavItem = {
   label: string;
@@ -17,7 +18,8 @@ type NavSection = {
 
 export default function AppNav() {
   const pathname = usePathname();
-  const { profile, loading } = useProfile();
+  const { profile, loading, userEmail } = useProfile();
+  const isAdmin = isAdminEmail(userEmail);
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem("gc.navCollapsed") === "true";
@@ -55,6 +57,18 @@ export default function AppNav() {
         ],
       });
     }
+  }
+
+  if (!loading && isAdmin) {
+    sections.push({
+      title: "Admin",
+      items: [
+        { label: "Dashboard", href: "/app/admin" },
+        { label: "Tarifs", href: "/app/admin/pricing" },
+        { label: "Coachs", href: "/app/admin/coaches" },
+        { label: "Analytics", href: "/app/admin/analytics" },
+      ],
+    });
   }
 
   const isActive = (href: string) => {
@@ -150,6 +164,41 @@ export default function AppNav() {
           <path d="M14 3v5h5" />
           <path d="M8 13h8" />
           <path d="M8 17h5" />
+        </svg>
+      );
+    }
+    if (href === "/app/admin") {
+      return (
+        <svg viewBox="0 0 24 24" {...sharedProps}>
+          <path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z" />
+        </svg>
+      );
+    }
+    if (href === "/app/admin/pricing") {
+      return (
+        <svg viewBox="0 0 24 24" {...sharedProps}>
+          <path d="M12 3v18" />
+          <path d="M8 7h7a2 2 0 0 1 0 4H9a2 2 0 0 0 0 4h7" />
+        </svg>
+      );
+    }
+    if (href === "/app/admin/coaches") {
+      return (
+        <svg viewBox="0 0 24 24" {...sharedProps}>
+          <circle cx="8" cy="8" r="3" />
+          <circle cx="16" cy="10" r="3" />
+          <path d="M3 20c0-3 3-5 6-5" />
+          <path d="M12 20c0-3 3-5 6-5" />
+        </svg>
+      );
+    }
+    if (href === "/app/admin/analytics") {
+      return (
+        <svg viewBox="0 0 24 24" {...sharedProps}>
+          <path d="M4 19h16" />
+          <path d="M6 16V9" />
+          <path d="M12 16V5" />
+          <path d="M18 16v-7" />
         </svg>
       );
     }

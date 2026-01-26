@@ -14,6 +14,7 @@ type Student = {
   created_at: string;
   invited_at: string | null;
   activated_at: string | null;
+  tpi_report_id: string | null;
 };
 
 type StudentForm = {
@@ -38,6 +39,7 @@ export default function CoachStudentsPage() {
   const [inviteMessage, setInviteMessage] = useState("");
   const [inviteError, setInviteError] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
 
   const filteredStudents = useMemo(() => {
     const search = query.trim().toLowerCase();
@@ -71,7 +73,7 @@ export default function CoachStudentsPage() {
     const { data, error: fetchError } = await supabase
       .from("students")
       .select(
-        "id, first_name, last_name, email, created_at, invited_at, activated_at"
+        "id, first_name, last_name, email, created_at, invited_at, activated_at, tpi_report_id"
       )
       .order("created_at", { ascending: false });
 
@@ -87,6 +89,17 @@ export default function CoachStudentsPage() {
     loadProfile();
     loadStudents();
   }, []);
+
+  useEffect(() => {
+    if (!menuOpenId) return;
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-student-menu]")) return;
+      setMenuOpenId(null);
+    };
+    window.addEventListener("click", handleClick);
+    return () => window.removeEventListener("click", handleClick);
+  }, [menuOpenId]);
 
   const handleCreateStudent = async (
     event: React.FormEvent<HTMLFormElement>
@@ -195,6 +208,17 @@ export default function CoachStudentsPage() {
 
     await loadStudents();
     setDeletingId(null);
+  };
+
+  const handleMenuInvite = async (student: Student) => {
+    if (student.activated_at) return;
+    setMenuOpenId(null);
+    await handleInviteStudent(student);
+  };
+
+  const handleMenuDelete = async (student: Student) => {
+    setMenuOpenId(null);
+    await handleDeleteStudent(student);
   };
 
   return (
@@ -312,10 +336,11 @@ export default function CoachStudentsPage() {
 
         <section className="panel rounded-2xl p-6">
           <div className="grid gap-3 text-sm text-[var(--muted)]">
-            <div className="hidden gap-3 uppercase tracking-wide text-[0.7rem] text-[var(--muted)] md:grid md:grid-cols-[1.5fr_1fr_1.2fr]">
+            <div className="hidden gap-3 uppercase tracking-wide text-[0.7rem] text-[var(--muted)] md:grid md:grid-cols-[1.5fr_1fr_0.9fr_0.9fr]">
               <span>Eleve</span>
               <span>Email</span>
               <span>Acces</span>
+              <span>Features</span>
             </div>
             {loading ? (
               <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
@@ -326,60 +351,147 @@ export default function CoachStudentsPage() {
                 Aucun eleve pour le moment.
               </div>
             ) : (
-              filteredStudents.map((student) => (
-                <div
-                  key={student.id}
-                  className="grid gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-[var(--text)] md:grid-cols-[1.5fr_1fr_1.2fr]"
-                >
-                  <div>
-                    <p className="font-medium">
-                      {student.first_name} {student.last_name ?? ""}
-                    </p>
-                    <Link
-                      href={`/app/coach/eleves/${student.id}`}
-                      className="mt-1 inline-flex text-xs uppercase tracking-wide text-[var(--muted)] hover:text-[var(--text)]"
-                    >
-                      Voir le dashboard -&gt;
-                    </Link>
+              filteredStudents.map((student) => {
+                const inviteDisabled = Boolean(student.activated_at);
+                const inviteLabel = inviteDisabled
+                  ? "Inviter"
+                  : invitingId === student.id
+                    ? "Envoi..."
+                    : "Inviter";
+                return (
+                  <div
+                    key={student.id}
+                    className="relative grid gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-[var(--text)] md:grid-cols-[1.5fr_1fr_0.9fr_0.9fr]"
+                  >
+                    <div>
+                      <div className="flex items-center gap-3">
+                        <Link
+                          href={`/app/coach/eleves/${student.id}`}
+                          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                          aria-label="Voir le dashboard eleve"
+                          title="Voir le dashboard eleve"
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-4 w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M3 12h18" />
+                            <path d="M15 6l6 6-6 6" />
+                          </svg>
+                        </Link>
+                        <p className="font-medium">
+                          {student.first_name} {student.last_name ?? ""}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-sm text-[var(--muted)]">
+                      {student.email || "-"}
+                    </span>
+                    <div className="flex flex-col gap-2">
+                      {student.activated_at ? (
+                        <span className="inline-flex self-start rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-emerald-200">
+                          Actif
+                        </span>
+                      ) : student.invited_at ? (
+                        <span className="inline-flex self-start rounded-full border border-amber-300/30 bg-amber-400/10 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-amber-200">
+                          Invite
+                        </span>
+                      ) : (
+                        <span className="inline-flex self-start rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)]">
+                          A inviter
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      {student.tpi_report_id ? (
+                        <span className="inline-flex self-start rounded-full border border-sky-300/30 bg-sky-400/10 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-sky-200">
+                          TPI actif
+                        </span>
+                      ) : (
+                        <span className="inline-flex self-start rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)]">
+                          TPI inactif
+                        </span>
+                      )}
+                      <div className="relative" data-student-menu>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setMenuOpenId((prev) =>
+                              prev === student.id ? null : student.id
+                            );
+                          }}
+                          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                          aria-label="Actions eleve"
+                          aria-expanded={menuOpenId === student.id}
+                          aria-haspopup="menu"
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-4 w-4"
+                            fill="currentColor"
+                          >
+                            <circle cx="12" cy="5" r="2" />
+                            <circle cx="12" cy="12" r="2" />
+                            <circle cx="12" cy="19" r="2" />
+                          </svg>
+                        </button>
+                        {menuOpenId === student.id ? (
+                          <div
+                            role="menu"
+                            onClick={(event) => event.stopPropagation()}
+                            className="absolute right-0 z-50 mt-2 w-40 rounded-xl border border-white/10 bg-[var(--bg-elevated)] p-1 text-xs shadow-[0_12px_30px_rgba(0,0,0,0.35)]"
+                          >
+                            <Link
+                              href={`/app/coach/rapports/nouveau?studentId=${student.id}`}
+                              onClick={() => setMenuOpenId(null)}
+                              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10"
+                            >
+                              Nouveau rapport
+                            </Link>
+                            <Link
+                              href={`/app/coach/eleves/${student.id}`}
+                              onClick={() => setMenuOpenId(null)}
+                              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10"
+                            >
+                              Profil TPI
+                            </Link>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => handleMenuInvite(student)}
+                              disabled={inviteDisabled || invitingId === student.id}
+                              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide transition ${
+                                inviteDisabled
+                                  ? "cursor-not-allowed text-[var(--muted)]"
+                                  : "text-[var(--text)] hover:bg-white/10"
+                              }`}
+                            >
+                              {inviteLabel}
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => handleMenuDelete(student)}
+                              disabled={deletingId === student.id}
+                              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:bg-white/10 hover:text-red-200 disabled:opacity-60"
+                            >
+                              {deletingId === student.id
+                                ? "Suppression..."
+                                : "Supprimer"}
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
                   </div>
-                  <span className="text-sm text-[var(--muted)]">
-                    {student.email || "-"}
-                  </span>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleInviteStudent(student)}
-                      disabled={invitingId === student.id}
-                      className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20 disabled:opacity-60"
-                    >
-                      {invitingId === student.id ? "Envoi..." : "Inviter"}
-                    </button>
-                    {student.activated_at ? (
-                      <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-emerald-200">
-                        Actif
-                      </span>
-                    ) : student.invited_at ? (
-                      <span className="rounded-full border border-amber-300/30 bg-amber-400/10 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-amber-200">
-                        Invite
-                      </span>
-                    ) : (
-                      <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)]">
-                        A inviter
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteStudent(student)}
-                      disabled={deletingId === student.id}
-                      className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:text-red-200 disabled:opacity-60"
-                    >
-                      {deletingId === student.id
-                        ? "Suppression..."
-                        : "Supprimer"}
-                    </button>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </section>
