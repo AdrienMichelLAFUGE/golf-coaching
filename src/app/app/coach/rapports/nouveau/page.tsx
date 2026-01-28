@@ -5768,7 +5768,7 @@ export default function CoachReportBuilderPage() {
                     ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
                     : "border-amber-300/30 bg-amber-400/10 text-amber-200"
                 }`}
-                onClick={!aiEnabled ? openPremiumModal : undefined}
+                onClick={!aiEnabled ? () => openPremiumModal() : undefined}
                 role={!aiEnabled ? "button" : undefined}
                 aria-label={!aiEnabled ? "Decouvrir Premium" : undefined}
               >
