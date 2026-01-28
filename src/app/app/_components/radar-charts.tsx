@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import type { ReactElement } from "react";
 import { DEFAULT_RADAR_CONFIG } from "@/lib/radar/config";
 import type { RadarAnalytics, RadarConfig, RadarChartPayload } from "@/lib/radar/types";
 import { RADAR_CHART_DEFINITIONS, RADAR_CHART_GROUPS } from "@/lib/radar/charts/registry";
@@ -120,7 +121,7 @@ const buildGridLines = ({
   padding: number;
   count?: number;
 }) => {
-  const lines: Array<JSX.Element> = [];
+  const lines: Array<ReactElement> = [];
   for (let i = 1; i < count; i += 1) {
     const x =
       padding + (i / count) * (width - padding * 2);
