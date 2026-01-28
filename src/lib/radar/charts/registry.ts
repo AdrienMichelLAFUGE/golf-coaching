@@ -244,7 +244,10 @@ const buildScatter = (
       if (x === null || y === null) return null;
       return { x, y, shotIndex: numeric(shot.shot_index) ?? undefined };
     })
-    .filter((entry): entry is { x: number; y: number; shotIndex?: number } => !!entry);
+    .filter(
+      (entry): entry is { x: number; y: number; shotIndex: number | undefined } =>
+        entry !== null
+    );
 
 const buildLine = (shots: Array<Record<string, unknown>>, key: string) =>
   shots
