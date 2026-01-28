@@ -5723,7 +5723,7 @@ export default function CoachReportBuilderPage() {
             {aiLocked ? (
               <button
                 type="button"
-                onClick={openPremiumModal}
+                onClick={() => openPremiumModal()}
                 className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--overlay)] px-6 text-left backdrop-blur-sm"
                 aria-label="Decouvrir Premium"
               >
