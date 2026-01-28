@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import AdminGuard from "../../_components/admin-guard";
 import PageBack from "../../_components/page-back";
@@ -95,7 +95,9 @@ const featureTones = {
 const getFeatureKeyFromLabel = (label: string): FeatureKey | null => {
   const lowered = label.toLowerCase();
   if (lowered.includes("tpi")) return "tpi";
-  if (lowered.includes("radar")) return "radar";
+  if (lowered.includes("radar") || lowered.includes("datas") || lowered.includes("data")) {
+    return "radar";
+  }
   if (lowered.includes("image")) return "image";
   if (lowered.includes("ia") || lowered.includes("ai")) return "ai";
   return null;
@@ -181,15 +183,13 @@ export default function AdminAnalyticsPage() {
     loadAnalytics();
   }, []);
 
-  const maxTokens = useMemo(() => {
-    if (!analytics?.daily?.length) return 0;
-    return Math.max(...analytics.daily.map((day) => day.tokens));
-  }, [analytics?.daily]);
+  const maxTokens = analytics?.daily?.length
+    ? Math.max(...analytics.daily.map((day) => day.tokens))
+    : 0;
 
-  const coachMaxTokens = useMemo(() => {
-    if (!coachDetail?.daily?.length) return 0;
-    return Math.max(...coachDetail.daily.map((day) => day.tokens));
-  }, [coachDetail?.daily]);
+  const coachMaxTokens = coachDetail?.daily?.length
+    ? Math.max(...coachDetail.daily.map((day) => day.tokens))
+    : 0;
 
   const loadCoachDetail = async (userId: string) => {
     setSelectedCoachId(userId);
@@ -374,7 +374,7 @@ export default function AdminAnalyticsPage() {
                   },
                   {
                     id: "usage-radar-imports",
-                    label: "Import Radar",
+                    label: "Import Datas",
                     value: formatNumber(analytics.totals.avgRadarImportsPerDay, 2),
                     helper: "Par jour",
                     cost: formatUsd(analytics.totals.costPerRadarUsd),
@@ -444,7 +444,7 @@ export default function AdminAnalyticsPage() {
                   },
                   {
                     id: "cost-radar",
-                    label: "Cout / Radar",
+                    label: "Cout / Datas",
                     value: formatUsd(analytics.totals.costPerRadarUsd),
                     helper: `${formatNumber(
                       analytics.totals.radarImportsTotal

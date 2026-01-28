@@ -97,8 +97,14 @@ const tpiLegendByColor: Record<TpiTest["result_color"], string> = {
   green: "Mobilite optimale",
 };
 
-const formatTpiTestName = (name: string) =>
-  name === "Wrist Flexion/Extension" ? "Wrist Flex./Ext." : name;
+const formatTpiTestName = (name: string) => {
+  const shortened = name
+    .replace(/Extension/g, "Ext.")
+    .replace(/Rotation/g, "Rota.");
+  return shortened === "Wrist Flexion/Ext."
+    ? "Wrist Flex./Ext."
+    : shortened;
+};
 
 const formatDate = (
   value?: string | null,
@@ -209,14 +215,14 @@ export default function CoachStudentDetailPage() {
   const openRadarAddonModal = useCallback(() => {
     const needsPremium = !aiEnabled;
     openPremiumModal({
-      title: "Acces radar bloque",
+      title: "Acces datas bloque",
       description: needsPremium
-        ? "Cette section est reservee aux coachs Premium IA avec l add-on Radar."
-        : "Ajoute l add-on Radar pour debloquer cette section.",
-      tags: needsPremium ? ["Premium IA", "Add-on Radar"] : ["Add-on Radar"],
+        ? "Cette section est reservee aux coachs Premium IA avec l add-on Datas."
+        : "Ajoute l add-on Datas pour debloquer cette section.",
+      tags: needsPremium ? ["Premium IA", "Add-on Datas"] : ["Add-on Datas"],
       status: [
         { label: "Premium IA", value: aiEnabled ? "Actif" : "Inactif" },
-        { label: "Add-on Radar", value: radarAddonEnabled ? "Actif" : "Inactif" },
+        { label: "Add-on Datas", value: radarAddonEnabled ? "Actif" : "Inactif" },
       ],
     });
   }, [aiEnabled, openPremiumModal, radarAddonEnabled]);
@@ -236,7 +242,7 @@ export default function CoachStudentDetailPage() {
     });
   }, [aiEnabled, openPremiumModal, tpiAddonEnabled]);
 
-  const loadTpi = async (reportId?: string | null) => {
+  const loadTpi = useCallback(async (reportId?: string | null) => {
     if (!studentId) return;
 
     setTpiLoading(true);
@@ -279,6 +285,7 @@ export default function CoachStudentDetailPage() {
     if (!reportData) {
       setTpiReport(null);
       setTpiTests([]);
+      setSelectedTpi(null);
       setTpiLoading(false);
       return;
     }
@@ -296,6 +303,7 @@ export default function CoachStudentDetailPage() {
     if (testsError) {
       setTpiError(testsError.message);
       setTpiTests([]);
+      setSelectedTpi(null);
       setTpiLoading(false);
       return;
     }
@@ -307,10 +315,17 @@ export default function CoachStudentDetailPage() {
       return a.position - b.position;
     });
     setTpiTests(sorted);
+    setSelectedTpi((current) => {
+      if (!sorted.length) return null;
+      if (current && sorted.some((test) => test.id === current.id)) {
+        return current;
+      }
+      return sorted[0];
+    });
     setTpiLoading(false);
-  };
+  }, [studentId]);
 
-  const loadRadars = async () => {
+  const loadRadars = useCallback(async () => {
     if (!studentId) return;
     setRadarLoading(true);
     setRadarError("");
@@ -347,7 +362,7 @@ export default function CoachStudentDetailPage() {
 
     setRadarFiles(normalized as RadarFile[]);
     setRadarLoading(false);
-  };
+  }, [studentId]);
 
   const stopTpiProgress = () => {
     if (tpiProgressTimer.current) {
@@ -525,12 +540,12 @@ export default function CoachStudentDetailPage() {
 
   const handleRadarFile = async (file: File) => {
     if (radarLocked) {
-      setRadarError("Add-on Radars requis pour importer un fichier.");
+      setRadarError("Add-on Datas requis pour importer un fichier.");
       openRadarAddonModal();
       return;
     }
     if (!studentId || !organization?.id) {
-      setRadarError("Choisis un eleve avant d importer un fichier radar.");
+      setRadarError("Choisis un eleve avant d importer un fichier datas.");
       return;
     }
     const isRadarImageFile = () => {
@@ -583,7 +598,7 @@ export default function CoachStudentDetailPage() {
       .single();
 
     if (insertError || !radarRow) {
-      setRadarError(insertError?.message ?? "Erreur d enregistrement radar.");
+      setRadarError(insertError?.message ?? "Erreur d enregistrement datas.");
       stopRadarProgress();
       setRadarProgress(0);
       setRadarUploading(false);
@@ -617,7 +632,7 @@ export default function CoachStudentDetailPage() {
 
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
-      setRadarError(payload.error ?? "Erreur lors de l extraction radar.");
+      setRadarError(payload.error ?? "Erreur lors de l extraction datas.");
       stopRadarProgress();
       setRadarProgress(0);
       setRadarUploading(false);
@@ -672,22 +687,19 @@ export default function CoachStudentDetailPage() {
     };
 
     loadStudent();
-  }, [studentId]);
+  }, [studentId, loadTpi]);
 
   useEffect(() => {
     if (!studentId) return;
-    loadRadars();
-  }, [studentId]);
-
-  useEffect(() => {
-    if (tpiTests.length === 0) {
-      setSelectedTpi(null);
-      return;
-    }
-    if (!selectedTpi || !tpiTests.some((test) => test.id === selectedTpi.id)) {
-      setSelectedTpi(tpiTests[0]);
-    }
-  }, [tpiTests, selectedTpi]);
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (cancelled) return;
+      void loadRadars();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [studentId, loadRadars]);
 
   useEffect(() => {
     return () => {
@@ -729,7 +741,7 @@ export default function CoachStudentDetailPage() {
 
   const handleDeleteRadarFile = async (file: RadarFile) => {
     const name = file.original_name || "Export Flightscope";
-    const confirmed = window.confirm(`Supprimer le fichier radar "${name}" ?`);
+    const confirmed = window.confirm(`Supprimer le fichier datas "${name}" ?`);
     if (!confirmed) return;
 
     setRadarDeletingId(file.id);
@@ -766,8 +778,8 @@ export default function CoachStudentDetailPage() {
     }
 
     if (storageError) {
-      setRadarError(
-        `Fichier radar supprime, mais erreur de stockage: ${storageError}`
+    setRadarError(
+        `Fichier datas supprime, mais erreur de stockage: ${storageError}`
       );
     }
     setRadarDeletingId(null);
@@ -1049,16 +1061,16 @@ export default function CoachStudentDetailPage() {
                           )}
                         </p>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex flex-col items-end gap-2 self-end md:self-auto">
                         <Link
                           href={`/app/coach/rapports/${report.id}`}
-                          className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
+                          className="w-28 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-center text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
                         >
                           Ouvrir
                         </Link>
                         <Link
                           href={`/app/coach/rapports/nouveau?reportId=${report.id}`}
-                          className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                          className="w-28 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-center text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
                         >
                           Modifier
                         </Link>
@@ -1066,7 +1078,7 @@ export default function CoachStudentDetailPage() {
                           type="button"
                           onClick={() => handleDeleteReport(report)}
                           disabled={deletingId === report.id}
-                          className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:text-red-200 disabled:opacity-60"
+                          className="w-28 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-center text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:text-red-200 disabled:opacity-60"
                         >
                           {deletingId === report.id
                             ? "Suppression..."
@@ -1338,7 +1350,7 @@ export default function CoachStudentDetailPage() {
                                 <span
                                   className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${colorClass}`}
                                 />
-                                <span className="max-h-16 min-w-0 overflow-hidden break-words text-sm font-semibold leading-snug text-[var(--text)]">
+                                <span className="max-h-16 min-w-0 overflow-hidden break-keep text-[0.7rem] font-semibold leading-snug text-[var(--text)]">
                                   {formatTpiTestName(test.test_name)}
                                 </span>
                               </button>
@@ -1436,7 +1448,7 @@ export default function CoachStudentDetailPage() {
                         <rect x="5" y="11" width="14" height="9" rx="2" />
                         <path d="M8 11V8a4 4 0 0 1 8 0v3" />
                       </svg>
-                      Add-on Radars requis
+                      Add-on Datas requis
                     </span>
                     <button
                       type="button"
@@ -1454,7 +1466,7 @@ export default function CoachStudentDetailPage() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-semibold text-[var(--text)]">
-                    Fichiers radars
+                    Fichiers datas
                   </h3>
                   <p className="mt-1 text-sm text-[var(--muted)]">
                     Importe un export Flightscope pour generer graphes, stats et
@@ -1491,7 +1503,7 @@ export default function CoachStudentDetailPage() {
                 }}
                 onDrop={(event) => {
                   if (radarLocked) {
-                    setRadarError("Add-on Radars requis pour importer un fichier.");
+                    setRadarError("Add-on Datas requis pour importer un fichier.");
                     openRadarAddonModal();
                     return;
                   }
@@ -1510,7 +1522,7 @@ export default function CoachStudentDetailPage() {
                     </p>
                   </div>
                   <span className="rounded-full border border-violet-300/30 bg-violet-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-violet-100">
-                    Add-on Radars Extraction
+                    Add-on Datas Extraction
                   </span>
                 </div>
                 <input
@@ -1554,7 +1566,7 @@ export default function CoachStudentDetailPage() {
               ) : null}
               {radarLoading ? (
                 <p className="mt-3 text-xs text-[var(--muted)]">
-                  Chargement des fichiers radar...
+                  Chargement des fichiers datas...
                 </p>
               ) : null}
               {radarError ? (
@@ -1564,7 +1576,7 @@ export default function CoachStudentDetailPage() {
               <div className="mt-4 space-y-3">
                 {radarFiles.length === 0 ? (
                   <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
-                    Aucun fichier radar pour cet eleve.
+                    Aucun fichier datas pour cet eleve.
                   </div>
                 ) : (
                   radarFiles.map((file) => {
@@ -1705,7 +1717,7 @@ export default function CoachStudentDetailPage() {
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                        Radar
+                        Datas
                       </p>
                       <h4 className="mt-2 text-lg font-semibold text-[var(--text)]">
                         {radarPreview.original_name || "Export Flightscope"}
@@ -1739,7 +1751,7 @@ export default function CoachStudentDetailPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                        Extraction radar
+                        Extraction datas
                       </p>
                       <h3 className="mt-2 text-lg font-semibold text-[var(--text)]">
                         Mode d affichage
@@ -1818,7 +1830,7 @@ export default function CoachStudentDetailPage() {
                   {radarConfigDraft.mode === "ai" ? (
                     <div className="mt-3 rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-3 text-[0.7rem] text-emerald-100">
                       <p className="text-[0.55rem] uppercase tracking-wide text-emerald-200/80">
-                        Reglages IA radar
+                        Reglages IA datas
                       </p>
                       <div className="mt-3 grid gap-3 md:grid-cols-2">
                         <div>

@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -58,7 +60,7 @@ const featureTones = {
     border: "border-sky-400/50",
   },
   radar: {
-    label: "Radar",
+    label: "Datas",
     badge: "border-violet-300/30 bg-violet-400/10 text-violet-100",
     dot: "bg-violet-300",
     panel: "border-violet-400/50 bg-violet-400/10",
@@ -396,7 +398,7 @@ export default function CoachReportDetailPage() {
                           </div>
                         ) : (
                           <p className="mt-3 text-sm text-[var(--muted)]">
-                            Donnees radar indisponibles.
+                            Donnees datas indisponibles.
                           </p>
                         );
                       })()

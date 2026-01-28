@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
@@ -54,7 +56,7 @@ const featureTones = {
     border: "border-sky-400/50",
   },
   radar: {
-    label: "Radar",
+    label: "Datas",
     badge: "border-violet-300/30 bg-violet-400/10 text-violet-100",
     dot: "bg-violet-300",
     panel: "border-violet-400/50 bg-violet-400/10",
@@ -246,7 +248,6 @@ export default function ReportDetailPage() {
               <div className="panel rounded-2xl p-6">
                 {sections.map((section) => {
                   const featureKey = getSectionFeatureKey(section);
-                  const tone = featureKey ? featureTones[featureKey] : null;
                   const isTextSection =
                     !section.type || section.type === "text";
 
@@ -273,14 +274,9 @@ export default function ReportDetailPage() {
                   }
 
                   return (
-                  <div
-                    key={section.id}
-                    className={`relative mb-6 rounded-2xl border p-4 last:mb-0 ${
-                      tone ? tone.panel : "border-white/10 bg-white/5"
-                    }`}
-                  >
+                    <div key={section.id} className="mb-10 last:mb-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-lg font-semibold text-[var(--text)]">
+                      <h3 className="text-xl font-semibold text-[var(--text)]">
                         {section.title}
                       </h3>
                       {renderFeatureBadge(featureKey)}
@@ -335,7 +331,7 @@ export default function ReportDetailPage() {
                           </div>
                         ) : (
                           <p className="mt-3 text-sm text-[var(--muted)]">
-                            Donnees radar indisponibles.
+                            Donnees datas indisponibles.
                           </p>
                         );
                       })()
@@ -344,8 +340,8 @@ export default function ReportDetailPage() {
                         {section.content || "Aucun contenu pour cette section."}
                       </p>
                     )}
-                  </div>
-                );
+                    </div>
+                  );
                 })}
               </div>
 

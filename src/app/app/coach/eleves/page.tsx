@@ -98,8 +98,16 @@ export default function CoachStudentsPage() {
   };
 
   useEffect(() => {
-    loadProfile();
-    loadStudents();
+    let cancelled = false;
+    Promise.resolve().then(async () => {
+      if (cancelled) return;
+      await loadProfile();
+      if (cancelled) return;
+      await loadStudents();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -500,7 +508,7 @@ export default function CoachStudentsPage() {
                           TPI actif
                         </span>
                       ) : (
-                        <span className="inline-flex self-start rounded-full border border-rose-300/20 bg-rose-400/5 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-rose-200/70">
+                        <span className="inline-flex self-start rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)]">
                           TPI inactif
                         </span>
                       )}

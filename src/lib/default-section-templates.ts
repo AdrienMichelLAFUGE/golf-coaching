@@ -5,7 +5,7 @@ export type DefaultSectionTemplate = {
 };
 
 export const defaultSectionTemplates: DefaultSectionTemplate[] = [
-  { title: "Fichiers radars", type: "radar", tags: ["stats", "radar"] },
+  { title: "Fichiers datas", type: "radar", tags: ["stats", "datas"] },
   { title: "Resume de la seance", type: "text", tags: ["summary"] },
   { title: "Objectifs prioritaires", type: "text", tags: ["goals", "planning"] },
   { title: "Points forts", type: "text", tags: ["strengths", "performance"] },

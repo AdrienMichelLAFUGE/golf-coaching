@@ -278,7 +278,7 @@ export async function POST(req: Request) {
     .single();
 
   if (radarError || !radarFile) {
-    return Response.json({ error: "Fichier radar introuvable." }, { status: 404 });
+    return Response.json({ error: "Fichier datas introuvable." }, { status: 404 });
   }
 
   const { data: profileData } = await supabase
@@ -299,7 +299,7 @@ export async function POST(req: Request) {
 
   if (!isAdmin && !orgData?.radar_enabled) {
     return Response.json(
-      { error: "Add-on Radars requis." },
+      { error: "Add-on Datas requis." },
       { status: 403 }
     );
   }
@@ -314,7 +314,7 @@ export async function POST(req: Request) {
       .update({ status: "error", error: "Fichier introuvable." })
       .eq("id", radarFileId);
     return Response.json(
-      { error: "Fichier radar introuvable." },
+      { error: "Fichier datas introuvable." },
       { status: 500 }
     );
   }
@@ -411,7 +411,7 @@ export async function POST(req: Request) {
       .update({ status: "error", error: (error as Error).message ?? "OCR error." })
       .eq("id", radarFileId);
     return Response.json(
-      { error: (error as Error).message ?? "Extraction radar impossible." },
+      { error: (error as Error).message ?? "Extraction datas impossible." },
       { status: 500 }
     );
   }

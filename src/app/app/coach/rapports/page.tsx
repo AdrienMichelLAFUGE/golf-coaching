@@ -217,7 +217,14 @@ export default function CoachReportsPage() {
   };
 
   useEffect(() => {
-    loadReports();
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (cancelled) return;
+      void loadReports();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleDeleteReport = async (report: ReportRow) => {
@@ -345,8 +352,8 @@ export default function CoachReportsPage() {
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--text)]">
                     Dates
                   </p>
-                  <div className="mt-2 grid gap-3 md:grid-cols-[1fr_0.7fr_0.7fr]">
-                    <div>
+                  <div className="mt-2 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,0.7fr)]">
+                    <div className="min-w-0">
                       <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
                         Periode
                       </label>
@@ -368,7 +375,7 @@ export default function CoachReportsPage() {
                         <option value="custom">Personnalisee</option>
                       </select>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
                         Du
                       </label>
@@ -379,10 +386,10 @@ export default function CoachReportsPage() {
                           setDateFrom(event.target.value);
                           setDatePreset("custom");
                         }}
-                        className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                        className="mt-2 w-full min-w-0 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
                       />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
                         Au
                       </label>
@@ -393,7 +400,7 @@ export default function CoachReportsPage() {
                           setDateTo(event.target.value);
                           setDatePreset("custom");
                         }}
-                        className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                        className="mt-2 w-full min-w-0 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
                       />
                     </div>
                   </div>

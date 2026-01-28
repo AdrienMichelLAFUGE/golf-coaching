@@ -34,7 +34,7 @@ const toFeatureCategory = (action: string) => {
   const normalized = action.toLowerCase();
   if (normalized.includes("tpi")) return "TPI";
   if (normalized.includes("radar") || normalized.includes("flightscope")) {
-    return "Radars";
+    return "Datas";
   }
   if (reportActions.has(normalized)) return "Rapport";
   return "Autres";

@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import {
   useCallback,
   useEffect,
@@ -175,7 +177,7 @@ type RadarAiQuestion = {
 const DEFAULT_RADAR_AI_QUESTIONS: RadarAiQuestion[] = [
   {
     id: "goal",
-    question: "Objectif principal de la seance radar ?",
+    question: "Objectif principal de la seance datas ?",
     type: "choices",
     choices: ["Precision", "Distance", "Regularite", "Contact", "Trajectoire"],
     required: true,
@@ -264,7 +266,7 @@ const featureTones = {
     button: "border-sky-300/40 bg-sky-400/10 text-sky-100",
   },
   radar: {
-    label: "Radar",
+    label: "Datas",
     badge: "border-violet-300/30 bg-violet-400/10 text-violet-100",
     chip: "border-violet-300/30 bg-violet-400/10 text-violet-100",
     dot: "bg-violet-300",
@@ -517,6 +519,7 @@ export default function CoachReportBuilderPage() {
   const [aiLength, setAiLength] = useState("normal");
   const [aiImagery, setAiImagery] = useState("equilibre");
   const [aiFocus, setAiFocus] = useState("mix");
+  const [aiPropagationReview, setAiPropagationReview] = useState(true);
   const [aiSummary, setAiSummary] = useState("");
   const [aiError, setAiError] = useState("");
   const [aiBusyId, setAiBusyId] = useState<string | null>(null);
@@ -549,7 +552,6 @@ export default function CoachReportBuilderPage() {
     clarifications?: { question: string; answer: string }[];
   } | null>(null);
   const [axesOpen, setAxesOpen] = useState(false);
-  const [axesLoading, setAxesLoading] = useState(false);
   const [axesBySection, setAxesBySection] = useState<AxesForSection[]>([]);
   const [axesSelection, setAxesSelection] = useState<Record<string, string>>(
     {}
@@ -613,18 +615,18 @@ export default function CoachReportBuilderPage() {
   const openRadarAddonModal = useCallback(() => {
     const needsPremium = !aiEnabled;
     openPremiumModal({
-      title: "Acces radar bloque",
+      title: "Acces datas bloque",
       description: needsPremium
-        ? "Cette section est reservee aux coachs Premium IA avec l add-on Radar."
-        : "Ajoute l add-on Radar pour debloquer cette section.",
-      tags: needsPremium ? ["Premium IA", "Add-on Radar"] : ["Add-on Radar"],
+        ? "Cette section est reservee aux coachs Premium IA avec l add-on Datas."
+        : "Ajoute l add-on Datas pour debloquer cette section.",
+      tags: needsPremium ? ["Premium IA", "Add-on Datas"] : ["Add-on Datas"],
       status: [
         {
           label: "Premium IA",
           value: aiEnabled ? "Actif" : "Inactif",
         },
         {
-          label: "Add-on Radar",
+          label: "Add-on Datas",
           value: radarAddonEnabled ? "Actif" : "Inactif",
         },
       ],
@@ -1220,7 +1222,7 @@ export default function CoachReportBuilderPage() {
       return;
     }
     if (customType === "radar" && !radarAddonEnabled) {
-      setSectionsNotice("Add-on Radar requis pour cette section.", "error");
+      setSectionsNotice("Add-on Datas requis pour cette section.", "error");
       openRadarAddonModal();
       return;
     }
@@ -1629,7 +1631,7 @@ export default function CoachReportBuilderPage() {
     setStudents(data ?? []);
   };
 
-  const loadRadarFiles = async (student?: string) => {
+  const loadRadarFiles = useCallback(async (student?: string) => {
     const targetStudentId = student ?? studentId;
     if (!targetStudentId) {
       setRadarFiles([]);
@@ -1670,7 +1672,7 @@ export default function CoachReportBuilderPage() {
 
     setRadarFiles(normalized as RadarFile[]);
     setRadarLoading(false);
-  };
+  }, [studentId]);
 
   const stopRadarUploadProgress = () => {
     if (radarUploadTimer.current) {
@@ -1714,12 +1716,12 @@ export default function CoachReportBuilderPage() {
 
   const processRadarFile = async (file: File) => {
     if (!radarAddonEnabled) {
-      setRadarError("Add-on Radar requis pour importer un fichier.");
+      setRadarError("Add-on Datas requis pour importer un fichier.");
       openRadarAddonModal();
       return false;
     }
     if (!studentId || !organization?.id) {
-      setRadarError("Choisis un eleve avant d importer un fichier radar.");
+      setRadarError("Choisis un eleve avant d importer un fichier datas.");
       return false;
     }
     if (!isRadarImageFile(file)) {
@@ -1762,7 +1764,7 @@ export default function CoachReportBuilderPage() {
       .single();
 
     if (insertError || !radarRow) {
-      setRadarError(insertError?.message ?? "Erreur d enregistrement radar.");
+      setRadarError(insertError?.message ?? "Erreur d enregistrement datas.");
       stopRadarUploadProgress();
       setRadarUploadProgress(0);
       return false;
@@ -1797,7 +1799,7 @@ export default function CoachReportBuilderPage() {
 
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
-      setRadarError(payload.error ?? "Erreur lors de l extraction radar.");
+      setRadarError(payload.error ?? "Erreur lors de l extraction datas.");
       stopRadarUploadProgress();
       setRadarUploadProgress(0);
       await loadRadarFiles();
@@ -1808,14 +1810,6 @@ export default function CoachReportBuilderPage() {
     stopRadarUploadProgress();
     setRadarUploadProgress(100);
     return true;
-  };
-
-  const handleRadarUpload = async (file: File) => {
-    setRadarUploading(true);
-    setRadarUploadBatch({ current: 1, total: 1 });
-    await processRadarFile(file);
-    setRadarUploading(false);
-    setRadarUploadBatch(null);
   };
 
   const handleRadarUploadBatch = async (files: File[]) => {
@@ -1867,7 +1861,7 @@ export default function CoachReportBuilderPage() {
     setTpiContext(context);
   };
 
-  const loadSectionTemplates = async () => {
+  const loadSectionTemplates = useCallback(async () => {
     if (!organization?.id) return;
     setTemplatesLoading(true);
     setSectionsNotice("", "idle");
@@ -2048,9 +2042,9 @@ export default function CoachReportBuilderPage() {
       })
     );
     setTemplatesLoading(false);
-  };
+  }, [organization?.id]);
 
-  const loadLayouts = async () => {
+  const loadLayouts = useCallback(async () => {
     if (!organization?.id) return;
     setLayoutNotice("", "idle");
 
@@ -2098,7 +2092,7 @@ export default function CoachReportBuilderPage() {
         templateIds: itemsByLayout.get(layout.id) ?? [],
       }))
     );
-  };
+  }, [organization?.id]);
 
   const resetLayoutEditor = () => {
     setLayoutEditingId(null);
@@ -2469,7 +2463,7 @@ export default function CoachReportBuilderPage() {
       return;
     }
     if (layoutCustomType === "radar" && !radarAddonEnabled) {
-      setLayoutNotice("Add-on Radar requis pour cette section.", "error");
+      setLayoutNotice("Add-on Datas requis pour cette section.", "error");
       openRadarAddonModal();
       return;
     }
@@ -2490,7 +2484,7 @@ export default function CoachReportBuilderPage() {
     setLayoutCustomType("text");
   };
 
-  const loadLocalDraft = () => {
+  const loadLocalDraft = useCallback(() => {
     if (typeof window === "undefined") return;
     if (!isNewReport || loadingReport) return;
     const raw = window.localStorage.getItem(draftKey);
@@ -2508,9 +2502,9 @@ export default function CoachReportBuilderPage() {
     } catch {
       window.localStorage.removeItem(draftKey);
     }
-  };
+  }, [draftKey, isNewReport, loadingReport]);
 
-  const persistLocalDraft = () => {
+  const persistLocalDraft = useCallback(() => {
     if (typeof window === "undefined") return;
     if (!isNewReport || loadingReport) return;
     const payload: LocalDraft = {
@@ -2524,7 +2518,18 @@ export default function CoachReportBuilderPage() {
       savedAt: new Date().toISOString(),
     };
     window.localStorage.setItem(draftKey, JSON.stringify(payload));
-  };
+  }, [
+    draftKey,
+    isNewReport,
+    loadingReport,
+    reportDate,
+    reportSections,
+    studentId,
+    title,
+    workingClub,
+    workingNotes,
+    workingObservations,
+  ]);
 
   const loadReportForEdit = async (reportId: string) => {
     setLoadingReport(true);
@@ -2633,20 +2638,23 @@ export default function CoachReportBuilderPage() {
     setAiError("");
   };
 
-  const handleClearReportContent = () => {
+  const clearReportContent = (confirmAction = true) => {
     if (reportSections.length === 0) return;
     if (
+      confirmAction &&
       !window.confirm(
         "Vider le contenu de toutes les sections sans les retirer ?"
       )
-    )
+    ) {
       return;
+    }
     setReportSections((prev) =>
       prev.map((section) => ({
         ...section,
         content: "",
         mediaUrls: [],
         mediaCaptions: [],
+        radarFileId: section.type === "radar" ? null : section.radarFileId,
       }))
     );
     setAiPreviews({});
@@ -2657,6 +2665,10 @@ export default function CoachReportBuilderPage() {
     setImageErrors({});
     setUploadingSections({});
     shouldAnimate.current = true;
+  };
+
+  const handleClearReportContent = () => {
+    clearReportContent(true);
   };
 
   const handleOpenRadarSectionConfig = (sectionId: string) => {
@@ -2804,7 +2816,7 @@ export default function CoachReportBuilderPage() {
     });
 
     if (!aiSections.length) {
-      setRadarAiQaError("Aucune section radar en mode IA.");
+      setRadarAiQaError("Aucune section datas en mode IA.");
       setRadarAiAutoBusy(false);
       return;
     }
@@ -2814,7 +2826,7 @@ export default function CoachReportBuilderPage() {
       .map((section) => section.title);
     if (missingFiles.length) {
       setRadarAiQaError(
-        `Selectionne un fichier radar pour: ${missingFiles.join(", ")}.`
+        `Selectionne un fichier datas pour: ${missingFiles.join(", ")}.`
       );
       setRadarAiAutoBusy(false);
       return;
@@ -3133,6 +3145,7 @@ export default function CoachReportBuilderPage() {
     );
     setStatusType("success");
     setSaving(false);
+    clearReportContent(false);
     if (typeof window !== "undefined" && isNewReport) {
       window.localStorage.removeItem(draftKey);
     }
@@ -3516,7 +3529,6 @@ export default function CoachReportBuilderPage() {
     clarifications: { question: string; answer: string }[]
   ) => {
     if (payloads.length === 0) return;
-    setAxesLoading(true);
     setAiBusyId("propagate");
 
     const allTargets = payloads.flatMap((payload) => payload.targetSections);
@@ -3530,7 +3542,6 @@ export default function CoachReportBuilderPage() {
 
     const axes = await callAiAxes(basePayload, clarifications);
     setAiBusyId(null);
-    setAxesLoading(false);
     if (!axes || axes.length === 0) {
       setAiError("Aucun axe propose.");
       return;
@@ -3562,26 +3573,45 @@ export default function CoachReportBuilderPage() {
   const applyPropagationSuggestions = (
     suggestions: { title: string; content: string }[]
   ) => {
-    setAiPreviews((prev) => {
-      const next = { ...prev };
-      suggestions.forEach((suggestion) => {
-        const target = reportSections.find(
-          (item) => item.title.toLowerCase() === suggestion.title.toLowerCase()
-        );
-        if (!target) return;
-        if (next[target.id]) return;
-        const content = suggestion.content?.trim();
-        if (!content) return;
-        const base = target.content.trim();
-        const combined = base ? `${base}\n\n${content}` : content;
-        next[target.id] = {
-          original: target.content,
-          suggestion: combined,
-          mode: "propagate",
-        };
+    if (aiPropagationReview) {
+      setAiPreviews((prev) => {
+        const next = { ...prev };
+        suggestions.forEach((suggestion) => {
+          const target = reportSections.find(
+            (item) => item.title.toLowerCase() === suggestion.title.toLowerCase()
+          );
+          if (!target) return;
+          if (next[target.id]) return;
+          const content = suggestion.content?.trim();
+          if (!content) return;
+          const base = target.content.trim();
+          const combined = base ? `${base}\n\n${content}` : content;
+          next[target.id] = {
+            original: target.content,
+            suggestion: combined,
+            mode: "propagate",
+          };
+        });
+        return next;
       });
-      return next;
-    });
+      return;
+    }
+
+    const previewedIds = new Set(Object.keys(aiPreviews));
+    const suggestionMap = new Map(
+      suggestions.map((item) => [item.title.toLowerCase(), item.content])
+    );
+    setReportSections((prev) =>
+      prev.map((section) => {
+        if (previewedIds.has(section.id)) return section;
+        const suggestion = suggestionMap.get(section.title.toLowerCase());
+        const content = suggestion?.trim();
+        if (!content) return section;
+        const base = section.content.trim();
+        const combined = base ? `${base}\n\n${content}` : content;
+        return { ...section, content: combined };
+      })
+    );
   };
 
   const runPropagationBatch = async (
@@ -4000,7 +4030,7 @@ export default function CoachReportBuilderPage() {
       return;
     }
     loadRadarFiles(studentId);
-  }, [studentId]);
+  }, [studentId, loadRadarFiles]);
 
   useEffect(() => {
     setRadarSessionFileIds([]);
@@ -4014,7 +4044,7 @@ export default function CoachReportBuilderPage() {
 
   useEffect(() => {
     loadLocalDraft();
-  }, [isNewReport, loadingReport]);
+  }, [loadLocalDraft]);
 
   useEffect(() => {
     if (!isNewReport || loadingReport) return;
@@ -4030,17 +4060,7 @@ export default function CoachReportBuilderPage() {
         window.clearTimeout(draftTimer.current);
       }
     };
-  }, [
-    studentId,
-    title,
-    reportDate,
-    reportSections,
-    workingNotes,
-    workingObservations,
-    workingClub,
-    isNewReport,
-    loadingReport,
-  ]);
+  }, [isNewReport, loadingReport, persistLocalDraft]);
 
   useEffect(() => {
     const reportId = searchParams.get("reportId");
@@ -4112,7 +4132,7 @@ export default function CoachReportBuilderPage() {
     if (!organization?.id) return;
     loadSectionTemplates();
     loadLayouts();
-  }, [organization?.id]);
+  }, [organization?.id, loadSectionTemplates, loadLayouts]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -4165,6 +4185,28 @@ export default function CoachReportBuilderPage() {
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       <>
+        <style jsx>{`
+          .tpi-dots {
+            display: inline-block;
+            width: 1.5em;
+            overflow: hidden;
+            vertical-align: bottom;
+          }
+          .tpi-dots::after {
+            content: "...";
+            display: block;
+            width: 0;
+            animation: tpiDots 1.4s steps(4, end) infinite;
+          }
+          @keyframes tpiDots {
+            0% {
+              width: 0;
+            }
+            100% {
+              width: 1.5em;
+            }
+          }
+        `}</style>
         <div className="space-y-6">
         <section className="panel rounded-2xl p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -4450,6 +4492,21 @@ export default function CoachReportBuilderPage() {
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              onClick={() => {
+                if (!studentId) return;
+                router.push(`/app/coach/eleves/${studentId}`);
+              }}
+              disabled={!studentId}
+              className={`mt-2 rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
+                studentId
+                  ? "border-white/10 bg-white/5 text-[var(--text)] hover:bg-white/10"
+                  : "cursor-not-allowed border-white/5 bg-white/5 text-[var(--muted)] opacity-60"
+              }`}
+            >
+              Dashboard eleve
+            </button>
           </div>
           <div>
             <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
@@ -4931,7 +4988,7 @@ export default function CoachReportBuilderPage() {
                     aria-pressed={layoutCustomType === "radar"}
                     aria-disabled={!radarAddonEnabled}
                   >
-                    Radar
+                    Datas
                   </button>
                 </div>
                 {layoutCustomType === "image" ? (
@@ -4966,7 +5023,7 @@ export default function CoachReportBuilderPage() {
                       <path d="M12 8v-2" />
                       <path d="M16 12h2" />
                     </svg>
-                    Radar: import d exports et graphes.
+                    Datas: import d exports et graphes.
                   </div>
                 ) : (
                   <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-emerald-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-emerald-100/80 select-none">
@@ -5089,7 +5146,7 @@ export default function CoachReportBuilderPage() {
                 aria-pressed={customType === "radar"}
                 aria-disabled={!radarAddonEnabled}
               >
-                Radar
+                Datas
               </button>
             </div>
             {customType === "image" ? (
@@ -5124,7 +5181,7 @@ export default function CoachReportBuilderPage() {
                   <path d="M12 8v-2" />
                   <path d="M16 12h2" />
                 </svg>
-                Radar: import d exports et graphes.
+                Datas: import d exports et graphes.
               </div>
             ) : (
               <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-emerald-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-emerald-100/80 select-none">
@@ -5671,23 +5728,6 @@ export default function CoachReportBuilderPage() {
               </span>
             </div>
           ) : null}
-          <div className="mt-2 inline-flex items-center gap-2 rounded-md border border-dashed border-white/20 bg-white/5 px-3 py-1 text-[0.55rem] uppercase tracking-wide text-[var(--muted)] select-none">
-            <svg
-              viewBox="0 0 24 24"
-              className="h-3.5 w-3.5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <rect x="9" y="4" width="6" height="10" rx="3" />
-              <path d="M5 11a7 7 0 0 0 14 0" />
-              <path d="M12 18v2" />
-              <path d="M8 20h8" />
-            </svg>
-            Dictee vocale compatible: redaction ultra-rapide sur mobile.
-          </div>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             {showPublish ? (
               <button
@@ -5775,6 +5815,41 @@ export default function CoachReportBuilderPage() {
                 {aiEnabled ? "Actif" : "Premium"}
               </span>
             </div>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+              <div>
+                <p className="text-[0.65rem] uppercase tracking-[0.2em] text-[var(--muted)]">
+                  Validation apres propagation
+                </p>
+                <p className="mt-1 text-xs text-[var(--muted)]">
+                  {aiPropagationReview
+                    ? "Le coach valide chaque section avant insertion."
+                    : "L IA remplit automatiquement les sections."}
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={aiPropagationReview}
+                aria-label="Basculer la validation apres propagation"
+                onClick={() => setAiPropagationReview((prev) => !prev)}
+                disabled={aiLocked}
+                className={`relative inline-flex h-8 w-14 items-center rounded-full border px-1 transition ${
+                  aiLocked
+                    ? "cursor-not-allowed border-white/10 bg-white/5 opacity-60"
+                    : "border-white/10 bg-white/10 hover:border-white/30"
+                }`}
+              >
+                <span
+                  className={`absolute left-1 top-1 flex h-6 w-6 items-center justify-center rounded-full border text-[0.55rem] font-semibold uppercase shadow-[0_6px_12px_rgba(0,0,0,0.25)] transition-transform ${
+                    aiPropagationReview
+                      ? "translate-x-0 border-emerald-300/40 bg-emerald-400/20 text-emerald-100"
+                      : "translate-x-6 border-rose-300/40 bg-rose-400/20 text-rose-100"
+                  }`}
+                >
+                  {aiPropagationReview ? "On" : "Off"}
+                </span>
+              </button>
+            </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
                 <button
                   type="button"
@@ -5845,7 +5920,7 @@ export default function CoachReportBuilderPage() {
                         <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                       </svg>
                     ) : null}
-                    {radarAiAutoBusy ? "IA..." : "Auto detect radar graph"}
+                    {radarAiAutoBusy ? "IA..." : "Auto detect datas graph"}
                   </span>
                 </button>
                 <button
@@ -6142,10 +6217,10 @@ export default function CoachReportBuilderPage() {
                 ? radarFileMap.get(section.radarFileId)
                 : null;
               const radarPreview = radarFile
-                ? `${radarFile.original_name ?? "Fichier radar"} • ${
+                ? `${radarFile.original_name ?? "Fichier datas"} • ${
                     radarFile.shots?.length ?? 0
                   } coups`
-                : "Aucun fichier radar selectionne.";
+                : "Aucun fichier datas selectionne.";
 
               const featureKey = getSectionFeatureKey(section);
               const tone = featureKey ? featureTones[featureKey] : null;
@@ -6499,7 +6574,7 @@ export default function CoachReportBuilderPage() {
                                 <rect x="5" y="11" width="14" height="9" rx="2" />
                                 <path d="M8 11V8a4 4 0 0 1 8 0v3" />
                               </svg>
-                              Add-on Radar requis
+                              Add-on Datas requis
                             </span>
                             <button
                               type="button"
@@ -6554,8 +6629,8 @@ export default function CoachReportBuilderPage() {
                         >
                           <option value="">
                             {radarVisibleFiles.length
-                              ? "Choisir un fichier radar"
-                              : "Importer un fichier radar pour cette section"}
+                              ? "Choisir un fichier datas"
+                              : "Importer un fichier datas pour cette section"}
                           </option>
                           {radarVisibleFiles.map((file) => (
                             <option key={file.id} value={file.id}>
@@ -6615,7 +6690,7 @@ export default function CoachReportBuilderPage() {
                         <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
                           <div className="flex items-center justify-between text-xs text-[var(--muted)]">
                             <span>
-                              Extraction radar
+                              Extraction datas
                               <span className="tpi-dots" aria-hidden="true" />
                             </span>
                             <span className="min-w-[3ch] text-right text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
@@ -6641,7 +6716,7 @@ export default function CoachReportBuilderPage() {
                       ) : null}
                       {radarLoading ? (
                         <p className="text-xs text-[var(--muted)]">
-                          Chargement des fichiers radar...
+                          Chargement des fichiers datas...
                         </p>
                       ) : null}
                         {radarFile ? (
@@ -6656,7 +6731,7 @@ export default function CoachReportBuilderPage() {
                           />
                       ) : (
                         <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
-                          Selectionne un fichier radar pour previsualiser les
+                          Selectionne un fichier datas pour previsualiser les
                           graphes.
                         </div>
                       )}
@@ -6691,10 +6766,7 @@ export default function CoachReportBuilderPage() {
                       </div>
                       {uploadingSections[section.id] ? (
                         <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
-                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-white/10 bg-white/10">
-                            <span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-white/20 border-t-white/70" />
-                          </span>
-                          Upload en cours...
+                          Upload en cours<span className="tpi-dots" aria-hidden="true" />
                         </div>
                       ) : null}
                       {imageErrors[section.id] ? (
@@ -7102,7 +7174,7 @@ export default function CoachReportBuilderPage() {
                       aria-pressed={layoutCustomType === "radar"}
                       aria-disabled={!radarAddonEnabled}
                     >
-                      Radar
+                      Datas
                     </button>
                   </div>
                   {layoutCustomType === "image" ? (
@@ -7111,7 +7183,7 @@ export default function CoachReportBuilderPage() {
                     </p>
                   ) : layoutCustomType === "radar" ? (
                     <p className="mt-2 text-[0.6rem] text-[var(--muted)]">
-                      Les graphes radar apparaissent dans le rapport.
+                      Les graphes datas apparaissent dans le rapport.
                     </p>
                   ) : null}
                   <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -7480,10 +7552,10 @@ export default function CoachReportBuilderPage() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                    Radar
+                    Datas
                   </p>
                   <h3 className="mt-2 text-lg font-semibold text-[var(--text)]">
-                    Affichage du bloc radar
+                    Affichage du bloc datas
                   </h3>
                   <p className="mt-2 text-sm text-[var(--muted)]">
                     Choisis le rendu visible dans le rapport.
@@ -7559,7 +7631,7 @@ export default function CoachReportBuilderPage() {
                   {radarConfigDraft.mode === "ai" ? (
                     <div className="mt-3 rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-3 text-[0.7rem] text-emerald-100">
                       <p className="text-[0.55rem] uppercase tracking-wide text-emerald-200/80">
-                        Reglages IA radar
+                        Reglages IA datas
                       </p>
                       <div className="mt-3 grid gap-3 md:grid-cols-2">
                         <div>
@@ -7655,7 +7727,7 @@ export default function CoachReportBuilderPage() {
                         </div>
                       </div>
                       <p className="mt-3 text-[0.65rem] text-emerald-100/70">
-                        Le bouton Auto detect radar graph utilisera ces reglages.
+                        Le bouton Auto detect datas graph utilisera ces reglages.
                       </p>
                     </div>
                   ) : null}
@@ -7918,7 +7990,7 @@ export default function CoachReportBuilderPage() {
               <div className="flex items-start justify-between gap-4 p-6">
                 <div>
                   <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                    IA Radar
+                    IA Datas
                   </p>
                   <h3 className="mt-2 text-xl font-semibold text-[var(--text)]">
                     Q&A rapide

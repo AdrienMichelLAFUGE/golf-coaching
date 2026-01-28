@@ -505,7 +505,7 @@ export async function POST(req: Request) {
 
   const radarSections = payload.radarSections ?? [];
   if (!radarSections.length) {
-    return Response.json({ error: "Aucune section radar." }, { status: 400 });
+    return Response.json({ error: "Aucune section datas." }, { status: 400 });
   }
 
   const radarFileIds = radarSections.map((section) => section.radarFileId);
@@ -540,7 +540,7 @@ export async function POST(req: Request) {
 
   if (!summaries.length) {
     return Response.json(
-      { error: "Analyses radar indisponibles." },
+      { error: "Analyses datas indisponibles." },
       { status: 400 }
     );
   }

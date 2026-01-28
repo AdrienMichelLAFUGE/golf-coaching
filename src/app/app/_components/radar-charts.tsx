@@ -331,7 +331,7 @@ const AiSessionSummary = ({
   selectionSummary || sessionSummary ? (
     <div className="mt-6 rounded-2xl border border-violet-300/30 bg-violet-400/10 px-4 py-4 text-[0.78rem] text-[var(--text)]">
       <p className="text-[0.6rem] uppercase tracking-wide text-violet-200/80">
-        IA - synthese radar
+        IA - synthese datas
       </p>
       {selectionSummary ? (
         <p className="mt-2">
@@ -1622,7 +1622,6 @@ const FaceImpactHeatmap = ({
     cy: centerY - y * scaleY,
   });
   const mapX = (x: number) => centerX - x * scaleX;
-  const mapY = (y: number) => centerY - y * scaleY;
   const FACE_VIEWBOX_W = isDriver
     ? DRIVER_FACE_VIEWBOX.width
     : IMPACT_FACE_VIEWBOX.width;
@@ -2175,12 +2174,6 @@ export default function RadarCharts({
           point !== null
       );
   }, [shots, metrics]);
-
-  const meanLateral = useMemo(() => {
-    if (!dispersionPoints.length) return null;
-    const total = dispersionPoints.reduce((acc, point) => acc + point.x, 0);
-    return total / dispersionPoints.length;
-  }, [dispersionPoints]);
 
   const carrySeries = getNumericSeries(shots, metrics.distanceCarry?.key ?? null);
   const totalSeries = getNumericSeries(shots, metrics.distanceTotal?.key ?? null);
@@ -2856,8 +2849,10 @@ export default function RadarCharts({
     aiSyntax === "exp-solution" || aiSyntax === "exp-tech-solution" || aiSyntax === "global";
   const includeTechnique =
     aiSyntax === "exp-tech" || aiSyntax === "exp-tech-solution" || aiSyntax === "global";
-  const aiSelectionKeys = resolvedConfig.options?.aiSelectionKeys ?? [];
-  const aiSelectionSet = useMemo(() => new Set(aiSelectionKeys), [aiSelectionKeys]);
+  const aiSelectionSet = useMemo(() => {
+    const keys = resolvedConfig.options?.aiSelectionKeys ?? [];
+    return new Set(keys);
+  }, [resolvedConfig.options?.aiSelectionKeys]);
   const pgaBenchmark = useMemo(() => {
     const aiClub =
       typeof resolvedConfig.options?.aiAnswers?.club === "string"
@@ -2948,7 +2943,7 @@ export default function RadarCharts({
     return comparisons;
   }, [analytics, pgaBenchmark]);
 
-  const aiNarratives = useMemo(() => {
+  const aiNarratives = (() => {
     if (hasAiNarratives && aiNarrativesFromConfig) {
       return aiNarrativesFromConfig;
     }
@@ -3201,26 +3196,7 @@ export default function RadarCharts({
     });
 
     return narratives;
-  }, [
-    aiNarrativeMode,
-    hasAiNarratives,
-    aiNarrativesFromConfig,
-    analytics,
-    metrics.distanceCarry?.unit,
-    metrics.distanceLateral?.unit,
-    metrics.distanceTotal?.unit,
-    resolvedConfig.thresholds?.latCorridorMeters,
-    chartComments,
-    baseInsights,
-    includeComparative,
-    includeSolution,
-    includeTechnique,
-    pgaComparisons,
-    spinCarryPoints,
-    smashValues,
-    faceImpactPoints,
-    impactUnit,
-  ]);
+  })();
 
   const resolveAiNarrative = (key: string) => {
     const fromConfig = aiNarrativesFromConfig?.[key];
@@ -3944,7 +3920,7 @@ const buildSegmentInsight = (summaries: Array<Record<string, unknown>>) => {
                     type="button"
                     onClick={() =>
                       downloadCsv(
-                        `radar-${table.key}.csv`,
+                        `datas-${table.key}.csv`,
                         columnKeys,
                         summaries
                       )

@@ -36,14 +36,15 @@ export default function Home() {
   }, [router]);
 
   useEffect(() => {
-    if (accountType === "student") {
-      setCoachFlow("signin");
-    }
-  }, [accountType]);
-
-  useEffect(() => {
     if (coachFlow === "signup") return;
   }, [coachFlow]);
+
+  const handleAccountTypeChange = (nextType: AccountType) => {
+    setAccountType(nextType);
+    if (nextType === "student") {
+      setCoachFlow("signin");
+    }
+  };
 
   const ensureProfile = async () => {
     const { data: sessionData } = await supabase.auth.getSession();
@@ -206,7 +207,7 @@ export default function Home() {
           <div className="mt-6 grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/5 p-1 text-xs uppercase tracking-wide text-[var(--muted)]">
             <button
               type="button"
-              onClick={() => setAccountType("coach")}
+              onClick={() => handleAccountTypeChange("coach")}
               className={`rounded-xl px-3 py-2 transition ${
                 accountType === "coach"
                   ? "bg-white/15 text-[var(--text)]"
@@ -217,7 +218,7 @@ export default function Home() {
             </button>
             <button
               type="button"
-              onClick={() => setAccountType("student")}
+              onClick={() => handleAccountTypeChange("student")}
               className={`rounded-xl px-3 py-2 transition ${
                 accountType === "student"
                   ? "bg-white/15 text-[var(--text)]"

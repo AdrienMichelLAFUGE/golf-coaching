@@ -58,7 +58,14 @@ export default function AdminCoachesPage() {
   };
 
   useEffect(() => {
-    loadOrganizations();
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (cancelled) return;
+      void loadOrganizations();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const filtered = useMemo(() => {
@@ -245,7 +252,7 @@ export default function AdminCoachesPage() {
                           : "border-white/10 bg-white/5 text-[var(--muted)] hover:bg-white/10"
                       }`}
                     >
-                      {org.radar_enabled ? "Radar on" : "Radar off"}
+                      {org.radar_enabled ? "Datas on" : "Datas off"}
                     </button>
                   </div>
                   <div>

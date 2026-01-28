@@ -151,7 +151,14 @@ export default function AdminPricingPage() {
   };
 
   useEffect(() => {
-    loadPlans();
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (cancelled) return;
+      void loadPlans();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handlePlanChange = (index: number, patch: Partial<EditablePlan>) => {

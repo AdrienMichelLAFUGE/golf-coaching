@@ -92,12 +92,6 @@ const scorePayload = (payload: RadarChartPayload) => {
   }
 };
 
-const getAdvancedTargetCount = (shotCount: number, available: number) => {
-  const target =
-    shotCount >= 40 ? 6 : shotCount >= 30 ? 5 : shotCount >= 20 ? 4 : shotCount >= 12 ? 3 : 2;
-  return Math.min(target, Math.max(0, available));
-};
-
 type AutoConfigOptions = {
   preset?: RadarConfig["options"] extends { aiPreset?: infer T } ? T : never;
   syntax?: RadarConfig["options"] extends { aiSyntax?: infer T } ? T : never;

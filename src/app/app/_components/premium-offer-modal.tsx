@@ -107,7 +107,7 @@ export default function PremiumOfferModal({
 
   const badgeClassForTag = (tag: string) => {
     const key = tag.toLowerCase();
-    if (key.includes("radar")) {
+    if (key.includes("datas") || key.includes("radar")) {
       return "border-violet-300/30 bg-violet-400/10 text-violet-100";
     }
     if (key.includes("tpi")) {

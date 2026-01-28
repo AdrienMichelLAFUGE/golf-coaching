@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
@@ -8,7 +10,16 @@ import { useProfile } from "./profile-context";
 export default function AppHeader() {
   const router = useRouter();
   const [email, setEmail] = useState<string | null>(null);
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    if (typeof window === "undefined") return "dark";
+    const storedTheme = window.localStorage.getItem("gc.theme");
+    const prefersLight =
+      window.matchMedia?.("(prefers-color-scheme: light)").matches ?? false;
+    if (storedTheme === "light" || storedTheme === "dark") {
+      return storedTheme;
+    }
+    return prefersLight ? "light" : "dark";
+  });
   const { profile, organization } = useProfile();
 
   const roleLabel = profile?.role === "student" ? "Eleve" : "Coach";
@@ -33,21 +44,6 @@ export default function AppHeader() {
     return () => {
       active = false;
     };
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const storedTheme = window.localStorage.getItem("gc.theme");
-    const prefersLight =
-      window.matchMedia?.("(prefers-color-scheme: light)").matches ?? false;
-    const nextTheme =
-      storedTheme === "light" || storedTheme === "dark"
-        ? storedTheme
-        : prefersLight
-        ? "light"
-        : "dark";
-    setTheme(nextTheme);
-    document.documentElement.dataset.theme = nextTheme;
   }, []);
 
   useEffect(() => {

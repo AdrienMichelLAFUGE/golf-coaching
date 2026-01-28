@@ -19,13 +19,6 @@ const toLanguageLabel = (locale: string | null) => {
   return "francais";
 };
 
-const toFileType = (mime?: string | null) => {
-  if (!mime) return null;
-  if (mime === "application/pdf") return "pdf" as const;
-  if (mime.startsWith("image/")) return "image" as const;
-  return null;
-};
-
 const tpiKnownTests = [
   "Setup Posture",
   "Torso Rotation",
@@ -453,7 +446,7 @@ export async function POST(req: Request) {
     let parsed: { tests: ExtractedTest[] };
     try {
       parsed = JSON.parse(outputText) as { tests: ExtractedTest[] };
-    } catch (error) {
+    } catch {
       const retry = await callExtract(12000);
       usage = retry.usage ?? usage;
       outputText = extractOutputText(retry);
