@@ -3244,16 +3244,20 @@ const buildSegmentInsight = (summaries: Array<Record<string, unknown>>) => {
       key: string,
       predicate?: (value: number) => boolean
     ) => {
-      let best: { row: Record<string, unknown>; value: number } | null = null;
+      let bestRow: Record<string, unknown> | null = null;
+      let bestValue = 0;
+      let hasBest = false;
       summaries.forEach((row) => {
         const value = Number(row[key]);
         if (!Number.isFinite(value)) return;
         if (predicate && !predicate(value)) return;
-        if (!best || value > best.value) {
-          best = { row, value };
+        if (!hasBest || value > bestValue) {
+          bestRow = row;
+          bestValue = value;
+          hasBest = true;
         }
       });
-      return best;
+      return hasBest && bestRow ? { row: bestRow, value: bestValue } : null;
     };
     const precision = pickNumeric("withinLat10");
     if (precision) {
