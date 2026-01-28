@@ -3261,17 +3261,38 @@ const buildSegmentInsight = (summaries: Array<Record<string, unknown>>) => {
     };
     const precision = pickNumeric("withinLat10");
     if (precision) {
-      return `Meilleure precision: ${precision.row.key ?? "groupe"} (${precision.value}% dans ±10 m).`;
+      const label = String(
+        precision.row["key"] ??
+          precision.row["label"] ??
+          precision.row["group"] ??
+          precision.row["shot_type"] ??
+          "groupe"
+      );
+      return `Meilleure precision: ${label} (${precision.value}% dans ±10 m).`;
     }
     const carry = pickNumeric("carry_mean");
     if (carry) {
-      return `Carry moyen le plus eleve: ${carry.row.key ?? "groupe"} (${carry.value.toFixed(
+      const label = String(
+        carry.row["key"] ??
+          carry.row["label"] ??
+          carry.row["group"] ??
+          carry.row["shot_type"] ??
+          "groupe"
+      );
+      return `Carry moyen le plus eleve: ${label} (${carry.value.toFixed(
         1
       )}).`;
     }
     const smash = pickNumeric("smash_mean");
     if (smash) {
-      return `Smash moyen le plus eleve: ${smash.row.key ?? "groupe"} (${smash.value.toFixed(
+      const label = String(
+        smash.row["key"] ??
+          smash.row["label"] ??
+          smash.row["group"] ??
+          smash.row["shot_type"] ??
+          "groupe"
+      );
+      return `Smash moyen le plus eleve: ${label} (${smash.value.toFixed(
         2
       )}).`;
     }
