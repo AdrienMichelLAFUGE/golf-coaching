@@ -256,9 +256,8 @@ const buildRadarSummary = (analytics: RadarAnalytics) => {
       title: definition.title,
       description: definition.description,
       group:
-        RADAR_CHART_GROUPS.find((group) =>
-          group.keys.includes(definition.key)
-        )?.title ?? null,
+        RADAR_CHART_GROUPS.find((group) => group.key === definition.group)
+          ?.label ?? null,
       available: !!chartData?.available && !!payload,
       type: payload?.type ?? null,
       insight: payload?.insight ?? null,
