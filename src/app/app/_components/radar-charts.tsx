@@ -2221,11 +2221,13 @@ export default function RadarCharts({
   }, [shots, metrics]);
 
   const faceImpactPoints = useMemo(() => {
-    if (!metrics.faceImpactLateral || !metrics.faceImpactVertical) return [];
+    const faceLateral = metrics.faceImpactLateral;
+    const faceVertical = metrics.faceImpactVertical;
+    if (!faceLateral || !faceVertical) return [];
     return shots
       .map((shot) => {
-        const x = shot[metrics.faceImpactLateral.key];
-        const y = shot[metrics.faceImpactVertical.key];
+        const x = shot[faceLateral.key];
+        const y = shot[faceVertical.key];
         if (typeof x !== "number" || typeof y !== "number") return null;
         const shotIndexRaw = shot.shot_index;
         const shotIndex =
