@@ -921,7 +921,8 @@ const getNumericSeries = (shots: RadarShot[], key: string | null) => {
       return null;
     })
     .filter(
-      (entry): entry is { value: number; shotIndex?: number } => !!entry
+      (entry): entry is { value: number; shotIndex: number | undefined } =>
+        entry !== null
     );
 };
 
