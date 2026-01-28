@@ -2504,7 +2504,8 @@ export default function RadarCharts({
         : null,
     ];
     highlights.dispersion = dispersionItems.filter(
-      (item): item is { value: string; label: string } => !!item && item.value
+      (item): item is { value: string; label: string } =>
+        item !== null && item.value !== ""
     );
 
     const carryMean = analytics.globalStats?.carry?.mean;
@@ -2534,7 +2535,8 @@ export default function RadarCharts({
         : null,
     ];
     highlights.carryTotal = carryItems.filter(
-      (item): item is { value: string; label: string } => !!item && item.value
+      (item): item is { value: string; label: string } =>
+        item !== null && item.value !== ""
     );
 
     const clubMean = analytics.globalStats?.club_speed?.mean;
@@ -2561,7 +2563,8 @@ export default function RadarCharts({
         : null,
     ];
     highlights.speeds = speedItems.filter(
-      (item): item is { value: string; label: string } => !!item && item.value
+      (item): item is { value: string; label: string } =>
+        item !== null && item.value !== ""
     );
 
     const spinMean = analytics.globalStats?.spin_rpm?.mean;
@@ -2580,7 +2583,8 @@ export default function RadarCharts({
         : null,
     ];
     highlights.spinCarry = spinItems.filter(
-      (item): item is { value: string; label: string } => !!item && item.value
+      (item): item is { value: string; label: string } =>
+        item !== null && item.value !== ""
     );
 
     const smashStd = analytics.globalStats?.smash?.std;
@@ -2599,7 +2603,8 @@ export default function RadarCharts({
         : null,
     ];
     highlights.smash = smashItems.filter(
-      (item): item is { value: string; label: string } => !!item && item.value
+      (item): item is { value: string; label: string } =>
+        item !== null && item.value !== ""
     );
 
     const impactLatMean = analytics.globalStats?.impact_lat?.mean;
@@ -2619,7 +2624,8 @@ export default function RadarCharts({
         : null,
     ];
     highlights.faceImpact = impactItems.filter(
-      (item): item is { value: string; label: string } => !!item && item.value
+      (item): item is { value: string; label: string } =>
+        item !== null && item.value !== ""
     );
 
     return highlights;
