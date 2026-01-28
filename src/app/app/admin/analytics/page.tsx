@@ -19,14 +19,17 @@ type AnalyticsPayload = {
     reportsTotal: number;
     tpiReportsTotal: number;
     tpiReportsReady: number;
+    radarImportsTotal: number;
     costUsd: number;
     reportCostUsd: number;
     tpiCostUsd: number;
+    radarCostUsd: number;
     avgTokensPerRequest: number;
     avgTokensPerDay: number;
     avgTokensPerCoach: number;
     avgRequestsPerDay: number;
     avgRequestsPerCoach: number;
+    avgRadarImportsPerDay: number;
     avgDurationMs: number;
     adoptionCoachRate: number;
     tpiCoverageRate: number;
@@ -37,6 +40,7 @@ type AnalyticsPayload = {
     costPerStudentUsd: number;
     costPerReportUsd: number;
     costPerTpiUsd: number;
+    costPerRadarUsd: number;
   };
   daily: Array<{ date: string; requests: number; tokens: number }>;
   topCoaches: Array<{
@@ -77,6 +81,36 @@ type CoachAnalyticsPayload = {
     costUsd: number;
   }>;
   daily: Array<{ date: string; requests: number; tokens: number }>;
+};
+
+type FeatureKey = "ai" | "image" | "radar" | "tpi";
+
+const featureTones = {
+  ai: { dot: "bg-emerald-300", badge: "text-emerald-100" },
+  image: { dot: "bg-sky-300", badge: "text-sky-100" },
+  radar: { dot: "bg-violet-300", badge: "text-violet-100" },
+  tpi: { dot: "bg-rose-300", badge: "text-rose-100" },
+} as const;
+
+const getFeatureKeyFromLabel = (label: string): FeatureKey | null => {
+  const lowered = label.toLowerCase();
+  if (lowered.includes("tpi")) return "tpi";
+  if (lowered.includes("radar")) return "radar";
+  if (lowered.includes("image")) return "image";
+  if (lowered.includes("ia") || lowered.includes("ai")) return "ai";
+  return null;
+};
+
+const renderFeatureDot = (label: string) => {
+  const key = getFeatureKeyFromLabel(label);
+  if (!key) return null;
+  const tone = featureTones[key];
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span className={`h-2 w-2 rounded-full ${tone.dot}`} />
+      <span className={tone.badge}>{label}</span>
+    </span>
+  );
 };
 
 export default function AdminAnalyticsPage() {
@@ -339,6 +373,13 @@ export default function AdminAnalyticsPage() {
                     cost: formatUsd(analytics.totals.costPerDayUsd),
                   },
                   {
+                    id: "usage-radar-imports",
+                    label: "Import Radar",
+                    value: formatNumber(analytics.totals.avgRadarImportsPerDay, 2),
+                    helper: "Par jour",
+                    cost: formatUsd(analytics.totals.costPerRadarUsd),
+                  },
+                  {
                     id: "usage-requests-coach",
                     label: "Requetes",
                     value: formatNumber(analytics.totals.avgRequestsPerCoach, 2),
@@ -400,6 +441,15 @@ export default function AdminAnalyticsPage() {
                       analytics.totals.tpiReportsReady
                     )} imports`,
                     cost: formatUsd(analytics.totals.costPerTpiUsd),
+                  },
+                  {
+                    id: "cost-radar",
+                    label: "Cout / Radar",
+                    value: formatUsd(analytics.totals.costPerRadarUsd),
+                    helper: `${formatNumber(
+                      analytics.totals.radarImportsTotal
+                    )} imports`,
+                    cost: formatUsd(analytics.totals.costPerRadarUsd),
                   },
                 ];
 
@@ -560,9 +610,10 @@ export default function AdminAnalyticsPage() {
                           key={feature.feature}
                           className="flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-4 py-2"
                         >
-                          <span className="text-[var(--text)]">
-                            {feature.feature}
-                          </span>
+                          <div className="text-[var(--text)]">
+                            {renderFeatureDot(feature.feature) ??
+                              feature.feature}
+                          </div>
                           <span>
                             {feature.requests} req - {feature.tokens} tokens •{" "}
                             {formatUsd(feature.costUsd)}
@@ -705,9 +756,10 @@ export default function AdminAnalyticsPage() {
                                   key={feature.feature}
                                   className="flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-4 py-2"
                                 >
-                                  <span className="text-[var(--text)]">
-                                    {feature.feature}
-                                  </span>
+                                  <div className="text-[var(--text)]">
+                                    {renderFeatureDot(feature.feature) ??
+                                      feature.feature}
+                                  </div>
                                   <span>
                                     {feature.requests} req - {feature.tokens} tokens - {formatUsd(feature.costUsd)}
                                   </span>

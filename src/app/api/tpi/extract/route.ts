@@ -1,7 +1,6 @@
-"use server";
-
 import { createClient } from "@supabase/supabase-js";
 import OpenAI, { toFile } from "openai";
+import { applyTemplate, loadPromptSection } from "@/lib/promptLoader";
 
 type ExtractedTest = {
   test_name: string;
@@ -163,6 +162,8 @@ export async function POST(req: Request) {
   if (userError || !userId) {
     return Response.json({ error: "Session invalide." }, { status: 401 });
   }
+  const userEmail = userData.user?.email?.toLowerCase() ?? null;
+  const isAdmin = userEmail === "adrien.lafuge@outlook.fr";
 
   const { data: report, error: reportError } = await supabase
     .from("tpi_reports")
@@ -174,11 +175,25 @@ export async function POST(req: Request) {
     return Response.json({ error: "Rapport TPI introuvable." }, { status: 404 });
   }
 
+  const { data: profileData } = await supabase
+    .from("profiles")
+    .select("org_id")
+    .eq("id", userId)
+    .single();
+
+  if (!profileData || String(profileData.org_id) !== String(report.org_id)) {
+    return Response.json({ error: "Acces refuse." }, { status: 403 });
+  }
+
   const { data: orgData } = await admin
     .from("organizations")
-    .select("locale")
+    .select("locale, tpi_enabled")
     .eq("id", report.org_id)
     .single();
+
+  if (!isAdmin && !orgData?.tpi_enabled) {
+    return Response.json({ error: "Add-on TPI requis." }, { status: 403 });
+  }
 
   const { data: fileData, error: fileError } = await admin.storage
     .from("tpi-reports")
@@ -271,10 +286,8 @@ export async function POST(req: Request) {
   if (!hasTpiInName) {
     try {
       const verifyStartedAt = Date.now();
-      const verifyPrompt =
-        "Verifie si ce fichier est un rapport TPI Pro (Titleist Performance Institute) " +
-        "exporte par l application TPI Pro. Repond strictement avec le JSON attendu. " +
-        "Indique is_tpi=true uniquement si tu vois clairement les tests TPI standards.";
+      const verifyTemplate = await loadPromptSection("tpi_verify_system");
+      const verifyPrompt = applyTemplate(verifyTemplate, {});
 
       const verifyResponse = await openai.responses.create({
         model: "gpt-5.2",
@@ -288,9 +301,10 @@ export async function POST(req: Request) {
             content: [
               {
                 type: "input_text",
-                text: `Voici la liste des tests TPI connus pour t'aider: ${tpiKnownTests.join(
-                  ", "
-                )}.`,
+                text: applyTemplate(
+                  await loadPromptSection("tpi_verify_user"),
+                  { tpiKnownTests: tpiKnownTests.join(", ") }
+                ),
               },
               {
                 type: "input_file",
@@ -360,22 +374,11 @@ export async function POST(req: Request) {
   const startedAt = Date.now();
 
   try {
-    const systemPrompt =
-      "Tu es un expert TPI. Analyse un rapport TPI et retourne un JSON strict." +
-      " Ne mets pas de markdown." +
-      " details doit etre une citation mot pour mot du rapport, sans reformulation ni traduction." +
-      " Ne corrige rien, conserve exactement la ponctuation et les erreurs s il y en a." +
-      ` details_translated doit etre la traduction en ${language} du contenu details.` +
-      " Si la langue est anglais, details_translated doit etre identique a details." +
-      ` mini_summary doit etre en ${language} et donner un resume tres court du contenu du test.` +
-      " mini_summary doit parler du contenu (ex: limitation/mobilite) et ne jamais etre un statut." +
-      " N utilise jamais des formulations du type 'resultat non satisfaisant'." +
-      " Le resultat couleur vient du point colore a droite de chaque test (rouge/orange/vert)." +
-      " Choisis toujours une couleur parmi rouge/orange/vert." +
-      " Extraction exhaustive: ne saute aucun test, y compris en fin de document." +
-      " Liste de tests TPI courants (pour verifier seulement, ne pas inventer si absent): " +
-      tpiKnownTests.join(", ") +
-      ".";
+    const systemTemplate = await loadPromptSection("tpi_extract_system");
+    const systemPrompt = applyTemplate(systemTemplate, {
+      language,
+      tpiKnownTests: tpiKnownTests.join(", "),
+    });
 
     if (report.file_type === "pdf" && !pdfFileId) {
       throw new Error("Fichier PDF TPI manquant.");
@@ -386,7 +389,7 @@ export async function POST(req: Request) {
         ? [
             {
               type: "input_text" as const,
-              text: "Analyse ce fichier PDF TPI et extrait toutes les sections.",
+              text: await loadPromptSection("tpi_extract_user_pdf"),
             },
             {
               type: "input_file" as const,
@@ -396,7 +399,7 @@ export async function POST(req: Request) {
         : [
             {
               type: "input_text" as const,
-              text: "Analyse cette image du rapport TPI et extrait toutes les sections.",
+              text: await loadPromptSection("tpi_extract_user_image"),
             },
             {
               type: "input_image" as const,

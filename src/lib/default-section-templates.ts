@@ -1,10 +1,11 @@
 export type DefaultSectionTemplate = {
   title: string;
-  type: "text" | "image";
+  type: "text" | "image" | "radar";
   tags: string[];
 };
 
 export const defaultSectionTemplates: DefaultSectionTemplate[] = [
+  { title: "Fichiers radars", type: "radar", tags: ["stats", "radar"] },
   { title: "Resume de la seance", type: "text", tags: ["summary"] },
   { title: "Objectifs prioritaires", type: "text", tags: ["goals", "planning"] },
   { title: "Points forts", type: "text", tags: ["strengths", "performance"] },

@@ -19,6 +19,12 @@ type PricingPlan = {
 type PremiumOfferModalProps = {
   open: boolean;
   onClose: () => void;
+  notice?: {
+    title: string;
+    description: string;
+    tags?: string[];
+    status?: { label: string; value: string }[];
+  } | null;
 };
 
 const formatPrice = (plan: PricingPlan) => {
@@ -51,6 +57,7 @@ const getPlanCategory = (plan: PricingPlan) => {
 export default function PremiumOfferModal({
   open,
   onClose,
+  notice = null,
 }: PremiumOfferModalProps) {
   const [plans, setPlans] = useState<PricingPlan[]>([]);
   const [loading, setLoading] = useState(false);
@@ -97,6 +104,20 @@ export default function PremiumOfferModal({
   }, [open]);
 
   if (!open) return null;
+
+  const badgeClassForTag = (tag: string) => {
+    const key = tag.toLowerCase();
+    if (key.includes("radar")) {
+      return "border-violet-300/30 bg-violet-400/10 text-violet-100";
+    }
+    if (key.includes("tpi")) {
+      return "border-rose-300/30 bg-rose-400/10 text-rose-100";
+    }
+    if (key.includes("premium") || key.includes("ia")) {
+      return "border-emerald-300/30 bg-emerald-400/10 text-emerald-100";
+    }
+    return "border-white/10 bg-white/5 text-[var(--muted)]";
+  };
 
   const monthlyBySlug = new Map(
     plans
@@ -156,6 +177,44 @@ export default function PremiumOfferModal({
             </svg>
           </button>
         </div>
+        {notice ? (
+          <div className="mx-6 mb-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+            <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+              {notice.title}
+            </p>
+            <p className="mt-2 text-sm text-[var(--text)]">
+              {notice.description}
+            </p>
+            {notice.tags && notice.tags.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {notice.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${badgeClassForTag(
+                      tag
+                    )}`}
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            {notice.status && notice.status.length > 0 ? (
+              <div className="mt-3 grid gap-2 text-xs text-[var(--muted)] sm:grid-cols-2">
+                {notice.status.map((line) => (
+                  <div key={line.label} className="flex items-center gap-2">
+                    <span className="uppercase tracking-[0.2em] text-[0.6rem] text-[var(--muted)]">
+                      {line.label}
+                    </span>
+                    <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[0.6rem] uppercase tracking-wide text-[var(--text)]">
+                      {line.value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <div className="flex flex-wrap items-center justify-between gap-3 px-6 pb-4">
           <div className="inline-flex rounded-full border border-white/10 bg-white/5 p-1 text-xs">
             <button

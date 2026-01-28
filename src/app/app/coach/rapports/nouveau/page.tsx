@@ -15,8 +15,20 @@ import RoleGuard from "../../../_components/role-guard";
 import { useProfile } from "../../../_components/profile-context";
 import PageBack from "../../../_components/page-back";
 import PremiumOfferModal from "../../../_components/premium-offer-modal";
+import RadarCharts, {
+  defaultRadarConfig,
+  type RadarConfig,
+  type RadarColumn,
+  type RadarShot,
+  type RadarStats,
+} from "../../../_components/radar-charts";
+import {
+  RADAR_CHART_DEFINITIONS,
+  RADAR_CHART_GROUPS,
+} from "@/lib/radar/charts/registry";
+import type { RadarAnalytics } from "@/lib/radar/types";
 
-type SectionType = "text" | "image";
+type SectionType = "text" | "image" | "radar";
 
 type SectionTemplate = {
   id?: string;
@@ -48,6 +60,22 @@ type ReportSection = {
   content: string;
   mediaUrls: string[];
   mediaCaptions: string[];
+  radarFileId?: string | null;
+  radarConfig?: RadarConfig | null;
+};
+
+type RadarFile = {
+  id: string;
+  status: "processing" | "ready" | "error";
+  original_name: string | null;
+  columns: RadarColumn[];
+  shots: RadarShot[];
+  stats: RadarStats | null;
+  summary: string | null;
+  config: RadarConfig | null;
+  analytics?: RadarAnalytics | null;
+  created_at: string;
+  error: string | null;
 };
 
 type StudentOption = {
@@ -135,6 +163,39 @@ type AiLayoutAnswers = {
   sectionCount: number;
 };
 
+type RadarAiQuestion = {
+  id: string;
+  question: string;
+  type: "text" | "choices";
+  choices?: string[];
+  required?: boolean;
+  placeholder?: string;
+};
+
+const DEFAULT_RADAR_AI_QUESTIONS: RadarAiQuestion[] = [
+  {
+    id: "goal",
+    question: "Objectif principal de la seance radar ?",
+    type: "choices",
+    choices: ["Precision", "Distance", "Regularite", "Contact", "Trajectoire"],
+    required: true,
+  },
+  {
+    id: "club",
+    question: "Club principal travaille ?",
+    type: "choices",
+    choices: ["Driver", "Bois", "Fer", "Wedge", "Mixte"],
+    required: true,
+  },
+  {
+    id: "notes",
+    question: "Contexte libre (optionnel)",
+    type: "text",
+    placeholder: "Ex: travail du chemin, controle spin, etc.",
+    required: false,
+  },
+];
+
 const defaultReportSections: SectionTemplate[] = [
   { title: "Resume de la seance", type: "text" },
   { title: "Diagnostic swing", type: "text" },
@@ -151,6 +212,11 @@ const createSection = (template: SectionTemplate): ReportSection => ({
   content: "",
   mediaUrls: [],
   mediaCaptions: [],
+  radarFileId: null,
+  radarConfig:
+    template.type === "radar"
+      ? { ...defaultRadarConfig, charts: { ...defaultRadarConfig.charts } }
+      : null,
 });
 
 const formatDateInput = (date: Date) => {
@@ -172,6 +238,102 @@ const isSummaryTitle = (title: string) =>
 
 const isPlanTitle = (title: string) =>
   /plan|planning|programme|routine|semaine/i.test(title);
+
+const normalizeSectionType = (value?: string | null): SectionType =>
+  value === "image" ? "image" : value === "radar" ? "radar" : "text";
+
+type FeatureKey = "ai" | "image" | "radar" | "tpi";
+
+const featureTones = {
+  ai: {
+    label: "IA",
+    badge: "border-emerald-300/30 bg-emerald-400/10 text-emerald-100",
+    chip: "border-emerald-300/30 bg-emerald-400/10 text-emerald-100",
+    dot: "bg-emerald-300",
+    panel: "border-emerald-400/50 bg-emerald-400/10",
+    border: "border-emerald-400/50",
+    button: "border-emerald-300/40 bg-emerald-400/10 text-emerald-100",
+  },
+  image: {
+    label: "Image",
+    badge: "border-sky-300/30 bg-sky-400/10 text-sky-100",
+    chip: "border-sky-300/30 bg-sky-400/10 text-sky-100",
+    dot: "bg-sky-300",
+    panel: "border-sky-400/50 bg-sky-400/10",
+    border: "border-sky-400/50",
+    button: "border-sky-300/40 bg-sky-400/10 text-sky-100",
+  },
+  radar: {
+    label: "Radar",
+    badge: "border-violet-300/30 bg-violet-400/10 text-violet-100",
+    chip: "border-violet-300/30 bg-violet-400/10 text-violet-100",
+    dot: "bg-violet-300",
+    panel: "border-violet-400/50 bg-violet-400/10",
+    border: "border-violet-400/50",
+    button: "border-violet-300/40 bg-violet-400/10 text-violet-100",
+  },
+  tpi: {
+    label: "TPI",
+    badge: "border-rose-300/30 bg-rose-400/10 text-rose-100",
+    chip: "border-rose-300/30 bg-rose-400/10 text-rose-100",
+    dot: "bg-rose-300",
+    panel: "border-rose-400/50 bg-rose-400/10",
+    border: "border-rose-400/50",
+    button: "border-rose-300/40 bg-rose-400/10 text-rose-100",
+  },
+} as const;
+
+const normalizeTags = (tags?: string[] | null) =>
+  (tags ?? []).map((tag) => tag.toLowerCase());
+
+const hasTpiHint = (title?: string | null, tags?: string[] | null) => {
+  const loweredTitle = (title ?? "").toLowerCase();
+  if (loweredTitle.includes("tpi")) return true;
+  return normalizeTags(tags).some((tag) => tag.includes("tpi"));
+};
+
+const getSectionFeatureKey = (section: {
+  type?: string | null;
+  title?: string | null;
+  tags?: string[] | null;
+}): FeatureKey | null => {
+  if (section.type === "image") return "image";
+  if (section.type === "radar") return "radar";
+  if (hasTpiHint(section.title, section.tags)) return "tpi";
+  return null;
+};
+
+const renderFeatureBadge = (featureKey: FeatureKey | null) => {
+  if (!featureKey) return null;
+  const tone = featureTones[featureKey];
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-md border border-dashed px-2 py-0.5 text-[0.55rem] uppercase tracking-wide ${tone.badge}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
+      {tone.label}
+    </span>
+  );
+};
+
+const renderTemplateChip = (
+  template: { id?: string; title: string; type?: string | null; tags?: string[] | null },
+  keyPrefix: string
+) => {
+  const featureKey = getSectionFeatureKey(template);
+  const tone = featureKey ? featureTones[featureKey] : null;
+  return (
+    <span
+      key={`${keyPrefix}-${template.id ?? template.title}`}
+      className={`inline-flex items-center gap-1 rounded-md border border-dashed px-2 py-0.5 text-[0.55rem] uppercase tracking-wide ${
+        tone ? tone.chip : "border-white/15 bg-white/5 text-[var(--muted)]"
+      }`}
+    >
+      {tone ? <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} /> : null}
+      {template.title}
+    </span>
+  );
+};
 
 const buildDiffSegments = (original: string, updated: string): DiffSegment[] => {
   const oldChars = Array.from(original);
@@ -234,7 +396,7 @@ const buildDiffSegments = (original: string, updated: string): DiffSegment[] => 
 };
 
 export default function CoachReportBuilderPage() {
-  const { organization } = useProfile();
+  const { organization, userEmail } = useProfile();
   const searchParams = useSearchParams();
   const router = useRouter();
   const [editingReportId, setEditingReportId] = useState<string | null>(null);
@@ -258,7 +420,8 @@ export default function CoachReportBuilderPage() {
   const [layoutTemplateIds, setLayoutTemplateIds] = useState<string[]>([]);
   const [layoutSaving, setLayoutSaving] = useState(false);
   const [layoutCustomTitle, setLayoutCustomTitle] = useState("");
-  const [layoutCustomIsImage, setLayoutCustomIsImage] = useState(false);
+  const [layoutCustomType, setLayoutCustomType] =
+    useState<SectionType>("text");
   const initialBuilderStep = searchParams.get("reportId")
     ? "report"
     : "layout";
@@ -284,10 +447,16 @@ export default function CoachReportBuilderPage() {
   const [aiLayoutSaving, setAiLayoutSaving] = useState(false);
   const [aiLayoutMessage, setAiLayoutMessage] = useState("");
   const [premiumModalOpen, setPremiumModalOpen] = useState(false);
+  const [premiumNotice, setPremiumNotice] = useState<{
+    title: string;
+    description: string;
+    tags?: string[];
+    status?: { label: string; value: string }[];
+  } | null>(null);
   const [reportSections, setReportSections] =
     useState<ReportSection[]>(defaultReportSections.map(createSection));
   const [customSection, setCustomSection] = useState("");
-  const [customIsImage, setCustomIsImage] = useState(false);
+  const [customType, setCustomType] = useState<SectionType>("text");
   const [sectionSearch, setSectionSearch] = useState("");
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [draggingAvailable, setDraggingAvailable] =
@@ -310,6 +479,26 @@ export default function CoachReportBuilderPage() {
   const skipResetRef = useRef(false);
   const showSlots = dragEnabled && (dragIndex !== null || draggingAvailable !== null);
   const [students, setStudents] = useState<StudentOption[]>([]);
+  const [radarFiles, setRadarFiles] = useState<RadarFile[]>([]);
+  const [radarLoading, setRadarLoading] = useState(false);
+  const [radarError, setRadarError] = useState("");
+  const [radarUploading, setRadarUploading] = useState(false);
+  const [radarUploadProgress, setRadarUploadProgress] = useState(0);
+  const [radarUploadBatch, setRadarUploadBatch] = useState<{
+    current: number;
+    total: number;
+  } | null>(null);
+  const radarUploadTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const radarInputRef = useRef<HTMLInputElement | null>(null);
+  const [radarSessionFileIds, setRadarSessionFileIds] = useState<string[]>([]);
+  const [radarConfigOpen, setRadarConfigOpen] = useState(false);
+  const [radarConfigDraft, setRadarConfigDraft] =
+    useState<RadarConfig>(defaultRadarConfig);
+  const [radarConfigSectionId, setRadarConfigSectionId] = useState<string | null>(
+    null
+  );
+  const [radarConfigSaving, setRadarConfigSaving] = useState(false);
+  const [radarConfigError, setRadarConfigError] = useState("");
   const [tpiContext, setTpiContext] = useState("");
   const [studentId, setStudentId] = useState("");
   const [title, setTitle] = useState("");
@@ -331,6 +520,16 @@ export default function CoachReportBuilderPage() {
   const [aiSummary, setAiSummary] = useState("");
   const [aiError, setAiError] = useState("");
   const [aiBusyId, setAiBusyId] = useState<string | null>(null);
+  const [radarAiQaOpen, setRadarAiQaOpen] = useState(false);
+  const [radarAiQaAnswers, setRadarAiQaAnswers] = useState<
+    Record<string, string>
+  >({});
+  const [radarAiQuestions, setRadarAiQuestions] = useState<RadarAiQuestion[]>(
+    DEFAULT_RADAR_AI_QUESTIONS
+  );
+  const [radarAiQuestionsLoading, setRadarAiQuestionsLoading] = useState(false);
+  const [radarAiQaError, setRadarAiQaError] = useState("");
+  const [radarAiAutoBusy, setRadarAiAutoBusy] = useState(false);
   const [aiPreviews, setAiPreviews] = useState<Record<string, AiPreview>>({});
   const [clarifyOpen, setClarifyOpen] = useState(false);
   const [clarifyQuestions, setClarifyQuestions] = useState<ClarifyQuestion[]>(
@@ -380,7 +579,10 @@ export default function CoachReportBuilderPage() {
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(16).slice(2)}`
   );
+  const isAdmin = userEmail?.toLowerCase() === "adrien.lafuge@outlook.fr";
   const aiEnabled = organization?.ai_enabled ?? false;
+  const radarAddonEnabled = isAdmin || organization?.radar_enabled;
+  const tpiAddonEnabled = isAdmin || organization?.tpi_enabled;
   const aiLocked = !aiEnabled;
   const canUseAi = aiEnabled && !aiBusyId;
   const isDraft = !sentAt;
@@ -390,13 +592,85 @@ export default function CoachReportBuilderPage() {
     ? "Enregistrer le brouillon"
     : "Enregistrer les modifications";
 
-  const openPremiumModal = useCallback(() => {
-    setPremiumModalOpen(true);
-  }, []);
+  const openPremiumModal = useCallback(
+    (notice?: {
+      title: string;
+      description: string;
+      tags?: string[];
+      status?: { label: string; value: string }[];
+    } | null) => {
+      setPremiumNotice(notice ?? null);
+      setPremiumModalOpen(true);
+    },
+    []
+  );
 
   const closePremiumModal = useCallback(() => {
     setPremiumModalOpen(false);
+    setPremiumNotice(null);
   }, []);
+
+  const openRadarAddonModal = useCallback(() => {
+    const needsPremium = !aiEnabled;
+    openPremiumModal({
+      title: "Acces radar bloque",
+      description: needsPremium
+        ? "Cette section est reservee aux coachs Premium IA avec l add-on Radar."
+        : "Ajoute l add-on Radar pour debloquer cette section.",
+      tags: needsPremium ? ["Premium IA", "Add-on Radar"] : ["Add-on Radar"],
+      status: [
+        {
+          label: "Premium IA",
+          value: aiEnabled ? "Actif" : "Inactif",
+        },
+        {
+          label: "Add-on Radar",
+          value: radarAddonEnabled ? "Actif" : "Inactif",
+        },
+      ],
+    });
+  }, [aiEnabled, openPremiumModal, radarAddonEnabled]);
+
+  const openTpiAddonModal = useCallback(() => {
+    const needsPremium = !aiEnabled;
+    openPremiumModal({
+      title: "Acces TPI bloque",
+      description: needsPremium
+        ? "Cette fonctionnalite est reservee aux coachs Premium IA avec l add-on TPI."
+        : "Ajoute l add-on TPI pour debloquer cette fonctionnalite.",
+      tags: needsPremium ? ["Premium IA", "Add-on TPI"] : ["Add-on TPI"],
+      status: [
+        {
+          label: "Premium IA",
+          value: aiEnabled ? "Actif" : "Inactif",
+        },
+        {
+          label: "Add-on TPI",
+          value: tpiAddonEnabled ? "Actif" : "Inactif",
+        },
+      ],
+    });
+  }, [aiEnabled, openPremiumModal, tpiAddonEnabled]);
+
+  const isFeatureLocked = useCallback(
+    (featureKey: FeatureKey | null) => {
+      if (featureKey === "radar") return !radarAddonEnabled;
+      if (featureKey === "tpi") return !tpiAddonEnabled;
+      return false;
+    },
+    [radarAddonEnabled, tpiAddonEnabled]
+  );
+
+  const openFeatureModal = useCallback(
+    (featureKey: FeatureKey | null) => {
+      if (featureKey === "radar") {
+        openRadarAddonModal();
+      } else if (featureKey === "tpi") {
+        openTpiAddonModal();
+      }
+    },
+    [openRadarAddonModal, openTpiAddonModal]
+  );
 
   const availableSections = useMemo(() => {
     const inReport = new Set(
@@ -434,6 +708,30 @@ export default function CoachReportBuilderPage() {
     });
     return map;
   }, [sectionTemplates]);
+
+  const radarFileMap = useMemo(() => {
+    const map = new Map<string, RadarFile>();
+    radarFiles.forEach((file) => {
+      map.set(file.id, file);
+    });
+    return map;
+  }, [radarFiles]);
+
+  const radarActiveFileIds = useMemo(() => {
+    const ids = new Set(radarSessionFileIds);
+    reportSections.forEach((section) => {
+      if (section.type === "radar" && section.radarFileId) {
+        ids.add(section.radarFileId);
+      }
+    });
+    return ids;
+  }, [radarSessionFileIds, reportSections]);
+
+  const radarVisibleFiles = useMemo(
+    () => radarFiles.filter((file) => radarActiveFileIds.has(file.id)),
+    [radarFiles, radarActiveFileIds]
+  );
+
 
   const selectedLayout = useMemo(
     () => layouts.find((layout) => layout.id === selectedLayoutId) ?? null,
@@ -921,6 +1219,11 @@ export default function CoachReportBuilderPage() {
       setSectionsNotice("Saisis un nom de section.", "error");
       return;
     }
+    if (customType === "radar" && !radarAddonEnabled) {
+      setSectionsNotice("Add-on Radar requis pour cette section.", "error");
+      openRadarAddonModal();
+      return;
+    }
 
     const exists = sectionTemplates.some(
       (section) => section.title.toLowerCase() === next.toLowerCase()
@@ -931,13 +1234,10 @@ export default function CoachReportBuilderPage() {
       return;
     }
 
-    const created = await createSectionTemplate(
-      next,
-      customIsImage ? "image" : "text"
-    );
+    const created = await createSectionTemplate(next, customType);
     if (!created) return;
     setCustomSection("");
-    setCustomIsImage(false);
+    setCustomType("text");
   };
 
   const handleEditSection = (section: SectionTemplate) => {
@@ -987,6 +1287,11 @@ export default function CoachReportBuilderPage() {
   };
 
   const handleAddToReport = (section: SectionTemplate) => {
+    const featureKey = getSectionFeatureKey(section);
+    if (isFeatureLocked(featureKey)) {
+      openFeatureModal(featureKey);
+      return;
+    }
     const normalized = section.title.toLowerCase();
     setReportSections((prev) => {
       const exists = prev.some(
@@ -1324,6 +1629,210 @@ export default function CoachReportBuilderPage() {
     setStudents(data ?? []);
   };
 
+  const loadRadarFiles = async (student?: string) => {
+    const targetStudentId = student ?? studentId;
+    if (!targetStudentId) {
+      setRadarFiles([]);
+      return;
+    }
+    setRadarLoading(true);
+    setRadarError("");
+
+      const { data, error } = await supabase
+        .from("radar_files")
+        .select(
+          "id, status, original_name, columns, shots, stats, summary, config, analytics, created_at, error"
+        )
+      .eq("student_id", targetStudentId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      setRadarError(error.message);
+      setRadarFiles([]);
+      setRadarLoading(false);
+      return;
+    }
+
+    const normalized =
+      data?.map((file) => ({
+        ...file,
+        columns: Array.isArray(file.columns) ? file.columns : [],
+        shots: Array.isArray(file.shots) ? file.shots : [],
+        stats:
+          file.stats && typeof file.stats === "object" ? file.stats : null,
+        config:
+          file.config && typeof file.config === "object" ? file.config : null,
+        analytics:
+          file.analytics && typeof file.analytics === "object"
+            ? file.analytics
+            : null,
+      })) ?? [];
+
+    setRadarFiles(normalized as RadarFile[]);
+    setRadarLoading(false);
+  };
+
+  const stopRadarUploadProgress = () => {
+    if (radarUploadTimer.current) {
+      clearInterval(radarUploadTimer.current);
+      radarUploadTimer.current = null;
+    }
+  };
+
+  const isRadarImageFile = (file: File) => {
+    if (file.type.startsWith("image/")) return true;
+    const name = file.name.toLowerCase();
+    return [".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"].some((ext) =>
+      name.endsWith(ext)
+    );
+  };
+
+  const runRadarUploadProgress = (
+    target: number,
+    step: number,
+    delay: number,
+    onComplete?: () => void
+  ) => {
+    stopRadarUploadProgress();
+    radarUploadTimer.current = setInterval(() => {
+      let reached = false;
+      setRadarUploadProgress((prev) => {
+        if (prev >= target) {
+          reached = true;
+          return prev;
+        }
+        const next = Math.min(prev + step, target);
+        if (next >= target) reached = true;
+        return next;
+      });
+      if (reached) {
+        stopRadarUploadProgress();
+        if (onComplete) onComplete();
+      }
+    }, delay);
+  };
+
+  const processRadarFile = async (file: File) => {
+    if (!radarAddonEnabled) {
+      setRadarError("Add-on Radar requis pour importer un fichier.");
+      openRadarAddonModal();
+      return false;
+    }
+    if (!studentId || !organization?.id) {
+      setRadarError("Choisis un eleve avant d importer un fichier radar.");
+      return false;
+    }
+    if (!isRadarImageFile(file)) {
+      setRadarError("Importe une image Flightscope (jpg, png, heic...).");
+      return false;
+    }
+
+    setRadarError("");
+    setRadarUploadProgress(8);
+    runRadarUploadProgress(45, 1.5, 350);
+
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+    const path = `${organization.id}/students/${studentId}/radars/${Date.now()}-${safeName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("radar-files")
+      .upload(path, file, { cacheControl: "3600", upsert: true });
+
+    if (uploadError) {
+      setRadarError(uploadError.message);
+      stopRadarUploadProgress();
+      setRadarUploadProgress(0);
+      return false;
+    }
+
+    const { data: radarRow, error: insertError } = await supabase
+      .from("radar_files")
+      .insert([
+        {
+          org_id: organization.id,
+          student_id: studentId,
+          source: "flightscope",
+          status: "processing",
+          original_name: file.name,
+          file_url: path,
+          file_mime: file.type,
+        },
+      ])
+      .select("id")
+      .single();
+
+    if (insertError || !radarRow) {
+      setRadarError(insertError?.message ?? "Erreur d enregistrement radar.");
+      stopRadarUploadProgress();
+      setRadarUploadProgress(0);
+      return false;
+    }
+
+    setRadarSessionFileIds((prev) =>
+      Array.from(new Set([...prev, radarRow.id]))
+    );
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setRadarError("Session invalide.");
+      stopRadarUploadProgress();
+      setRadarUploadProgress(0);
+      return false;
+    }
+
+    setRadarUploadProgress(50);
+    runRadarUploadProgress(90, 0.4, 600, () => {
+      runRadarUploadProgress(99, 0.1, 1650);
+    });
+
+    const response = await fetch("/api/radar/extract", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ radarFileId: radarRow.id }),
+    });
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      setRadarError(payload.error ?? "Erreur lors de l extraction radar.");
+      stopRadarUploadProgress();
+      setRadarUploadProgress(0);
+      await loadRadarFiles();
+      return false;
+    }
+
+    await loadRadarFiles();
+    stopRadarUploadProgress();
+    setRadarUploadProgress(100);
+    return true;
+  };
+
+  const handleRadarUpload = async (file: File) => {
+    setRadarUploading(true);
+    setRadarUploadBatch({ current: 1, total: 1 });
+    await processRadarFile(file);
+    setRadarUploading(false);
+    setRadarUploadBatch(null);
+  };
+
+  const handleRadarUploadBatch = async (files: File[]) => {
+    if (!files.length) return;
+    setRadarUploading(true);
+    setRadarUploadBatch({ current: 0, total: files.length });
+    for (const file of files) {
+      setRadarUploadBatch((prev) =>
+        prev ? { ...prev, current: prev.current + 1 } : prev
+      );
+      const ok = await processRadarFile(file);
+      if (!ok) break;
+    }
+    setRadarUploading(false);
+    setRadarUploadBatch(null);
+  };
+
   const loadTpiContext = async (reportId?: string | null) => {
     if (!reportId) {
       setTpiContext("");
@@ -1445,7 +1954,7 @@ export default function CoachReportBuilderPage() {
               seededData.map((item) => ({
                 id: item.id,
                 title: item.title,
-                type: item.type === "image" ? "image" : "text",
+                type: normalizeSectionType(item.type),
                 tags: sectionTagMap.get(item.title.toLowerCase()) ?? [],
               }))
             );
@@ -1469,7 +1978,7 @@ export default function CoachReportBuilderPage() {
           fallbackData.map((item) => ({
             id: item.id,
             title: item.title,
-            type: item.type === "image" ? "image" : "text",
+            type: normalizeSectionType(item.type),
             tags: sectionTagMap.get(item.title.toLowerCase()) ?? [],
           }))
         );
@@ -1506,7 +2015,7 @@ export default function CoachReportBuilderPage() {
             return {
               id: item.id,
               title: item.title,
-              type: item.type === "image" ? "image" : "text",
+              type: normalizeSectionType(item.type),
               tags: itemTags,
             };
           })
@@ -1533,7 +2042,7 @@ export default function CoachReportBuilderPage() {
         return {
           id: item.id,
           title: item.title,
-          type: item.type === "image" ? "image" : "text",
+          type: normalizeSectionType(item.type),
           tags: itemTags,
         };
       })
@@ -1596,7 +2105,7 @@ export default function CoachReportBuilderPage() {
     setLayoutTitle("");
     setLayoutTemplateIds([]);
     setLayoutCustomTitle("");
-    setLayoutCustomIsImage(false);
+    setLayoutCustomType("text");
     setLayoutEditorOpen(false);
     setLayoutNotice("", "idle");
   };
@@ -1606,7 +2115,7 @@ export default function CoachReportBuilderPage() {
     setLayoutTitle("");
     setLayoutTemplateIds([]);
     setLayoutCustomTitle("");
-    setLayoutCustomIsImage(false);
+    setLayoutCustomType("text");
     setLayoutEditorOpen(true);
     setLayoutNotice("", "idle");
   };
@@ -1620,6 +2129,12 @@ export default function CoachReportBuilderPage() {
   };
 
   const handleAddTemplateToLayout = (templateId: string) => {
+    const template = templateById.get(templateId);
+    const featureKey = template ? getSectionFeatureKey(template) : null;
+    if (isFeatureLocked(featureKey)) {
+      openFeatureModal(featureKey);
+      return;
+    }
     setLayoutTemplateIds((prev) =>
       prev.includes(templateId) ? prev : [...prev, templateId]
     );
@@ -1953,6 +2468,11 @@ export default function CoachReportBuilderPage() {
       setLayoutNotice("Saisis un nom de section.", "error");
       return;
     }
+    if (layoutCustomType === "radar" && !radarAddonEnabled) {
+      setLayoutNotice("Add-on Radar requis pour cette section.", "error");
+      openRadarAddonModal();
+      return;
+    }
 
     const exists = sectionTemplates.some(
       (section) => section.title.toLowerCase() === next.toLowerCase()
@@ -1962,15 +2482,12 @@ export default function CoachReportBuilderPage() {
       return;
     }
 
-    const created = await createSectionTemplate(
-      next,
-      layoutCustomIsImage ? "image" : "text"
-    );
+    const created = await createSectionTemplate(next, layoutCustomType);
     if (!created?.id) return;
 
     setLayoutTemplateIds((prev) => [...prev, created.id as string]);
     setLayoutCustomTitle("");
-    setLayoutCustomIsImage(false);
+    setLayoutCustomType("text");
   };
 
   const loadLocalDraft = () => {
@@ -2031,7 +2548,9 @@ export default function CoachReportBuilderPage() {
 
     const { data: sectionsData, error: sectionsError } = await supabase
       .from("report_sections")
-      .select("id, title, content, position, type, media_urls, media_captions")
+      .select(
+        "id, title, content, position, type, media_urls, media_captions, radar_file_id, radar_config"
+      )
       .eq("report_id", reportId)
       .order("position", { ascending: true });
 
@@ -2044,18 +2563,23 @@ export default function CoachReportBuilderPage() {
 
     const normalizedSections =
       sectionsData?.map((section) => {
-        const type = section.type === "image" ? "image" : "text";
+        const type = normalizeSectionType(section.type);
         const mediaUrls = section.media_urls ?? [];
         const captions = section.media_captions ?? [];
         return {
           id: section.id,
           title: section.title,
           type,
-          content: type === "image" ? "" : section.content ?? "",
+          content: type === "text" ? section.content ?? "" : "",
           mediaUrls,
           mediaCaptions: mediaUrls.map((url: string, index: number) =>
             (captions[index] ?? "").slice(0, CAPTION_LIMIT)
           ),
+          radarFileId: section.radar_file_id ?? null,
+          radarConfig:
+            section.radar_config && typeof section.radar_config === "object"
+              ? section.radar_config
+              : null,
         } as ReportSection;
       }) ?? [];
 
@@ -2133,6 +2657,323 @@ export default function CoachReportBuilderPage() {
     setImageErrors({});
     setUploadingSections({});
     shouldAnimate.current = true;
+  };
+
+  const handleOpenRadarSectionConfig = (sectionId: string) => {
+    const section = reportSections.find((item) => item.id === sectionId);
+    if (!section) return;
+    const base =
+      section.radarConfig ??
+      (section.radarFileId ? radarFileMap.get(section.radarFileId)?.config : null) ??
+      defaultRadarConfig;
+    const merged: RadarConfig = {
+      ...defaultRadarConfig,
+      ...(base ?? {}),
+      charts: {
+        ...defaultRadarConfig.charts,
+        ...(base?.charts ?? {}),
+      },
+      thresholds: {
+        ...defaultRadarConfig.thresholds,
+        ...(base?.thresholds ?? {}),
+      },
+      options: {
+        ...defaultRadarConfig.options,
+        ...(base?.options ?? {}),
+      },
+    };
+    setRadarConfigDraft(merged);
+    setRadarConfigSectionId(sectionId);
+    setRadarConfigError("");
+    setRadarConfigOpen(true);
+  };
+
+  const handleCloseRadarSectionConfig = () => {
+    if (radarConfigSaving) return;
+    setRadarConfigOpen(false);
+    setRadarConfigSectionId(null);
+  };
+
+  const buildRadarAiContext = () => {
+    const textSections = reportSections
+      .filter((section) => section.type === "text" && section.content.trim())
+      .map((section) => `${section.title}: ${section.content.trim()}`);
+    const contextBlocks = [
+      ...textSections,
+      workingObservations ? `Observations: ${workingObservations}` : "",
+      workingNotes ? `Notes: ${workingNotes}` : "",
+      workingClub ? `Club: ${workingClub}` : "",
+    ].filter(Boolean);
+    return contextBlocks.join(" | ");
+  };
+
+  const loadRadarAiQuestions = async () => {
+    setRadarAiQuestionsLoading(true);
+    setRadarAiQaError("");
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        setRadarAiQaError("Session invalide.");
+        setRadarAiQuestions(DEFAULT_RADAR_AI_QUESTIONS);
+        return;
+      }
+
+      const sections = reportSections
+        .filter((section) => section.type === "text" && section.content.trim())
+        .map((section) => ({
+          title: section.title,
+          content: section.content.trim(),
+        }));
+
+      const response = await fetch("/api/radar/ai", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          mode: "questions",
+          context: buildRadarAiContext(),
+          sections,
+        }),
+      });
+
+      const raw = await response.text();
+      if (!raw) {
+        setRadarAiQaError("Reponse IA vide.");
+        setRadarAiQuestions(DEFAULT_RADAR_AI_QUESTIONS);
+        return;
+      }
+
+      let data: { questions?: RadarAiQuestion[]; error?: string };
+      try {
+        data = JSON.parse(raw) as {
+          questions?: RadarAiQuestion[];
+          error?: string;
+        };
+      } catch {
+        setRadarAiQaError(raw.slice(0, 160));
+        setRadarAiQuestions(DEFAULT_RADAR_AI_QUESTIONS);
+        return;
+      }
+
+      if (!response.ok) {
+        setRadarAiQaError(data.error ?? "Erreur IA.");
+        setRadarAiQuestions(DEFAULT_RADAR_AI_QUESTIONS);
+        return;
+      }
+
+      const questions =
+        data.questions && data.questions.length
+          ? data.questions
+          : DEFAULT_RADAR_AI_QUESTIONS;
+      setRadarAiQuestions(questions);
+    } catch (error) {
+      setRadarAiQaError(
+        error instanceof Error ? error.message : "Erreur IA."
+      );
+      setRadarAiQuestions(DEFAULT_RADAR_AI_QUESTIONS);
+    } finally {
+      setRadarAiQuestionsLoading(false);
+    }
+  };
+
+  const handleAutoDetectRadarGraphs = async (
+    answers: Record<string, string> = {}
+  ) => {
+    if (aiLocked) {
+      openPremiumModal();
+      return;
+    }
+    if (radarAiAutoBusy) return;
+    setRadarAiAutoBusy(true);
+    setRadarAiQaError("");
+
+    const context = buildRadarAiContext();
+    const enrichedAnswers = {
+      ...answers,
+      ...(workingClub && !answers.club ? { club: workingClub } : null),
+    };
+    const radarSections = reportSections.filter(
+      (section) => section.type === "radar"
+    );
+    const aiSections = radarSections.filter((section) => {
+      const config = section.radarConfig ?? defaultRadarConfig;
+      return config.mode === "ai";
+    });
+
+    if (!aiSections.length) {
+      setRadarAiQaError("Aucune section radar en mode IA.");
+      setRadarAiAutoBusy(false);
+      return;
+    }
+
+    const missingFiles = aiSections
+      .filter((section) => !section.radarFileId)
+      .map((section) => section.title);
+    if (missingFiles.length) {
+      setRadarAiQaError(
+        `Selectionne un fichier radar pour: ${missingFiles.join(", ")}.`
+      );
+      setRadarAiAutoBusy(false);
+      return;
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setRadarAiQaError("Session invalide.");
+      setRadarAiAutoBusy(false);
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/radar/ai", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          mode: "auto",
+          context,
+          answers: enrichedAnswers,
+          radarSections: aiSections.map((section) => ({
+            id: section.id,
+            radarFileId: section.radarFileId,
+            preset: section.radarConfig?.options?.aiPreset ?? "standard",
+            syntax:
+              section.radarConfig?.options?.aiSyntax ?? "exp-tech-solution",
+          })),
+        }),
+      });
+
+      const raw = await response.text();
+      if (!raw) {
+        setRadarAiQaError("Reponse IA vide.");
+        setRadarAiAutoBusy(false);
+        return;
+      }
+
+      let data: { sections?: Array<Record<string, unknown>>; error?: string };
+      try {
+        data = JSON.parse(raw) as {
+          sections?: Array<Record<string, unknown>>;
+          error?: string;
+        };
+      } catch {
+        setRadarAiQaError(raw.slice(0, 180));
+        setRadarAiAutoBusy(false);
+        return;
+      }
+
+      if (!response.ok) {
+        setRadarAiQaError(data.error ?? "Erreur IA.");
+        setRadarAiAutoBusy(false);
+        return;
+      }
+
+      const results = (data.sections ?? []) as Array<{
+        sectionId: string;
+        selectionSummary?: string;
+        sessionSummary?: string;
+        charts?: Array<{
+          key: string;
+          title?: string;
+          reason?: string;
+          solution?: string;
+        }>;
+      }>;
+
+      const updatedSections = reportSections.map((section) => {
+        if (section.type !== "radar") return section;
+        const baseConfig =
+          section.radarConfig ??
+          (section.radarFileId
+            ? radarFileMap.get(section.radarFileId)?.config
+            : null) ??
+          defaultRadarConfig;
+        if (baseConfig.mode !== "ai") return section;
+
+        const result = results.find((item) => item.sectionId === section.id);
+        if (!result) return section;
+
+        const selectedKeys = (result.charts ?? []).map((chart) => chart.key);
+        const nextCharts: Record<string, boolean> = {
+          ...defaultRadarConfig.charts,
+        };
+        Object.keys(nextCharts).forEach((key) => {
+          nextCharts[key] = selectedKeys.includes(key);
+        });
+
+        const aiNarratives = (result.charts ?? []).reduce<
+          Record<string, { reason?: string | null; solution?: string | null }>
+        >((acc, chart) => {
+          acc[chart.key] = {
+            reason: chart.reason ?? null,
+            solution: chart.solution ?? null,
+          };
+          return acc;
+        }, {});
+
+        const selectionSummary = result.selectionSummary?.trim() ?? "";
+        const sessionSummary = result.sessionSummary?.trim() ?? "";
+
+        const merged: RadarConfig = {
+          ...defaultRadarConfig,
+          ...(baseConfig ?? {}),
+          charts: {
+            ...defaultRadarConfig.charts,
+            ...(baseConfig?.charts ?? {}),
+            ...nextCharts,
+          },
+          thresholds: {
+            ...defaultRadarConfig.thresholds,
+            ...(baseConfig?.thresholds ?? {}),
+          },
+          options: {
+            ...defaultRadarConfig.options,
+            ...(baseConfig?.options ?? {}),
+            aiNarrative: "per-chart",
+            aiSelectionKeys: selectedKeys,
+            aiNarratives,
+            aiSelectionSummary: selectionSummary || null,
+            aiSessionSummary: sessionSummary || null,
+          },
+        };
+
+        return {
+          ...section,
+          radarConfig: merged,
+        };
+      });
+
+      setReportSections(updatedSections);
+      setRadarAiQaError("");
+      setRadarAiQaOpen(false);
+    } catch (error) {
+      setRadarAiQaError(
+        error instanceof Error ? error.message : "Erreur IA."
+      );
+    } finally {
+      setRadarAiAutoBusy(false);
+    }
+  };
+
+  const handleSaveRadarSectionConfig = () => {
+    if (!radarConfigSectionId) return;
+    setRadarConfigSaving(true);
+    setReportSections((prev) =>
+      prev.map((section) =>
+        section.id === radarConfigSectionId
+          ? { ...section, radarConfig: radarConfigDraft }
+          : section
+      )
+    );
+    setRadarConfigSaving(false);
+    setRadarConfigOpen(false);
+    setRadarConfigSectionId(null);
   };
 
   const handleSaveReport = async (send: boolean) => {
@@ -2262,9 +3103,11 @@ export default function CoachReportBuilderPage() {
       report_id: reportId,
       title: section.title,
       type: section.type,
-      content: section.type === "image" ? null : section.content || null,
+      content: section.type === "text" ? section.content || null : null,
       media_urls: section.type === "image" ? section.mediaUrls : null,
       media_captions: section.type === "image" ? section.mediaCaptions : null,
+      radar_file_id: section.type === "radar" ? section.radarFileId ?? null : null,
+      radar_config: section.type === "radar" ? section.radarConfig ?? null : null,
       position: index,
     }));
 
@@ -3152,6 +3995,24 @@ export default function CoachReportBuilderPage() {
   }, []);
 
   useEffect(() => {
+    if (!studentId) {
+      setRadarFiles([]);
+      return;
+    }
+    loadRadarFiles(studentId);
+  }, [studentId]);
+
+  useEffect(() => {
+    setRadarSessionFileIds([]);
+  }, [studentId, editingReportId]);
+
+  useEffect(() => {
+    return () => {
+      stopRadarUploadProgress();
+    };
+  }, []);
+
+  useEffect(() => {
     loadLocalDraft();
   }, [isNewReport, loadingReport]);
 
@@ -3437,7 +4298,13 @@ export default function CoachReportBuilderPage() {
                             {option.hint}
                           </p>
                         </div>
-                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[0.55rem] uppercase tracking-wide text-[var(--muted)]">
+                        <span
+                          className={`rounded-full border px-2 py-1 text-[0.55rem] uppercase tracking-wide ${
+                            option.source === "ai"
+                              ? featureTones.ai.badge
+                              : "border-white/10 bg-white/5 text-[var(--muted)]"
+                          }`}
+                        >
                           {option.source === "saved"
                             ? "Sauvegarde"
                             : option.source === "ai"
@@ -3451,14 +4318,11 @@ export default function CoachReportBuilderPage() {
                         </p>
                       ) : (
                         <div className="mt-3 flex flex-wrap gap-2">
-                          {option.templates.slice(0, 4).map((template) => (
-                            <span
-                              key={`${option.id}-${template.title}`}
-                              className="rounded-md border border-dashed border-white/15 bg-white/5 px-2 py-0.5 text-[0.55rem] uppercase tracking-wide text-[var(--muted)]"
-                            >
-                              {template.title}
-                            </span>
-                          ))}
+                          {option.templates
+                            .slice(0, 4)
+                            .map((template) =>
+                              renderTemplateChip(template, option.id)
+                            )}
                           {option.templates.length > 4 ? (
                             <span className="text-[0.55rem] uppercase tracking-wide text-[var(--muted)]">
                               +{option.templates.length - 4} autres
@@ -3488,17 +4352,24 @@ export default function CoachReportBuilderPage() {
                           Ajoute des sections a l etape suivante.
                         </p>
                       ) : (
-                        selectedLayoutOption.templates.map((template) => (
-                          <div
-                            key={`preview-${template.id ?? template.title}`}
-                            className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)]"
-                          >
-                            <span>{template.title}</span>
-                            <span className="text-[0.55rem] uppercase tracking-wide text-[var(--muted)]">
-                              {template.type === "image" ? "Image" : "Texte"}
-                            </span>
-                          </div>
-                        ))
+                        selectedLayoutOption.templates.map((template) => {
+                          const featureKey = getSectionFeatureKey(template);
+                          return (
+                            <div
+                              key={`preview-${template.id ?? template.title}`}
+                              className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)]"
+                            >
+                              <span>{template.title}</span>
+                              {featureKey ? (
+                                renderFeatureBadge(featureKey)
+                              ) : (
+                                <span className="text-[0.55rem] uppercase tracking-wide text-[var(--muted)]">
+                                  Texte
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })
                       )}
                     </div>
                     {selectedLayout && selectedLayoutOption.source === "saved" ? (
@@ -3767,14 +4638,9 @@ export default function CoachReportBuilderPage() {
             </div>
             {selectedLayoutTemplates.length > 0 ? (
               <div className="mt-3 flex flex-wrap gap-2">
-                {selectedLayoutTemplates.map((template) => (
-                  <span
-                    key={`layout-preview-${template.id ?? template.title}`}
-                    className="rounded-md border border-dashed border-white/15 bg-white/5 px-2 py-0.5 text-[0.55rem] uppercase tracking-wide text-[var(--muted)] select-none"
-                  >
-                    {template.title}
-                  </span>
-                ))}
+                {selectedLayoutTemplates.map((template) =>
+                  renderTemplateChip(template, "layout-preview")
+                )}
               </div>
             ) : selectedLayoutId ? (
               <p className="mt-3 text-xs text-[var(--muted)]">
@@ -3850,12 +4716,23 @@ export default function CoachReportBuilderPage() {
                     {layoutTemplateIds.map((templateId, index) => {
                       const template = templateById.get(templateId);
                       const label = template?.title ?? "Section inconnue";
+                      const featureKey = template
+                        ? getSectionFeatureKey(template)
+                        : null;
+                      const tone = featureKey ? featureTones[featureKey] : null;
                       return (
                         <div
                           key={`layout-item-${templateId}`}
                           className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)]"
                         >
-                          <span>{label}</span>
+                          <span className="inline-flex items-center gap-2">
+                            {tone ? (
+                              <span
+                                className={`h-2 w-2 rounded-full ${tone.dot}`}
+                              />
+                            ) : null}
+                            {label}
+                          </span>
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
@@ -3942,18 +4819,53 @@ export default function CoachReportBuilderPage() {
                       Toutes les sections sont deja dans ce layout.
                     </span>
                   ) : (
-                    layoutAvailableTemplates.map((template) => (
-                      <button
-                        key={`layout-add-${template.id}`}
-                        type="button"
-                        onClick={() =>
-                          handleAddTemplateToLayout(template.id as string)
-                        }
-                        className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
-                      >
-                        {template.title}
-                      </button>
-                    ))
+                    layoutAvailableTemplates.map((template) => {
+                      const featureKey = getSectionFeatureKey(template);
+                      const tone = featureKey ? featureTones[featureKey] : null;
+                      const isLocked = isFeatureLocked(featureKey);
+                      return (
+                        <button
+                          key={`layout-add-${template.id}`}
+                          type="button"
+                          onClick={() =>
+                            handleAddTemplateToLayout(template.id as string)
+                          }
+                          title={
+                            isLocked
+                              ? "Option requise"
+                              : "Ajouter au layout"
+                          }
+                          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 ${
+                            tone
+                              ? tone.button
+                              : "border-white/10 bg-white/10 text-[var(--text)]"
+                          } ${isLocked ? "cursor-not-allowed opacity-60" : ""}`}
+                          aria-disabled={isLocked}
+                        >
+                          {tone ? (
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${tone.dot}`}
+                            />
+                          ) : null}
+                          {template.title}
+                          {isLocked ? (
+                            <svg
+                              viewBox="0 0 24 24"
+                              className="h-3.5 w-3.5 text-[var(--muted)]"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <rect x="5" y="11" width="14" height="9" rx="2" />
+                              <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+                            </svg>
+                          ) : null}
+                        </button>
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -3980,30 +4892,49 @@ export default function CoachReportBuilderPage() {
                   </span>
                   <button
                     type="button"
-                    onClick={() => setLayoutCustomIsImage(false)}
+                    onClick={() => setLayoutCustomType("text")}
                     className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
-                      layoutCustomIsImage
-                        ? "border-white/10 bg-white/5 text-[var(--muted)]"
-                        : "border-emerald-300/40 bg-emerald-400/15 text-emerald-100"
+                      layoutCustomType === "text"
+                        ? "border-emerald-300/40 bg-emerald-400/15 text-emerald-100"
+                        : "border-white/10 bg-white/5 text-[var(--muted)]"
                     }`}
-                    aria-pressed={!layoutCustomIsImage}
+                    aria-pressed={layoutCustomType === "text"}
                   >
                     Texte
                   </button>
                   <button
                     type="button"
-                    onClick={() => setLayoutCustomIsImage(true)}
+                    onClick={() => setLayoutCustomType("image")}
                     className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
-                      layoutCustomIsImage
+                      layoutCustomType === "image"
                         ? "border-sky-300/40 bg-sky-400/20 text-sky-100"
                         : "border-white/10 bg-white/5 text-[var(--muted)]"
                     }`}
-                    aria-pressed={layoutCustomIsImage}
+                    aria-pressed={layoutCustomType === "image"}
                   >
                     Image
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!radarAddonEnabled) {
+                        openRadarAddonModal();
+                        return;
+                      }
+                      setLayoutCustomType("radar");
+                    }}
+                    className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
+                      layoutCustomType === "radar"
+                        ? "border-violet-300/40 bg-violet-400/15 text-violet-100"
+                        : "border-white/10 bg-white/5 text-[var(--muted)]"
+                    } ${!radarAddonEnabled ? "cursor-not-allowed opacity-60" : ""}`}
+                    aria-pressed={layoutCustomType === "radar"}
+                    aria-disabled={!radarAddonEnabled}
+                  >
+                    Radar
+                  </button>
                 </div>
-                {layoutCustomIsImage ? (
+                {layoutCustomType === "image" ? (
                   <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-sky-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-sky-100/80 select-none">
                     <svg
                       viewBox="0 0 24 24"
@@ -4018,6 +4949,24 @@ export default function CoachReportBuilderPage() {
                       <circle cx="12" cy="13" r="3" />
                     </svg>
                     Image: upload d images et legendes.
+                  </div>
+                ) : layoutCustomType === "radar" ? (
+                  <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-violet-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-violet-100/80 select-none">
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-3.5 w-3.5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <circle cx="12" cy="12" r="8" />
+                      <path d="M12 12l4-4" />
+                      <path d="M12 8v-2" />
+                      <path d="M16 12h2" />
+                    </svg>
+                    Radar: import d exports et graphes.
                   </div>
                 ) : (
                   <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-emerald-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-emerald-100/80 select-none">
@@ -4101,30 +5050,49 @@ export default function CoachReportBuilderPage() {
               </span>
               <button
                 type="button"
-                onClick={() => setCustomIsImage(false)}
+                onClick={() => setCustomType("text")}
                 className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
-                  customIsImage
-                    ? "border-white/10 bg-white/5 text-[var(--muted)]"
-                    : "border-emerald-300/40 bg-emerald-400/15 text-emerald-100"
+                  customType === "text"
+                    ? "border-emerald-300/40 bg-emerald-400/15 text-emerald-100"
+                    : "border-white/10 bg-white/5 text-[var(--muted)]"
                 }`}
-                aria-pressed={!customIsImage}
+                aria-pressed={customType === "text"}
               >
                 Texte
               </button>
               <button
                 type="button"
-                onClick={() => setCustomIsImage(true)}
+                onClick={() => setCustomType("image")}
                 className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
-                  customIsImage
+                  customType === "image"
                     ? "border-sky-300/40 bg-sky-400/20 text-sky-100"
                     : "border-white/10 bg-white/5 text-[var(--muted)]"
                 }`}
-                aria-pressed={customIsImage}
+                aria-pressed={customType === "image"}
               >
                 Image
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!radarAddonEnabled) {
+                    openRadarAddonModal();
+                    return;
+                  }
+                  setCustomType("radar");
+                }}
+                className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
+                  customType === "radar"
+                    ? "border-violet-300/40 bg-violet-400/15 text-violet-100"
+                    : "border-white/10 bg-white/5 text-[var(--muted)]"
+                } ${!radarAddonEnabled ? "cursor-not-allowed opacity-60" : ""}`}
+                aria-pressed={customType === "radar"}
+                aria-disabled={!radarAddonEnabled}
+              >
+                Radar
+              </button>
             </div>
-            {customIsImage ? (
+            {customType === "image" ? (
               <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-sky-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-sky-100/80 select-none">
                 <svg
                   viewBox="0 0 24 24"
@@ -4139,6 +5107,24 @@ export default function CoachReportBuilderPage() {
                   <circle cx="12" cy="13" r="3" />
                 </svg>
                 Image: upload d images et legendes.
+              </div>
+            ) : customType === "radar" ? (
+              <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-violet-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-violet-100/80 select-none">
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-3.5 w-3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="12" cy="12" r="8" />
+                  <path d="M12 12l4-4" />
+                  <path d="M12 8v-2" />
+                  <path d="M16 12h2" />
+                </svg>
+                Radar: import d exports et graphes.
               </div>
             ) : (
               <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-emerald-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-emerald-100/80 select-none">
@@ -4200,10 +5186,16 @@ export default function CoachReportBuilderPage() {
                 Aucune section disponible. Cree-en une ou applique un layout.
               </p>
             ) : (
-              visibleAvailableSections.map((section) => (
+              visibleAvailableSections.map((section) => {
+                const featureKey = getSectionFeatureKey(section);
+                const tone = featureKey ? featureTones[featureKey] : null;
+                const isLocked = isFeatureLocked(featureKey);
+                return (
                 <div
                   key={`${section.title}-${section.type}`}
-                  className="relative flex flex-col gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 pl-11 text-sm text-[var(--text)] sm:flex-row sm:items-center sm:justify-between sm:pr-16"
+                  className={`relative flex flex-col gap-3 rounded-xl border px-4 py-3 pl-11 text-sm text-[var(--text)] sm:flex-row sm:items-center sm:justify-between sm:pr-16 ${
+                    tone ? tone.panel : "border-white/5 bg-white/5"
+                  }`}
                 >
                   <button
                     type="button"
@@ -4238,11 +5230,7 @@ export default function CoachReportBuilderPage() {
                         <span className="block break-words">
                           {section.title}
                         </span>
-                        {section.type === "image" ? (
-                        <span className="rounded-md border border-dashed border-sky-300/30 bg-sky-400/10 px-2 py-0.5 text-[0.55rem] uppercase tracking-wide text-sky-100/70 select-none">
-                            Image
-                          </span>
-                        ) : null}
+                        {renderFeatureBadge(getSectionFeatureKey(section))}
                       </div>
                     )}
                   </div>
@@ -4292,23 +5280,52 @@ export default function CoachReportBuilderPage() {
                       <>
                         <button
                           type="button"
-                          onClick={() => handleAddToReport(section)}
-                          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--text)] transition hover:bg-white/20"
+                          onClick={() => {
+                            if (isLocked) {
+                              openFeatureModal(featureKey);
+                              return;
+                            }
+                            handleAddToReport(section);
+                          }}
+                          title={
+                            isLocked
+                              ? "Option requise"
+                              : "Ajouter"
+                          }
+                          className={`flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--text)] transition hover:bg-white/20 ${
+                            isLocked ? "cursor-not-allowed opacity-60" : ""
+                          }`}
                           aria-label="Ajouter au rapport"
-                          title="Ajouter"
+                          aria-disabled={isLocked}
                         >
-                          <svg
-                            viewBox="0 0 24 24"
-                            className="h-4 w-4"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M12 5v14" />
-                            <path d="M5 12h14" />
-                          </svg>
+                          {isLocked ? (
+                            <svg
+                              viewBox="0 0 24 24"
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <rect x="5" y="11" width="14" height="9" rx="2" />
+                              <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+                            </svg>
+                          ) : (
+                            <svg
+                              viewBox="0 0 24 24"
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M12 5v14" />
+                              <path d="M5 12h14" />
+                            </svg>
+                          )}
                         </button>
                         <button
                           type="button"
@@ -4364,7 +5381,8 @@ export default function CoachReportBuilderPage() {
                     </button>
                   ) : null}
                 </div>
-              ))
+              );
+              })
             )}
             {!normalizedSectionSearch && hiddenAvailableCount > 0 ? (
               <p className="text-xs text-[var(--muted)]">
@@ -4434,9 +5452,13 @@ export default function CoachReportBuilderPage() {
                     <p className="text-sm font-semibold text-[var(--text)]">
                       {section.title}
                     </p>
-                    <p className="mt-1 text-[0.55rem] uppercase tracking-wide text-[var(--muted)]">
-                      {section.type === "image" ? "Image" : "Texte"}
-                    </p>
+                    <div className="mt-1">
+                      {renderFeatureBadge(getSectionFeatureKey(section)) ?? (
+                        <span className="text-[0.55rem] uppercase tracking-wide text-[var(--muted)]">
+                          Texte
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -4635,16 +5657,16 @@ export default function CoachReportBuilderPage() {
             Organise les sections et remplis le contenu. Drag & drop actif.
           </p>
           {tpiContext ? (
-            <div className="mt-3 inline-flex flex-wrap items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-emerald-100">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
+            <div className="mt-3 inline-flex flex-wrap items-center gap-2 rounded-full border border-rose-300/20 bg-rose-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-rose-100">
+              <span className="h-1.5 w-1.5 rounded-full bg-rose-300" />
               Profil TPI detecte
               {selectedStudent ? (
-                <span className="text-[0.55rem] text-emerald-100/80">
+                <span className="text-[0.55rem] text-rose-100/80">
                   - {selectedStudent.first_name}{" "}
                   {selectedStudent.last_name ?? ""}
                 </span>
               ) : null}
-              <span className="text-[0.55rem] text-emerald-100/80">
+              <span className="text-[0.55rem] text-rose-100/80">
                 L assistant IA l utilisera pour ses recommandations.
               </span>
             </div>
@@ -4786,6 +5808,44 @@ export default function CoachReportBuilderPage() {
                     </svg>
                   ) : null}
                     {aiBusyId === "summary" ? "IA..." : "Resume du rapport"}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  disabled={radarAiAutoBusy}
+                  onClick={() => {
+                    if (aiLocked) {
+                      openPremiumModal();
+                      return;
+                    }
+                    setRadarAiQaAnswers({});
+                    setRadarAiQaError("");
+                    setRadarAiQaOpen(true);
+                    setRadarAiQuestions(DEFAULT_RADAR_AI_QUESTIONS);
+                    void loadRadarAiQuestions();
+                  }}
+                  className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
+                    aiLocked
+                      ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
+                      : "border-violet-300/40 bg-violet-400/15 text-violet-100"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    {aiLocked ? (
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-3.5 w-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <rect x="3" y="11" width="18" height="11" rx="2" />
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                      </svg>
+                    ) : null}
+                    {radarAiAutoBusy ? "IA..." : "Auto detect radar graph"}
                   </span>
                 </button>
                 <button
@@ -5078,6 +6138,18 @@ export default function CoachReportBuilderPage() {
                 section.mediaUrls.length > 0
                   ? `${section.mediaUrls.length} image(s)`
                   : "Aucune image ajoutee.";
+              const radarFile = section.radarFileId
+                ? radarFileMap.get(section.radarFileId)
+                : null;
+              const radarPreview = radarFile
+                ? `${radarFile.original_name ?? "Fichier radar"} • ${
+                    radarFile.shots?.length ?? 0
+                  } coups`
+                : "Aucun fichier radar selectionne.";
+
+              const featureKey = getSectionFeatureKey(section);
+              const tone = featureKey ? featureTones[featureKey] : null;
+              const radarLocked = section.type === "radar" && !radarAddonEnabled;
 
               return (
               <div key={`${section.id}-slot`} className="space-y-3">
@@ -5111,10 +6183,12 @@ export default function CoachReportBuilderPage() {
                     }
                   }}
                   onDragEnd={handleDragEnd}
-                  className={`rounded-2xl border bg-white/5 px-4 py-4 transition ${
+                  className={`relative rounded-2xl border px-4 py-4 transition ${
                     dragIndex === index
                       ? "border-white/20 bg-white/10 opacity-80 shadow-[0_20px_45px_rgba(0,0,0,0.45)]"
-                      : "border-white/10"
+                      : tone
+                        ? tone.panel
+                        : "border-white/10 bg-white/5"
                   }`}
                 >
                   <div className="flex flex-wrap items-center gap-3">
@@ -5135,11 +6209,7 @@ export default function CoachReportBuilderPage() {
                         <p className="text-sm font-semibold text-[var(--text)] break-words">
                           {section.title}
                         </p>
-                        {section.type === "image" ? (
-                          <span className="rounded-md border border-dashed border-sky-300/30 bg-sky-400/10 px-2 py-0.5 text-[0.55rem] uppercase tracking-wide text-sky-100/70 select-none">
-                            Image
-                          </span>
-                        ) : null}
+                        {renderFeatureBadge(featureKey)}
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -5223,7 +6293,11 @@ export default function CoachReportBuilderPage() {
                   </div>
                   {isCollapsed ? (
                     <p className="mt-3 text-xs text-[var(--muted)]">
-                      {section.type === "text" ? contentPreview : imagePreview}
+                      {section.type === "text"
+                        ? contentPreview
+                        : section.type === "radar"
+                          ? radarPreview
+                          : imagePreview}
                     </p>
                   ) : section.type === "text" ? (
                     <>
@@ -5395,6 +6469,198 @@ export default function CoachReportBuilderPage() {
                         </button>
                       </div>
                     </>
+                  ) : section.type === "radar" ? (
+                    <div className="relative mt-3 space-y-3">
+                      {radarLocked ? (
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={openRadarAddonModal}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              openRadarAddonModal();
+                            }
+                          }}
+                          className="absolute inset-0 z-10 flex cursor-pointer items-center justify-center rounded-2xl border border-violet-300/40 bg-violet-500/10 text-center text-xs uppercase tracking-[0.2em] text-violet-100 backdrop-blur-sm"
+                        >
+                          <div className="flex flex-col items-center gap-3 px-6">
+                            <span className="flex items-center gap-2">
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="h-4 w-4"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden="true"
+                              >
+                                <rect x="5" y="11" width="14" height="9" rx="2" />
+                                <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+                              </svg>
+                              Add-on Radar requis
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openRadarAddonModal();
+                              }}
+                              className="rounded-full border border-violet-200/40 bg-violet-400/20 px-4 py-1 text-[0.6rem] uppercase tracking-wide text-violet-100 transition hover:bg-violet-400/30"
+                            >
+                              Voir les offres
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select
+                          value={section.radarFileId ?? ""}
+                          onChange={(event) => {
+                            const nextId = event.target.value || null;
+                            const picked = nextId ? radarFileMap.get(nextId) : null;
+                            const base = picked?.config ?? defaultRadarConfig;
+                            const merged: RadarConfig = {
+                              ...defaultRadarConfig,
+                              ...(base ?? {}),
+                              charts: {
+                                ...defaultRadarConfig.charts,
+                                ...(base?.charts ?? {}),
+                              },
+                              thresholds: {
+                                ...defaultRadarConfig.thresholds,
+                                ...(base?.thresholds ?? {}),
+                              },
+                              options: {
+                                ...defaultRadarConfig.options,
+                                ...(base?.options ?? {}),
+                              },
+                            };
+                            setReportSections((prev) =>
+                              prev.map((entry) =>
+                                entry.id === section.id
+                                  ? {
+                                      ...entry,
+                                      radarFileId: nextId,
+                                      radarConfig: nextId ? merged : null,
+                                    }
+                                  : entry
+                              )
+                            );
+                          }}
+                          disabled={radarLocked}
+                          className="min-w-[220px] rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <option value="">
+                            {radarVisibleFiles.length
+                              ? "Choisir un fichier radar"
+                              : "Importer un fichier radar pour cette section"}
+                          </option>
+                          {radarVisibleFiles.map((file) => (
+                            <option key={file.id} value={file.id}>
+                              {file.original_name || "Export Flightscope"}{" "}
+                              {file.status === "ready" ? "" : "(analyse)"}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (radarLocked) {
+                              openRadarAddonModal();
+                              return;
+                            }
+                            radarInputRef.current?.click();
+                          }}
+                          disabled={radarUploading}
+                          className={`rounded-full border border-white/10 bg-white/10 px-3 py-2 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20 ${
+                            radarLocked ? "cursor-not-allowed opacity-60" : ""
+                          } disabled:opacity-60`}
+                          aria-disabled={radarLocked}
+                        >
+                          Importer
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenRadarSectionConfig(section.id)}
+                          disabled={!section.radarFileId || radarLocked}
+                          className={`rounded-full border px-3 py-2 text-[0.65rem] uppercase tracking-wide transition ${
+                            section.radarFileId && !radarLocked
+                              ? "border-white/10 bg-white/5 text-[var(--text)] hover:bg-white/10"
+                              : "cursor-not-allowed border-white/5 bg-white/5 text-[var(--muted)]"
+                          }`}
+                        >
+                          Configurer
+                        </button>
+                        <input
+                          ref={radarInputRef}
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          onChange={(event) => {
+                            const files = Array.from(event.target.files ?? []);
+                            if (files.length) void handleRadarUploadBatch(files);
+                            event.target.value = "";
+                          }}
+                        />
+                      </div>
+                      <p className="text-xs text-[var(--muted)]">
+                        Seuls les fichiers importes dans ce rapport sont listes.
+                        Tu peux en importer plusieurs, ils seront ajoutes a la
+                        liste.
+                      </p>
+                      {radarUploading ? (
+                        <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+                          <div className="flex items-center justify-between text-xs text-[var(--muted)]">
+                            <span>
+                              Extraction radar
+                              <span className="tpi-dots" aria-hidden="true" />
+                            </span>
+                            <span className="min-w-[3ch] text-right text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                              {Math.round(radarUploadProgress)}%
+                            </span>
+                          </div>
+                          {radarUploadBatch ? (
+                            <div className="mt-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                              Fichier {radarUploadBatch.current}/
+                              {radarUploadBatch.total}
+                            </div>
+                          ) : null}
+                          <div className="mt-2 h-2 w-full rounded-full bg-white/10">
+                            <div
+                              className="h-2 rounded-full bg-violet-300 transition-all duration-700 ease-out"
+                              style={{ width: `${radarUploadProgress}%` }}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+                      {radarError ? (
+                        <p className="text-xs text-red-400">{radarError}</p>
+                      ) : null}
+                      {radarLoading ? (
+                        <p className="text-xs text-[var(--muted)]">
+                          Chargement des fichiers radar...
+                        </p>
+                      ) : null}
+                        {radarFile ? (
+                          <RadarCharts
+                            columns={radarFile.columns ?? []}
+                            shots={radarFile.shots ?? []}
+                            stats={radarFile.stats}
+                            summary={radarFile.summary}
+                            config={section.radarConfig ?? radarFile.config}
+                            analytics={radarFile.analytics}
+                            compact
+                          />
+                      ) : (
+                        <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
+                          Selectionne un fichier radar pour previsualiser les
+                          graphes.
+                        </div>
+                      )}
+                    </div>
                   ) : (
                     <div className="mt-3 space-y-3">
                       <div
@@ -5621,15 +6887,26 @@ export default function CoachReportBuilderPage() {
                     </p>
                   ) : (
                     <div className="space-y-2">
-                      {layoutTemplateIds.map((templateId, index) => {
-                        const template = templateById.get(templateId);
-                        const label = template?.title ?? "Section inconnue";
-                        return (
-                          <div
-                            key={`layout-item-${templateId}`}
-                            className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)]"
-                          >
-                            <span>{label}</span>
+                    {layoutTemplateIds.map((templateId, index) => {
+                      const template = templateById.get(templateId);
+                      const label = template?.title ?? "Section inconnue";
+                      const featureKey = template
+                        ? getSectionFeatureKey(template)
+                        : null;
+                      const tone = featureKey ? featureTones[featureKey] : null;
+                      return (
+                        <div
+                          key={`layout-item-${templateId}`}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)]"
+                        >
+                          <span className="inline-flex items-center gap-2">
+                            {tone ? (
+                              <span
+                                className={`h-2 w-2 rounded-full ${tone.dot}`}
+                              />
+                            ) : null}
+                            {label}
+                          </span>
                             <div className="flex items-center gap-2">
                               <button
                                 type="button"
@@ -5716,18 +6993,53 @@ export default function CoachReportBuilderPage() {
                         Toutes les sections sont deja dans ce layout.
                       </span>
                     ) : (
-                      layoutAvailableTemplates.map((template) => (
+                    layoutAvailableTemplates.map((template) => {
+                      const featureKey = getSectionFeatureKey(template);
+                      const tone = featureKey ? featureTones[featureKey] : null;
+                      const isLocked = isFeatureLocked(featureKey);
+                      return (
                         <button
                           key={`layout-add-${template.id}`}
                           type="button"
                           onClick={() =>
                             handleAddTemplateToLayout(template.id as string)
                           }
-                          className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
+                          title={
+                            isLocked
+                              ? "Option requise"
+                              : "Ajouter au layout"
+                          }
+                          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 ${
+                            tone
+                              ? tone.button
+                              : "border-white/10 bg-white/10 text-[var(--text)]"
+                          } ${isLocked ? "cursor-not-allowed opacity-60" : ""}`}
+                          aria-disabled={isLocked}
                         >
+                          {tone ? (
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${tone.dot}`}
+                            />
+                          ) : null}
                           {template.title}
+                          {isLocked ? (
+                            <svg
+                              viewBox="0 0 24 24"
+                              className="h-3.5 w-3.5 text-[var(--muted)]"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <rect x="5" y="11" width="14" height="9" rx="2" />
+                              <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+                            </svg>
+                          ) : null}
                         </button>
-                      ))
+                      );
+                    })
                     )}
                   </div>
                 </div>
@@ -5751,32 +7063,55 @@ export default function CoachReportBuilderPage() {
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setLayoutCustomIsImage(false)}
+                      onClick={() => setLayoutCustomType("text")}
                       className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
-                        layoutCustomIsImage
-                          ? "border-white/10 bg-white/5 text-[var(--muted)]"
-                          : "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
+                        layoutCustomType === "text"
+                          ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
+                          : "border-white/10 bg-white/5 text-[var(--muted)]"
                       }`}
-                      aria-pressed={!layoutCustomIsImage}
+                      aria-pressed={layoutCustomType === "text"}
                     >
                       Texte
                     </button>
                     <button
                       type="button"
-                      onClick={() => setLayoutCustomIsImage(true)}
+                      onClick={() => setLayoutCustomType("image")}
                       className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
-                        layoutCustomIsImage
-                          ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
+                        layoutCustomType === "image"
+                          ? "border-sky-300/30 bg-sky-400/10 text-sky-100"
                           : "border-white/10 bg-white/5 text-[var(--muted)]"
                       }`}
-                      aria-pressed={layoutCustomIsImage}
+                      aria-pressed={layoutCustomType === "image"}
                     >
                       Image
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!radarAddonEnabled) {
+                          openRadarAddonModal();
+                          return;
+                        }
+                        setLayoutCustomType("radar");
+                      }}
+                      className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
+                        layoutCustomType === "radar"
+                          ? "border-violet-300/30 bg-violet-400/10 text-violet-100"
+                          : "border-white/10 bg-white/5 text-[var(--muted)]"
+                      } ${!radarAddonEnabled ? "cursor-not-allowed opacity-60" : ""}`}
+                      aria-pressed={layoutCustomType === "radar"}
+                      aria-disabled={!radarAddonEnabled}
+                    >
+                      Radar
+                    </button>
                   </div>
-                  {layoutCustomIsImage ? (
+                  {layoutCustomType === "image" ? (
                     <p className="mt-2 text-[0.6rem] text-[var(--muted)]">
                       Les images seront ajoutees a la fin du rapport.
+                    </p>
+                  ) : layoutCustomType === "radar" ? (
+                    <p className="mt-2 text-[0.6rem] text-[var(--muted)]">
+                      Les graphes radar apparaissent dans le rapport.
                     </p>
                   ) : null}
                   <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -6079,17 +7414,24 @@ export default function CoachReportBuilderPage() {
                         className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
                       />
                       <div className="mt-4 space-y-2">
-                        {aiLayoutSuggestion.templates.map((template) => (
-                          <div
-                            key={`ai-layout-${template.id ?? template.title}`}
-                            className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)]"
-                          >
-                            <span>{template.title}</span>
-                            <span className="text-[0.55rem] uppercase tracking-wide text-[var(--muted)]">
-                              {template.type === "image" ? "Image" : "Texte"}
-                            </span>
-                          </div>
-                        ))}
+                        {aiLayoutSuggestion.templates.map((template) => {
+                          const featureKey = getSectionFeatureKey(template);
+                          return (
+                            <div
+                              key={`ai-layout-${template.id ?? template.title}`}
+                              className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)]"
+                            >
+                              <span>{template.title}</span>
+                              {featureKey ? (
+                                renderFeatureBadge(featureKey)
+                              ) : (
+                                <span className="text-[0.55rem] uppercase tracking-wide text-[var(--muted)]">
+                                  Texte
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </>
                   ) : (
@@ -6132,9 +7474,569 @@ export default function CoachReportBuilderPage() {
             </div>
           </div>
         ) : null}
+        {radarConfigOpen ? (
+          <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4">
+            <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-white/10 bg-[var(--bg-elevated)] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)]">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                    Radar
+                  </p>
+                  <h3 className="mt-2 text-lg font-semibold text-[var(--text)]">
+                    Affichage du bloc radar
+                  </h3>
+                  <p className="mt-2 text-sm text-[var(--muted)]">
+                    Choisis le rendu visible dans le rapport.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCloseRadarSectionConfig}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                  aria-label="Fermer"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M18 6L6 18" />
+                    <path d="M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="mt-5 space-y-4">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Mode
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {[
+                      { id: "default", label: "Defaut" },
+                      { id: "custom", label: "Personnalise" },
+                      { id: "ai", label: "IA" },
+                    ].map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() =>
+                          setRadarConfigDraft((prev) =>
+                            option.id === "default"
+                              ? { ...defaultRadarConfig, mode: "default" }
+                              : option.id === "custom"
+                              ? { ...prev, mode: "custom" }
+                              : {
+                                  ...prev,
+                                  mode: "ai",
+                                  options: {
+                                    ...prev.options,
+                                    aiPreset:
+                                      prev.options?.aiPreset ?? "standard",
+                                    aiSyntax:
+                                      prev.options?.aiSyntax ??
+                                      "exp-tech-solution",
+                                  },
+                                }
+                          )
+                        }
+                        className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
+                          radarConfigDraft.mode === option.id
+                            ? "border-violet-300/40 bg-violet-400/10 text-violet-100"
+                            : "border-white/10 bg-white/5 text-[var(--muted)] hover:text-[var(--text)]"
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-[0.65rem] text-[var(--muted)]">
+                    En mode defaut, la selection des graphes est bloquee.
+                  </p>
+                  {radarConfigDraft.mode === "ai" ? (
+                    <div className="mt-3 rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-3 text-[0.7rem] text-emerald-100">
+                      <p className="text-[0.55rem] uppercase tracking-wide text-emerald-200/80">
+                        Reglages IA radar
+                      </p>
+                      <div className="mt-3 grid gap-3 md:grid-cols-2">
+                        <div>
+                          <p className="text-[0.6rem] uppercase tracking-wide text-emerald-200/80">
+                            Nombre de graph
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {[
+                              { id: "ultra", label: "Ultra focus" },
+                              { id: "synthetic", label: "Synthetique" },
+                              { id: "standard", label: "Standard" },
+                              { id: "pousse", label: "Pousse" },
+                              { id: "complet", label: "Complet" },
+                            ].map((option) => (
+                              <button
+                                key={option.id}
+                                type="button"
+                                onClick={() =>
+                                  setRadarConfigDraft((prev) => ({
+                                    ...prev,
+                                    options: {
+                                      ...prev.options,
+                                      aiPreset: option.id as
+                                        | "ultra"
+                                        | "synthetic"
+                                        | "standard"
+                                        | "pousse"
+                                        | "complet",
+                                    },
+                                  }))
+                                }
+                                className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
+                                  (radarConfigDraft.options?.aiPreset ??
+                                    "standard") === option.id
+                                    ? "border-emerald-300/40 bg-emerald-400/20 text-emerald-50"
+                                    : "border-emerald-200/20 text-emerald-100/70"
+                                }`}
+                              >
+                                {option.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-[0.6rem] uppercase tracking-wide text-emerald-200/80">
+                            Synthaxe
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {[
+                              { id: "exp-tech", label: "Explicative + technique" },
+                              {
+                                id: "exp-comp",
+                                label: "Explicative + comparative",
+                              },
+                              {
+                                id: "exp-tech-solution",
+                                label: "Explicative + tech + solution",
+                              },
+                              {
+                                id: "exp-solution",
+                                label: "Explicative + solution",
+                              },
+                              { id: "global", label: "Global" },
+                            ].map((option) => (
+                              <button
+                                key={option.id}
+                                type="button"
+                                onClick={() =>
+                                  setRadarConfigDraft((prev) => ({
+                                    ...prev,
+                                    options: {
+                                      ...prev.options,
+                                      aiSyntax: option.id as
+                                        | "exp-tech"
+                                        | "exp-comp"
+                                        | "exp-tech-solution"
+                                        | "exp-solution"
+                                        | "global",
+                                    },
+                                  }))
+                                }
+                                className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
+                                  (radarConfigDraft.options?.aiSyntax ??
+                                    "exp-tech-solution") === option.id
+                                    ? "border-emerald-300/40 bg-emerald-400/20 text-emerald-50"
+                                    : "border-emerald-200/20 text-emerald-100/70"
+                                }`}
+                              >
+                                {option.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <p className="mt-3 text-[0.65rem] text-emerald-100/70">
+                        Le bouton Auto detect radar graph utilisera ces reglages.
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {[
+                    { key: "showSummary", label: "Resume IA" },
+                    { key: "showTable", label: "Tableau complet" },
+                    { key: "showSegments", label: "Comparatifs & segments" },
+                  ].map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      disabled={radarConfigDraft.mode !== "custom"}
+                      onClick={() =>
+                        setRadarConfigDraft((prev) => ({
+                          ...prev,
+                          [item.key]: !prev[
+                            item.key as "showSummary" | "showTable" | "showSegments"
+                          ],
+                        }))
+                      }
+                        className={`rounded-2xl border px-3 py-3 text-left text-sm transition ${
+                          radarConfigDraft[
+                            item.key as "showSummary" | "showTable" | "showSegments"
+                          ]
+                            ? "border-violet-300/40 bg-violet-400/10 text-violet-100"
+                            : "border-white/10 bg-white/5 text-[var(--muted)]"
+                        } ${
+                          radarConfigDraft.mode !== "custom"
+                            ? "cursor-not-allowed opacity-60"
+                          : "hover:text-[var(--text)]"
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Graphes
+                  </p>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    {[
+                      {
+                        key: "dispersion",
+                        label: "Dispersion",
+                        description:
+                          "Dispersion laterale vs distance pour evaluer la precision.",
+                      },
+                      {
+                        key: "carryTotal",
+                        label: "Carry vs total",
+                        description: "Compare carry et distance totale par coup.",
+                      },
+                      {
+                        key: "speeds",
+                        label: "Vitesse club/balle",
+                        description:
+                          "Evolution des vitesses pour estimer l efficacite.",
+                      },
+                      {
+                        key: "spinCarry",
+                        label: "Spin vs carry",
+                        description: "Relation entre spin et distance (carry).",
+                      },
+                      {
+                        key: "smash",
+                        label: "Smash factor",
+                        description: "Efficacite d impact au fil des coups.",
+                      },
+                      {
+                        key: "faceImpact",
+                        label: "Impact face",
+                        description: "Carte des impacts sur la face du club.",
+                      },
+                    ].map((item) => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        disabled={radarConfigDraft.mode !== "custom"}
+                        onClick={() =>
+                          setRadarConfigDraft((prev) => ({
+                            ...prev,
+                            charts: {
+                              ...prev.charts,
+                              [item.key]:
+                                !prev.charts[item.key as keyof RadarConfig["charts"]],
+                            },
+                          }))
+                        }
+                        title={item.description}
+                        className={`rounded-2xl border px-3 py-3 text-left text-sm transition ${
+                          radarConfigDraft.charts[
+                            item.key as keyof RadarConfig["charts"]
+                          ]
+                            ? "border-violet-300/40 bg-violet-400/10 text-violet-100"
+                            : "border-white/10 bg-white/5 text-[var(--muted)]"
+                        } ${
+                          radarConfigDraft.mode !== "custom"
+                            ? "cursor-not-allowed opacity-60"
+                          : "hover:text-[var(--text)]"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span>{item.label}</span>
+                        <span
+                          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/20 bg-white/5 text-[0.6rem] font-semibold text-[var(--text)]"
+                          title={item.description}
+                        >
+                          ?
+                        </span>
+                      </div>
+                      </button>
+                    ))}
+                  </div>
+                    <details className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-3">
+                      <summary className="cursor-pointer text-xs uppercase tracking-wide text-[var(--muted)]">
+                        Graphes avances
+                      </summary>
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-[0.65rem] text-[var(--muted)]">
+                          Astuce: passe en mode personnalise pour activer/desactiver.
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={radarConfigDraft.mode !== "custom"}
+                            onClick={() =>
+                              setRadarConfigDraft((prev) => ({
+                                ...prev,
+                                charts: {
+                                  ...prev.charts,
+                                  ...Object.fromEntries(
+                                    RADAR_CHART_DEFINITIONS.map((definition) => [
+                                      definition.key,
+                                      true,
+                                    ])
+                                  ),
+                                },
+                              }))
+                            }
+                            className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
+                              radarConfigDraft.mode !== "custom"
+                                ? "border-white/10 text-[var(--muted)] opacity-60"
+                                : "border-white/20 text-[var(--text)] hover:text-white"
+                            }`}
+                          >
+                            Tout activer
+                          </button>
+                          <button
+                            type="button"
+                            disabled={radarConfigDraft.mode !== "custom"}
+                            onClick={() =>
+                              setRadarConfigDraft((prev) => ({
+                                ...prev,
+                                charts: {
+                                  ...prev.charts,
+                                  ...Object.fromEntries(
+                                    RADAR_CHART_DEFINITIONS.map((definition) => [
+                                      definition.key,
+                                      false,
+                                    ])
+                                  ),
+                                },
+                              }))
+                            }
+                            className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
+                              radarConfigDraft.mode !== "custom"
+                                ? "border-white/10 text-[var(--muted)] opacity-60"
+                                : "border-white/20 text-[var(--text)] hover:text-white"
+                            }`}
+                          >
+                            Tout desactiver
+                          </button>
+                        </div>
+                      </div>
+                      <div className="mt-3 space-y-4">
+                        {RADAR_CHART_GROUPS.map((group) => {
+                          const charts = RADAR_CHART_DEFINITIONS.filter(
+                            (definition) => definition.group === group.key
+                          );
+                          if (!charts.length) return null;
+                          return (
+                            <div key={group.key} className="space-y-2">
+                              <p className="text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                                {group.label}
+                              </p>
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                {charts.map((definition) => (
+                                  <button
+                                    key={definition.key}
+                                    type="button"
+                                    disabled={radarConfigDraft.mode !== "custom"}
+                                    onClick={() =>
+                                      setRadarConfigDraft((prev) => ({
+                                        ...prev,
+                                        charts: {
+                                          ...prev.charts,
+                                          [definition.key]: !prev.charts[definition.key],
+                                        },
+                                      }))
+                                    }
+                                    className={`rounded-2xl border px-3 py-3 text-left text-[0.7rem] transition ${
+                                      radarConfigDraft.charts[definition.key]
+                                        ? "border-violet-300/40 bg-violet-400/10 text-violet-100"
+                                        : "border-white/10 bg-white/5 text-[var(--muted)]"
+                                    } ${
+                                      radarConfigDraft.mode !== "custom"
+                                        ? "cursor-not-allowed opacity-60"
+                                        : "hover:text-[var(--text)]"
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span>{definition.title}</span>
+                                      <span
+                                        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/20 bg-white/5 text-[0.55rem] font-semibold text-[var(--text)]"
+                                        title={definition.description}
+                                      >
+                                        ?
+                                      </span>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </details>
+                </div>
+              </div>
+              {radarConfigError ? (
+                <p className="mt-4 text-sm text-red-400">{radarConfigError}</p>
+              ) : null}
+              <div className="mt-6 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleCloseRadarSectionConfig}
+                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                  disabled={radarConfigSaving}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveRadarSectionConfig}
+                  disabled={radarConfigSaving}
+                  className="rounded-full bg-gradient-to-r from-violet-300 via-violet-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
+                >
+                  {radarConfigSaving ? "Sauvegarde..." : "Sauvegarder"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {radarAiQaOpen ? (
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 px-4 py-10">
+            <div className="mx-auto flex w-full max-w-2xl flex-col rounded-3xl border border-white/10 bg-[var(--bg-elevated)] shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
+              <div className="flex items-start justify-between gap-4 p-6">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                    IA Radar
+                  </p>
+                  <h3 className="mt-2 text-xl font-semibold text-[var(--text)]">
+                    Q&A rapide
+                  </h3>
+                  <p className="mt-2 text-sm text-[var(--muted)]">
+                    1 a 3 questions pour affiner le choix des graphes.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRadarAiQaOpen(false)}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                  aria-label="Fermer"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M18 6L6 18" />
+                    <path d="M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex flex-col gap-4 px-6 pb-6">
+                {radarAiQuestionsLoading ? (
+                  <p className="text-sm text-[var(--muted)]">
+                    Chargement des questions IA...
+                  </p>
+                ) : radarAiQuestions.length ? (
+                  radarAiQuestions.map((item) => (
+                    <div key={item.id} className="space-y-2">
+                      <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                        {item.question}
+                        {item.required ? " *" : ""}
+                      </p>
+                      {item.type === "choices" ? (
+                        <div className="flex flex-wrap gap-2">
+                          {item.choices?.map((choice) => (
+                            <button
+                              key={choice}
+                              type="button"
+                              onClick={() =>
+                                setRadarAiQaAnswers((prev) => ({
+                                  ...prev,
+                                  [item.id]: choice,
+                                }))
+                              }
+                              className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
+                                radarAiQaAnswers[item.id] === choice
+                                  ? "border-violet-300/40 bg-violet-400/10 text-violet-100"
+                                  : "border-white/10 bg-white/5 text-[var(--muted)] hover:text-[var(--text)]"
+                              }`}
+                            >
+                              {choice}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <textarea
+                          value={radarAiQaAnswers[item.id] ?? ""}
+                          onChange={(event) =>
+                            setRadarAiQaAnswers((prev) => ({
+                              ...prev,
+                              [item.id]: event.target.value,
+                            }))
+                          }
+                          placeholder={item.placeholder}
+                          rows={2}
+                          className="w-full resize-none rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                        />
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-[var(--muted)]">
+                    Aucune question supplementaire pour cette seance.
+                  </p>
+                )}
+                {radarAiQaError ? (
+                  <p className="text-xs text-red-400">{radarAiQaError}</p>
+                ) : null}
+                <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setRadarAiQaOpen(false)}
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                    disabled={radarAiAutoBusy}
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleAutoDetectRadarGraphs(radarAiQaAnswers)}
+                    className="rounded-full bg-gradient-to-r from-violet-300 via-violet-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
+                    disabled={
+                      radarAiAutoBusy ||
+                      radarAiQuestionsLoading ||
+                      radarAiQuestions.some(
+                        (item) => item.required && !radarAiQaAnswers[item.id]
+                      )
+                    }
+                  >
+                    {radarAiAutoBusy ? "Analyse..." : "Lancer l IA"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
         <PremiumOfferModal
           open={premiumModalOpen}
           onClose={closePremiumModal}
+          notice={premiumNotice}
         />
         {clarifyOpen ? (
           <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 px-4 py-10">

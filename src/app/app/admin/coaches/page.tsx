@@ -9,6 +9,8 @@ type OrganizationRow = {
   id: string;
   name: string;
   ai_enabled: boolean;
+  tpi_enabled: boolean;
+  radar_enabled: boolean;
   ai_model: string;
   owner: { id: string; full_name: string | null } | null;
 };
@@ -94,6 +96,8 @@ export default function AdminCoachesPage() {
       body: JSON.stringify({
         orgId,
         ai_enabled: patch.ai_enabled,
+        tpi_enabled: patch.tpi_enabled,
+        radar_enabled: patch.radar_enabled,
         ai_model: patch.ai_model,
       }),
     });
@@ -111,6 +115,8 @@ export default function AdminCoachesPage() {
           ? {
               ...org,
               ai_enabled: patch.ai_enabled ?? org.ai_enabled,
+              tpi_enabled: patch.tpi_enabled ?? org.tpi_enabled,
+              radar_enabled: patch.radar_enabled ?? org.radar_enabled,
               ai_model: patch.ai_model ?? org.ai_model,
             }
           : org
@@ -134,7 +140,7 @@ export default function AdminCoachesPage() {
             Acces premium
           </h2>
           <p className="mt-2 text-sm text-[var(--muted)]">
-            Active l IA et choisis le modele pour chaque organisation.
+            Active l IA et les add-ons pour chaque organisation.
           </p>
         </section>
 
@@ -192,7 +198,7 @@ export default function AdminCoachesPage() {
                   <div className="text-sm text-[var(--muted)]">
                     {org.owner?.full_name ?? "Owner"}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       disabled={savingId === org.id}
@@ -207,7 +213,39 @@ export default function AdminCoachesPage() {
                           : "border-white/10 bg-white/5 text-[var(--muted)] hover:bg-white/10"
                       }`}
                     >
-                      {org.ai_enabled ? "Premium actif" : "Freemium"}
+                      {org.ai_enabled ? "IA active" : "IA off"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={savingId === org.id}
+                      onClick={() =>
+                        handleUpdate(org.id, {
+                          tpi_enabled: !org.tpi_enabled,
+                        })
+                      }
+                      className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide transition ${
+                        org.tpi_enabled
+                          ? "border-rose-300/30 bg-rose-400/10 text-rose-200 hover:bg-rose-400/20"
+                          : "border-white/10 bg-white/5 text-[var(--muted)] hover:bg-white/10"
+                      }`}
+                    >
+                      {org.tpi_enabled ? "TPI on" : "TPI off"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={savingId === org.id}
+                      onClick={() =>
+                        handleUpdate(org.id, {
+                          radar_enabled: !org.radar_enabled,
+                        })
+                      }
+                      className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide transition ${
+                        org.radar_enabled
+                          ? "border-violet-300/30 bg-violet-400/10 text-violet-200 hover:bg-violet-400/20"
+                          : "border-white/10 bg-white/5 text-[var(--muted)] hover:bg-white/10"
+                      }`}
+                    >
+                      {org.radar_enabled ? "Radar on" : "Radar off"}
                     </button>
                   </div>
                   <div>

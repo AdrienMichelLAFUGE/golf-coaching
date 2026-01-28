@@ -33,6 +33,9 @@ const reportActions = new Set([
 const toFeatureCategory = (action: string) => {
   const normalized = action.toLowerCase();
   if (normalized.includes("tpi")) return "TPI";
+  if (normalized.includes("radar") || normalized.includes("flightscope")) {
+    return "Radars";
+  }
   if (reportActions.has(normalized)) return "Rapport";
   return "Autres";
 };
@@ -202,6 +205,8 @@ export async function GET(request: Request) {
   let totalCostUsd = 0;
   let reportCostUsd = 0;
   let tpiCostUsd = 0;
+  let radarImportRequests = 0;
+  let radarImportCostUsd = 0;
   let totalDurationMs = 0;
   let durationCount = 0;
   const coachMap = new Map<
@@ -253,9 +258,14 @@ export async function GET(request: Request) {
     coachMap.set(row.user_id, coachEntry);
 
     const actionKey = row.action ?? "unknown";
+    const normalizedAction = actionKey.toLowerCase();
     const featureKey = toFeatureCategory(actionKey);
     if (reportActions.has(actionKey)) reportCostUsd += rowCostUsd;
-    if (actionKey.toLowerCase().includes("tpi")) tpiCostUsd += rowCostUsd;
+    if (normalizedAction.includes("tpi")) tpiCostUsd += rowCostUsd;
+    if (normalizedAction === "radar_extract") {
+      radarImportRequests += 1;
+      radarImportCostUsd += rowCostUsd;
+    }
     const featureEntry =
       featureMap.get(featureKey) ?? {
         feature: featureKey,
@@ -318,6 +328,9 @@ export async function GET(request: Request) {
   const avgRequestsPerDay = windowDays ? totalRequests / windowDays : 0;
   const avgRequestsPerCoach = activeCoaches ? totalRequests / activeCoaches : 0;
   const avgDurationMs = durationCount ? totalDurationMs / durationCount : 0;
+  const avgRadarImportsPerDay = windowDays
+    ? radarImportRequests / windowDays
+    : 0;
   const costPerRequestUsd = totalRequests
     ? totalCostUsd / totalRequests
     : 0;
@@ -333,6 +346,9 @@ export async function GET(request: Request) {
     : 0;
   const costPerTpiUsd = tpiReportsReady
     ? tpiCostUsd / tpiReportsReady
+    : 0;
+  const costPerRadarUsd = radarImportRequests
+    ? radarImportCostUsd / radarImportRequests
     : 0;
   const adoptionCoachRate = totalCoaches
     ? (activeCoaches / totalCoaches) * 100
@@ -358,6 +374,8 @@ export async function GET(request: Request) {
       reportsTotal,
       tpiReportsTotal,
       tpiReportsReady,
+      radarImportsTotal: radarImportRequests,
+      radarCostUsd: Number(radarImportCostUsd.toFixed(6)),
       costUsd: Number(totalCostUsd.toFixed(6)),
       reportCostUsd: Number(reportCostUsd.toFixed(6)),
       tpiCostUsd: Number(tpiCostUsd.toFixed(6)),
@@ -366,6 +384,7 @@ export async function GET(request: Request) {
       avgTokensPerCoach,
       avgRequestsPerDay,
       avgRequestsPerCoach,
+      avgRadarImportsPerDay,
       avgDurationMs,
       adoptionCoachRate,
       tpiCoverageRate,
@@ -376,6 +395,7 @@ export async function GET(request: Request) {
       costPerStudentUsd: Number(costPerStudentUsd.toFixed(6)),
       costPerReportUsd: Number(costPerReportUsd.toFixed(6)),
       costPerTpiUsd: Number(costPerTpiUsd.toFixed(6)),
+      costPerRadarUsd: Number(costPerRadarUsd.toFixed(6)),
     },
     daily,
     topCoaches,

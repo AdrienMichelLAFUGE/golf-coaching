@@ -1,12 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import RoleGuard from "../../../_components/role-guard";
 import { useProfile } from "../../../_components/profile-context";
 import PageBack from "../../../_components/page-back";
+import PremiumOfferModal from "../../../_components/premium-offer-modal";
+import RadarCharts, {
+  defaultRadarConfig,
+  type RadarConfig,
+  type RadarColumn,
+  type RadarShot,
+  type RadarStats,
+} from "../../../_components/radar-charts";
+import {
+  RADAR_CHART_DEFINITIONS,
+  RADAR_CHART_GROUPS,
+} from "@/lib/radar/charts/registry";
+import type { RadarAnalytics } from "@/lib/radar/types";
 
 type Student = {
   id: string;
@@ -17,6 +30,7 @@ type Student = {
   activated_at: string | null;
   created_at: string;
   tpi_report_id: string | null;
+  playing_hand: "right" | "left" | null;
 };
 
 type Report = {
@@ -46,6 +60,31 @@ type TpiTest = {
   position: number;
 };
 
+type RadarFile = {
+  id: string;
+  status: "processing" | "ready" | "error";
+  source: "flightscope" | "trackman" | "unknown";
+  original_name: string | null;
+  file_url: string;
+  file_mime: string | null;
+  columns: RadarColumn[];
+  shots: RadarShot[];
+  stats: RadarStats | null;
+  summary: string | null;
+  config: RadarConfig | null;
+  analytics?: RadarAnalytics | null;
+  created_at: string;
+  extracted_at: string | null;
+  error: string | null;
+};
+
+type StudentEditForm = {
+  first_name: string;
+  last_name: string;
+  email: string;
+  playing_hand: "" | "right" | "left";
+};
+
 const tpiColorRank: Record<TpiTest["result_color"], number> = {
   red: 0,
   orange: 1,
@@ -71,8 +110,20 @@ const formatDate = (
   return new Date(value).toLocaleDateString(locale ?? "fr-FR", options);
 };
 
+const LoadingDots = () => (
+  <span className="ml-1 inline-flex items-center gap-0.5">
+    {[0, 1, 2].map((index) => (
+      <span
+        key={`dot-${index}`}
+        className="h-1 w-1 rounded-full bg-current opacity-70 animate-pulse"
+        style={{ animationDelay: `${index * 160}ms` }}
+      />
+    ))}
+  </span>
+);
+
 export default function CoachStudentDetailPage() {
-  const { organization } = useProfile();
+  const { organization, userEmail } = useProfile();
   const params = useParams();
   const studentId = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const [student, setStudent] = useState<Student | null>(null);
@@ -92,9 +143,98 @@ export default function CoachStudentDetailPage() {
   const [selectedTpi, setSelectedTpi] = useState<TpiTest | null>(null);
   const [tpiHelpOpen, setTpiHelpOpen] = useState(false);
   const tpiProgressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [radarFiles, setRadarFiles] = useState<RadarFile[]>([]);
+  const [radarLoading, setRadarLoading] = useState(false);
+  const [radarError, setRadarError] = useState("");
+  const [radarUploading, setRadarUploading] = useState(false);
+  const [radarProgress, setRadarProgress] = useState(0);
+  const [radarPhase, setRadarPhase] = useState<"upload" | "analyse">("upload");
+  const radarInputRef = useRef<HTMLInputElement | null>(null);
+  const radarProgressTimer = useRef<ReturnType<typeof setInterval> | null>(
+    null
+  );
+  const [radarPreview, setRadarPreview] = useState<RadarFile | null>(null);
+  const [radarConfigOpen, setRadarConfigOpen] = useState(false);
+  const [radarConfigDraft, setRadarConfigDraft] =
+    useState<RadarConfig>(defaultRadarConfig);
+  const [radarConfigFile, setRadarConfigFile] = useState<RadarFile | null>(null);
+  const [radarConfigSaving, setRadarConfigSaving] = useState(false);
+  const [radarConfigError, setRadarConfigError] = useState("");
+  const [radarDeletingId, setRadarDeletingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState<StudentEditForm>({
+    first_name: "",
+    last_name: "",
+    email: "",
+    playing_hand: "",
+  });
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState("");
   const locale = organization?.locale ?? "fr-FR";
   const timezone = organization?.timezone ?? "Europe/Paris";
+  const aiEnabled = organization?.ai_enabled ?? false;
+  const isAdmin = userEmail?.toLowerCase() === "adrien.lafuge@outlook.fr";
+  const tpiAddonEnabled = isAdmin || organization?.tpi_enabled;
+  const radarAddonEnabled = isAdmin || organization?.radar_enabled;
+  const tpiLocked = !tpiAddonEnabled;
+  const radarLocked = !radarAddonEnabled;
+  const [premiumModalOpen, setPremiumModalOpen] = useState(false);
+  const [premiumNotice, setPremiumNotice] = useState<{
+    title: string;
+    description: string;
+    tags?: string[];
+    status?: { label: string; value: string }[];
+  } | null>(null);
+
+  const openPremiumModal = useCallback(
+    (notice?: {
+      title: string;
+      description: string;
+      tags?: string[];
+      status?: { label: string; value: string }[];
+    } | null) => {
+      setPremiumNotice(notice ?? null);
+      setPremiumModalOpen(true);
+    },
+    []
+  );
+
+  const closePremiumModal = useCallback(() => {
+    setPremiumModalOpen(false);
+    setPremiumNotice(null);
+  }, []);
+
+  const openRadarAddonModal = useCallback(() => {
+    const needsPremium = !aiEnabled;
+    openPremiumModal({
+      title: "Acces radar bloque",
+      description: needsPremium
+        ? "Cette section est reservee aux coachs Premium IA avec l add-on Radar."
+        : "Ajoute l add-on Radar pour debloquer cette section.",
+      tags: needsPremium ? ["Premium IA", "Add-on Radar"] : ["Add-on Radar"],
+      status: [
+        { label: "Premium IA", value: aiEnabled ? "Actif" : "Inactif" },
+        { label: "Add-on Radar", value: radarAddonEnabled ? "Actif" : "Inactif" },
+      ],
+    });
+  }, [aiEnabled, openPremiumModal, radarAddonEnabled]);
+
+  const openTpiAddonModal = useCallback(() => {
+    const needsPremium = !aiEnabled;
+    openPremiumModal({
+      title: "Acces TPI bloque",
+      description: needsPremium
+        ? "Cette fonctionnalite est reservee aux coachs Premium IA avec l add-on TPI."
+        : "Ajoute l add-on TPI pour debloquer cette fonctionnalite.",
+      tags: needsPremium ? ["Premium IA", "Add-on TPI"] : ["Add-on TPI"],
+      status: [
+        { label: "Premium IA", value: aiEnabled ? "Actif" : "Inactif" },
+        { label: "Add-on TPI", value: tpiAddonEnabled ? "Actif" : "Inactif" },
+      ],
+    });
+  }, [aiEnabled, openPremiumModal, tpiAddonEnabled]);
 
   const loadTpi = async (reportId?: string | null) => {
     if (!studentId) return;
@@ -170,6 +310,45 @@ export default function CoachStudentDetailPage() {
     setTpiLoading(false);
   };
 
+  const loadRadars = async () => {
+    if (!studentId) return;
+    setRadarLoading(true);
+    setRadarError("");
+
+    const { data, error } = await supabase
+      .from("radar_files")
+        .select(
+          "id, status, source, original_name, file_url, file_mime, columns, shots, stats, config, summary, analytics, created_at, extracted_at, error"
+        )
+      .eq("student_id", studentId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      setRadarError(error.message);
+      setRadarFiles([]);
+      setRadarLoading(false);
+      return;
+    }
+
+    const normalized =
+      data?.map((file) => ({
+        ...file,
+        columns: Array.isArray(file.columns) ? file.columns : [],
+        shots: Array.isArray(file.shots) ? file.shots : [],
+        stats:
+          file.stats && typeof file.stats === "object" ? file.stats : null,
+        config:
+          file.config && typeof file.config === "object" ? file.config : null,
+        analytics:
+          file.analytics && typeof file.analytics === "object"
+            ? file.analytics
+            : null,
+      })) ?? [];
+
+    setRadarFiles(normalized as RadarFile[]);
+    setRadarLoading(false);
+  };
+
   const stopTpiProgress = () => {
     if (tpiProgressTimer.current) {
       clearInterval(tpiProgressTimer.current);
@@ -202,7 +381,44 @@ export default function CoachStudentDetailPage() {
     }, delay);
   };
 
+  const stopRadarProgress = () => {
+    if (radarProgressTimer.current) {
+      clearInterval(radarProgressTimer.current);
+      radarProgressTimer.current = null;
+    }
+  };
+
+  const runRadarProgress = (
+    target: number,
+    step: number,
+    delay: number,
+    onComplete?: () => void
+  ) => {
+    stopRadarProgress();
+    radarProgressTimer.current = setInterval(() => {
+      let reached = false;
+      setRadarProgress((prev) => {
+        if (prev >= target) {
+          reached = true;
+          return prev;
+        }
+        const next = Math.min(prev + step, target);
+        if (next >= target) reached = true;
+        return next;
+      });
+      if (reached) {
+        stopRadarProgress();
+        if (onComplete) onComplete();
+      }
+    }, delay);
+  };
+
   const handleTpiFile = async (file: File) => {
+    if (tpiLocked) {
+      setTpiError("Add-on TPI requis pour importer un rapport.");
+      openTpiAddonModal();
+      return;
+    }
     if (!studentId || !organization?.id) return;
     const isPdf =
       file.type === "application/pdf" ||
@@ -307,6 +523,114 @@ export default function CoachStudentDetailPage() {
     setTpiUploading(false);
   };
 
+  const handleRadarFile = async (file: File) => {
+    if (radarLocked) {
+      setRadarError("Add-on Radars requis pour importer un fichier.");
+      openRadarAddonModal();
+      return;
+    }
+    if (!studentId || !organization?.id) {
+      setRadarError("Choisis un eleve avant d importer un fichier radar.");
+      return;
+    }
+    const isRadarImageFile = () => {
+      if (file.type.startsWith("image/")) return true;
+      const name = file.name.toLowerCase();
+      return [".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"].some((ext) =>
+        name.endsWith(ext)
+      );
+    };
+    if (!isRadarImageFile()) {
+      setRadarError("Importe une image issue de Flightscope (jpg, png, heic...).");
+      return;
+    }
+
+    setRadarUploading(true);
+    setRadarError("");
+    setRadarProgress(8);
+    setRadarPhase("upload");
+    runRadarProgress(45, 1.5, 350);
+
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+    const path = `${organization.id}/students/${studentId}/radars/${Date.now()}-${safeName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("radar-files")
+      .upload(path, file, { cacheControl: "3600", upsert: true });
+
+    if (uploadError) {
+      setRadarError(uploadError.message);
+      stopRadarProgress();
+      setRadarProgress(0);
+      setRadarUploading(false);
+      return;
+    }
+
+    const { data: radarRow, error: insertError } = await supabase
+      .from("radar_files")
+      .insert([
+        {
+          org_id: organization.id,
+          student_id: studentId,
+          source: "flightscope",
+          status: "processing",
+          original_name: file.name,
+          file_url: path,
+          file_mime: file.type,
+        },
+      ])
+      .select("id")
+      .single();
+
+    if (insertError || !radarRow) {
+      setRadarError(insertError?.message ?? "Erreur d enregistrement radar.");
+      stopRadarProgress();
+      setRadarProgress(0);
+      setRadarUploading(false);
+      return;
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setRadarError("Session invalide.");
+      stopRadarProgress();
+      setRadarProgress(0);
+      setRadarUploading(false);
+      return;
+    }
+
+    setRadarProgress(50);
+    setRadarPhase("analyse");
+    runRadarProgress(90, 0.4, 600, () => {
+      runRadarProgress(99, 0.1, 1650);
+    });
+
+    const response = await fetch("/api/radar/extract", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ radarFileId: radarRow.id }),
+    });
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      setRadarError(payload.error ?? "Erreur lors de l extraction radar.");
+      stopRadarProgress();
+      setRadarProgress(0);
+      setRadarUploading(false);
+      await loadRadars();
+      return;
+    }
+
+    await loadRadars();
+    stopRadarProgress();
+    setRadarProgress(100);
+    setRadarUploading(false);
+  };
+
   useEffect(() => {
     if (!studentId) return;
 
@@ -317,7 +641,7 @@ export default function CoachStudentDetailPage() {
       const { data: studentData, error: studentError } = await supabase
         .from("students")
         .select(
-          "id, first_name, last_name, email, invited_at, activated_at, created_at, tpi_report_id"
+          "id, first_name, last_name, email, invited_at, activated_at, created_at, tpi_report_id, playing_hand"
         )
         .eq("id", studentId)
         .single();
@@ -351,6 +675,11 @@ export default function CoachStudentDetailPage() {
   }, [studentId]);
 
   useEffect(() => {
+    if (!studentId) return;
+    loadRadars();
+  }, [studentId]);
+
+  useEffect(() => {
     if (tpiTests.length === 0) {
       setSelectedTpi(null);
       return;
@@ -363,8 +692,20 @@ export default function CoachStudentDetailPage() {
   useEffect(() => {
     return () => {
       stopTpiProgress();
+      stopRadarProgress();
     };
   }, []);
+
+  useEffect(() => {
+    if (!headerMenuOpen) return;
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-student-header-menu]")) return;
+      setHeaderMenuOpen(false);
+    };
+    window.addEventListener("click", handleClick);
+    return () => window.removeEventListener("click", handleClick);
+  }, [headerMenuOpen]);
 
   const handleDeleteReport = async (report: Report) => {
     const confirmed = window.confirm(`Supprimer le rapport "${report.title}" ?`);
@@ -384,6 +725,174 @@ export default function CoachStudentDetailPage() {
 
     setReports((prev) => prev.filter((item) => item.id !== report.id));
     setDeletingId(null);
+  };
+
+  const handleDeleteRadarFile = async (file: RadarFile) => {
+    const name = file.original_name || "Export Flightscope";
+    const confirmed = window.confirm(`Supprimer le fichier radar "${name}" ?`);
+    if (!confirmed) return;
+
+    setRadarDeletingId(file.id);
+    setRadarError("");
+
+    let storageError: string | null = null;
+    if (file.file_url) {
+      const { error } = await supabase.storage
+        .from("radar-files")
+        .remove([file.file_url]);
+      if (error) {
+        storageError = error.message;
+      }
+    }
+
+    const { error: deleteError } = await supabase
+      .from("radar_files")
+      .delete()
+      .eq("id", file.id);
+
+    if (deleteError) {
+      setRadarError(deleteError.message);
+      setRadarDeletingId(null);
+      return;
+    }
+
+    setRadarFiles((prev) => prev.filter((item) => item.id !== file.id));
+    if (radarPreview?.id === file.id) {
+      setRadarPreview(null);
+    }
+    if (radarConfigFile?.id === file.id) {
+      setRadarConfigOpen(false);
+      setRadarConfigFile(null);
+    }
+
+    if (storageError) {
+      setRadarError(
+        `Fichier radar supprime, mais erreur de stockage: ${storageError}`
+      );
+    }
+    setRadarDeletingId(null);
+  };
+
+  const handleOpenEdit = () => {
+    if (!student) return;
+    setHeaderMenuOpen(false);
+    setEditError("");
+    setEditForm({
+      first_name: student.first_name ?? "",
+      last_name: student.last_name ?? "",
+      email: student.email ?? "",
+      playing_hand: student.playing_hand ?? "",
+    });
+    setEditOpen(true);
+  };
+
+  const handleCloseEdit = () => {
+    if (editSaving) return;
+    setEditOpen(false);
+    setEditError("");
+  };
+
+  const handleUpdateStudent = async () => {
+    if (!student) return;
+    const firstName = editForm.first_name.trim();
+    const lastName = editForm.last_name.trim();
+    const email = editForm.email.trim();
+    const playingHand = editForm.playing_hand || null;
+
+    if (!firstName) {
+      setEditError("Le prenom est obligatoire.");
+      return;
+    }
+
+    setEditSaving(true);
+    setEditError("");
+
+    const { error: updateError } = await supabase
+      .from("students")
+      .update({
+        first_name: firstName,
+        last_name: lastName || null,
+        email: email || null,
+        playing_hand: playingHand,
+      })
+      .eq("id", student.id);
+
+    if (updateError) {
+      setEditError(updateError.message);
+      setEditSaving(false);
+      return;
+    }
+
+    setStudent((prev) =>
+      prev
+        ? {
+            ...prev,
+            first_name: firstName,
+            last_name: lastName || null,
+            email: email || null,
+            playing_hand: playingHand,
+          }
+        : prev
+    );
+    setEditSaving(false);
+    setEditOpen(false);
+  };
+
+  const handleOpenRadarConfig = (file: RadarFile) => {
+    setRadarConfigError("");
+    setRadarConfigFile(file);
+    const merged: RadarConfig = {
+      ...defaultRadarConfig,
+      ...(file.config ?? {}),
+      charts: {
+        ...defaultRadarConfig.charts,
+        ...(file.config?.charts ?? {}),
+      },
+      thresholds: {
+        ...defaultRadarConfig.thresholds,
+        ...(file.config?.thresholds ?? {}),
+      },
+      options: {
+        ...defaultRadarConfig.options,
+        ...(file.config?.options ?? {}),
+      },
+    };
+    setRadarConfigDraft(merged);
+    setRadarConfigOpen(true);
+  };
+
+  const handleCloseRadarConfig = () => {
+    if (radarConfigSaving) return;
+    setRadarConfigOpen(false);
+    setRadarConfigFile(null);
+  };
+
+  const handleSaveRadarConfig = async () => {
+    if (!radarConfigFile) return;
+    setRadarConfigSaving(true);
+    setRadarConfigError("");
+
+    const { error: updateError } = await supabase
+      .from("radar_files")
+      .update({ config: radarConfigDraft })
+      .eq("id", radarConfigFile.id);
+
+    if (updateError) {
+      setRadarConfigError(updateError.message);
+      setRadarConfigSaving(false);
+      return;
+    }
+
+    setRadarFiles((prev) =>
+      prev.map((file) =>
+        file.id === radarConfigFile.id
+          ? { ...file, config: radarConfigDraft }
+          : file
+      )
+    );
+    setRadarConfigSaving(false);
+    setRadarConfigOpen(false);
+    setRadarConfigFile(null);
   };
 
   return (
@@ -425,11 +934,52 @@ export default function CoachStudentDetailPage() {
             }
           `}</style>
           <section className="panel rounded-2xl p-6">
-            <div className="flex items-center gap-2">
-              <PageBack />
-              <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                Eleve
-              </p>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <PageBack />
+                <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                  Eleve
+                </p>
+              </div>
+              <div className="relative" data-student-header-menu>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setHeaderMenuOpen((prev) => !prev);
+                  }}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                  aria-label="Actions eleve"
+                  aria-expanded={headerMenuOpen}
+                  aria-haspopup="menu"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    fill="currentColor"
+                  >
+                    <circle cx="12" cy="5" r="2" />
+                    <circle cx="12" cy="12" r="2" />
+                    <circle cx="12" cy="19" r="2" />
+                  </svg>
+                </button>
+                {headerMenuOpen ? (
+                  <div
+                    role="menu"
+                    onClick={(event) => event.stopPropagation()}
+                    className="absolute right-0 z-50 mt-2 w-40 rounded-xl border border-white/10 bg-[var(--bg-elevated)] p-1 text-xs shadow-[0_12px_30px_rgba(0,0,0,0.35)]"
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={handleOpenEdit}
+                      className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10"
+                    >
+                      Editer
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
             <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
               {student.first_name} {student.last_name ?? ""}
@@ -529,7 +1079,50 @@ export default function CoachStudentDetailPage() {
               )}
             </section>
 
-            <section className="panel relative rounded-2xl p-6">
+            <section className="panel relative rounded-2xl border border-rose-400/40 bg-rose-500/5 p-6">
+              {tpiLocked ? (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={openTpiAddonModal}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      openTpiAddonModal();
+                    }
+                  }}
+                  className="absolute inset-0 z-10 flex cursor-pointer items-center justify-center rounded-2xl border border-rose-300/40 bg-rose-500/10 text-center text-xs uppercase tracking-[0.2em] text-rose-100 backdrop-blur-sm"
+                >
+                  <div className="flex flex-col items-center gap-3 px-6">
+                    <span className="flex items-center gap-2">
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <rect x="5" y="11" width="14" height="9" rx="2" />
+                        <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+                      </svg>
+                      Add-on TPI requis
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openTpiAddonModal();
+                      }}
+                      className="rounded-full border border-rose-200/40 bg-rose-400/20 px-4 py-1 text-[0.6rem] uppercase tracking-wide text-rose-100 transition hover:bg-rose-400/30"
+                    >
+                      Voir les offres
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-semibold text-[var(--text)]">
@@ -554,15 +1147,21 @@ export default function CoachStudentDetailPage() {
               <div
                 className={`mt-4 rounded-xl border border-dashed px-4 py-4 text-sm text-[var(--muted)] transition ${
                   tpiDragging
-                    ? "border-sky-300/50 bg-sky-400/10 text-sky-100"
+                    ? "border-rose-300/50 bg-rose-400/10 text-rose-100"
                     : "border-white/10 bg-white/5"
                 }`}
                 onDragOver={(event) => {
+                  if (tpiLocked) return;
                   event.preventDefault();
                   setTpiDragging(true);
                 }}
                 onDragLeave={() => setTpiDragging(false)}
                 onDrop={(event) => {
+                  if (tpiLocked) {
+                    setTpiError("Add-on TPI requis pour importer un rapport.");
+                    openTpiAddonModal();
+                    return;
+                  }
                   event.preventDefault();
                   setTpiDragging(false);
                   const file = event.dataTransfer.files?.[0];
@@ -642,8 +1241,17 @@ export default function CoachStudentDetailPage() {
                     <button
                       type="button"
                       disabled={tpiUploading}
-                      onClick={() => tpiInputRef.current?.click()}
-                      className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20 disabled:opacity-60"
+                      onClick={() => {
+                        if (tpiLocked) {
+                          openTpiAddonModal();
+                          return;
+                        }
+                        tpiInputRef.current?.click();
+                      }}
+                      className={`rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20 ${
+                        tpiLocked ? "cursor-not-allowed opacity-60" : ""
+                      } disabled:opacity-60`}
+                      aria-disabled={tpiLocked}
                     >
                       Parcourir
                     </button>
@@ -654,6 +1262,7 @@ export default function CoachStudentDetailPage() {
                   type="file"
                   accept="application/pdf"
                   className="hidden"
+                  disabled={tpiLocked}
                   onChange={(event) => {
                     const file = event.target.files?.[0];
                     if (file) void handleTpiFile(file);
@@ -681,7 +1290,7 @@ export default function CoachStudentDetailPage() {
                   </div>
                   <div className="mt-2 h-2 w-full rounded-full bg-white/10">
                     <div
-                      className="h-2 rounded-full bg-emerald-300 transition-all duration-700 ease-out"
+                      className="h-2 rounded-full bg-rose-300 transition-all duration-700 ease-out"
                       style={{ width: `${tpiProgress}%` }}
                     />
                   </div>
@@ -722,7 +1331,7 @@ export default function CoachStudentDetailPage() {
                                 aria-pressed={isSelected}
                                 className={`flex h-20 items-start gap-2 overflow-hidden rounded-xl border px-4 py-3 text-left transition ${
                                   isSelected
-                                    ? "border-emerald-300/40 bg-emerald-400/10"
+                                    ? "border-rose-300/40 bg-rose-400/10"
                                     : "border-white/10 bg-white/5 hover:border-white/20"
                                 }`}
                               >
@@ -798,6 +1407,255 @@ export default function CoachStudentDetailPage() {
               ) : null}
             </section>
 
+            <section className="panel relative rounded-2xl border border-violet-400/40 bg-violet-500/5 p-6 lg:col-span-2">
+              {radarLocked ? (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={openRadarAddonModal}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      openRadarAddonModal();
+                    }
+                  }}
+                  className="absolute inset-0 z-10 flex cursor-pointer items-center justify-center rounded-2xl border border-violet-300/40 bg-violet-500/10 text-center text-xs uppercase tracking-[0.2em] text-violet-100 backdrop-blur-sm"
+                >
+                  <div className="flex flex-col items-center gap-3 px-6">
+                    <span className="flex items-center gap-2">
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <rect x="5" y="11" width="14" height="9" rx="2" />
+                        <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+                      </svg>
+                      Add-on Radars requis
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openRadarAddonModal();
+                      }}
+                      className="rounded-full border border-violet-200/40 bg-violet-400/20 px-4 py-1 text-[0.6rem] uppercase tracking-wide text-violet-100 transition hover:bg-violet-400/30"
+                    >
+                      Voir les offres
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-[var(--text)]">
+                    Fichiers radars
+                  </h3>
+                  <p className="mt-1 text-sm text-[var(--muted)]">
+                    Importe un export Flightscope pour generer graphes, stats et
+                    resume.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={radarUploading}
+                  onClick={() => {
+                    if (radarLocked) {
+                      openRadarAddonModal();
+                      return;
+                    }
+                    radarInputRef.current?.click();
+                  }}
+                  className={`rounded-full border border-white/10 bg-white/10 px-4 py-2 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20 ${
+                    radarLocked ? "cursor-not-allowed opacity-60" : ""
+                  } disabled:opacity-60`}
+                  aria-disabled={radarLocked}
+                >
+                  Importer un fichier
+                </button>
+              </div>
+              <div
+                className={`mt-4 rounded-xl border border-dashed px-4 py-4 text-sm text-[var(--muted)] transition ${
+                  radarUploading
+                    ? "border-violet-300/40 bg-violet-400/10 text-violet-100"
+                    : "border-white/10 bg-white/5"
+                }`}
+                onDragOver={(event) => {
+                  if (radarLocked) return;
+                  event.preventDefault();
+                }}
+                onDrop={(event) => {
+                  if (radarLocked) {
+                    setRadarError("Add-on Radars requis pour importer un fichier.");
+                    openRadarAddonModal();
+                    return;
+                  }
+                  event.preventDefault();
+                  const file = event.dataTransfer.files?.[0];
+                  if (file) void handleRadarFile(file);
+                }}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm text-[var(--text)]">
+                      Glisse une image d export Flightscope.
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--muted)]">
+                      OCR et detection de tableau automatiquement.
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-violet-300/30 bg-violet-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-violet-100">
+                    Add-on Radars Extraction
+                  </span>
+                </div>
+                <input
+                  ref={radarInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={radarLocked}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void handleRadarFile(file);
+                  }}
+                />
+              </div>
+
+              {radarUploading ? (
+                <div className="mt-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+                  <div className="flex items-center justify-between text-xs text-[var(--muted)]">
+                    <span>
+                      {radarPhase === "upload" ? (
+                        <>
+                          Upload du fichier<span className="tpi-dots" aria-hidden="true" />
+                        </>
+                      ) : (
+                        <>
+                          Extraction en cours<span className="tpi-dots" aria-hidden="true" />
+                        </>
+                      )}
+                    </span>
+                    <span className="min-w-[3ch] text-right text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                      {Math.round(radarProgress)}%
+                    </span>
+                  </div>
+                  <div className="mt-2 h-2 w-full rounded-full bg-white/10">
+                    <div
+                      className="h-2 rounded-full bg-violet-300 transition-all duration-700 ease-out"
+                      style={{ width: `${radarProgress}%` }}
+                    />
+                  </div>
+                </div>
+              ) : null}
+              {radarLoading ? (
+                <p className="mt-3 text-xs text-[var(--muted)]">
+                  Chargement des fichiers radar...
+                </p>
+              ) : null}
+              {radarError ? (
+                <p className="mt-3 text-xs text-red-300">{radarError}</p>
+              ) : null}
+
+              <div className="mt-4 space-y-3">
+                {radarFiles.length === 0 ? (
+                  <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
+                    Aucun fichier radar pour cet eleve.
+                  </div>
+                ) : (
+                  radarFiles.map((file) => {
+                    const shotCount = file.shots?.length ?? 0;
+                    const isReady = file.status === "ready";
+                    const badgeTone =
+                      file.status === "ready"
+                        ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
+                        : file.status === "error"
+                        ? "border-rose-300/30 bg-rose-400/10 text-rose-100"
+                        : "border-amber-300/30 bg-amber-400/10 text-amber-100";
+                    return (
+                      <div
+                        key={file.id}
+                        className="flex flex-col gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--text)] md:flex-row md:items-center md:justify-between"
+                      >
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-medium">
+                              {file.original_name || "Export Flightscope"}
+                            </p>
+                            <span
+                              className={`rounded-full border px-2 py-0.5 text-[0.6rem] uppercase tracking-wide ${badgeTone}`}
+                            >
+                              {file.status === "ready"
+                                ? "Pret"
+                                : file.status === "error"
+                                ? "Erreur"
+                                : "Analyse"}
+                              {file.status === "processing" ? (
+                                <LoadingDots />
+                              ) : null}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs text-[var(--muted)]">
+                            {formatDate(file.created_at, locale, timezone)} •{" "}
+                            {shotCount} coups
+                          </p>
+                          {file.error ? (
+                            <p className="mt-1 text-xs text-rose-200">
+                              {file.error}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={!isReady}
+                            onClick={() => setRadarPreview(file)}
+                            className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
+                              isReady
+                                ? "border-white/10 bg-white/10 text-[var(--text)] hover:bg-white/20"
+                                : "cursor-not-allowed border-white/5 bg-white/5 text-[var(--muted)]"
+                            }`}
+                          >
+                            Voir
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!isReady}
+                            onClick={() => handleOpenRadarConfig(file)}
+                            className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
+                              isReady
+                                ? "border-white/10 bg-white/5 text-[var(--text)] hover:bg-white/10"
+                                : "cursor-not-allowed border-white/5 bg-white/5 text-[var(--muted)]"
+                            }`}
+                          >
+                            Configurer
+                          </button>
+                          <button
+                            type="button"
+                            disabled={radarDeletingId === file.id}
+                            onClick={() => handleDeleteRadarFile(file)}
+                            className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
+                              radarDeletingId === file.id
+                                ? "cursor-not-allowed border-rose-300/20 bg-rose-400/10 text-rose-100/70"
+                                : "border-rose-300/30 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20"
+                            }`}
+                          >
+                            {radarDeletingId === file.id
+                              ? "Suppression..."
+                              : "Supprimer"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </section>
+
             {tpiDetail ? (
               <div
                 className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
@@ -834,7 +1692,629 @@ export default function CoachStudentDetailPage() {
                 </div>
               </div>
             ) : null}
+
+            {radarPreview ? (
+              <div
+                className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4"
+                onClick={() => setRadarPreview(null)}
+              >
+                <div
+                  className="panel w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-2xl p-6"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                        Radar
+                      </p>
+                      <h4 className="mt-2 text-lg font-semibold text-[var(--text)]">
+                        {radarPreview.original_name || "Export Flightscope"}
+                      </h4>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setRadarPreview(null)}
+                      className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                    >
+                      Fermer
+                    </button>
+                  </div>
+                  <div className="mt-4">
+                      <RadarCharts
+                        columns={radarPreview.columns ?? []}
+                        shots={radarPreview.shots ?? []}
+                        stats={radarPreview.stats}
+                        summary={radarPreview.summary}
+                        config={radarPreview.config}
+                        analytics={radarPreview.analytics}
+                      />
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {radarConfigOpen && radarConfigFile ? (
+              <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4">
+                <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-white/10 bg-[var(--bg-elevated)] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)]">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                        Extraction radar
+                      </p>
+                      <h3 className="mt-2 text-lg font-semibold text-[var(--text)]">
+                        Mode d affichage
+                      </h3>
+                      <p className="mt-2 text-sm text-[var(--muted)]">
+                        Definis les graphes et informations visibles par defaut.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCloseRadarConfig}
+                      className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                      aria-label="Fermer"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M18 6L6 18" />
+                        <path d="M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="mt-5 space-y-4">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                        Mode
+                      </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {[
+                      { id: "default", label: "Defaut" },
+                      { id: "custom", label: "Personnalise" },
+                      { id: "ai", label: "IA" },
+                    ].map((option) => (
+                          <button
+                            key={option.id}
+                            type="button"
+                            onClick={() =>
+                              setRadarConfigDraft((prev) =>
+                                option.id === "default"
+                                  ? { ...defaultRadarConfig, mode: "default" }
+                                  : option.id === "custom"
+                                  ? { ...prev, mode: "custom" }
+                                  : {
+                                      ...prev,
+                                      mode: "ai",
+                                      options: {
+                                        ...prev.options,
+                                        aiPreset:
+                                          prev.options?.aiPreset ?? "standard",
+                                        aiSyntax:
+                                          prev.options?.aiSyntax ??
+                                          "exp-tech-solution",
+                                      },
+                                    }
+                              )
+                            }
+                            className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
+                              radarConfigDraft.mode === option.id
+                                ? "border-violet-300/40 bg-violet-400/10 text-violet-100"
+                                : "border-white/10 bg-white/5 text-[var(--muted)] hover:text-[var(--text)]"
+                            }`}
+                          >
+                            {option.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-[0.65rem] text-[var(--muted)]">
+                    En mode defaut, la selection des graphes est bloquee.
+                  </p>
+                  {radarConfigDraft.mode === "ai" ? (
+                    <div className="mt-3 rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-3 text-[0.7rem] text-emerald-100">
+                      <p className="text-[0.55rem] uppercase tracking-wide text-emerald-200/80">
+                        Reglages IA radar
+                      </p>
+                      <div className="mt-3 grid gap-3 md:grid-cols-2">
+                        <div>
+                          <p className="text-[0.6rem] uppercase tracking-wide text-emerald-200/80">
+                            Nombre de graph
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {[
+                              { id: "ultra", label: "Ultra focus" },
+                              { id: "synthetic", label: "Synthetique" },
+                              { id: "standard", label: "Standard" },
+                              { id: "pousse", label: "Pousse" },
+                              { id: "complet", label: "Complet" },
+                            ].map((option) => (
+                              <button
+                                key={option.id}
+                                type="button"
+                                onClick={() =>
+                                  setRadarConfigDraft((prev) => ({
+                                    ...prev,
+                                    options: {
+                                      ...prev.options,
+                                      aiPreset: option.id as
+                                        | "ultra"
+                                        | "synthetic"
+                                        | "standard"
+                                        | "pousse"
+                                        | "complet",
+                                    },
+                                  }))
+                                }
+                                className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
+                                  (radarConfigDraft.options?.aiPreset ??
+                                    "standard") === option.id
+                                    ? "border-emerald-300/40 bg-emerald-400/20 text-emerald-50"
+                                    : "border-emerald-200/20 text-emerald-100/70"
+                                }`}
+                              >
+                                {option.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-[0.6rem] uppercase tracking-wide text-emerald-200/80">
+                            Synthaxe
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {[
+                              { id: "exp-tech", label: "Explicative + technique" },
+                              {
+                                id: "exp-comp",
+                                label: "Explicative + comparative",
+                              },
+                              {
+                                id: "exp-tech-solution",
+                                label: "Explicative + tech + solution",
+                              },
+                              {
+                                id: "exp-solution",
+                                label: "Explicative + solution",
+                              },
+                              { id: "global", label: "Global" },
+                            ].map((option) => (
+                              <button
+                                key={option.id}
+                                type="button"
+                                onClick={() =>
+                                  setRadarConfigDraft((prev) => ({
+                                    ...prev,
+                                    options: {
+                                      ...prev.options,
+                                      aiSyntax: option.id as
+                                        | "exp-tech"
+                                        | "exp-comp"
+                                        | "exp-tech-solution"
+                                        | "exp-solution"
+                                        | "global",
+                                    },
+                                  }))
+                                }
+                                className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
+                                  (radarConfigDraft.options?.aiSyntax ??
+                                    "exp-tech-solution") === option.id
+                                    ? "border-emerald-300/40 bg-emerald-400/20 text-emerald-50"
+                                    : "border-emerald-200/20 text-emerald-100/70"
+                                }`}
+                              >
+                                {option.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <p className="mt-3 text-[0.65rem] text-emerald-100/70">
+                        Utilise ces reglages pour l auto-selection IA.
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                  {[
+                    { key: "showSummary", label: "Resume IA" },
+                    { key: "showTable", label: "Tableau complet" },
+                    { key: "showSegments", label: "Comparatifs & segments" },
+                  ].map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      disabled={radarConfigDraft.mode !== "custom"}
+                      onClick={() =>
+                        setRadarConfigDraft((prev) => ({
+                          ...prev,
+                          [item.key]: !prev[
+                            item.key as "showSummary" | "showTable" | "showSegments"
+                          ],
+                        }))
+                      }
+                        className={`rounded-2xl border px-3 py-3 text-left text-sm transition ${
+                          radarConfigDraft[
+                            item.key as "showSummary" | "showTable" | "showSegments"
+                          ]
+                            ? "border-violet-300/40 bg-violet-400/10 text-violet-100"
+                            : "border-white/10 bg-white/5 text-[var(--muted)]"
+                        } ${
+                            radarConfigDraft.mode !== "custom"
+                              ? "cursor-not-allowed opacity-60"
+                              : "hover:text-[var(--text)]"
+                          }`}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+
+
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                        Graphes
+                      </p>
+                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                          {[
+                            {
+                              key: "dispersion",
+                              label: "Dispersion",
+                              description:
+                                "Dispersion laterale vs distance pour evaluer la precision.",
+                            },
+                            {
+                              key: "carryTotal",
+                              label: "Carry vs total",
+                              description:
+                                "Compare carry et distance totale par coup.",
+                            },
+                            {
+                              key: "speeds",
+                              label: "Vitesse club/balle",
+                              description:
+                                "Evolution des vitesses pour estimer l efficacite.",
+                            },
+                            {
+                              key: "spinCarry",
+                              label: "Spin vs carry",
+                              description:
+                                "Relation entre spin et distance (carry).",
+                            },
+                            {
+                              key: "smash",
+                              label: "Smash factor",
+                              description:
+                                "Efficacite d impact au fil des coups.",
+                            },
+                            {
+                              key: "faceImpact",
+                              label: "Impact face",
+                              description:
+                                "Carte des impacts sur la face du club.",
+                            },
+                          ].map((item) => (
+                            <button
+                              key={item.key}
+                              type="button"
+                              disabled={radarConfigDraft.mode !== "custom"}
+                              onClick={() =>
+                              setRadarConfigDraft((prev) => ({
+                                ...prev,
+                                charts: {
+                                  ...prev.charts,
+                                  [item.key]:
+                                    !prev.charts[item.key as keyof RadarConfig["charts"]],
+                                },
+                              }))
+                            }
+                          title={item.description}
+                          className={`rounded-2xl border px-3 py-3 text-left text-sm transition ${
+                            radarConfigDraft.charts[
+                              item.key as keyof RadarConfig["charts"]
+                            ]
+                              ? "border-violet-300/40 bg-violet-400/10 text-violet-100"
+                              : "border-white/10 bg-white/5 text-[var(--muted)]"
+                          } ${
+                            radarConfigDraft.mode !== "custom"
+                              ? "cursor-not-allowed opacity-60"
+                                : "hover:text-[var(--text)]"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span>{item.label}</span>
+                              <span
+                                className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/20 bg-white/5 text-[0.6rem] font-semibold text-[var(--text)]"
+                                title={item.description}
+                              >
+                                ?
+                              </span>
+                            </div>
+                            </button>
+                          ))}
+                        </div>
+                        <details className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-3">
+                          <summary className="cursor-pointer text-xs uppercase tracking-wide text-[var(--muted)]">
+                            Graphes avances
+                          </summary>
+                          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-[0.65rem] text-[var(--muted)]">
+                              Astuce: passe en mode personnalise pour activer/desactiver.
+                            </p>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                disabled={radarConfigDraft.mode !== "custom"}
+                                onClick={() =>
+                                  setRadarConfigDraft((prev) => ({
+                                    ...prev,
+                                    charts: {
+                                      ...prev.charts,
+                                      ...Object.fromEntries(
+                                        RADAR_CHART_DEFINITIONS.map((definition) => [
+                                          definition.key,
+                                          true,
+                                        ])
+                                      ),
+                                    },
+                                  }))
+                                }
+                                className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
+                                  radarConfigDraft.mode !== "custom"
+                                    ? "border-white/10 text-[var(--muted)] opacity-60"
+                                    : "border-white/20 text-[var(--text)] hover:text-white"
+                                }`}
+                              >
+                                Tout activer
+                              </button>
+                              <button
+                                type="button"
+                                disabled={radarConfigDraft.mode !== "custom"}
+                                onClick={() =>
+                                  setRadarConfigDraft((prev) => ({
+                                    ...prev,
+                                    charts: {
+                                      ...prev.charts,
+                                      ...Object.fromEntries(
+                                        RADAR_CHART_DEFINITIONS.map((definition) => [
+                                          definition.key,
+                                          false,
+                                        ])
+                                      ),
+                                    },
+                                  }))
+                                }
+                                className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
+                                  radarConfigDraft.mode !== "custom"
+                                    ? "border-white/10 text-[var(--muted)] opacity-60"
+                                    : "border-white/20 text-[var(--text)] hover:text-white"
+                                }`}
+                              >
+                                Tout desactiver
+                              </button>
+                            </div>
+                          </div>
+                          <div className="mt-3 space-y-4">
+                            {RADAR_CHART_GROUPS.map((group) => {
+                              const charts = RADAR_CHART_DEFINITIONS.filter(
+                                (definition) => definition.group === group.key
+                              );
+                              if (!charts.length) return null;
+                              return (
+                                <div key={group.key} className="space-y-2">
+                                  <p className="text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                                    {group.label}
+                                  </p>
+                                  <div className="grid gap-2 sm:grid-cols-2">
+                                    {charts.map((definition) => (
+                                      <button
+                                        key={definition.key}
+                                        type="button"
+                                        disabled={radarConfigDraft.mode !== "custom"}
+                                        onClick={() =>
+                                          setRadarConfigDraft((prev) => ({
+                                            ...prev,
+                                            charts: {
+                                              ...prev.charts,
+                                              [definition.key]: !prev.charts[
+                                                definition.key
+                                              ],
+                                            },
+                                          }))
+                                        }
+                                        className={`rounded-2xl border px-3 py-3 text-left text-[0.7rem] transition ${
+                                          radarConfigDraft.charts[definition.key]
+                                            ? "border-violet-300/40 bg-violet-400/10 text-violet-100"
+                                            : "border-white/10 bg-white/5 text-[var(--muted)]"
+                                        } ${
+                                          radarConfigDraft.mode !== "custom"
+                                            ? "cursor-not-allowed opacity-60"
+                                            : "hover:text-[var(--text)]"
+                                        }`}
+                                      >
+                                        <div className="flex items-center justify-between gap-2">
+                                          <span>{definition.title}</span>
+                                          <span
+                                            className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/20 bg-white/5 text-[0.55rem] font-semibold text-[var(--text)]"
+                                            title={definition.description}
+                                          >
+                                            ?
+                                          </span>
+                                        </div>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </details>
+                    </div>
+                  </div>
+                  {radarConfigError ? (
+                    <p className="mt-4 text-sm text-red-400">{radarConfigError}</p>
+                  ) : null}
+                  <div className="mt-6 flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCloseRadarConfig}
+                      className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                      disabled={radarConfigSaving}
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveRadarConfig}
+                      disabled={radarConfigSaving}
+                      className="rounded-full bg-gradient-to-r from-violet-300 via-violet-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
+                    >
+                      {radarConfigSaving ? "Sauvegarde..." : "Sauvegarder"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
+
+          {editOpen ? (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6">
+              <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[var(--bg-elevated)] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)]">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                      Eleve
+                    </p>
+                    <h3 className="mt-2 text-lg font-semibold text-[var(--text)]">
+                      Modifier les informations
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCloseEdit}
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                    aria-label="Fermer"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M18 6L6 18" />
+                      <path d="M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="mt-5 grid gap-4">
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Prenom
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.first_name}
+                      onChange={(event) =>
+                        setEditForm((prev) => ({
+                          ...prev,
+                          first_name: event.target.value,
+                        }))
+                      }
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Nom
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.last_name}
+                      onChange={(event) =>
+                        setEditForm((prev) => ({
+                          ...prev,
+                          last_name: event.target.value,
+                        }))
+                      }
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Email
+                    </label>
+                    <input
+                      type="email"
+                      value={editForm.email}
+                      onChange={(event) =>
+                        setEditForm((prev) => ({
+                          ...prev,
+                          email: event.target.value,
+                        }))
+                      }
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Sens de jeu
+                    </label>
+                    <select
+                      value={editForm.playing_hand}
+                      onChange={(event) =>
+                        setEditForm((prev) => ({
+                          ...prev,
+                          playing_hand: event.target.value as
+                            | ""
+                            | "left"
+                            | "right",
+                        }))
+                      }
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                    >
+                      <option value="">Non precise</option>
+                      <option value="right">Droitier</option>
+                      <option value="left">Gaucher</option>
+                    </select>
+                  </div>
+                </div>
+                {editError ? (
+                  <p className="mt-4 text-sm text-red-400">{editError}</p>
+                ) : null}
+                <div className="mt-6 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCloseEdit}
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                    disabled={editSaving}
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleUpdateStudent}
+                    disabled={editSaving}
+                    className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
+                  >
+                    {editSaving ? "Enregistrement..." : "Enregistrer"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          <PremiumOfferModal
+            open={premiumModalOpen}
+            onClose={closePremiumModal}
+            notice={premiumNotice}
+          />
         </div>
       )}
     </RoleGuard>

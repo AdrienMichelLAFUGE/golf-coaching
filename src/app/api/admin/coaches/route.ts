@@ -7,6 +7,8 @@ export const runtime = "nodejs";
 type CoachUpdatePayload = {
   orgId?: string;
   ai_enabled?: boolean;
+  tpi_enabled?: boolean;
+  radar_enabled?: boolean;
   ai_model?: string | null;
 };
 
@@ -48,7 +50,7 @@ export async function GET(request: Request) {
 
   const { data: organizations, error: orgError } = await auth.admin
     .from("organizations")
-    .select("id, name, ai_enabled, ai_model");
+    .select("id, name, ai_enabled, tpi_enabled, radar_enabled, ai_model");
 
   if (orgError) {
     return NextResponse.json(
@@ -80,6 +82,8 @@ export async function GET(request: Request) {
     id: org.id,
     name: org.name ?? "",
     ai_enabled: org.ai_enabled ?? false,
+    tpi_enabled: org.tpi_enabled ?? false,
+    radar_enabled: org.radar_enabled ?? false,
     ai_model: org.ai_model ?? "gpt-5-mini",
     owner: ownerByOrg.get(org.id) ?? null,
   }));
@@ -101,6 +105,12 @@ export async function PATCH(request: Request) {
   const updates: Record<string, unknown> = {};
   if (typeof payload.ai_enabled === "boolean") {
     updates.ai_enabled = payload.ai_enabled;
+  }
+  if (typeof payload.tpi_enabled === "boolean") {
+    updates.tpi_enabled = payload.tpi_enabled;
+  }
+  if (typeof payload.radar_enabled === "boolean") {
+    updates.radar_enabled = payload.radar_enabled;
   }
   if (typeof payload.ai_model === "string") {
     updates.ai_model = payload.ai_model.trim() || null;

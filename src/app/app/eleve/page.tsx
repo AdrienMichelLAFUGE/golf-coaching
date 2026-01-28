@@ -299,7 +299,11 @@ export default function StudentDashboardPage() {
         </div>
       </section>
 
-      <section className="panel rounded-2xl p-6">
+      <section className="panel relative rounded-2xl border-l-2 border-rose-400/40 p-6">
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute left-0 top-0 h-0.5 w-full rounded-t-2xl bg-rose-400/80"
+        />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-[var(--text)]">
@@ -316,7 +320,7 @@ export default function StudentDashboardPage() {
             </p>
           </div>
           {tpiReport ? (
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+            <span className="rounded-full border border-rose-300/30 bg-rose-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-rose-200">
               {tpiReport.status === "processing"
                 ? "Analyse en cours"
                 : tpiReport.status === "ready"

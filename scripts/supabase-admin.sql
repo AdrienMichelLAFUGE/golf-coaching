@@ -60,3 +60,13 @@ create index if not exists ai_usage_user_idx
   on public.ai_usage (user_id);
 
 alter table public.ai_usage enable row level security;
+
+-- Feature access flags (add-ons)
+alter table public.organizations
+  add column if not exists tpi_enabled boolean not null default false,
+  add column if not exists radar_enabled boolean not null default false;
+
+-- Students metadata
+alter table public.students
+  add column if not exists playing_hand text
+  check (playing_hand in ('right', 'left'));

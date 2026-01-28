@@ -15,12 +15,14 @@ type Student = {
   invited_at: string | null;
   activated_at: string | null;
   tpi_report_id: string | null;
+  playing_hand: "right" | "left" | null;
 };
 
 type StudentForm = {
   first_name: string;
   last_name: string;
   email: string;
+  playing_hand: "" | "right" | "left";
 };
 
 export default function CoachStudentsPage() {
@@ -32,6 +34,7 @@ export default function CoachStudentsPage() {
     first_name: "",
     last_name: "",
     email: "",
+    playing_hand: "",
   });
   const [creating, setCreating] = useState(false);
   const [orgId, setOrgId] = useState<string | null>(null);
@@ -40,6 +43,15 @@ export default function CoachStudentsPage() {
   const [inviteError, setInviteError] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+  const [editForm, setEditForm] = useState<StudentForm>({
+    first_name: "",
+    last_name: "",
+    email: "",
+    playing_hand: "",
+  });
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState("");
 
   const filteredStudents = useMemo(() => {
     const search = query.trim().toLowerCase();
@@ -73,7 +85,7 @@ export default function CoachStudentsPage() {
     const { data, error: fetchError } = await supabase
       .from("students")
       .select(
-        "id, first_name, last_name, email, created_at, invited_at, activated_at, tpi_report_id"
+        "id, first_name, last_name, email, created_at, invited_at, activated_at, tpi_report_id, playing_hand"
       )
       .order("created_at", { ascending: false });
 
@@ -111,6 +123,7 @@ export default function CoachStudentsPage() {
     const firstName = form.first_name.trim();
     const lastName = form.last_name.trim();
     const email = form.email.trim();
+    const playingHand = form.playing_hand || null;
 
     if (!firstName) {
       setError("Le prenom est obligatoire.");
@@ -130,6 +143,7 @@ export default function CoachStudentsPage() {
         first_name: firstName,
         last_name: lastName || null,
         email: email || null,
+        playing_hand: playingHand,
       },
     ]);
 
@@ -139,7 +153,7 @@ export default function CoachStudentsPage() {
       return;
     }
 
-    setForm({ first_name: "", last_name: "", email: "" });
+    setForm({ first_name: "", last_name: "", email: "", playing_hand: "" });
     await loadStudents();
     setCreating(false);
   };
@@ -221,6 +235,60 @@ export default function CoachStudentsPage() {
     await handleDeleteStudent(student);
   };
 
+  const handleMenuEdit = (student: Student) => {
+    setMenuOpenId(null);
+    setEditError("");
+    setEditingStudent(student);
+    setEditForm({
+      first_name: student.first_name ?? "",
+      last_name: student.last_name ?? "",
+      email: student.email ?? "",
+      playing_hand: student.playing_hand ?? "",
+    });
+  };
+
+  const handleCloseEdit = () => {
+    if (editSaving) return;
+    setEditingStudent(null);
+    setEditError("");
+  };
+
+  const handleUpdateStudent = async () => {
+    if (!editingStudent) return;
+    const firstName = editForm.first_name.trim();
+    const lastName = editForm.last_name.trim();
+    const email = editForm.email.trim();
+    const playingHand = editForm.playing_hand || null;
+
+    if (!firstName) {
+      setEditError("Le prenom est obligatoire.");
+      return;
+    }
+
+    setEditSaving(true);
+    setEditError("");
+
+    const { error: updateError } = await supabase
+      .from("students")
+      .update({
+        first_name: firstName,
+        last_name: lastName || null,
+        email: email || null,
+        playing_hand: playingHand,
+      })
+      .eq("id", editingStudent.id);
+
+    if (updateError) {
+      setEditError(updateError.message);
+      setEditSaving(false);
+      return;
+    }
+
+    setEditSaving(false);
+    setEditingStudent(null);
+    await loadStudents();
+  };
+
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       <div className="space-y-6">
@@ -245,7 +313,7 @@ export default function CoachStudentsPage() {
 
         <section className="panel-soft rounded-2xl p-5">
           <form
-            className="grid gap-4 md:grid-cols-[1fr_1fr_1fr_auto]"
+            className="grid gap-4 md:grid-cols-[1fr_1fr_1fr_0.8fr_auto]"
             onSubmit={handleCreateStudent}
           >
             <div>
@@ -295,6 +363,25 @@ export default function CoachStudentsPage() {
                 placeholder="camille@email.com"
                 className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
               />
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                Sens de jeu
+              </label>
+              <select
+                value={form.playing_hand}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    playing_hand: event.target.value as "" | "left" | "right",
+                  }))
+                }
+                className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+              >
+                <option value="">Non precise</option>
+                <option value="right">Droitier</option>
+                <option value="left">Gaucher</option>
+              </select>
             </div>
             <button
               type="submit"
@@ -409,11 +496,11 @@ export default function CoachStudentsPage() {
                     </div>
                     <div className="flex items-start justify-between gap-3">
                       {student.tpi_report_id ? (
-                        <span className="inline-flex self-start rounded-full border border-sky-300/30 bg-sky-400/10 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-sky-200">
+                        <span className="inline-flex self-start rounded-full border border-rose-300/30 bg-rose-400/10 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-rose-200">
                           TPI actif
                         </span>
                       ) : (
-                        <span className="inline-flex self-start rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)]">
+                        <span className="inline-flex self-start rounded-full border border-rose-300/20 bg-rose-400/5 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-rose-200/70">
                           TPI inactif
                         </span>
                       )}
@@ -454,6 +541,14 @@ export default function CoachStudentsPage() {
                             >
                               Nouveau rapport
                             </Link>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => handleMenuEdit(student)}
+                              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10"
+                            >
+                              Editer
+                            </button>
                             <Link
                               href={`/app/coach/eleves/${student.id}`}
                               onClick={() => setMenuOpenId(null)}
@@ -495,6 +590,131 @@ export default function CoachStudentsPage() {
             )}
           </div>
         </section>
+        {editingStudent ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6">
+            <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[var(--bg-elevated)] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)]">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                    Eleve
+                  </p>
+                  <h3 className="mt-2 text-lg font-semibold text-[var(--text)]">
+                    Modifier les informations
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCloseEdit}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                  aria-label="Fermer"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M18 6L6 18" />
+                    <path d="M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="mt-5 grid gap-4">
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Prenom
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.first_name}
+                    onChange={(event) =>
+                      setEditForm((prev) => ({
+                        ...prev,
+                        first_name: event.target.value,
+                      }))
+                    }
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Nom
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.last_name}
+                    onChange={(event) =>
+                      setEditForm((prev) => ({
+                        ...prev,
+                        last_name: event.target.value,
+                      }))
+                    }
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    value={editForm.email}
+                    onChange={(event) =>
+                      setEditForm((prev) => ({
+                        ...prev,
+                        email: event.target.value,
+                      }))
+                    }
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Sens de jeu
+                  </label>
+                  <select
+                    value={editForm.playing_hand}
+                    onChange={(event) =>
+                      setEditForm((prev) => ({
+                        ...prev,
+                        playing_hand: event.target.value as "" | "left" | "right",
+                      }))
+                    }
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                  >
+                    <option value="">Non precise</option>
+                    <option value="right">Droitier</option>
+                    <option value="left">Gaucher</option>
+                  </select>
+                </div>
+              </div>
+              {editError ? (
+                <p className="mt-4 text-sm text-red-400">{editError}</p>
+              ) : null}
+              <div className="mt-6 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleCloseEdit}
+                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                  disabled={editSaving}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={handleUpdateStudent}
+                  disabled={editSaving}
+                  className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
+                >
+                  {editSaving ? "Enregistrement..." : "Enregistrer"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </RoleGuard>
   );

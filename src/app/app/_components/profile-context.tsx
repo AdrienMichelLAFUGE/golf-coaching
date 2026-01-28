@@ -19,6 +19,8 @@ export type OrganizationSettings = {
   locale: string | null;
   timezone: string | null;
   ai_enabled: boolean | null;
+  tpi_enabled: boolean | null;
+  radar_enabled: boolean | null;
   ai_model: string | null;
   ai_tone: string | null;
   ai_tech_level: string | null;
@@ -78,7 +80,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       const { data: orgData, error: orgError } = await supabase
         .from("organizations")
         .select(
-          "id, name, logo_url, accent_color, locale, timezone, ai_enabled, ai_model, ai_tone, ai_tech_level, ai_style, ai_length, ai_imagery, ai_focus"
+          "id, name, logo_url, accent_color, locale, timezone, ai_enabled, tpi_enabled, radar_enabled, ai_model, ai_tone, ai_tech_level, ai_style, ai_length, ai_imagery, ai_focus"
         )
         .eq("id", profileData.org_id)
         .single();

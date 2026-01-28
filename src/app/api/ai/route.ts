@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
+import { applyTemplate, loadPromptSection } from "@/lib/promptLoader";
 
 export const runtime = "nodejs";
 
@@ -87,7 +88,7 @@ const inferPlanHorizon = (title?: string) => {
   return "1 semaine";
 };
 
-const buildSystemPrompt = (
+const buildSystemPrompt = async (
   action: AiAction,
   settings: AiSettings,
   sectionTitle?: string,
@@ -95,130 +96,99 @@ const buildSystemPrompt = (
 ) => {
   const styleHint =
     settings.style === "structure"
-      ? "Formatte la reponse en points clairs et titres courts."
-      : "Ecris un texte fluide et professionnel.";
+      ? await loadPromptSection("ai_hint_style_structure")
+      : await loadPromptSection("ai_hint_style_redactionnel");
 
   const lengthHint =
     settings.length === "court"
-      ? "Fais court (60 a 90 mots)."
+      ? await loadPromptSection("ai_hint_length_court")
       : settings.length === "long"
-      ? "Developpe davantage (220 a 320 mots)."
-      : "Longueur normale (120 a 180 mots).";
+      ? await loadPromptSection("ai_hint_length_long")
+      : await loadPromptSection("ai_hint_length_normal");
 
   const imageryHint =
     settings.imagery === "faible"
-      ? "Evite les metaphore."
+      ? await loadPromptSection("ai_hint_imagery_faible")
       : settings.imagery === "fort"
-      ? "Utilise des images/metaphores pour rendre le texte vivant."
-      : "Utilise un peu d image sans en abuser.";
+      ? await loadPromptSection("ai_hint_imagery_fort")
+      : await loadPromptSection("ai_hint_imagery_equilibre");
 
   const focusHint =
     settings.focus === "technique"
-      ? "Concentre toi sur la technique."
+      ? await loadPromptSection("ai_hint_focus_technique")
       : settings.focus === "mental"
-      ? "Concentre toi sur le mental."
+      ? await loadPromptSection("ai_hint_focus_mental")
       : settings.focus === "strategie"
-      ? "Concentre toi sur la strategie."
-      : "Melange technique, mental et strategie.";
+      ? await loadPromptSection("ai_hint_focus_strategie")
+      : await loadPromptSection("ai_hint_focus_mix");
 
-  const base =
-    "Tu es un coach de golf expert. Reponds en francais." +
-    ` Ton: ${settings.tone}.` +
-    ` Niveau: ${settings.techLevel}. ` +
-    imageryHint +
-    " " +
-    focusHint +
-    " Reste clair et utile. Ne t arrete pas au milieu d une phrase. Donne une version complete.";
+  const baseTemplate = await loadPromptSection("ai_api_system_base");
+  const base = applyTemplate(baseTemplate, {
+    tone: settings.tone,
+    techLevel: settings.techLevel,
+    imageryHint,
+    focusHint,
+  });
 
   if (action === "improve") {
-    return (
-      `${base} Corrige uniquement l orthographe, la grammaire et la ponctuation.` +
-      " Ne reformule pas. Ne rajoute rien. Ne retire rien." +
-      " Conserve la longueur et la structure." +
-      " Ne renvoie que le texte corrige, sans titre."
-    );
+    const template = await loadPromptSection("ai_api_improve");
+    return applyTemplate(template, { base });
   }
 
   if (action === "write") {
-    return (
-      `${base} ${styleHint} ${lengthHint} ` +
-      `Ecris la section "${sectionTitle ?? "Section"}" a partir des notes.` +
-      " Ne resumer pas la seance globale." +
-      " Ne cite pas d elements non presentes dans les notes." +
-      " Si les notes sont vides, base toi uniquement sur le contexte des autres sections." +
-      " Si une info manque, reste general ou signale qu il faut completer." +
-      " N inclus pas le titre dans la reponse."
-    );
+    const template = await loadPromptSection("ai_api_write");
+    return applyTemplate(template, {
+      base,
+      styleHint,
+      lengthHint,
+      sectionTitle: sectionTitle ?? "Section",
+    });
   }
 
   if (action === "propagate") {
+    const template = await loadPromptSection("ai_api_propagate");
     const modeHint =
       propagateMode === "append"
         ? "Ajoute un nouveau paragraphe complementaire sans repeter ce qui existe deja. Commence le paragraphe par un connecteur (ensuite, puis, par la suite) pour garder un enchainement naturel."
         : "Ecris un contenu initial si la section est vide.";
-    return (
-      `${base} ${styleHint} ` +
-      "Tu dois propager la section source vers les autres sections du rapport." +
-      " Pour chaque section cible, redige un texte court (2 a 4 phrases)." +
-      " Adapte le contenu au titre de la section cible." +
-      " Ne resumer pas toute la seance." +
-      " Ne cree pas d infos non presentes dans la section source." +
-      " N utilise pas de guillemets doubles dans les contenus." +
-      ` ${modeHint}` +
-      " Si tu n as rien de pertinent, renvoie une chaine vide." +
-      " Ne mets pas de titre dans les contenus."
-    );
+    return applyTemplate(template, {
+      base,
+      styleHint,
+      modeHint,
+    });
   }
 
   if (action === "clarify") {
-    return (
-      `${base} Tu dois poser 2 a 4 questions courtes pour lever les doutes.` +
-      " Evalue ta certitude sur la propagation (0 a 1)." +
-      " Si la certitude est >= 0.85, renvoie une liste de questions vide." +
-      " Les questions doivent etre directement actionnables et techniques." +
-      " Propose des choix quand c est pertinent, sinon une question texte." +
-      " Si plusieurs choix peuvent etre selectionnes, ajoute multi: true." +
-      " Pour les questions texte, renvoie choices: [] et placeholder: \"\"." +
-      " Ne donne pas de reponse, ne reformule pas les notes." +
-      " Ne mets pas de titre."
-    );
+    const template = await loadPromptSection("ai_api_clarify");
+    return applyTemplate(template, { base });
   }
 
   if (action === "axes") {
-    return (
-      `${base} ${styleHint} ` +
-      "Tu dois proposer 2 axes de reponse par section cible." +
-      " Pour chaque section, donne un titre court et un resume d une phrase." +
-      " Utilise le profil TPI: rouge = limitation physique avec compensation probable, orange = limitation moins impactante, vert = capacite ok donc probleme souvent de comprehension/technique." +
-      " Ne propose pas de contenu final, uniquement des axes." +
-      " N utilise pas de guillemets doubles."
-    );
+    const template = await loadPromptSection("ai_api_axes");
+    return applyTemplate(template, {
+      base,
+      styleHint,
+    });
   }
 
   if (action === "summary") {
-    return (
-      `${base} ${lengthHint} ` +
-      "Resume le rapport en 4 a 6 points essentiels." +
-      " Ecris en phrases courtes separees par des retours a la ligne." +
-      " N utilise pas de Markdown, pas d asterisques, pas de listes avec * ou -." +
-      " Si des constats sont fournis, termine par une ligne 'Constats cles: ...' concise." +
-      " N utilise pas de titres."
-    );
+    const template = await loadPromptSection("ai_api_summary");
+    return applyTemplate(template, {
+      base,
+      lengthHint,
+    });
   }
 
   if (action === "plan") {
+    const template = await loadPromptSection("ai_api_plan");
     const horizon = inferPlanHorizon(sectionTitle);
     const planTitle = sectionTitle ?? "Plan";
-    return (
-      `${base} ${styleHint} ` +
-      `Genere un plan "${planTitle}" base sur les sections du rapport.` +
-      ` Planifie sur ${horizon}.` +
-      " Si l horizon est en mois, structure en phases et evite le detail jour par jour." +
-      " Ne parle pas de semaine si le titre indique une autre duree." +
-      " Donne 4 a 6 actions courtes et concretes, une phrase max chacune." +
-      " Sois realiste et progressif, evite les details inutiles." +
-      " N inclus pas de titre."
-    );
+    return applyTemplate(template, {
+      base,
+      styleHint,
+      sectionTitle: planTitle,
+      horizon,
+    });
   }
 
   return `${base} ${lengthHint} Resume le rapport en 4 a 6 points essentiels.`;
@@ -668,7 +638,7 @@ export async function POST(request: Request) {
 
     const settings = resolveSettings(org, payload.settings);
     const context = buildContext(payload.allSections ?? []);
-    const systemPrompt = buildSystemPrompt(
+    const systemPrompt = await buildSystemPrompt(
       payload.action,
       settings,
       payload.sectionTitle,
@@ -680,52 +650,52 @@ export async function POST(request: Request) {
       .join("\n");
 
     const axesText = (payload.axesSelections ?? [])
-      .map(
-        (item) =>
-          `- ${item.section}: ${item.title} — ${item.summary}`.trim()
-      )
+      .map((item) => `- ${item.section}: ${item.title} - ${item.summary}`.trim())
       .join("\n");
 
-    const tpiBlock = payload.tpiContext?.trim()
-      ? `\n\nProfil TPI (a utiliser si pertinent):\n${payload.tpiContext.trim()}`
+    const sectionsList = (payload.allSections ?? [])
+      .map((section) => `- ${section.title}`)
+      .join("\n");
+    const targetsList = (payload.targetSections ?? [])
+      .map((title) => `- ${title}`)
+      .join("\n");
+
+    const clarificationsBlock = clarificationsText
+      ? `Clarifications du coach:\n${clarificationsText}`
+      : "";
+    const axesBlock = axesText
+      ? `Axes choisis par section:\n${axesText}`
       : "";
 
-    const userPrompt =
-      (payload.action === "improve"
-        ? `${payload.sectionContent}`
+    const tpiBlock = payload.tpiContext?.trim()
+      ? `Profil TPI (a utiliser si pertinent):\n${payload.tpiContext.trim()}`
+      : "";
+
+    const userTemplateKey =
+      payload.action === "improve"
+        ? "ai_api_user_improve"
         : payload.action === "write"
-        ? `Section: ${payload.sectionTitle}\nNotes de la section:\n${payload.sectionContent ?? ""}\n\nAutres sections (pour coherence, ne pas resumer):\n${context || "(aucune)"}\n\nSi les notes sont vides, propose une version basee sur le contexte.`
+        ? "ai_api_user_write"
         : payload.action === "clarify"
-        ? `Section source: ${payload.sectionTitle}\nNotes source:\n${payload.sectionContent}\n\nMode de propagation: ${payload.propagateMode ?? "empty"}\n\nSections presentes:\n${(payload.allSections ?? [])
-            .map((section) => `- ${section.title}`)
-            .join("\n")}\n\nSections cibles a remplir:\n${(payload.targetSections ?? [])
-            .map((title) => `- ${title}`)
-            .join("\n")}`
+        ? "ai_api_user_clarify"
         : payload.action === "axes"
-        ? `Section source: ${payload.sectionTitle}\nNotes source:\n${payload.sectionContent}\n\nSections presentes:\n${(payload.allSections ?? [])
-            .map((section) => `- ${section.title}`)
-            .join("\n")}\n\nSections cibles a remplir:\n${(payload.targetSections ?? [])
-            .map((title) => `- ${title}`)
-            .join("\n")}${
-            clarificationsText
-              ? `\n\nClarifications du coach:\n${clarificationsText}`
-              : ""
-          }`
+        ? "ai_api_user_axes"
         : payload.action === "propagate"
-        ? `Section source: ${payload.sectionTitle}\nNotes source:\n${payload.sectionContent}\n\nSections presentes:\n${(payload.allSections ?? [])
-            .map((section) => `- ${section.title}`)
-            .join("\n")}\n\nSections cibles a remplir:\n${(payload.targetSections ?? [])
-            .map((title) => `- ${title}`)
-            .join("\n")}${
-            clarificationsText
-              ? `\n\nClarifications du coach:\n${clarificationsText}`
-              : ""
-          }${
-            axesText
-              ? `\n\nAxes choisis par section:\n${axesText}`
-              : ""
-          }`
-        : `Sections:\n${context}`) + tpiBlock;
+        ? "ai_api_user_propagate"
+        : "ai_api_user_summary";
+
+    const userTemplate = await loadPromptSection(userTemplateKey);
+    const userPrompt = applyTemplate(userTemplate, {
+      sectionTitle: payload.sectionTitle ?? "",
+      sectionContent: payload.sectionContent ?? "",
+      context: context || "(aucune)",
+      propagateMode: payload.propagateMode ?? "empty",
+      sectionsList,
+      targetsList,
+      clarificationsBlock,
+      axesBlock,
+      tpiBlock,
+    });
 
     const openai = new OpenAI({ apiKey: openaiKey });
     const model = org.ai_model ?? "gpt-5-mini";
