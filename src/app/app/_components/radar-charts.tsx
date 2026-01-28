@@ -2171,7 +2171,8 @@ export default function RadarCharts({
         };
       })
       .filter(
-        (point): point is { x: number; y: number; shotIndex?: number } => !!point
+        (point): point is { x: number; y: number; shotIndex: number | undefined } =>
+          point !== null
       );
   }, [shots, metrics]);
 
@@ -2213,7 +2214,8 @@ export default function RadarCharts({
         };
       })
       .filter(
-        (point): point is { x: number; y: number; shotIndex?: number } => !!point
+        (point): point is { x: number; y: number; shotIndex: number | undefined } =>
+          point !== null
       );
   }, [shots, metrics]);
 
@@ -2236,7 +2238,8 @@ export default function RadarCharts({
         };
       })
       .filter(
-        (point): point is { x: number; y: number; shotIndex?: number } => !!point
+        (point): point is { x: number; y: number; shotIndex: number | undefined } =>
+          point !== null
       );
   }, [shots, metrics]);
 
