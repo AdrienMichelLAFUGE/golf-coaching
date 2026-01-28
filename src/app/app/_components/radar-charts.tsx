@@ -2151,11 +2151,12 @@ export default function RadarCharts({
   }, [columns]);
 
   const dispersionPoints = useMemo(() => {
+    const lateral = metrics.distanceLateral;
     const forward = metrics.distanceCarry ?? metrics.distanceTotal;
-    if (!metrics.distanceLateral || !forward) return [];
+    if (!lateral || !forward) return [];
     return shots
       .map((shot) => {
-        const x = shot[metrics.distanceLateral.key];
+        const x = shot[lateral.key];
         const y = shot[forward.key];
         if (typeof x !== "number" || typeof y !== "number") return null;
         const shotIndexRaw = shot.shot_index;
