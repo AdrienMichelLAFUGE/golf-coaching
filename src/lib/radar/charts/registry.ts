@@ -197,18 +197,24 @@ const buildInsight = (payload: RadarChartPayload) => {
   if (payload.type === "matrix") {
     const vars = payload.variables;
     if (vars.length < 2) return null;
-    let best: { i: number; j: number; value: number } | null = null;
+    let bestI = 0;
+    let bestJ = 1;
+    let bestValue = 0;
+    let hasBest = false;
     payload.matrix.forEach((row, i) => {
       row.forEach((value, j) => {
         if (i === j) return;
         const abs = Math.abs(value);
-        if (!best || abs > Math.abs(best.value)) {
-          best = { i, j, value };
+        if (!hasBest || abs > Math.abs(bestValue)) {
+          bestI = i;
+          bestJ = j;
+          bestValue = value;
+          hasBest = true;
         }
       });
     });
-    if (!best) return null;
-    return `Correlation la plus forte: ${vars[best.i]} vs ${vars[best.j]} (r=${best.value.toFixed(
+    if (!hasBest) return null;
+    return `Correlation la plus forte: ${vars[bestI]} vs ${vars[bestJ]} (r=${bestValue.toFixed(
       2
     )}).`;
   }
