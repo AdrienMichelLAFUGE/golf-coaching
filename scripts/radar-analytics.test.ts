@@ -20,5 +20,6 @@ assert.equal(analytics.version, "radar-analytics-v1");
 assert.ok(analytics.meta.shotCount > 0);
 assert.ok(analytics.globalStats.carry.count > 0);
 assert.ok(analytics.chartsData.dispersion_scatter.available);
-assert.ok(analytics.segments.byShotType?.summaries?.length ?? 0);
+const segments = analytics.segments as Record<string, { summaries?: unknown[] }>;
+assert.ok(segments.byShotType?.summaries?.length ?? 0);
 console.log("Radar analytics tests passed.");

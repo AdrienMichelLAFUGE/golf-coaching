@@ -352,63 +352,69 @@ export const computeAnalytics = ({
     thresholds.bins?.quantiles?.[1] ?? 0.66
   );
 
-  const shotsWithDerived = normalizedShots.map((shot) => {
-    const carry = toNumber(shot.carry);
-    const lateral = toNumber(shot.lateral);
-    const ftp = toNumber(shot.ftp);
-    const launchH = toNumber(shot.launch_h);
-    const spinAxis = toNumber(shot.spin_axis);
-    const impactLat = toNumber(shot.impact_lat);
-    const impactVert = toNumber(shot.impact_vert);
-    const shotIndex = toNumber(shot.shot_index) ?? 0;
-    const distanceFromTarget =
-      carry !== null && carryTarget !== null ? carry - carryTarget : null;
-    const radialMiss =
-      lateral !== null && distanceFromTarget !== null
-        ? Math.sqrt(lateral ** 2 + distanceFromTarget ** 2)
-        : null;
-    const leftRight = lateral === null ? null : lateral < 0 ? "L" : "R";
-    const absFtp = ftp !== null ? Math.abs(ftp) : null;
-    const absLaunchH = launchH !== null ? Math.abs(launchH) : null;
-    const absSpinAxis = spinAxis !== null ? Math.abs(spinAxis) : null;
+  const shotsWithDerived: Array<Record<string, unknown>> = normalizedShots.map(
+    (shot) => {
+      const carry = toNumber(shot.carry);
+      const lateral = toNumber(shot.lateral);
+      const ftp = toNumber(shot.ftp);
+      const launchH = toNumber(shot.launch_h);
+      const spinAxis = toNumber(shot.spin_axis);
+      const impactLat = toNumber(shot.impact_lat);
+      const impactVert = toNumber(shot.impact_vert);
+      const shotIndex = toNumber(shot.shot_index) ?? 0;
+      const distanceFromTarget =
+        carry !== null && carryTarget !== null ? carry - carryTarget : null;
+      const radialMiss =
+        lateral !== null && distanceFromTarget !== null
+          ? Math.sqrt(lateral ** 2 + distanceFromTarget ** 2)
+          : null;
+      const leftRight = lateral === null ? null : lateral < 0 ? "L" : "R";
+      const absFtp = ftp !== null ? Math.abs(ftp) : null;
+      const absLaunchH = launchH !== null ? Math.abs(launchH) : null;
+      const absSpinAxis = spinAxis !== null ? Math.abs(spinAxis) : null;
 
-    let impactZone: string | null = null;
-    if (impactLat !== null && impactVert !== null) {
-      const latZone =
-        Math.abs(impactLat) <= impactBox.lat ? "center" : impactLat > 0 ? "toe" : "heel";
-      const vertZone =
-        Math.abs(impactVert) <= impactBox.vert
-          ? "center"
-          : impactVert > 0
-          ? "high"
-          : "low";
-      impactZone = `${latZone}-${vertZone}`;
+      let impactZone: string | null = null;
+      if (impactLat !== null && impactVert !== null) {
+        const latZone =
+          Math.abs(impactLat) <= impactBox.lat
+            ? "center"
+            : impactLat > 0
+            ? "toe"
+            : "heel";
+        const vertZone =
+          Math.abs(impactVert) <= impactBox.vert
+            ? "center"
+            : impactVert > 0
+            ? "high"
+            : "low";
+        impactZone = `${latZone}-${vertZone}`;
+      }
+
+      return {
+        ...shot,
+        carry_target: carryTarget,
+        distance_from_target: distanceFromTarget,
+        radial_miss: radialMiss,
+        abs_lateral: lateral !== null ? Math.abs(lateral) : null,
+        abs_ftp: absFtp,
+        abs_launch_h: absLaunchH,
+        abs_spin_axis: absSpinAxis,
+        left_right: leftRight,
+        smash_bin: assignBin(toNumber(shot.smash), [smashQ1, smashQ2]),
+        ball_speed_bin: assignBin(toNumber(shot.ball_speed), [ballQ1, ballQ2]),
+        launch_v_bin: assignBin(toNumber(shot.launch_v), [launchQ1, launchQ2]),
+        abs_ftp_bin: assignBin(absFtp, [ftpQ1, ftpQ2]),
+        period_tertile:
+          shotIndex <= normalizedShots.length / 3
+            ? "start"
+            : shotIndex <= (normalizedShots.length * 2) / 3
+            ? "mid"
+            : "end",
+        impact_zone: impactZone,
+        strike_score: toNumber(shot.smash) ?? toNumber(shot.ball_speed) ?? null,
+      };
     }
-
-    return {
-      ...shot,
-      carry_target: carryTarget,
-      distance_from_target: distanceFromTarget,
-      radial_miss: radialMiss,
-      abs_lateral: lateral !== null ? Math.abs(lateral) : null,
-      abs_ftp: absFtp,
-      abs_launch_h: absLaunchH,
-      abs_spin_axis: absSpinAxis,
-      left_right: leftRight,
-      smash_bin: assignBin(toNumber(shot.smash), [smashQ1, smashQ2]),
-      ball_speed_bin: assignBin(toNumber(shot.ball_speed), [ballQ1, ballQ2]),
-      launch_v_bin: assignBin(toNumber(shot.launch_v), [launchQ1, launchQ2]),
-      abs_ftp_bin: assignBin(absFtp, [ftpQ1, ftpQ2]),
-      period_tertile: shotIndex <= normalizedShots.length / 3
-        ? "start"
-        : shotIndex <= (normalizedShots.length * 2) / 3
-        ? "mid"
-        : "end",
-      impact_zone: impactZone,
-      strike_score:
-        toNumber(shot.smash) ?? toNumber(shot.ball_speed) ?? null,
-    };
-  });
+  );
 
   units.radial_miss = units.carry ?? null;
   units.distance_from_target = units.carry ?? null;
