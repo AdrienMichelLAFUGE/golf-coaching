@@ -2196,10 +2196,11 @@ export default function RadarCharts({
 
   const spinCarryPoints = useMemo(() => {
     const distance = metrics.distanceCarry ?? metrics.distanceTotal;
-    if (!metrics.spinRate || !distance) return [];
+    const spinRate = metrics.spinRate;
+    if (!spinRate || !distance) return [];
     return shots
       .map((shot) => {
-        const x = shot[metrics.spinRate.key];
+        const x = shot[spinRate.key];
         const y = shot[distance.key];
         if (typeof x !== "number" || typeof y !== "number") return null;
         const shotIndexRaw = shot.shot_index;
