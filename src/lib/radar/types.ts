@@ -15,7 +15,10 @@ export type RadarConfig = {
     excludeOutliersDefault?: boolean;
     aiNarrative?: "off" | "per-chart" | "global";
     aiSelectionKeys?: string[];
-    aiNarratives?: Record<string, { reason?: string | null; solution?: string | null }>;
+    aiNarratives?: Record<
+      string,
+      { reason?: string | null; commentary?: string | null; solution?: string | null }
+    >;
     aiSelectionSummary?: string | null;
     aiSessionSummary?: string | null;
     aiPreset?: "ultra" | "synthetic" | "standard" | "pousse" | "complet";

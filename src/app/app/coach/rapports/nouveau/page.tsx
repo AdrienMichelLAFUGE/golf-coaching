@@ -533,6 +533,11 @@ export default function CoachReportBuilderPage() {
   const [radarAiQuestionsLoading, setRadarAiQuestionsLoading] = useState(false);
   const [radarAiQaError, setRadarAiQaError] = useState("");
   const [radarAiAutoBusy, setRadarAiAutoBusy] = useState(false);
+  const [radarAiAutoProgress, setRadarAiAutoProgress] = useState(0);
+  const [radarAiAutoPreset, setRadarAiAutoPreset] = useState<"ultra" | "standard">(
+    "standard"
+  );
+  const radarAiAutoTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const [aiPreviews, setAiPreviews] = useState<Record<string, AiPreview>>({});
   const [clarifyOpen, setClarifyOpen] = useState(false);
   const [clarifyQuestions, setClarifyQuestions] = useState<ClarifyQuestion[]>(
@@ -1681,6 +1686,27 @@ export default function CoachReportBuilderPage() {
     }
   };
 
+  const stopRadarAiAutoProgress = () => {
+    if (radarAiAutoTimer.current) {
+      clearInterval(radarAiAutoTimer.current);
+      radarAiAutoTimer.current = null;
+    }
+  };
+
+  const runRadarAiAutoProgress = (durationMs: number) => {
+    stopRadarAiAutoProgress();
+    const start = Date.now();
+    radarAiAutoTimer.current = setInterval(() => {
+      const elapsed = Date.now() - start;
+      const ratio = Math.min(1, elapsed / durationMs);
+      const next = Math.min(95, Math.max(3, ratio * 95));
+      setRadarAiAutoProgress((prev) => (next > prev ? next : prev));
+      if (ratio >= 1) {
+        stopRadarAiAutoProgress();
+      }
+    }, 800);
+  };
+
   const isRadarImageFile = (file: File) => {
     if (file.type.startsWith("image/")) return true;
     const name = file.name.toLowerCase();
@@ -2710,8 +2736,12 @@ export default function CoachReportBuilderPage() {
     const textSections = reportSections
       .filter((section) => section.type === "text" && section.content.trim())
       .map((section) => `${section.title}: ${section.content.trim()}`);
+    const tpiBlock = tpiContext.trim()
+      ? `Profil TPI: ${tpiContext.trim()}`
+      : "";
     const contextBlocks = [
       ...textSections,
+      tpiBlock,
       workingObservations ? `Observations: ${workingObservations}` : "",
       workingNotes ? `Notes: ${workingNotes}` : "",
       workingClub ? `Club: ${workingClub}` : "",
@@ -2810,10 +2840,17 @@ export default function CoachReportBuilderPage() {
     const radarSections = reportSections.filter(
       (section) => section.type === "radar"
     );
-    const aiSections = radarSections.filter((section) => {
-      const config = section.radarConfig ?? defaultRadarConfig;
-      return config.mode === "ai";
-    });
+    const aiSections = radarSections
+      .map((section) => {
+        const baseConfig =
+          section.radarConfig ??
+          (section.radarFileId
+            ? radarFileMap.get(section.radarFileId)?.config
+            : null) ??
+          defaultRadarConfig;
+        return { section, baseConfig };
+      })
+      .filter((entry) => entry.baseConfig.mode === "ai");
 
     if (!aiSections.length) {
       setRadarAiQaError("Aucune section datas en mode IA.");
@@ -2822,8 +2859,8 @@ export default function CoachReportBuilderPage() {
     }
 
     const missingFiles = aiSections
-      .filter((section) => !section.radarFileId)
-      .map((section) => section.title);
+      .filter((entry) => !entry.section.radarFileId)
+      .map((entry) => entry.section.title);
     if (missingFiles.length) {
       setRadarAiQaError(
         `Selectionne un fichier datas pour: ${missingFiles.join(", ")}.`
@@ -2841,6 +2878,17 @@ export default function CoachReportBuilderPage() {
     }
 
     try {
+      const presets = aiSections.map(
+        (entry) => entry.baseConfig.options?.aiPreset ?? "standard"
+      );
+      const preset = presets.length > 0 && presets.every((value) => value === "ultra")
+        ? "ultra"
+        : "standard";
+      const durationMs = preset === "ultra" ? 60_000 : 240_000;
+      setRadarAiAutoPreset(preset);
+      setRadarAiAutoProgress(3);
+      runRadarAiAutoProgress(durationMs);
+
       const response = await fetch("/api/radar/ai", {
         method: "POST",
         headers: {
@@ -2851,12 +2899,11 @@ export default function CoachReportBuilderPage() {
           mode: "auto",
           context,
           answers: enrichedAnswers,
-          radarSections: aiSections.map((section) => ({
-            id: section.id,
-            radarFileId: section.radarFileId,
-            preset: section.radarConfig?.options?.aiPreset ?? "standard",
-            syntax:
-              section.radarConfig?.options?.aiSyntax ?? "exp-tech-solution",
+          radarSections: aiSections.map((entry) => ({
+            id: entry.section.id,
+            radarFileId: entry.section.radarFileId,
+            preset: entry.baseConfig.options?.aiPreset ?? "standard",
+            syntax: entry.baseConfig.options?.aiSyntax ?? "exp-tech-solution",
           })),
         }),
       });
@@ -2886,18 +2933,27 @@ export default function CoachReportBuilderPage() {
         return;
       }
 
-      const results = (data.sections ?? []) as Array<{
-        sectionId: string;
-        selectionSummary?: string;
-        sessionSummary?: string;
-        charts?: Array<{
-          key: string;
-          title?: string;
-          reason?: string;
-          solution?: string;
-        }>;
+    const results = (data.sections ?? []) as Array<{
+      sectionId: string;
+      selectionSummary?: string;
+      sessionSummary?: string;
+      charts?: Array<{
+        key: string;
+        title?: string;
+        reason?: string;
+        commentary?: string;
+        solution?: string;
       }>;
+    }>;
 
+      const expectedSectionIds = aiSections.map((entry) => entry.section.id);
+      const knownChartKeys = new Set([
+        ...Object.keys(defaultRadarConfig.charts),
+        ...RADAR_CHART_DEFINITIONS.map((definition) => definition.key),
+      ]);
+      let matchedSections = 0;
+      let totalSelected = 0;
+      let totalValidSelected = 0;
       const updatedSections = reportSections.map((section) => {
         if (section.type !== "radar") return section;
         const baseConfig =
@@ -2910,20 +2966,30 @@ export default function CoachReportBuilderPage() {
 
         const result = results.find((item) => item.sectionId === section.id);
         if (!result) return section;
+        matchedSections += 1;
 
         const selectedKeys = (result.charts ?? []).map((chart) => chart.key);
+        const validSelected = selectedKeys.filter((key) =>
+          knownChartKeys.has(key)
+        );
+        totalSelected += selectedKeys.length;
+        totalValidSelected += validSelected.length;
         const nextCharts: Record<string, boolean> = {
           ...defaultRadarConfig.charts,
         };
         Object.keys(nextCharts).forEach((key) => {
-          nextCharts[key] = selectedKeys.includes(key);
+          nextCharts[key] = validSelected.includes(key);
         });
 
         const aiNarratives = (result.charts ?? []).reduce<
-          Record<string, { reason?: string | null; solution?: string | null }>
+          Record<
+            string,
+            { reason?: string | null; commentary?: string | null; solution?: string | null }
+          >
         >((acc, chart) => {
           acc[chart.key] = {
             reason: chart.reason ?? null,
+            commentary: chart.commentary ?? null,
             solution: chart.solution ?? null,
           };
           return acc;
@@ -2961,6 +3027,27 @@ export default function CoachReportBuilderPage() {
         };
       });
 
+      if (matchedSections === 0) {
+        const receivedIds =
+          results.map((item) => item.sectionId).join(", ") || "aucun";
+        setRadarAiQaError(
+          `L IA n a rien renvoye pour les sections datas. Recu: ${receivedIds}.`
+        );
+        return;
+      }
+
+      if (totalValidSelected === 0) {
+        const receivedIds =
+          results.map((item) => item.sectionId).join(", ") || "aucun";
+        const expectedIds = expectedSectionIds.join(", ") || "aucun";
+        const detail =
+          totalSelected > 0 ? "Graphes inconnus ignores." : "Aucun graphe recu.";
+        setRadarAiQaError(
+          `Aucun graphe valide selectionne. ${detail} Recu: ${receivedIds}. Attendu: ${expectedIds}.`
+        );
+        return;
+      }
+
       setReportSections(updatedSections);
       setRadarAiQaError("");
       setRadarAiQaOpen(false);
@@ -2969,7 +3056,9 @@ export default function CoachReportBuilderPage() {
         error instanceof Error ? error.message : "Erreur IA."
       );
     } finally {
+      stopRadarAiAutoProgress();
       setRadarAiAutoBusy(false);
+      setRadarAiAutoProgress(0);
     }
   };
 
@@ -3194,7 +3283,7 @@ export default function CoachReportBuilderPage() {
         },
         body: JSON.stringify({
           ...payload,
-          tpiContext: tpiContext || undefined,
+          tpiContext: studentId ? tpiContext || undefined : undefined,
           settings: {
             tone: aiTone,
             techLevel: aiTechLevel,
@@ -3262,7 +3351,7 @@ export default function CoachReportBuilderPage() {
           propagateMode: payload.propagateMode,
           clarifications: payload.clarifications,
           axesSelections: payload.axesSelections,
-          tpiContext: tpiContext || undefined,
+          tpiContext: studentId ? tpiContext || undefined : undefined,
           settings: {
             tone: aiTone,
             techLevel: aiTechLevel,
@@ -3329,7 +3418,7 @@ export default function CoachReportBuilderPage() {
           allSections: payload.allSections,
           targetSections: payload.targetSections,
           propagateMode: payload.propagateMode,
-          tpiContext: tpiContext || undefined,
+          tpiContext: studentId ? tpiContext || undefined : undefined,
           settings: {
             tone: aiTone,
             techLevel: aiTechLevel,
@@ -3404,7 +3493,7 @@ export default function CoachReportBuilderPage() {
           allSections: payload.allSections,
           targetSections: payload.targetSections,
           clarifications,
-          tpiContext: tpiContext || undefined,
+          tpiContext: studentId ? tpiContext || undefined : undefined,
           settings: {
             tone: aiTone,
             techLevel: aiTechLevel,
@@ -3641,6 +3730,10 @@ export default function CoachReportBuilderPage() {
 
     const handleAiPropagateFromWorking = async () => {
       if (!canUseAi) return;
+      if (!studentId) {
+        setAiError("Choisis un eleve avant de lancer la propagation.");
+        return;
+      }
       const hasObservations = !!workingObservations.trim();
       const hasWork = !!workingNotes.trim();
       if (!hasObservations && !hasWork) {
@@ -4187,23 +4280,34 @@ export default function CoachReportBuilderPage() {
       <>
         <style jsx>{`
           .tpi-dots {
-            display: inline-block;
-            width: 1.5em;
-            overflow: hidden;
-            vertical-align: bottom;
+            display: inline-flex;
+            gap: 0.12em;
+            margin-left: 0.15em;
+            vertical-align: middle;
           }
-          .tpi-dots::after {
-            content: "...";
-            display: block;
-            width: 0;
-            animation: tpiDots 1.4s steps(4, end) infinite;
+          .tpi-dots span {
+            width: 0.28em;
+            height: 0.28em;
+            border-radius: 999px;
+            background: currentColor;
+            opacity: 0.25;
+            animation: tpiDotPulse 1.2s infinite ease-in-out;
           }
-          @keyframes tpiDots {
-            0% {
-              width: 0;
-            }
+          .tpi-dots span:nth-child(2) {
+            animation-delay: 0.2s;
+          }
+          .tpi-dots span:nth-child(3) {
+            animation-delay: 0.4s;
+          }
+          @keyframes tpiDotPulse {
+            0%,
             100% {
-              width: 1.5em;
+              opacity: 0.25;
+              transform: translateY(0);
+            }
+            50% {
+              opacity: 0.9;
+              transform: translateY(-1px);
             }
           }
         `}</style>
@@ -5958,6 +6062,35 @@ export default function CoachReportBuilderPage() {
                   </span>
                 </button>
               </div>
+              {radarAiAutoBusy ? (
+                <div className="mt-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+                  <div className="flex items-center justify-between text-xs text-[var(--muted)]">
+                    <span>
+                      Auto detect datas graph
+                      <span className="tpi-dots" aria-hidden="true">
+                        <span />
+                        <span />
+                        <span />
+                      </span>
+                    </span>
+                    <span className="min-w-[3ch] text-right text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                      {Math.round(radarAiAutoProgress)}%
+                    </span>
+                  </div>
+                  <div className="mt-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                    Mode:{" "}
+                    {radarAiAutoPreset === "ultra"
+                      ? "Ultra focus (1 min)"
+                      : "Standard (4 min)"}
+                  </div>
+                  <div className="mt-2 h-2 w-full rounded-full bg-white/10">
+                    <div
+                      className="h-2 rounded-full bg-violet-300 transition-all duration-700 ease-out"
+                      style={{ width: `${radarAiAutoProgress}%` }}
+                    />
+                  </div>
+                </div>
+              ) : null}
               <details className="mt-3">
                 <summary className="cursor-pointer text-xs uppercase tracking-wide text-[var(--muted)]">
                   Reglages IA
@@ -6691,7 +6824,11 @@ export default function CoachReportBuilderPage() {
                           <div className="flex items-center justify-between text-xs text-[var(--muted)]">
                             <span>
                               Extraction datas
-                              <span className="tpi-dots" aria-hidden="true" />
+                              <span className="tpi-dots" aria-hidden="true">
+                                <span />
+                                <span />
+                                <span />
+                              </span>
                             </span>
                             <span className="min-w-[3ch] text-right text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
                               {Math.round(radarUploadProgress)}%
@@ -6720,16 +6857,34 @@ export default function CoachReportBuilderPage() {
                         </p>
                       ) : null}
                         {radarFile ? (
-                          <RadarCharts
-                            columns={radarFile.columns ?? []}
-                            shots={radarFile.shots ?? []}
-                            stats={radarFile.stats}
-                            summary={radarFile.summary}
-                            config={section.radarConfig ?? radarFile.config}
-                            analytics={radarFile.analytics}
-                            compact
-                          />
-                      ) : (
+                          (() => {
+                            const baseConfig =
+                              section.radarConfig ?? radarFile.config ?? defaultRadarConfig;
+                            const aiSelectionKeys =
+                              baseConfig.options?.aiSelectionKeys ?? [];
+                            const aiNeedsSelection =
+                              baseConfig.mode === "ai" && aiSelectionKeys.length === 0;
+                            if (aiNeedsSelection) {
+                              return (
+                                <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
+                                  Mode IA actif. Lance &quot;Auto detect datas graph&quot; pour
+                                  afficher les graphes.
+                                </div>
+                              );
+                            }
+                            return (
+                              <RadarCharts
+                                columns={radarFile.columns ?? []}
+                                shots={radarFile.shots ?? []}
+                                stats={radarFile.stats}
+                                summary={radarFile.summary}
+                                config={baseConfig}
+                                analytics={radarFile.analytics}
+                                compact
+                              />
+                            );
+                          })()
+                        ) : (
                         <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
                           Selectionne un fichier datas pour previsualiser les
                           graphes.
@@ -6766,7 +6921,12 @@ export default function CoachReportBuilderPage() {
                       </div>
                       {uploadingSections[section.id] ? (
                         <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
-                          Upload en cours<span className="tpi-dots" aria-hidden="true" />
+                          Upload en cours
+                          <span className="tpi-dots" aria-hidden="true">
+                            <span />
+                            <span />
+                            <span />
+                          </span>
                         </div>
                       ) : null}
                       {imageErrors[section.id] ? (
@@ -7587,10 +7747,10 @@ export default function CoachReportBuilderPage() {
                     Mode
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {[
-                      { id: "default", label: "Defaut" },
-                      { id: "custom", label: "Personnalise" },
-                      { id: "ai", label: "IA" },
+                      {[
+                        { id: "default", label: "Defaut" },
+                        { id: "custom", label: "Personnalise" },
+                        { id: "ai", label: "IA" },
                     ].map((option) => (
                       <button
                         key={option.id}
@@ -7604,8 +7764,22 @@ export default function CoachReportBuilderPage() {
                               : {
                                   ...prev,
                                   mode: "ai",
+                                  charts: Object.fromEntries(
+                                    Array.from(
+                                      new Set([
+                                        ...Object.keys(defaultRadarConfig.charts),
+                                        ...RADAR_CHART_DEFINITIONS.map(
+                                          (definition) => definition.key
+                                        ),
+                                      ])
+                                    ).map((key) => [key, false])
+                                  ) as RadarConfig["charts"],
                                   options: {
                                     ...prev.options,
+                                    aiSelectionKeys: [],
+                                    aiNarratives: undefined,
+                                    aiSelectionSummary: null,
+                                    aiSessionSummary: null,
                                     aiPreset:
                                       prev.options?.aiPreset ?? "standard",
                                     aiSyntax:
@@ -7821,6 +7995,7 @@ export default function CoachReportBuilderPage() {
                         }
                         title={item.description}
                         className={`rounded-2xl border px-3 py-3 text-left text-sm transition ${
+                          radarConfigDraft.mode === "custom" &&
                           radarConfigDraft.charts[
                             item.key as keyof RadarConfig["charts"]
                           ]
@@ -7829,7 +8004,7 @@ export default function CoachReportBuilderPage() {
                         } ${
                           radarConfigDraft.mode !== "custom"
                             ? "cursor-not-allowed opacity-60"
-                          : "hover:text-[var(--text)]"
+                            : "hover:text-[var(--text)]"
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -7932,6 +8107,7 @@ export default function CoachReportBuilderPage() {
                                       }))
                                     }
                                     className={`rounded-2xl border px-3 py-3 text-left text-[0.7rem] transition ${
+                                      radarConfigDraft.mode === "custom" &&
                                       radarConfigDraft.charts[definition.key]
                                         ? "border-violet-300/40 bg-violet-400/10 text-violet-100"
                                         : "border-white/10 bg-white/5 text-[var(--muted)]"
@@ -8098,7 +8274,18 @@ export default function CoachReportBuilderPage() {
                       )
                     }
                   >
-                    {radarAiAutoBusy ? "Analyse..." : "Lancer l IA"}
+                    {radarAiAutoBusy ? (
+                      <span className="flex items-center gap-1">
+                        Analyse
+                        <span className="tpi-dots" aria-hidden="true">
+                          <span />
+                          <span />
+                          <span />
+                        </span>
+                      </span>
+                    ) : (
+                      "Lancer l IA"
+                    )}
                   </button>
                 </div>
               </div>

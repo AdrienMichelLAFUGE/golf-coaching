@@ -27,6 +27,12 @@ type RadarExtraction = {
   summary?: string | null;
 };
 
+type RadarVerification = {
+  is_valid: boolean;
+  confidence: number;
+  issues: string[];
+};
+
 const buildRadarSchema = () => ({
   type: "object",
   additionalProperties: false,
@@ -81,6 +87,42 @@ const buildRadarSchema = () => ({
   },
   required: ["source", "metadata", "columns", "rows", "avg", "dev", "summary"],
 });
+
+const buildRadarVerifySchema = () => ({
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    is_valid: { type: "boolean" },
+    confidence: { type: "number", minimum: 0, maximum: 1 },
+    issues: {
+      type: "array",
+      items: { type: "string" },
+    },
+  },
+  required: ["is_valid", "confidence", "issues"],
+});
+
+const buildVerificationSnapshot = (extracted: RadarExtraction) => {
+  const rows = extracted.rows ?? [];
+  const sampleSize = 6;
+  const head = rows.slice(0, sampleSize);
+  const tail =
+    rows.length > sampleSize ? rows.slice(Math.max(rows.length - sampleSize, 0)) : [];
+  return {
+    metadata: extracted.metadata ?? null,
+    columns: (extracted.columns ?? []).map((column) => ({
+      group: column.group ?? null,
+      label: column.label ?? "",
+      unit: column.unit ?? null,
+    })),
+    rowCount: rows.length,
+    sampleRows: head,
+    tailRows: tail.length ? tail : null,
+    avg: extracted.avg ?? null,
+    dev: extracted.dev ?? null,
+    summary: extracted.summary ?? null,
+  };
+};
 
 const normalizeToken = (value: string) =>
   value
@@ -330,6 +372,11 @@ export async function POST(req: Request) {
     output_tokens?: number;
     total_tokens?: number;
   } | null = null;
+  let verifyUsage: {
+    input_tokens?: number;
+    output_tokens?: number;
+    total_tokens?: number;
+  } | null = null;
 
   const recordUsage = async (
     action: string,
@@ -356,6 +403,7 @@ export async function POST(req: Request) {
   };
 
   let extracted: RadarExtraction;
+  const verifyStartedAt = Date.now();
   try {
     const promptTemplate = await loadPromptSection("radar_extract_system");
     const systemPrompt = applyTemplate(promptTemplate, { language });
@@ -410,8 +458,103 @@ export async function POST(req: Request) {
       .from("radar_files")
       .update({ status: "error", error: (error as Error).message ?? "OCR error." })
       .eq("id", radarFileId);
+    await recordUsage("radar_extract", usage, Date.now() - startedAt);
     return Response.json(
       { error: (error as Error).message ?? "Extraction datas impossible." },
+      { status: 500 }
+    );
+  }
+
+  await recordUsage("radar_extract", usage, Date.now() - startedAt);
+
+  try {
+    const verifyPrompt = await loadPromptSection("radar_extract_verify_system");
+    const verificationSnapshot = buildVerificationSnapshot(extracted);
+    const verifyResponse = await openai.responses.create({
+      model: "gpt-5.2",
+      input: [
+        {
+          role: "system",
+          content: [{ type: "input_text", text: verifyPrompt }],
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text:
+                "Voici l extraction a verifier. Compare a l image source et signale toute incoherence.\n" +
+                JSON.stringify(verificationSnapshot, null, 2),
+            },
+            {
+              type: "input_image",
+              image_url: `data:${radarFile.file_mime || "image/png"};base64,${buffer.toString(
+                "base64"
+              )}`,
+              detail: "high",
+            },
+          ],
+        },
+      ],
+      max_output_tokens: 900,
+      text: {
+        format: {
+          type: "json_schema",
+          name: "radar_extract_verify",
+          description: "Verification extraction Flightscope.",
+          schema: buildRadarVerifySchema(),
+          strict: true,
+        },
+      },
+    });
+
+    verifyUsage = verifyResponse.usage ?? verifyUsage;
+    const verifyText = extractOutputText(verifyResponse);
+    if (!verifyText) {
+      throw new Error("Verification vide.");
+    }
+    const verification = JSON.parse(verifyText) as RadarVerification;
+    if (!verification.is_valid) {
+      const issueText = verification.issues?.slice(0, 3).join(" | ");
+      await admin
+        .from("radar_files")
+        .update({
+          status: "error",
+          error: issueText
+            ? `Verification extraction echouee: ${issueText}`
+            : "Verification extraction echouee.",
+        })
+        .eq("id", radarFileId);
+      await recordUsage(
+        "radar_extract_verify",
+        verifyUsage,
+        Date.now() - verifyStartedAt
+      );
+      return Response.json(
+        { error: "Verification extraction echouee." },
+        { status: 422 }
+      );
+    }
+    await recordUsage(
+      "radar_extract_verify",
+      verifyUsage,
+      Date.now() - verifyStartedAt
+    );
+  } catch (error) {
+    await admin
+      .from("radar_files")
+      .update({
+        status: "error",
+        error: (error as Error).message ?? "Verification extraction impossible.",
+      })
+      .eq("id", radarFileId);
+    await recordUsage(
+      "radar_extract_verify",
+      verifyUsage,
+      Date.now() - verifyStartedAt
+    );
+    return Response.json(
+      { error: (error as Error).message ?? "Verification extraction impossible." },
       { status: 500 }
     );
   }
@@ -489,8 +632,6 @@ export async function POST(req: Request) {
       error: null,
     })
     .eq("id", radarFileId);
-
-  await recordUsage("radar_extract", usage, Date.now() - startedAt);
 
   return Response.json({ status: "ok" });
 }

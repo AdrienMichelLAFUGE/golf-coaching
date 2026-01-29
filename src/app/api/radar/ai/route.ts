@@ -4,6 +4,7 @@ import {
   RADAR_CHART_DEFINITIONS,
   RADAR_CHART_GROUPS,
 } from "@/lib/radar/charts/registry";
+import { DEFAULT_RADAR_CONFIG } from "@/lib/radar/config";
 import { PGA_BENCHMARKS } from "@/lib/radar/pga-benchmarks";
 import type { RadarAnalytics } from "@/lib/radar/types";
 import { applyTemplate, loadPromptSection } from "@/lib/promptLoader";
@@ -38,6 +39,7 @@ type RadarAutoChart = {
   key: string;
   title: string;
   reason: string;
+  commentary: string;
   solution: string;
 };
 
@@ -51,6 +53,37 @@ type RadarAutoSection = {
 type RadarAutoResponse = {
   sections: RadarAutoSection[];
 };
+
+const BASE_CHART_KEYS = [
+  "dispersion",
+  "carryTotal",
+  "speeds",
+  "spinCarry",
+  "smash",
+  "faceImpact",
+];
+
+const AI_PRESETS = new Set([
+  "ultra",
+  "synthetic",
+  "standard",
+  "pousse",
+  "complet",
+]);
+
+const AI_SYNTAXES = new Set([
+  "exp-tech",
+  "exp-comp",
+  "exp-tech-solution",
+  "exp-solution",
+  "global",
+]);
+
+const resolvePreset = (value?: string | null) =>
+  value && AI_PRESETS.has(value) ? value : "standard";
+
+const resolveSyntax = (value?: string | null) =>
+  value && AI_SYNTAXES.has(value) ? value : "exp-tech-solution";
 
 const loadRadarPrompt = (section: "questions_system" | "auto_system") =>
   loadPromptSection(section);
@@ -292,16 +325,29 @@ const buildRadarSelectionPrompt = (
     "- standard: 3 a 6 graphes, dont au moins 2 de base.\n" +
     "- pousse: 4 a 10 graphes, dont au moins 4 de base.\n" +
     "- complet: 5 a 10 graphes, dont les 6 graphes de base.";
-  const baseList =
-    "Graphes de base: dispersion, carryTotal, speeds, spinCarry, smash, faceImpact.";
+  const baseList = `Graphes de base: ${BASE_CHART_KEYS.join(", ")}.`;
 
   const sectionLines = sections.map((section, index) => {
     const payload = payloads.find((item) => item.id === section.sectionId);
+    const baseAvailable =
+      payload?.summary?.baseCharts
+        ?.filter((chart) => chart.available)
+        .map((chart) => chart.key) ?? [];
+    const advancedAvailable =
+      payload?.summary?.advancedCharts
+        ?.filter((chart) => chart.available)
+        .map((chart) => chart.key) ?? [];
+    const availableKeys =
+      [...baseAvailable, ...advancedAvailable].length > 0
+        ? [...baseAvailable, ...advancedAvailable]
+        : BASE_CHART_KEYS;
+    const availableLine = availableKeys.join(", ");
     return [
       `Section ${index + 1}: ${section.sectionId}`,
       `Preset: ${payload?.preset ?? "standard"} | Synthaxe: ${
         payload?.syntax ?? "exp-tech-solution"
       }`,
+      `Graphes disponibles (keys): ${availableLine}`,
       `Context: ${context || "-"}`,
       `Reponses coach: ${answers ? JSON.stringify(answers) : "-"}`,
       `Meta: ${payload?.summary?.meta?.club ?? "club inconnu"} | ${
@@ -526,8 +572,8 @@ export async function POST(req: Request) {
       const summary = buildRadarSummary(radarFile.analytics as RadarAnalytics);
       return {
         id: section.id,
-        preset: section.preset ?? "standard",
-        syntax: section.syntax ?? "exp-tech-solution",
+        preset: resolvePreset(section.preset),
+        syntax: resolveSyntax(section.syntax),
         summary,
       };
     })
@@ -565,65 +611,151 @@ export async function POST(req: Request) {
     radarData: autoUserPrompt,
   });
 
-  const response = await openai.responses.create({
-    model,
-    input: [
-      { role: "system", content: `${baseSystemPrompt}\n${autoSystemPrompt}` },
-      {
-        role: "user",
-        content: autoUserText,
-      },
-    ],
-    text: {
-      format: {
-        type: "json_schema",
-        name: "radar_auto",
-        description: "Retourne un objet JSON avec sections et selections.",
-        schema: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            sections: {
-              type: "array",
-              items: {
-                type: "object",
-                additionalProperties: false,
-                properties: {
-                  sectionId: { type: "string" },
-                  selectionSummary: { type: "string" },
-                  sessionSummary: { type: "string" },
-                  charts: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      additionalProperties: false,
-                      properties: {
-                        key: { type: "string" },
-                        title: { type: "string" },
-                        reason: { type: "string" },
-                        solution: { type: "string" },
-                      },
-                      required: ["key", "title", "reason", "solution"],
-                    },
-                  },
-                },
-                required: ["sectionId", "selectionSummary", "sessionSummary", "charts"],
-              },
-            },
-          },
-          required: ["sections"],
-        },
-        strict: true,
-      },
-    },
+  const sectionAllowedKeys = new Map<string, Set<string>>();
+  const allowedKeysSet = new Set<string>();
+  summaries.forEach((entry) => {
+    const baseAvailable = entry.summary.baseCharts
+      .filter((chart) => chart.available)
+      .map((chart) => chart.key);
+    const advancedAvailable = entry.summary.advancedCharts
+      .filter((chart) => chart.available)
+      .map((chart) => chart.key);
+    const availableKeys =
+      [...baseAvailable, ...advancedAvailable].length > 0
+        ? [...baseAvailable, ...advancedAvailable]
+        : BASE_CHART_KEYS;
+    const keysSet = new Set(availableKeys);
+    sectionAllowedKeys.set(entry.id, keysSet);
+    availableKeys.forEach((key) => allowedKeysSet.add(key));
   });
 
+  const allowedKeys = Array.from(allowedKeysSet);
+  const expectedSectionIds = radarSections.map((section) => section.id);
+  const knownChartKeys = new Set([
+    ...Object.keys(DEFAULT_RADAR_CONFIG.charts),
+    ...RADAR_CHART_DEFINITIONS.map((definition) => definition.key),
+  ]);
+  const retryHint = `IMPORTANT: renvoie exactement une section par sectionId. SectionIds: ${expectedSectionIds.join(
+    ", "
+  )}. Chaque section doit contenir au moins 1 graphe (respecte le preset). Utilise uniquement ces graphes autorises: ${allowedKeys.join(
+    ", "
+  )}. Aucun graphe inconnu.`;
+
+  const callAuto = async (extraSystemHint?: string) => {
+    const systemPrompt = extraSystemHint
+      ? `${baseSystemPrompt}\n${autoSystemPrompt}\n${extraSystemHint}`
+      : `${baseSystemPrompt}\n${autoSystemPrompt}`;
+    return openai.responses.create({
+      model,
+      input: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: autoUserText },
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "radar_auto",
+          description: "Retourne un objet JSON avec sections et selections.",
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              sections: {
+                type: "array",
+                minItems: 1,
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    sectionId: { type: "string" },
+                    selectionSummary: { type: "string" },
+                    sessionSummary: { type: "string" },
+                    charts: {
+                      type: "array",
+                      minItems: 1,
+                      items: {
+                        type: "object",
+                        additionalProperties: false,
+                        properties: {
+                          key: { type: "string", enum: allowedKeys },
+                          title: { type: "string" },
+                          reason: { type: "string" },
+                          commentary: { type: "string" },
+                          solution: { type: "string" },
+                        },
+                        required: [
+                          "key",
+                          "title",
+                          "reason",
+                          "commentary",
+                          "solution",
+                        ],
+                      },
+                    },
+                  },
+                  required: [
+                    "sectionId",
+                    "selectionSummary",
+                    "sessionSummary",
+                    "charts",
+                  ],
+                },
+              },
+            },
+            required: ["sections"],
+          },
+          strict: true,
+        },
+      },
+    });
+  };
+
+  const isValidSelection = (parsed: RadarAutoResponse) => {
+    if (!parsed.sections?.length) return false;
+    const idSet = new Set(parsed.sections.map((section) => section.sectionId));
+    const hasAllSections = expectedSectionIds.every((id) => idSet.has(id));
+    const hasCharts = parsed.sections.every(
+      (section) => Array.isArray(section.charts) && section.charts.length > 0
+    );
+    const keysValid = parsed.sections.every((section) => {
+      const allowed = sectionAllowedKeys.get(section.sectionId);
+      if (!allowed) return false;
+      return section.charts.every(
+        (chart) => knownChartKeys.has(chart.key) && allowed.has(chart.key)
+      );
+    });
+    return hasAllSections && hasCharts && keysValid;
+  };
+
+  const parseAutoResponse = (rawText: string) => {
+    const text = rawText.trim();
+    return JSON.parse(text) as RadarAutoResponse;
+  };
+
+  let response = await callAuto();
   usage = response.usage ?? null;
   await recordUsage("radar_auto", usage, Date.now() - startedAt);
 
-  const text = response.output_text?.trim() ?? "";
+  let text = response.output_text?.trim() ?? "";
   try {
-    const parsed = JSON.parse(text) as RadarAutoResponse;
+    let parsed = parseAutoResponse(text);
+    if (!isValidSelection(parsed)) {
+      response = await callAuto(retryHint);
+      usage = response.usage ?? null;
+      await recordUsage("radar_auto_retry", usage, Date.now() - startedAt);
+      text = response.output_text?.trim() ?? "";
+      parsed = parseAutoResponse(text);
+    }
+    if (!isValidSelection(parsed)) {
+      return Response.json(
+        {
+          error:
+            "Reponse IA invalide (selection vide ou section manquante).",
+          raw: text,
+        },
+        { status: 500 }
+      );
+    }
     return Response.json(parsed);
   } catch {
     return Response.json(

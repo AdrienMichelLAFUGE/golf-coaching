@@ -294,26 +294,36 @@ const formatDelta = (value: number, unit: string) => {
 
 const AiNarrative = ({
   reason,
+  commentary,
   solution,
 }: {
   reason?: string | null;
+  commentary?: string | null;
   solution?: string | null;
 }) =>
-  reason || solution ? (
-    <div className="mt-3 rounded-xl border border-violet-300/20 bg-violet-400/10 px-3 py-2 text-[0.72rem] text-[var(--text)]">
-      <p className="text-[0.55rem] uppercase tracking-wide text-violet-200/80">
+  reason || commentary || solution ? (
+    <div className="mt-3 rounded-2xl border border-violet-300/20 bg-violet-400/10 px-4 py-3 text-[0.85rem] leading-relaxed text-[var(--text)]">
+      <p className="text-[0.6rem] uppercase tracking-wide text-violet-200/80">
         IA - analyse & pistes
       </p>
       {reason ? (
-        <p className="mt-1">
+        <p className="mt-2">
           <span className="font-semibold text-violet-100">
             Pourquoi ce graphe:
           </span>{" "}
           {reason}
         </p>
       ) : null}
+      {commentary ? (
+        <p className="mt-2">
+          <span className="font-semibold text-violet-100">
+            Lecture du graphe:
+          </span>{" "}
+          {commentary}
+        </p>
+      ) : null}
       {solution ? (
-        <p className="mt-1">
+        <p className="mt-2">
           <span className="font-semibold text-violet-100">Pistes:</span>{" "}
           {solution}
         </p>
@@ -2949,7 +2959,10 @@ export default function RadarCharts({
     }
     if (aiNarrativeMode === "off" || !analytics) return {};
     const units = analytics.meta?.units ?? {};
-    const narratives: Record<string, { reason?: string | null; solution?: string | null }> = {};
+    const narratives: Record<
+      string,
+      { reason?: string | null; commentary?: string | null; solution?: string | null }
+    > = {};
     const latThreshold = resolvedConfig.thresholds?.latCorridorMeters?.[1] ?? 10;
     const lateralUnit =
       units.lateral ?? metrics.distanceLateral?.unit ?? "m";
@@ -3485,6 +3498,7 @@ const buildSegmentInsight = (summaries: Array<Record<string, unknown>>) => {
                 {aiNarrativeDispersion ? (
                   <AiNarrative
                     reason={aiNarrativeDispersion?.reason}
+                    commentary={aiNarrativeDispersion?.commentary}
                     solution={aiNarrativeDispersion?.solution}
                   />
                 ) : (
@@ -3548,6 +3562,7 @@ const buildSegmentInsight = (summaries: Array<Record<string, unknown>>) => {
                 {aiNarrativeCarryTotal ? (
                   <AiNarrative
                     reason={aiNarrativeCarryTotal?.reason}
+                    commentary={aiNarrativeCarryTotal?.commentary}
                     solution={aiNarrativeCarryTotal?.solution}
                   />
                 ) : (
@@ -3611,6 +3626,7 @@ const buildSegmentInsight = (summaries: Array<Record<string, unknown>>) => {
                 {aiNarrativeSpeeds ? (
                   <AiNarrative
                     reason={aiNarrativeSpeeds?.reason}
+                    commentary={aiNarrativeSpeeds?.commentary}
                     solution={aiNarrativeSpeeds?.solution}
                   />
                 ) : (
@@ -3658,6 +3674,7 @@ const buildSegmentInsight = (summaries: Array<Record<string, unknown>>) => {
                 {aiNarrativeSpinCarry ? (
                   <AiNarrative
                     reason={aiNarrativeSpinCarry?.reason}
+                    commentary={aiNarrativeSpinCarry?.commentary}
                     solution={aiNarrativeSpinCarry?.solution}
                   />
                 ) : (
@@ -3710,6 +3727,7 @@ const buildSegmentInsight = (summaries: Array<Record<string, unknown>>) => {
                 {aiNarrativeSmash ? (
                   <AiNarrative
                     reason={aiNarrativeSmash?.reason}
+                    commentary={aiNarrativeSmash?.commentary}
                     solution={aiNarrativeSmash?.solution}
                   />
                 ) : (
@@ -3762,6 +3780,7 @@ const buildSegmentInsight = (summaries: Array<Record<string, unknown>>) => {
                 {aiNarrativeFaceImpact ? (
                   <AiNarrative
                     reason={aiNarrativeFaceImpact?.reason}
+                    commentary={aiNarrativeFaceImpact?.commentary}
                     solution={aiNarrativeFaceImpact?.solution}
                   />
                 ) : (
@@ -3779,119 +3798,118 @@ const buildSegmentInsight = (summaries: Array<Record<string, unknown>>) => {
       </div>
 
       {analytics?.chartsData && hasAdvancedSelection ? (
-        <details className="rounded-2xl border border-white/10 bg-white/5 p-4">
-          <summary className="cursor-pointer text-xs uppercase tracking-wide text-[var(--muted)]">
+        <div className="space-y-4">
+          <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
             Analyses avancees
-          </summary>
-          <div className="mt-4 space-y-6">
-            {advancedGroups.map((group) => {
-              const availableCharts = group.charts.filter(
-                (chart) => resolvedConfig.charts[chart.key] !== false
-              );
-              if (!availableCharts.length) return null;
-              return (
-                <div key={group.key} className="space-y-3">
-                  <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                    {group.label}
-                  </p>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {availableCharts.map((chart) => {
-                      const chartData = analytics.chartsData[chart.key];
-                      const advancedCommentary = chartData?.payload
-                        ? buildPayloadCommentary(chartData.payload)
-                        : null;
-                      const advancedHighlights = chartData?.payload
-                        ? buildPayloadHighlights(chartData.payload)
-                        : [];
-                      const advancedTone = chartData?.payload
-                        ? buildPayloadTone(chartData.payload)
-                        : "warn";
-                      const advancedCount = chartData?.payload
-                        ? chartData.payload.type === "scatter"
-                          ? chartData.payload.points.length
-                          : chartData.payload.type === "line"
-                          ? chartData.payload.series[0]?.values.length ?? null
-                          : chartData.payload.type === "hist"
-                          ? chartData.payload.bins.reduce(
-                              (acc, bin) => acc + bin.count,
-                              0
-                            )
-                          : chartData.payload.type === "matrix"
-                          ? chartData.payload.variables.length
-                          : chartData.payload.type === "model"
-                          ? chartData.payload.model.n
-                          : null
-                        : null;
-                      const chartNarrative = resolveAiNarrative(chart.key);
-                      return (
-                          <div key={chart.key} className="panel-soft rounded-2xl p-4">
-                            <div className="flex items-start justify-between gap-4">
-                              <div>
-                                <p className="text-xs uppercase tracking-wide text-[var(--muted)] underline decoration-white/30 underline-offset-2">
-                                  {chart.title}
-                                </p>
-                                <ThumbBadge tone={advancedTone} />
-                              </div>
-                              <ChartHeaderRight
-                                count={advancedCount}
-                                highlights={advancedHighlights}
+          </p>
+          {advancedGroups.map((group) => {
+            const availableCharts = group.charts.filter(
+              (chart) => resolvedConfig.charts[chart.key] !== false
+            );
+            if (!availableCharts.length) return null;
+            return (
+              <div key={group.key} className="space-y-3">
+                <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                  {group.label}
+                </p>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {availableCharts.map((chart) => {
+                    const chartData = analytics.chartsData[chart.key];
+                    const advancedCommentary = chartData?.payload
+                      ? buildPayloadCommentary(chartData.payload)
+                      : null;
+                    const advancedHighlights = chartData?.payload
+                      ? buildPayloadHighlights(chartData.payload)
+                      : [];
+                    const advancedTone = chartData?.payload
+                      ? buildPayloadTone(chartData.payload)
+                      : "warn";
+                    const advancedCount = chartData?.payload
+                      ? chartData.payload.type === "scatter"
+                        ? chartData.payload.points.length
+                        : chartData.payload.type === "line"
+                        ? chartData.payload.series[0]?.values.length ?? null
+                        : chartData.payload.type === "hist"
+                        ? chartData.payload.bins.reduce(
+                            (acc, bin) => acc + bin.count,
+                            0
+                          )
+                        : chartData.payload.type === "matrix"
+                        ? chartData.payload.variables.length
+                        : chartData.payload.type === "model"
+                        ? chartData.payload.model.n
+                        : null
+                      : null;
+                    const chartNarrative = resolveAiNarrative(chart.key);
+                    return (
+                      <div key={chart.key} className="panel-soft rounded-2xl p-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-[var(--muted)] underline decoration-white/30 underline-offset-2">
+                              {chart.title}
+                            </p>
+                            <ThumbBadge tone={advancedTone} />
+                          </div>
+                          <ChartHeaderRight
+                            count={advancedCount}
+                            highlights={advancedHighlights}
+                          />
+                        </div>
+                        <div className="mt-3">
+                          {chartData?.available && chartData.payload ? (
+                            <div
+                              className={
+                                chartData.payload.type === "scatter" ||
+                                chartData.payload.type === "line" ||
+                                chartData.payload.type === "hist"
+                                  ? "h-[18rem]"
+                                  : ""
+                              }
+                            >
+                              <ChartCard
+                                payload={chartData.payload}
+                                outlierShotSet={outlierShotSet}
                               />
                             </div>
-                            <div className="mt-3">
-                              {chartData?.available && chartData.payload ? (
-                              <div
-                                className={
-                                  chartData.payload.type === "scatter" ||
-                                  chartData.payload.type === "line" ||
-                                  chartData.payload.type === "hist"
-                                    ? "h-[18rem]"
-                                    : ""
-                                }
-                              >
-                                <ChartCard
-                                  payload={chartData.payload}
-                                  outlierShotSet={outlierShotSet}
+                          ) : (
+                            <div className="flex h-32 items-center justify-center text-xs text-[var(--muted)]">
+                              Donnees insuffisantes
+                            </div>
+                          )}
+                          {chartData?.payload ? (
+                            <>
+                              <ChartDescription text={chart.description} />
+                              {chartNarrative ? (
+                                <AiNarrative
+                                  reason={chartNarrative?.reason}
+                                  commentary={chartNarrative?.commentary}
+                                  solution={chartNarrative?.solution}
                                 />
-                              </div>
                               ) : (
-                                <div className="flex h-32 items-center justify-center text-xs text-[var(--muted)]">
-                                  Donnees insuffisantes
-                                </div>
+                                <ChartCommentary text={advancedCommentary} />
                               )}
-                            {chartData?.payload ? (
-                              <>
-                                <ChartDescription text={chart.description} />
-                                {chartNarrative ? (
-                                  <AiNarrative
-                                    reason={chartNarrative?.reason}
-                                    solution={chartNarrative?.solution}
-                                  />
-                                ) : (
-                                  <ChartCommentary text={advancedCommentary} />
-                                )}
-                                <InsightText
-                                  text={
-                                    chartData.payload.insight ??
-                                    computeInsightFromPayload(chartData.payload)
-                                  }
-                                />
-                              </>
-                            ) : null}
-                            {chartData?.payload?.notes ? (
-                              <p className="mt-1 text-[0.6rem] text-[var(--muted)]">
-                                {chartData.payload.notes}
-                              </p>
-                            ) : null}
-                          </div>
+                              <InsightText
+                                text={
+                                  chartData.payload.insight ??
+                                  computeInsightFromPayload(chartData.payload)
+                                }
+                              />
+                            </>
+                          ) : null}
+                          {chartData?.payload?.notes ? (
+                            <p className="mt-1 text-[0.6rem] text-[var(--muted)]">
+                              {chartData.payload.notes}
+                            </p>
+                          ) : null}
                         </div>
-                      );
-                    })}
-                  </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
-          </div>
-        </details>
+              </div>
+            );
+          })}
+        </div>
       ) : null}
 
       {aiSelectionSummary || aiSessionSummary ? (
