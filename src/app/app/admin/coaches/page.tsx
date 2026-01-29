@@ -25,6 +25,7 @@ export default function AdminCoachesPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
+  const [showOrphaned, setShowOrphaned] = useState(false);
 
   const loadOrganizations = async () => {
     setLoading(true);
@@ -71,8 +72,11 @@ export default function AdminCoachesPage() {
 
   const filtered = useMemo(() => {
     const search = query.trim().toLowerCase();
-    if (!search) return organizations;
-    return organizations.filter((org) => {
+    const scoped = showOrphaned
+      ? organizations
+      : organizations.filter((org) => org.owner?.id);
+    if (!search) return scoped;
+    return scoped.filter((org) => {
       const owner = org.owner?.full_name ?? "";
       const ownerEmail = org.owner?.email ?? "";
       return (
@@ -81,7 +85,7 @@ export default function AdminCoachesPage() {
         ownerEmail.toLowerCase().includes(search)
       );
     });
-  }, [organizations, query]);
+  }, [organizations, query, showOrphaned]);
 
   const handleDeleteCoach = async (coachId: string, orgId: string) => {
     if (!coachId) return;
@@ -206,7 +210,16 @@ export default function AdminCoachesPage() {
               placeholder="Rechercher une organisation"
               className="w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-4 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500 md:max-w-sm"
             />
-            <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
+            <div className="flex items-center gap-3 text-xs text-[var(--muted)]">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showOrphaned}
+                  onChange={(event) => setShowOrphaned(event.target.checked)}
+                  className="h-4 w-4 rounded border border-white/10 bg-[var(--bg-elevated)]"
+                />
+                <span>Afficher les orgs sans owner</span>
+              </label>
               <span>{filtered.length} organisations</span>
             </div>
           </div>
