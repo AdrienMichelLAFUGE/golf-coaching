@@ -23,9 +23,7 @@ export default function AdminGuard({ children, fallback }: AdminGuardProps) {
     return (
       fallback ?? (
         <section className="panel rounded-2xl p-6">
-          <p className="text-sm text-[var(--muted)]">
-            Acces reserve a l administrateur.
-          </p>
+          <p className="text-sm text-[var(--muted)]">Acces reserve a l administrateur.</p>
         </section>
       )
     );

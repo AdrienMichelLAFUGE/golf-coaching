@@ -5,7 +5,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../../_components/role-guard";
 import { useProfile } from "../../../_components/profile-context";
 import PageBack from "../../../_components/page-back";
@@ -170,27 +170,25 @@ export default function CoachReportDetailPage() {
       );
 
       if (radarIds.length > 0) {
-          const { data: radarData } = await supabase
-            .from("radar_files")
-            .select("id, original_name, columns, shots, stats, summary, config, analytics")
-            .in("id", radarIds);
+        const { data: radarData } = await supabase
+          .from("radar_files")
+          .select("id, original_name, columns, shots, stats, summary, config, analytics")
+          .in("id", radarIds);
 
         const radarMap: Record<string, RadarFile> = {};
-          (radarData ?? []).forEach((file) => {
-            radarMap[file.id] = {
-              ...file,
-              columns: Array.isArray(file.columns) ? file.columns : [],
-              shots: Array.isArray(file.shots) ? file.shots : [],
-              stats:
-                file.stats && typeof file.stats === "object" ? file.stats : null,
-              analytics:
-                file.analytics && typeof file.analytics === "object"
-                  ? file.analytics
-                  : null,
-              config:
-                file.config && typeof file.config === "object" ? file.config : null,
-            } as RadarFile;
-          });
+        (radarData ?? []).forEach((file) => {
+          radarMap[file.id] = {
+            ...file,
+            columns: Array.isArray(file.columns) ? file.columns : [],
+            shots: Array.isArray(file.shots) ? file.shots : [],
+            stats: file.stats && typeof file.stats === "object" ? file.stats : null,
+            analytics:
+              file.analytics && typeof file.analytics === "object"
+                ? file.analytics
+                : null,
+            config: file.config && typeof file.config === "object" ? file.config : null,
+          } as RadarFile;
+        });
         setRadarFiles(radarMap);
       } else {
         setRadarFiles({});
@@ -203,9 +201,7 @@ export default function CoachReportDetailPage() {
 
   const handleDelete = async () => {
     if (!report) return;
-    const confirmed = window.confirm(
-      `Supprimer le rapport "${report.title}" ?`
-    );
+    const confirmed = window.confirm(`Supprimer le rapport "${report.title}" ?`);
     if (!confirmed) return;
 
     setDeleting(true);
@@ -225,9 +221,7 @@ export default function CoachReportDetailPage() {
 
   const handlePublish = async () => {
     if (!report || report.sent_at) return;
-    const confirmed = window.confirm(
-      `Publier le rapport "${report.title}" ?`
-    );
+    const confirmed = window.confirm(`Publier le rapport "${report.title}" ?`);
     if (!confirmed) return;
 
     setPublishing(true);
@@ -256,9 +250,7 @@ export default function CoachReportDetailPage() {
         </section>
       ) : error || !report ? (
         <section className="panel rounded-2xl p-6">
-          <p className="text-sm text-red-400">
-            {error || "Rapport introuvable."}
-          </p>
+          <p className="text-sm text-red-400">{error || "Rapport introuvable."}</p>
         </section>
       ) : (
         <div className="space-y-6">
@@ -283,11 +275,7 @@ export default function CoachReportDetailPage() {
                 </div>
                 <p className="mt-2 text-sm text-[var(--muted)]">
                   Date :{" "}
-                  {formatDate(
-                    report.report_date ?? report.created_at,
-                    locale,
-                    timezone
-                  )}
+                  {formatDate(report.report_date ?? report.created_at, locale, timezone)}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -342,51 +330,51 @@ export default function CoachReportDetailPage() {
                         tone ? tone.panel : "border-white/10 bg-white/5"
                       }`}
                     >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-lg font-semibold text-[var(--text)]">
-                        {section.title}
-                      </h3>
-                      {renderFeatureBadge(featureKey)}
-                    </div>
-                    {section.type === "image" ? (
-                      section.media_urls && section.media_urls.length > 0 ? (
-                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                          {section.media_urls.map((url, index) => (
-                            <div
-                              key={url}
-                              className="overflow-hidden rounded-xl border border-white/10 bg-black/30"
-                            >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-lg font-semibold text-[var(--text)]">
+                          {section.title}
+                        </h3>
+                        {renderFeatureBadge(featureKey)}
+                      </div>
+                      {section.type === "image" ? (
+                        section.media_urls && section.media_urls.length > 0 ? (
+                          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                            {section.media_urls.map((url, index) => (
                               <div
-                                className="relative w-full"
-                                style={{ aspectRatio: "3 / 4" }}
+                                key={url}
+                                className="overflow-hidden rounded-xl border border-white/10 bg-black/30"
                               >
-                                <img
-                                  src={url}
-                                  alt={section.title}
-                                  className="absolute inset-0 h-full w-full object-cover"
-                                  loading="lazy"
-                                />
-                              </div>
-                              {section.media_captions?.[index] ? (
-                                <div className="border-t border-white/10 bg-black/60 px-3 py-2 text-xs text-white/80">
-                                  {section.media_captions[index]}
+                                <div
+                                  className="relative w-full"
+                                  style={{ aspectRatio: "3 / 4" }}
+                                >
+                                  <img
+                                    src={url}
+                                    alt={section.title}
+                                    className="absolute inset-0 h-full w-full object-cover"
+                                    loading="lazy"
+                                  />
                                 </div>
-                              ) : null}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="mt-3 text-sm text-[var(--muted)]">
-                          Aucune image pour cette section.
-                        </p>
-                      )
-                    ) : section.type === "radar" ? (
-                      (() => {
-                        const radarFile = section.radar_file_id
-                          ? radarFiles[section.radar_file_id]
-                          : null;
-                        return radarFile ? (
-                          <div className="mt-3">
+                                {section.media_captions?.[index] ? (
+                                  <div className="border-t border-white/10 bg-black/60 px-3 py-2 text-xs text-white/80">
+                                    {section.media_captions[index]}
+                                  </div>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="mt-3 text-sm text-[var(--muted)]">
+                            Aucune image pour cette section.
+                          </p>
+                        )
+                      ) : section.type === "radar" ? (
+                        (() => {
+                          const radarFile = section.radar_file_id
+                            ? radarFiles[section.radar_file_id]
+                            : null;
+                          return radarFile ? (
+                            <div className="mt-3">
                               <RadarCharts
                                 columns={radarFile.columns ?? []}
                                 shots={radarFile.shots ?? []}
@@ -395,20 +383,20 @@ export default function CoachReportDetailPage() {
                                 config={section.radar_config ?? radarFile.config}
                                 analytics={radarFile.analytics}
                               />
-                          </div>
-                        ) : (
-                          <p className="mt-3 text-sm text-[var(--muted)]">
-                            Donnees datas indisponibles.
-                          </p>
-                        );
-                      })()
-                    ) : (
-                      <p className="mt-3 text-sm text-justify text-[var(--muted)] whitespace-pre-wrap">
-                        {section.content || "Aucun contenu pour cette section."}
-                      </p>
-                    )}
-                  </div>
-                );
+                            </div>
+                          ) : (
+                            <p className="mt-3 text-sm text-[var(--muted)]">
+                              Donnees datas indisponibles.
+                            </p>
+                          );
+                        })()
+                      ) : (
+                        <p className="mt-3 text-sm text-justify text-[var(--muted)] whitespace-pre-wrap">
+                          {section.content || "Aucun contenu pour cette section."}
+                        </p>
+                      )}
+                    </div>
+                  );
                 })}
               </div>
             )}

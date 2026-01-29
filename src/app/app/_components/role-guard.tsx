@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabase/client";
 import { useProfile } from "./profile-context";
 
 type RoleGuardProps = {
@@ -10,11 +10,7 @@ type RoleGuardProps = {
   fallback?: React.ReactNode;
 };
 
-export default function RoleGuard({
-  allowedRoles,
-  children,
-  fallback,
-}: RoleGuardProps) {
+export default function RoleGuard({ allowedRoles, children, fallback }: RoleGuardProps) {
   const { profile, loading } = useProfile();
   const didUpdateStudent = useRef(false);
 
@@ -49,9 +45,7 @@ export default function RoleGuard({
   if (loading) {
     return (
       <section className="panel rounded-2xl p-6">
-        <p className="text-sm text-[var(--muted)]">
-          Chargement des droits...
-        </p>
+        <p className="text-sm text-[var(--muted)]">Chargement des droits...</p>
       </section>
     );
   }
@@ -60,9 +54,7 @@ export default function RoleGuard({
     return (
       fallback ?? (
         <section className="panel rounded-2xl p-6">
-          <p className="text-sm text-[var(--muted)]">
-            Acces reserve a ce profil.
-          </p>
+          <p className="text-sm text-[var(--muted)]">Acces reserve a ce profil.</p>
         </section>
       )
     );

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../_components/role-guard";
 import { useProfile } from "../_components/profile-context";
 
@@ -37,15 +37,10 @@ export default function CoachDashboardPage() {
 
   useEffect(() => {
     const loadStats = async () => {
-      const [{ count: studentTotal }, { count: reportTotal }] =
-        await Promise.all([
-          supabase
-            .from("students")
-            .select("id", { count: "exact", head: true }),
-          supabase
-            .from("reports")
-            .select("id", { count: "exact", head: true }),
-        ]);
+      const [{ count: studentTotal }, { count: reportTotal }] = await Promise.all([
+        supabase.from("students").select("id", { count: "exact", head: true }),
+        supabase.from("reports").select("id", { count: "exact", head: true }),
+      ]);
 
       setStudentsCount(studentTotal ?? null);
       setReportsCount(reportTotal ?? null);
@@ -159,9 +154,7 @@ export default function CoachDashboardPage() {
           </div>
 
           <div className="panel rounded-2xl p-6">
-            <h3 className="text-lg font-semibold text-[var(--text)]">
-              Acces rapides
-            </h3>
+            <h3 className="text-lg font-semibold text-[var(--text)]">Acces rapides</h3>
             <div className="mt-4 space-y-3 text-sm text-[var(--muted)]">
               <Link
                 href="/app/coach/eleves"

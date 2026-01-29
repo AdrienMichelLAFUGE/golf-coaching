@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { isAdminEmail } from "@/lib/admin";
+import {
+  createSupabaseAdminClient,
+  createSupabaseServerClientFromRequest,
+} from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -49,11 +52,7 @@ const toNumber = (value: number | string | null) => {
   return Number.isFinite(numeric) ? numeric : 0;
 };
 
-const computeCostUsd = (
-  inputTokens: number,
-  outputTokens: number,
-  model: string
-) => {
+const computeCostUsd = (inputTokens: number, outputTokens: number, model: string) => {
   const pricing = getPricing(model);
   return (
     (inputTokens / 1_000_000) * pricing.input +
@@ -62,23 +61,7 @@ const computeCostUsd = (
 };
 
 const requireAdmin = async (request: Request) => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
-    return {
-      error: NextResponse.json(
-        { error: "Missing Supabase env vars." },
-        { status: 500 }
-      ),
-    };
-  }
-
-  const authHeader = request.headers.get("authorization") ?? "";
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    global: { headers: { Authorization: authHeader } },
-  });
+  const supabase = createSupabaseServerClientFromRequest(request);
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
   const email = userData.user?.email ?? "";
@@ -89,7 +72,7 @@ const requireAdmin = async (request: Request) => {
   }
 
   return {
-    admin: createClient(supabaseUrl, serviceRoleKey),
+    admin: createSupabaseAdminClient(),
   };
 };
 
@@ -102,9 +85,7 @@ export async function GET(request: Request) {
     90,
     Math.max(1, Number(url.searchParams.get("days") ?? 30))
   );
-  const since = new Date(
-    Date.now() - windowDays * 24 * 60 * 60 * 1000
-  ).toISOString();
+  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
 
   const { data: usage, error: usageError } = await auth.admin
     .from("ai_usage")
@@ -116,10 +97,7 @@ export async function GET(request: Request) {
     .limit(2000);
 
   if (usageError) {
-    return NextResponse.json(
-      { error: usageError.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: usageError.message }, { status: 500 });
   }
 
   const [
@@ -195,9 +173,7 @@ export async function GET(request: Request) {
       },
     ])
   );
-  const orgById = new Map(
-    (organizations ?? []).map((org) => [org.id, org.name ?? ""])
-  );
+  const orgById = new Map((organizations ?? []).map((org) => [org.id, org.name ?? ""]));
 
   const rows = (usage ?? []) as UsageRow[];
   let totalTokens = 0;
@@ -231,9 +207,7 @@ export async function GET(request: Request) {
     const outputTokensRaw = toNumber(row.output_tokens);
     const hasSplit = inputTokensRaw > 0 || outputTokensRaw > 0;
     const inputTokens = hasSplit ? inputTokensRaw : Math.floor(tokens / 2);
-    const outputTokens = hasSplit
-      ? outputTokensRaw
-      : Math.max(0, tokens - inputTokens);
+    const outputTokens = hasSplit ? outputTokensRaw : Math.max(0, tokens - inputTokens);
     totalTokens += tokens;
     totalRequests += 1;
     const modelKey = row.model ?? "gpt-5.2";
@@ -244,14 +218,13 @@ export async function GET(request: Request) {
       durationCount += 1;
     }
 
-    const coachEntry =
-      coachMap.get(row.user_id) ?? {
-        user_id: row.user_id,
-        org_id: row.org_id,
-        requests: 0,
-        tokens: 0,
-        costUsd: 0,
-      };
+    const coachEntry = coachMap.get(row.user_id) ?? {
+      user_id: row.user_id,
+      org_id: row.org_id,
+      requests: 0,
+      tokens: 0,
+      costUsd: 0,
+    };
     coachEntry.requests += 1;
     coachEntry.tokens += tokens;
     coachEntry.costUsd += rowCostUsd;
@@ -266,21 +239,19 @@ export async function GET(request: Request) {
       radarImportRequests += 1;
       radarImportCostUsd += rowCostUsd;
     }
-    const featureEntry =
-      featureMap.get(featureKey) ?? {
-        feature: featureKey,
-        requests: 0,
-        tokens: 0,
-        costUsd: 0,
-      };
+    const featureEntry = featureMap.get(featureKey) ?? {
+      feature: featureKey,
+      requests: 0,
+      tokens: 0,
+      costUsd: 0,
+    };
     featureEntry.requests += 1;
     featureEntry.tokens += tokens;
     featureEntry.costUsd += rowCostUsd;
     featureMap.set(featureKey, featureEntry);
 
     const dateKey = row.created_at.slice(0, 10);
-    const dailyEntry =
-      dailyMap.get(dateKey) ?? { date: dateKey, requests: 0, tokens: 0 };
+    const dailyEntry = dailyMap.get(dateKey) ?? { date: dateKey, requests: 0, tokens: 0 };
     dailyEntry.requests += 1;
     dailyEntry.tokens += tokens;
     dailyMap.set(dateKey, dailyEntry);
@@ -302,9 +273,7 @@ export async function GET(request: Request) {
     .sort((a, b) => b.tokens - a.tokens)
     .slice(0, 12);
 
-  const features = Array.from(featureMap.values()).sort(
-    (a, b) => b.tokens - a.tokens
-  );
+  const features = Array.from(featureMap.values()).sort((a, b) => b.tokens - a.tokens);
 
   const daily = Array.from(dailyMap.values())
     .sort((a, b) => a.date.localeCompare(b.date))
@@ -320,45 +289,25 @@ export async function GET(request: Request) {
   const tpiReportsTotal = tpiReportsCount ?? 0;
   const tpiReportsReady = tpiReportsReadyCount ?? 0;
   const reportsTotal = reportsCount ?? 0;
-  const avgTokensPerRequest = totalRequests
-    ? totalTokens / totalRequests
-    : 0;
+  const avgTokensPerRequest = totalRequests ? totalTokens / totalRequests : 0;
   const avgTokensPerDay = windowDays ? totalTokens / windowDays : 0;
   const avgTokensPerCoach = activeCoaches ? totalTokens / activeCoaches : 0;
   const avgRequestsPerDay = windowDays ? totalRequests / windowDays : 0;
   const avgRequestsPerCoach = activeCoaches ? totalRequests / activeCoaches : 0;
   const avgDurationMs = durationCount ? totalDurationMs / durationCount : 0;
-  const avgRadarImportsPerDay = windowDays
-    ? radarImportRequests / windowDays
-    : 0;
-  const costPerRequestUsd = totalRequests
-    ? totalCostUsd / totalRequests
-    : 0;
+  const avgRadarImportsPerDay = windowDays ? radarImportRequests / windowDays : 0;
+  const costPerRequestUsd = totalRequests ? totalCostUsd / totalRequests : 0;
   const costPerDayUsd = windowDays ? totalCostUsd / windowDays : 0;
-  const costPerCoachUsd = activeCoaches
-    ? totalCostUsd / activeCoaches
-    : 0;
-  const costPerStudentUsd = activeStudents
-    ? totalCostUsd / activeStudents
-    : 0;
-  const costPerReportUsd = reportsTotal
-    ? reportCostUsd / reportsTotal
-    : 0;
-  const costPerTpiUsd = tpiReportsReady
-    ? tpiCostUsd / tpiReportsReady
-    : 0;
+  const costPerCoachUsd = activeCoaches ? totalCostUsd / activeCoaches : 0;
+  const costPerStudentUsd = activeStudents ? totalCostUsd / activeStudents : 0;
+  const costPerReportUsd = reportsTotal ? reportCostUsd / reportsTotal : 0;
+  const costPerTpiUsd = tpiReportsReady ? tpiCostUsd / tpiReportsReady : 0;
   const costPerRadarUsd = radarImportRequests
     ? radarImportCostUsd / radarImportRequests
     : 0;
-  const adoptionCoachRate = totalCoaches
-    ? (activeCoaches / totalCoaches) * 100
-    : 0;
-  const tpiCoverageRate = totalStudents
-    ? (studentsWithTpi / totalStudents) * 100
-    : 0;
-  const tpiSuccessRate = tpiReportsTotal
-    ? (tpiReportsReady / tpiReportsTotal) * 100
-    : 0;
+  const adoptionCoachRate = totalCoaches ? (activeCoaches / totalCoaches) * 100 : 0;
+  const tpiCoverageRate = totalStudents ? (studentsWithTpi / totalStudents) * 100 : 0;
+  const tpiSuccessRate = tpiReportsTotal ? (tpiReportsReady / tpiReportsTotal) * 100 : 0;
 
   return NextResponse.json({
     windowDays,

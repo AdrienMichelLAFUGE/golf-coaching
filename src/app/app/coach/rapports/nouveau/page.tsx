@@ -11,7 +11,7 @@ import {
   useState,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabase/client";
 import { defaultSectionTemplates } from "@/lib/default-section-templates";
 import RoleGuard from "../../../_components/role-guard";
 import { useProfile } from "../../../_components/profile-context";
@@ -24,10 +24,7 @@ import RadarCharts, {
   type RadarShot,
   type RadarStats,
 } from "../../../_components/radar-charts";
-import {
-  RADAR_CHART_DEFINITIONS,
-  RADAR_CHART_GROUPS,
-} from "@/lib/radar/charts/registry";
+import { RADAR_CHART_DEFINITIONS, RADAR_CHART_GROUPS } from "@/lib/radar/charts/registry";
 import type { RadarAnalytics } from "@/lib/radar/types";
 
 type SectionType = "text" | "image" | "radar";
@@ -42,10 +39,7 @@ type SectionTemplate = {
 const starterSections: SectionTemplate[] = defaultSectionTemplates;
 
 const sectionTagMap = new Map(
-  starterSections.map((section) => [
-    section.title.toLowerCase(),
-    section.tags ?? [],
-  ])
+  starterSections.map((section) => [section.title.toLowerCase(), section.tags ?? []])
 );
 sectionTagMap.set("technique", ["technique", "swing"]);
 sectionTagMap.set("plan pour la semaine", ["planning"]);
@@ -235,8 +229,7 @@ const formatDateInputValue = (value?: string | null) => {
   return formatDateInput(parsed);
 };
 
-const isSummaryTitle = (title: string) =>
-  /resume|synthese|bilan/i.test(title);
+const isSummaryTitle = (title: string) => /resume|synthese|bilan/i.test(title);
 
 const isPlanTitle = (title: string) =>
   /plan|planning|programme|routine|semaine/i.test(title);
@@ -342,10 +335,7 @@ const buildDiffSegments = (original: string, updated: string): DiffSegment[] => 
   const newChars = Array.from(updated);
   const rows = oldChars.length + 1;
   const cols = newChars.length + 1;
-  const table: Uint16Array[] = Array.from(
-    { length: rows },
-    () => new Uint16Array(cols)
-  );
+  const table: Uint16Array[] = Array.from({ length: rows }, () => new Uint16Array(cols));
 
   for (let i = rows - 2; i >= 0; i -= 1) {
     for (let j = cols - 2; j >= 0; j -= 1) {
@@ -422,14 +412,11 @@ export default function CoachReportBuilderPage() {
   const [layoutTemplateIds, setLayoutTemplateIds] = useState<string[]>([]);
   const [layoutSaving, setLayoutSaving] = useState(false);
   const [layoutCustomTitle, setLayoutCustomTitle] = useState("");
-  const [layoutCustomType, setLayoutCustomType] =
-    useState<SectionType>("text");
-  const initialBuilderStep = searchParams.get("reportId")
-    ? "report"
-    : "layout";
-  const [builderStep, setBuilderStep] = useState<
-    "layout" | "sections" | "report"
-  >(initialBuilderStep);
+  const [layoutCustomType, setLayoutCustomType] = useState<SectionType>("text");
+  const initialBuilderStep = searchParams.get("reportId") ? "report" : "layout";
+  const [builderStep, setBuilderStep] = useState<"layout" | "sections" | "report">(
+    initialBuilderStep
+  );
   const [selectedLayoutOptionId, setSelectedLayoutOptionId] = useState("");
   const [sectionsPanelCollapsed, setSectionsPanelCollapsed] = useState(true);
   const [aiLayoutOpen, setAiLayoutOpen] = useState(false);
@@ -442,9 +429,7 @@ export default function CoachReportBuilderPage() {
     sectionCount: 5,
   });
   const [aiLayoutCountTouched, setAiLayoutCountTouched] = useState(false);
-  const [aiLayoutOption, setAiLayoutOption] = useState<LayoutOption | null>(
-    null
-  );
+  const [aiLayoutOption, setAiLayoutOption] = useState<LayoutOption | null>(null);
   const [aiLayoutTitle, setAiLayoutTitle] = useState("");
   const [aiLayoutSaving, setAiLayoutSaving] = useState(false);
   const [aiLayoutMessage, setAiLayoutMessage] = useState("");
@@ -455,14 +440,16 @@ export default function CoachReportBuilderPage() {
     tags?: string[];
     status?: { label: string; value: string }[];
   } | null>(null);
-  const [reportSections, setReportSections] =
-    useState<ReportSection[]>(defaultReportSections.map(createSection));
+  const [reportSections, setReportSections] = useState<ReportSection[]>(
+    defaultReportSections.map(createSection)
+  );
   const [customSection, setCustomSection] = useState("");
   const [customType, setCustomType] = useState<SectionType>("text");
   const [sectionSearch, setSectionSearch] = useState("");
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
-  const [draggingAvailable, setDraggingAvailable] =
-    useState<SectionTemplate | null>(null);
+  const [draggingAvailable, setDraggingAvailable] = useState<SectionTemplate | null>(
+    null
+  );
   const [sectionsMessage, setSectionsMessage] = useState("");
   const [sectionsMessageType, setSectionsMessageType] = useState<
     "idle" | "error" | "success"
@@ -472,9 +459,7 @@ export default function CoachReportBuilderPage() {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [dragEnabled, setDragEnabled] = useState(false);
-  const [collapsedSections, setCollapsedSections] = useState<
-    Record<string, boolean>
-  >({});
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const itemRefs = useRef(new Map<string, HTMLDivElement | null>());
   const positions = useRef(new Map<string, DOMRect>());
   const shouldAnimate = useRef(false);
@@ -496,22 +481,16 @@ export default function CoachReportBuilderPage() {
   const [radarConfigOpen, setRadarConfigOpen] = useState(false);
   const [radarConfigDraft, setRadarConfigDraft] =
     useState<RadarConfig>(defaultRadarConfig);
-  const [radarConfigSectionId, setRadarConfigSectionId] = useState<string | null>(
-    null
-  );
+  const [radarConfigSectionId, setRadarConfigSectionId] = useState<string | null>(null);
   const [radarConfigSaving, setRadarConfigSaving] = useState(false);
   const [radarConfigError, setRadarConfigError] = useState("");
   const [tpiContext, setTpiContext] = useState("");
   const [studentId, setStudentId] = useState("");
   const [title, setTitle] = useState("");
-  const [reportDate, setReportDate] = useState(() =>
-    formatDateInput(new Date())
-  );
+  const [reportDate, setReportDate] = useState(() => formatDateInput(new Date()));
   const [sentAt, setSentAt] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState("");
-  const [statusType, setStatusType] = useState<"idle" | "error" | "success">(
-    "idle"
-  );
+  const [statusType, setStatusType] = useState<"idle" | "error" | "success">("idle");
   const [saving, setSaving] = useState(false);
   const [aiTone, setAiTone] = useState("bienveillant");
   const [aiTechLevel, setAiTechLevel] = useState("intermediaire");
@@ -524,9 +503,7 @@ export default function CoachReportBuilderPage() {
   const [aiError, setAiError] = useState("");
   const [aiBusyId, setAiBusyId] = useState<string | null>(null);
   const [radarAiQaOpen, setRadarAiQaOpen] = useState(false);
-  const [radarAiQaAnswers, setRadarAiQaAnswers] = useState<
-    Record<string, string>
-  >({});
+  const [radarAiQaAnswers, setRadarAiQaAnswers] = useState<Record<string, string>>({});
   const [radarAiQuestions, setRadarAiQuestions] = useState<RadarAiQuestion[]>(
     DEFAULT_RADAR_AI_QUESTIONS
   );
@@ -540,30 +517,22 @@ export default function CoachReportBuilderPage() {
   const radarAiAutoTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const [aiPreviews, setAiPreviews] = useState<Record<string, AiPreview>>({});
   const [clarifyOpen, setClarifyOpen] = useState(false);
-  const [clarifyQuestions, setClarifyQuestions] = useState<ClarifyQuestion[]>(
-    []
-  );
+  const [clarifyQuestions, setClarifyQuestions] = useState<ClarifyQuestion[]>([]);
   const [clarifyAnswers, setClarifyAnswers] = useState<
     Record<string, ClarifyAnswerValue>
   >({});
   const [clarifyCustomAnswers, setClarifyCustomAnswers] = useState<
     Record<string, string>
   >({});
-  const [clarifyConfidence, setClarifyConfidence] = useState<number | null>(
-    null
-  );
+  const [clarifyConfidence, setClarifyConfidence] = useState<number | null>(null);
   const [pendingPropagation, setPendingPropagation] = useState<{
     payloads: PropagationPayload[];
     clarifications?: { question: string; answer: string }[];
   } | null>(null);
   const [axesOpen, setAxesOpen] = useState(false);
   const [axesBySection, setAxesBySection] = useState<AxesForSection[]>([]);
-  const [axesSelection, setAxesSelection] = useState<Record<string, string>>(
-    {}
-  );
-  const [axesPayloads, setAxesPayloads] = useState<PropagationPayload[] | null>(
-    null
-  );
+  const [axesSelection, setAxesSelection] = useState<Record<string, string>>({});
+  const [axesPayloads, setAxesPayloads] = useState<PropagationPayload[] | null>(null);
   const [axesClarifications, setAxesClarifications] = useState<
     { question: string; answer: string }[]
   >([]);
@@ -573,9 +542,7 @@ export default function CoachReportBuilderPage() {
   const [workingClub, setWorkingClub] = useState("");
   const workingObservationsRef = useRef<HTMLTextAreaElement | null>(null);
   const workingNotesRef = useRef<HTMLTextAreaElement | null>(null);
-  const [uploadingSections, setUploadingSections] = useState<
-    Record<string, boolean>
-  >({});
+  const [uploadingSections, setUploadingSections] = useState<Record<string, boolean>>({});
   const [imageErrors, setImageErrors] = useState<Record<string, string>>({});
   const [activeTooltip, setActiveTooltip] = useState<
     "sections" | "layouts" | "report" | null
@@ -600,12 +567,14 @@ export default function CoachReportBuilderPage() {
     : "Enregistrer les modifications";
 
   const openPremiumModal = useCallback(
-    (notice?: {
-      title: string;
-      description: string;
-      tags?: string[];
-      status?: { label: string; value: string }[];
-    } | null) => {
+    (
+      notice?: {
+        title: string;
+        description: string;
+        tags?: string[];
+        status?: { label: string; value: string }[];
+      } | null
+    ) => {
       setPremiumNotice(notice ?? null);
       setPremiumModalOpen(true);
     },
@@ -739,7 +708,6 @@ export default function CoachReportBuilderPage() {
     [radarFiles, radarActiveFileIds]
   );
 
-
   const selectedLayout = useMemo(
     () => layouts.find((layout) => layout.id === selectedLayoutId) ?? null,
     [layouts, selectedLayoutId]
@@ -755,8 +723,7 @@ export default function CoachReportBuilderPage() {
   const layoutAvailableTemplates = useMemo(
     () =>
       sectionTemplates.filter(
-        (template) =>
-          !!template.id && !layoutTemplateIds.includes(template.id)
+        (template) => !!template.id && !layoutTemplateIds.includes(template.id)
       ),
     [sectionTemplates, layoutTemplateIds]
   );
@@ -805,10 +772,7 @@ export default function CoachReportBuilderPage() {
       limit?: number;
       fill?: boolean;
     }) => {
-      let templates = dedupeTemplates([
-        ...pickTitles(titles),
-        ...pickTags(tags),
-      ]);
+      let templates = dedupeTemplates([...pickTitles(titles), ...pickTags(tags)]);
 
       if (limit && fill) {
         sectionTemplates.forEach((template) => {
@@ -921,16 +885,11 @@ export default function CoachReportBuilderPage() {
 
     const base = [...presets, ...saved];
     if (!aiLayoutOption) return base;
-    return [
-      aiLayoutOption,
-      ...base.filter((option) => option.id !== aiLayoutOption.id),
-    ];
+    return [aiLayoutOption, ...base.filter((option) => option.id !== aiLayoutOption.id)];
   }, [layouts, sectionTemplates, templateById, aiLayoutOption]);
 
   const selectedLayoutOption = useMemo(() => {
-    const direct = layoutOptions.find(
-      (option) => option.id === selectedLayoutOptionId
-    );
+    const direct = layoutOptions.find((option) => option.id === selectedLayoutOptionId);
     if (direct) return direct;
     return layoutOptions[0] ?? null;
   }, [layoutOptions, selectedLayoutOptionId]);
@@ -941,8 +900,7 @@ export default function CoachReportBuilderPage() {
   );
   const minAiLayoutCount = Math.min(3, maxAiLayoutCount);
   const clampAiLayoutCount = useCallback(
-    (value: number) =>
-      Math.min(maxAiLayoutCount, Math.max(minAiLayoutCount, value)),
+    (value: number) => Math.min(maxAiLayoutCount, Math.max(minAiLayoutCount, value)),
     [maxAiLayoutCount, minAiLayoutCount]
   );
   const getAiLayoutDefaultCount = useCallback(
@@ -959,15 +917,10 @@ export default function CoachReportBuilderPage() {
     setAiLayoutAnswers((prev) =>
       prev.sectionCount === nextCount ? prev : { ...prev, sectionCount: nextCount }
     );
-  }, [
-    aiLayoutAnswers.detail,
-    aiLayoutCountTouched,
-    getAiLayoutDefaultCount,
-  ]);
+  }, [aiLayoutAnswers.detail, aiLayoutCountTouched, getAiLayoutDefaultCount]);
 
   const aiLayoutSectionCount = clampAiLayoutCount(
-    aiLayoutAnswers.sectionCount ||
-      getAiLayoutDefaultCount(aiLayoutAnswers.detail)
+    aiLayoutAnswers.sectionCount || getAiLayoutDefaultCount(aiLayoutAnswers.detail)
   );
 
   const aiLayoutSuggestion = useMemo(() => {
@@ -1046,12 +999,9 @@ export default function CoachReportBuilderPage() {
     ]);
 
     const matchesKeyword = (section: SectionTemplate) =>
-      keywords.some((keyword) =>
-        section.title.toLowerCase().includes(keyword)
-      );
+      keywords.some((keyword) => section.title.toLowerCase().includes(keyword));
     const matchesTag = (section: SectionTemplate) =>
-      targetTags.size > 0 &&
-      (section.tags ?? []).some((tag) => targetTags.has(tag));
+      targetTags.size > 0 && (section.tags ?? []).some((tag) => targetTags.has(tag));
 
     const picked: SectionTemplate[] = [];
     candidates.forEach((section) => {
@@ -1070,13 +1020,8 @@ export default function CoachReportBuilderPage() {
 
     const defaultLimit = getAiLayoutDefaultCount(aiLayoutAnswers.detail);
     const requestedLimit =
-      aiLayoutAnswers.sectionCount > 0
-        ? aiLayoutAnswers.sectionCount
-        : defaultLimit;
-    const limit = Math.min(
-      clampAiLayoutCount(requestedLimit),
-      candidates.length
-    );
+      aiLayoutAnswers.sectionCount > 0 ? aiLayoutAnswers.sectionCount : defaultLimit;
+    const limit = Math.min(clampAiLayoutCount(requestedLimit), candidates.length);
 
     candidates.forEach((section) => {
       if (picked.length >= limit) return;
@@ -1116,26 +1061,17 @@ export default function CoachReportBuilderPage() {
     textarea.style.height = `${textarea.scrollHeight}px`;
   };
 
-  const setSectionsNotice = (
-    message: string,
-    type: "idle" | "error" | "success"
-  ) => {
+  const setSectionsNotice = (message: string, type: "idle" | "error" | "success") => {
     setSectionsMessage(message);
     setSectionsMessageType(type);
   };
 
-  const setLayoutNotice = (
-    message: string,
-    type: "idle" | "error" | "success"
-  ) => {
+  const setLayoutNotice = (message: string, type: "idle" | "error" | "success") => {
     setLayoutMessage(message);
     setLayoutMessageType(type);
   };
 
-  const createSectionTemplate = async (
-    title: string,
-    type: SectionType
-  ) => {
+  const createSectionTemplate = async (title: string, type: SectionType) => {
     if (!organization?.id) {
       setSectionsNotice("Organisation introuvable.", "error");
       return null;
@@ -1214,9 +1150,7 @@ export default function CoachReportBuilderPage() {
       return false;
     }
 
-    setSectionTemplates((prev) =>
-      prev.filter((section) => section.id !== template.id)
-    );
+    setSectionTemplates((prev) => prev.filter((section) => section.id !== template.id));
     return true;
   };
 
@@ -1301,9 +1235,7 @@ export default function CoachReportBuilderPage() {
     }
     const normalized = section.title.toLowerCase();
     setReportSections((prev) => {
-      const exists = prev.some(
-        (item) => item.title.toLowerCase() === normalized
-      );
+      const exists = prev.some((item) => item.title.toLowerCase() === normalized);
       if (exists) return prev;
       return [...prev, createSection(section)];
     });
@@ -1353,9 +1285,7 @@ export default function CoachReportBuilderPage() {
   const handleRemoveFromAvailable = async (section: SectionTemplate) => {
     const removed = await deleteSectionTemplate(section);
     if (!removed) return;
-    setReportSections((prev) =>
-      prev.filter((item) => item.title !== section.title)
-    );
+    setReportSections((prev) => prev.filter((item) => item.title !== section.title));
     if (editingSection === section.title) {
       setEditingSection(null);
       setEditingValue("");
@@ -1364,10 +1294,7 @@ export default function CoachReportBuilderPage() {
     shouldAnimate.current = true;
   };
 
-  const handleDragStart = (
-    index: number,
-    event: React.DragEvent<HTMLElement>
-  ) => {
+  const handleDragStart = (index: number, event: React.DragEvent<HTMLElement>) => {
     if (!dragEnabled) {
       event.preventDefault();
       return;
@@ -1408,9 +1335,7 @@ export default function CoachReportBuilderPage() {
       const normalized = droppedTemplate.title.toLowerCase();
       shouldAnimate.current = true;
       setReportSections((prev) => {
-        const exists = prev.some(
-          (item) => item.title.toLowerCase() === normalized
-        );
+        const exists = prev.some((item) => item.title.toLowerCase() === normalized);
         if (exists) return prev;
         const next = [...prev];
         next.splice(index, 0, createSection(droppedTemplate));
@@ -1467,10 +1392,7 @@ export default function CoachReportBuilderPage() {
     }
   };
 
-  const handleImageFiles = async (
-    sectionId: string,
-    files: FileList | File[]
-  ) => {
+  const handleImageFiles = async (sectionId: string, files: FileList | File[]) => {
     if (!organization?.id) {
       setImageErrors((prev) => ({
         ...prev,
@@ -1479,9 +1401,7 @@ export default function CoachReportBuilderPage() {
       return;
     }
 
-    const list = Array.from(files).filter((file) =>
-      file.type.startsWith("image/")
-    );
+    const list = Array.from(files).filter((file) => file.type.startsWith("image/"));
     if (list.length === 0) {
       setImageErrors((prev) => ({
         ...prev,
@@ -1522,10 +1442,7 @@ export default function CoachReportBuilderPage() {
           return {
             ...section,
             mediaUrls: [...section.mediaUrls, ...uploaded],
-            mediaCaptions: [
-              ...section.mediaCaptions,
-              ...uploaded.map(() => ""),
-            ],
+            mediaCaptions: [...section.mediaCaptions, ...uploaded.map(() => "")],
           };
         })
       );
@@ -1534,10 +1451,7 @@ export default function CoachReportBuilderPage() {
     setUploadingSections((prev) => ({ ...prev, [sectionId]: false }));
   };
 
-  const handleImageDrop = (
-    sectionId: string,
-    event: React.DragEvent<HTMLDivElement>
-  ) => {
+  const handleImageDrop = (sectionId: string, event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     if (event.dataTransfer.files?.length) {
       handleImageFiles(sectionId, event.dataTransfer.files);
@@ -1557,11 +1471,7 @@ export default function CoachReportBuilderPage() {
     );
   };
 
-  const handleCaptionChange = (
-    sectionId: string,
-    index: number,
-    value: string
-  ) => {
+  const handleCaptionChange = (sectionId: string, index: number, value: string) => {
     const trimmed = value.slice(0, CAPTION_LIMIT);
     setReportSections((prev) =>
       prev.map((section) => {
@@ -1573,9 +1483,7 @@ export default function CoachReportBuilderPage() {
     );
   };
 
-  const handleWorkingNotesInput = (
-    event: React.FormEvent<HTMLTextAreaElement>
-  ) => {
+  const handleWorkingNotesInput = (event: React.FormEvent<HTMLTextAreaElement>) => {
     const target = event.currentTarget;
     const value = target.value;
     target.style.height = "auto";
@@ -1622,10 +1530,10 @@ export default function CoachReportBuilderPage() {
   };
 
   const loadStudents = async () => {
-      const { data, error } = await supabase
-        .from("students")
-        .select("id, first_name, last_name, email, tpi_report_id")
-        .order("created_at", { ascending: false });
+    const { data, error } = await supabase
+      .from("students")
+      .select("id, first_name, last_name, email, tpi_report_id")
+      .order("created_at", { ascending: false });
 
     if (error) {
       setStatusMessage(error.message);
@@ -1636,48 +1544,47 @@ export default function CoachReportBuilderPage() {
     setStudents(data ?? []);
   };
 
-  const loadRadarFiles = useCallback(async (student?: string) => {
-    const targetStudentId = student ?? studentId;
-    if (!targetStudentId) {
-      setRadarFiles([]);
-      return;
-    }
-    setRadarLoading(true);
-    setRadarError("");
+  const loadRadarFiles = useCallback(
+    async (student?: string) => {
+      const targetStudentId = student ?? studentId;
+      if (!targetStudentId) {
+        setRadarFiles([]);
+        return;
+      }
+      setRadarLoading(true);
+      setRadarError("");
 
       const { data, error } = await supabase
         .from("radar_files")
         .select(
           "id, status, original_name, columns, shots, stats, summary, config, analytics, created_at, error"
         )
-      .eq("student_id", targetStudentId)
-      .order("created_at", { ascending: false });
+        .eq("student_id", targetStudentId)
+        .order("created_at", { ascending: false });
 
-    if (error) {
-      setRadarError(error.message);
-      setRadarFiles([]);
+      if (error) {
+        setRadarError(error.message);
+        setRadarFiles([]);
+        setRadarLoading(false);
+        return;
+      }
+
+      const normalized =
+        data?.map((file) => ({
+          ...file,
+          columns: Array.isArray(file.columns) ? file.columns : [],
+          shots: Array.isArray(file.shots) ? file.shots : [],
+          stats: file.stats && typeof file.stats === "object" ? file.stats : null,
+          config: file.config && typeof file.config === "object" ? file.config : null,
+          analytics:
+            file.analytics && typeof file.analytics === "object" ? file.analytics : null,
+        })) ?? [];
+
+      setRadarFiles(normalized as RadarFile[]);
       setRadarLoading(false);
-      return;
-    }
-
-    const normalized =
-      data?.map((file) => ({
-        ...file,
-        columns: Array.isArray(file.columns) ? file.columns : [],
-        shots: Array.isArray(file.shots) ? file.shots : [],
-        stats:
-          file.stats && typeof file.stats === "object" ? file.stats : null,
-        config:
-          file.config && typeof file.config === "object" ? file.config : null,
-        analytics:
-          file.analytics && typeof file.analytics === "object"
-            ? file.analytics
-            : null,
-      })) ?? [];
-
-    setRadarFiles(normalized as RadarFile[]);
-    setRadarLoading(false);
-  }, [studentId]);
+    },
+    [studentId]
+  );
 
   const stopRadarUploadProgress = () => {
     if (radarUploadTimer.current) {
@@ -1796,9 +1703,7 @@ export default function CoachReportBuilderPage() {
       return false;
     }
 
-    setRadarSessionFileIds((prev) =>
-      Array.from(new Set([...prev, radarRow.id]))
-    );
+    setRadarSessionFileIds((prev) => Array.from(new Set([...prev, radarRow.id])));
 
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
@@ -1897,10 +1802,7 @@ export default function CoachReportBuilderPage() {
         org_id: organization.id,
         title: section.title,
         type: section.type,
-        tags:
-          section.tags ??
-          sectionTagMap.get(section.title.toLowerCase()) ??
-          [],
+        tags: section.tags ?? sectionTagMap.get(section.title.toLowerCase()) ?? [],
       }));
       if (!includeTags) {
         const fallbackPayload = payload.map(({ org_id, title, type }) => ({
@@ -1978,10 +1880,7 @@ export default function CoachReportBuilderPage() {
                 tags: sectionTagMap.get(item.title.toLowerCase()) ?? [],
               }))
             );
-            setSectionsNotice(
-              "Pack initial sauvegarde pour demarrer.",
-              "success"
-            );
+            setSectionsNotice("Pack initial sauvegarde pour demarrer.", "success");
             setTemplatesLoading(false);
             return;
           }
@@ -2030,8 +1929,8 @@ export default function CoachReportBuilderPage() {
         setSectionTemplates(
           seededData.map((item) => {
             const itemTags = Array.isArray((item as { tags?: string[] }).tags)
-              ? (item as { tags?: string[] }).tags ?? []
-              : sectionTagMap.get(item.title.toLowerCase()) ?? [];
+              ? ((item as { tags?: string[] }).tags ?? [])
+              : (sectionTagMap.get(item.title.toLowerCase()) ?? []);
             return {
               id: item.id,
               title: item.title,
@@ -2057,8 +1956,8 @@ export default function CoachReportBuilderPage() {
     setSectionTemplates(
       data.map((item) => {
         const itemTags = Array.isArray((item as { tags?: string[] }).tags)
-          ? (item as { tags?: string[] }).tags ?? []
-          : sectionTagMap.get(item.title.toLowerCase()) ?? [];
+          ? ((item as { tags?: string[] }).tags ?? [])
+          : (sectionTagMap.get(item.title.toLowerCase()) ?? []);
         return {
           id: item.id,
           title: item.title,
@@ -2225,10 +2124,7 @@ export default function CoachReportBuilderPage() {
         return null;
       }
 
-      await supabase
-        .from("section_layout_items")
-        .delete()
-        .eq("layout_id", layoutId);
+      await supabase.from("section_layout_items").delete().eq("layout_id", layoutId);
     }
 
     const itemsPayload = templateIds.map((templateId, index) => ({
@@ -2270,9 +2166,7 @@ export default function CoachReportBuilderPage() {
   };
 
   const handleDeleteLayout = async (layout: SectionLayout) => {
-    const confirmed = window.confirm(
-      `Supprimer le layout "${layout.title}" ?`
-    );
+    const confirmed = window.confirm(`Supprimer le layout "${layout.title}" ?`);
     if (!confirmed) return false;
 
     const { error: itemsError } = await supabase
@@ -2285,10 +2179,7 @@ export default function CoachReportBuilderPage() {
       return false;
     }
 
-    const { error } = await supabase
-      .from("section_layouts")
-      .delete()
-      .eq("id", layout.id);
+    const { error } = await supabase.from("section_layouts").delete().eq("id", layout.id);
 
     if (error) {
       setLayoutNotice(error.message, "error");
@@ -2321,9 +2212,7 @@ export default function CoachReportBuilderPage() {
     }
 
     setReportSections((prev) => {
-      const existing = new Set(
-        prev.map((section) => section.title.toLowerCase())
-      );
+      const existing = new Set(prev.map((section) => section.title.toLowerCase()));
       const next = [...prev];
       templates.forEach((template) => {
         const key = template.title.toLowerCase();
@@ -2336,10 +2225,7 @@ export default function CoachReportBuilderPage() {
     shouldAnimate.current = true;
   };
 
-  const applyLayoutOption = (
-    option: LayoutOption,
-    mode: "append" | "replace"
-  ) => {
+  const applyLayoutOption = (option: LayoutOption, mode: "append" | "replace") => {
     applyLayoutTemplates(option.templates, mode);
     if (option.source === "saved") {
       setSelectedLayoutId(option.id);
@@ -2601,7 +2487,7 @@ export default function CoachReportBuilderPage() {
           id: section.id,
           title: section.title,
           type,
-          content: type === "text" ? section.content ?? "" : "",
+          content: type === "text" ? (section.content ?? "") : "",
           mediaUrls,
           mediaCaptions: mediaUrls.map((url: string, index: number) =>
             (captions[index] ?? "").slice(0, CAPTION_LIMIT)
@@ -2668,9 +2554,7 @@ export default function CoachReportBuilderPage() {
     if (reportSections.length === 0) return;
     if (
       confirmAction &&
-      !window.confirm(
-        "Vider le contenu de toutes les sections sans les retirer ?"
-      )
+      !window.confirm("Vider le contenu de toutes les sections sans les retirer ?")
     ) {
       return;
     }
@@ -2736,9 +2620,7 @@ export default function CoachReportBuilderPage() {
     const textSections = reportSections
       .filter((section) => section.type === "text" && section.content.trim())
       .map((section) => `${section.title}: ${section.content.trim()}`);
-    const tpiBlock = tpiContext.trim()
-      ? `Profil TPI: ${tpiContext.trim()}`
-      : "";
+    const tpiBlock = tpiContext.trim() ? `Profil TPI: ${tpiContext.trim()}` : "";
     const contextBlocks = [
       ...textSections,
       tpiBlock,
@@ -2812,18 +2694,14 @@ export default function CoachReportBuilderPage() {
           : DEFAULT_RADAR_AI_QUESTIONS;
       setRadarAiQuestions(questions);
     } catch (error) {
-      setRadarAiQaError(
-        error instanceof Error ? error.message : "Erreur IA."
-      );
+      setRadarAiQaError(error instanceof Error ? error.message : "Erreur IA.");
       setRadarAiQuestions(DEFAULT_RADAR_AI_QUESTIONS);
     } finally {
       setRadarAiQuestionsLoading(false);
     }
   };
 
-  const handleAutoDetectRadarGraphs = async (
-    answers: Record<string, string> = {}
-  ) => {
+  const handleAutoDetectRadarGraphs = async (answers: Record<string, string> = {}) => {
     if (aiLocked) {
       openPremiumModal();
       return;
@@ -2837,16 +2715,12 @@ export default function CoachReportBuilderPage() {
       ...answers,
       ...(workingClub && !answers.club ? { club: workingClub } : null),
     };
-    const radarSections = reportSections.filter(
-      (section) => section.type === "radar"
-    );
+    const radarSections = reportSections.filter((section) => section.type === "radar");
     const aiSections = radarSections
       .map((section) => {
         const baseConfig =
           section.radarConfig ??
-          (section.radarFileId
-            ? radarFileMap.get(section.radarFileId)?.config
-            : null) ??
+          (section.radarFileId ? radarFileMap.get(section.radarFileId)?.config : null) ??
           defaultRadarConfig;
         return { section, baseConfig };
       })
@@ -2862,9 +2736,7 @@ export default function CoachReportBuilderPage() {
       .filter((entry) => !entry.section.radarFileId)
       .map((entry) => entry.section.title);
     if (missingFiles.length) {
-      setRadarAiQaError(
-        `Selectionne un fichier datas pour: ${missingFiles.join(", ")}.`
-      );
+      setRadarAiQaError(`Selectionne un fichier datas pour: ${missingFiles.join(", ")}.`);
       setRadarAiAutoBusy(false);
       return;
     }
@@ -2881,9 +2753,10 @@ export default function CoachReportBuilderPage() {
       const presets = aiSections.map(
         (entry) => entry.baseConfig.options?.aiPreset ?? "standard"
       );
-      const preset = presets.length > 0 && presets.every((value) => value === "ultra")
-        ? "ultra"
-        : "standard";
+      const preset =
+        presets.length > 0 && presets.every((value) => value === "ultra")
+          ? "ultra"
+          : "standard";
       const durationMs = preset === "ultra" ? 60_000 : 240_000;
       setRadarAiAutoPreset(preset);
       setRadarAiAutoProgress(3);
@@ -2933,18 +2806,18 @@ export default function CoachReportBuilderPage() {
         return;
       }
 
-    const results = (data.sections ?? []) as Array<{
-      sectionId: string;
-      selectionSummary?: string;
-      sessionSummary?: string;
-      charts?: Array<{
-        key: string;
-        title?: string;
-        reason?: string;
-        commentary?: string;
-        solution?: string;
+      const results = (data.sections ?? []) as Array<{
+        sectionId: string;
+        selectionSummary?: string;
+        sessionSummary?: string;
+        charts?: Array<{
+          key: string;
+          title?: string;
+          reason?: string;
+          commentary?: string;
+          solution?: string;
+        }>;
       }>;
-    }>;
 
       const expectedSectionIds = aiSections.map((entry) => entry.section.id);
       const knownChartKeys = new Set([
@@ -2958,9 +2831,7 @@ export default function CoachReportBuilderPage() {
         if (section.type !== "radar") return section;
         const baseConfig =
           section.radarConfig ??
-          (section.radarFileId
-            ? radarFileMap.get(section.radarFileId)?.config
-            : null) ??
+          (section.radarFileId ? radarFileMap.get(section.radarFileId)?.config : null) ??
           defaultRadarConfig;
         if (baseConfig.mode !== "ai") return section;
 
@@ -2969,9 +2840,7 @@ export default function CoachReportBuilderPage() {
         matchedSections += 1;
 
         const selectedKeys = (result.charts ?? []).map((chart) => chart.key);
-        const validSelected = selectedKeys.filter((key) =>
-          knownChartKeys.has(key)
-        );
+        const validSelected = selectedKeys.filter((key) => knownChartKeys.has(key));
         totalSelected += selectedKeys.length;
         totalValidSelected += validSelected.length;
         const nextCharts: Record<string, boolean> = {
@@ -2984,7 +2853,11 @@ export default function CoachReportBuilderPage() {
         const aiNarratives = (result.charts ?? []).reduce<
           Record<
             string,
-            { reason?: string | null; commentary?: string | null; solution?: string | null }
+            {
+              reason?: string | null;
+              commentary?: string | null;
+              solution?: string | null;
+            }
           >
         >((acc, chart) => {
           acc[chart.key] = {
@@ -3028,8 +2901,7 @@ export default function CoachReportBuilderPage() {
       });
 
       if (matchedSections === 0) {
-        const receivedIds =
-          results.map((item) => item.sectionId).join(", ") || "aucun";
+        const receivedIds = results.map((item) => item.sectionId).join(", ") || "aucun";
         setRadarAiQaError(
           `L IA n a rien renvoye pour les sections datas. Recu: ${receivedIds}.`
         );
@@ -3037,8 +2909,7 @@ export default function CoachReportBuilderPage() {
       }
 
       if (totalValidSelected === 0) {
-        const receivedIds =
-          results.map((item) => item.sectionId).join(", ") || "aucun";
+        const receivedIds = results.map((item) => item.sectionId).join(", ") || "aucun";
         const expectedIds = expectedSectionIds.join(", ") || "aucun";
         const detail =
           totalSelected > 0 ? "Graphes inconnus ignores." : "Aucun graphe recu.";
@@ -3052,9 +2923,7 @@ export default function CoachReportBuilderPage() {
       setRadarAiQaError("");
       setRadarAiQaOpen(false);
     } catch (error) {
-      setRadarAiQaError(
-        error instanceof Error ? error.message : "Erreur IA."
-      );
+      setRadarAiQaError(error instanceof Error ? error.message : "Erreur IA.");
     } finally {
       stopRadarAiAutoProgress();
       setRadarAiAutoBusy(false);
@@ -3207,8 +3076,8 @@ export default function CoachReportBuilderPage() {
       content: section.type === "text" ? section.content || null : null,
       media_urls: section.type === "image" ? section.mediaUrls : null,
       media_captions: section.type === "image" ? section.mediaCaptions : null,
-      radar_file_id: section.type === "radar" ? section.radarFileId ?? null : null,
-      radar_config: section.type === "radar" ? section.radarConfig ?? null : null,
+      radar_file_id: section.type === "radar" ? (section.radarFileId ?? null) : null,
+      radar_config: section.type === "radar" ? (section.radarConfig ?? null) : null,
       position: index,
     }));
 
@@ -3229,8 +3098,8 @@ export default function CoachReportBuilderPage() {
           ? "Rapport mis a jour et envoye."
           : "Rapport mis a jour."
         : send
-        ? "Rapport envoye avec succes."
-        : "Brouillon sauvegarde."
+          ? "Rapport envoye avec succes."
+          : "Brouillon sauvegarde."
     );
     setStatusType("success");
     setSaving(false);
@@ -3558,10 +3427,7 @@ export default function CoachReportBuilderPage() {
     if (!canUseAi) return;
     if (!section.content.trim()) {
       const hasContext = reportSections.some(
-        (item) =>
-          item.id !== section.id &&
-          item.type === "text" &&
-          item.content.trim()
+        (item) => item.id !== section.id && item.type === "text" && item.content.trim()
       );
       if (!hasContext) {
         setAiError("Ajoute du contenu dans une autre section.");
@@ -3588,9 +3454,7 @@ export default function CoachReportBuilderPage() {
         return next;
       });
       setReportSections((prev) =>
-        prev.map((item) =>
-          item.id === section.id ? { ...item, content: text } : item
-        )
+        prev.map((item) => (item.id === section.id ? { ...item, content: text } : item))
       );
     }
     setAiBusyId(null);
@@ -3712,9 +3576,7 @@ export default function CoachReportBuilderPage() {
     setAiBusyId("propagate");
     for (const payload of payloads) {
       const axesForPayload = axesSelections
-        ? axesSelections.filter((item) =>
-            payload.targetSections.includes(item.section)
-          )
+        ? axesSelections.filter((item) => payload.targetSections.includes(item.section))
         : undefined;
       const suggestions = await callAiPropagation({
         ...payload,
@@ -3728,36 +3590,36 @@ export default function CoachReportBuilderPage() {
     setAiBusyId(null);
   };
 
-    const handleAiPropagateFromWorking = async () => {
-      if (!canUseAi) return;
-      if (!studentId) {
-        setAiError("Choisis un eleve avant de lancer la propagation.");
-        return;
-      }
-      const hasObservations = !!workingObservations.trim();
-      const hasWork = !!workingNotes.trim();
-      if (!hasObservations && !hasWork) {
-        setAiError("Ajoute des constats ou un travail en cours.");
-        return;
-      }
-      const eligibleSections = reportSections
-        .filter((item) => !aiPreviews[item.id])
-        .filter((item) => item.type === "text")
-        .filter((item) => !isSummaryTitle(item.title))
-        .filter((item) => !isPlanTitle(item.title));
+  const handleAiPropagateFromWorking = async () => {
+    if (!canUseAi) return;
+    if (!studentId) {
+      setAiError("Choisis un eleve avant de lancer la propagation.");
+      return;
+    }
+    const hasObservations = !!workingObservations.trim();
+    const hasWork = !!workingNotes.trim();
+    if (!hasObservations && !hasWork) {
+      setAiError("Ajoute des constats ou un travail en cours.");
+      return;
+    }
+    const eligibleSections = reportSections
+      .filter((item) => !aiPreviews[item.id])
+      .filter((item) => item.type === "text")
+      .filter((item) => !isSummaryTitle(item.title))
+      .filter((item) => !isPlanTitle(item.title));
 
-      const emptyTargets = eligibleSections
-        .filter((item) => !item.content.trim())
-        .map((item) => item.title);
-      const appendTargets = eligibleSections
-        .filter((item) => item.content.trim())
-        .map((item) => item.title);
-      const targets = [...emptyTargets, ...appendTargets];
+    const emptyTargets = eligibleSections
+      .filter((item) => !item.content.trim())
+      .map((item) => item.title);
+    const appendTargets = eligibleSections
+      .filter((item) => item.content.trim())
+      .map((item) => item.title);
+    const targets = [...emptyTargets, ...appendTargets];
 
-      if (targets.length === 0) {
-        setAiError("Aucune section disponible.");
-        return;
-      }
+    if (targets.length === 0) {
+      setAiError("Aucune section disponible.");
+      return;
+    }
 
     const sourceParts = [];
     if (workingClub.trim()) {
@@ -3766,10 +3628,10 @@ export default function CoachReportBuilderPage() {
     if (workingObservations.trim()) {
       sourceParts.push(`Constats:\n${workingObservations.trim()}`);
     }
-      if (workingNotes.trim()) {
-        sourceParts.push(`Travail en cours:\n${workingNotes.trim()}`);
-      }
-      const sectionContent = sourceParts.join("\n\n");
+    if (workingNotes.trim()) {
+      sourceParts.push(`Travail en cours:\n${workingNotes.trim()}`);
+    }
+    const sectionContent = sourceParts.join("\n\n");
 
     const clarifyPayload: PropagationPayload = {
       sectionTitle: "Travail en cours",
@@ -3785,10 +3647,10 @@ export default function CoachReportBuilderPage() {
       tpiContext: tpiContext || undefined,
     };
 
-      setAiBusyId("propagate");
-      const clarification = await callAiClarify(clarifyPayload);
-      setAiBusyId(null);
-      if (!clarification) return;
+    setAiBusyId("propagate");
+    const clarification = await callAiClarify(clarifyPayload);
+    setAiBusyId(null);
+    if (!clarification) return;
 
     const missingWork = !workingNotes.trim();
     const missingObservations = !workingObservations.trim();
@@ -3797,8 +3659,7 @@ export default function CoachReportBuilderPage() {
     if (missingWork) {
       forcedQuestions.push({
         id: "forced-work",
-        question:
-          "Quel travail veux-tu mettre en place ? (objectif, consigne, exercice)",
+        question: "Quel travail veux-tu mettre en place ? (objectif, consigne, exercice)",
         type: "text",
         choices: [],
         multi: false,
@@ -3820,54 +3681,54 @@ export default function CoachReportBuilderPage() {
     }
 
     const questions = [...clarification.questions, ...forcedQuestions];
-      const needsClarify =
-        missingWork ||
-        missingObservations ||
-        clarification.confidence < CLARIFY_THRESHOLD ||
-        clarification.questions.length > 0;
+    const needsClarify =
+      missingWork ||
+      missingObservations ||
+      clarification.confidence < CLARIFY_THRESHOLD ||
+      clarification.questions.length > 0;
 
-      setClarifyConfidence(clarification.confidence);
-      if (!needsClarify) {
-        const payloads: PropagationPayload[] = [];
-        if (emptyTargets.length > 0) {
-          payloads.push({
-            ...clarifyPayload,
-            targetSections: emptyTargets,
-            propagateMode: "empty",
-          });
-        }
-        if (appendTargets.length > 0) {
-          payloads.push({
-            ...clarifyPayload,
-            targetSections: appendTargets,
-            propagateMode: "append",
-          });
-        }
-        await openAxesModal(payloads, []);
-        return;
-      }
-
-      setClarifyQuestions(questions);
-      setClarifyAnswers({});
-      setClarifyCustomAnswers({});
-      const pendingPayloads: PropagationPayload[] = [];
+    setClarifyConfidence(clarification.confidence);
+    if (!needsClarify) {
+      const payloads: PropagationPayload[] = [];
       if (emptyTargets.length > 0) {
-        pendingPayloads.push({
+        payloads.push({
           ...clarifyPayload,
           targetSections: emptyTargets,
           propagateMode: "empty",
         });
       }
       if (appendTargets.length > 0) {
-        pendingPayloads.push({
+        payloads.push({
           ...clarifyPayload,
           targetSections: appendTargets,
           propagateMode: "append",
         });
       }
-      setPendingPropagation({ payloads: pendingPayloads });
-      setClarifyOpen(true);
-    };
+      await openAxesModal(payloads, []);
+      return;
+    }
+
+    setClarifyQuestions(questions);
+    setClarifyAnswers({});
+    setClarifyCustomAnswers({});
+    const pendingPayloads: PropagationPayload[] = [];
+    if (emptyTargets.length > 0) {
+      pendingPayloads.push({
+        ...clarifyPayload,
+        targetSections: emptyTargets,
+        propagateMode: "empty",
+      });
+    }
+    if (appendTargets.length > 0) {
+      pendingPayloads.push({
+        ...clarifyPayload,
+        targetSections: appendTargets,
+        propagateMode: "append",
+      });
+    }
+    setPendingPropagation({ payloads: pendingPayloads });
+    setClarifyOpen(true);
+  };
 
   const handleAiFinalize = async () => {
     if (!canUseAi) return;
@@ -3993,7 +3854,7 @@ export default function CoachReportBuilderPage() {
   }, [clarifyOpen, clarifyQuestions, clarifyAnswers, clarifyCustomAnswers]);
 
   const handleConfirmClarify = async () => {
-      if (!pendingPropagation) return;
+    if (!pendingPropagation) return;
     const answers = clarifyQuestions
       .map((question) => {
         const value = clarifyAnswers[question.id];
@@ -4002,25 +3863,17 @@ export default function CoachReportBuilderPage() {
           if (!customValue) return null;
         }
         if (question.type === "choices") {
-          const selected = Array.isArray(value)
-            ? value
-            : value
-            ? [String(value)]
-            : [];
-          const combined = customValue
-            ? [...selected, customValue]
-            : selected;
+          const selected = Array.isArray(value) ? value : value ? [String(value)] : [];
+          const combined = customValue ? [...selected, customValue] : selected;
           if (combined.length === 0) return null;
           return { question: question.question, answer: combined.join(", ") };
         }
         const text = Array.isArray(value)
           ? value.join(", ")
-          : value ?? customValue ?? "";
+          : (value ?? customValue ?? "");
         return { question: question.question, answer: text };
       })
-      .filter(
-        (item): item is { question: string; answer: string } => item !== null
-      );
+      .filter((item): item is { question: string; answer: string } => item !== null);
 
     const { payloads } = pendingPropagation;
     closeClarifyModal();
@@ -4033,8 +3886,7 @@ export default function CoachReportBuilderPage() {
       .map((entry) => {
         const selectedId = axesSelection[entry.section];
         const option =
-          entry.options.find((item) => item.id === selectedId) ??
-          entry.options[0];
+          entry.options.find((item) => item.id === selectedId) ?? entry.options[0];
         if (!option) return null;
         return {
           section: entry.section,
@@ -4056,8 +3908,7 @@ export default function CoachReportBuilderPage() {
     if (!preview) return;
     setReportSections((prev) =>
       prev.map((item) =>
-        item.id === id &&
-        item.content.trim() === preview.original.trim()
+        item.id === id && item.content.trim() === preview.original.trim()
           ? { ...item, content: preview.suggestion }
           : item
       )
@@ -4101,8 +3952,7 @@ export default function CoachReportBuilderPage() {
           element.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
           element.style.transition = "transform 0s";
           requestAnimationFrame(() => {
-            element.style.transition =
-              "transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1)";
+            element.style.transition = "transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1)";
             element.style.transform = "";
           });
         }
@@ -4265,8 +4115,7 @@ export default function CoachReportBuilderPage() {
     [students, studentId]
   );
   const hasReportId = Boolean(searchParams.get("reportId"));
-  const activeBuilderStep =
-    hasReportId || isEditing ? "report" : builderStep;
+  const activeBuilderStep = hasReportId || isEditing ? "report" : builderStep;
   const showLayoutTools = false;
   const isReportStep = activeBuilderStep === "report";
   const showSectionsPanel = !isReportStep || !sectionsPanelCollapsed;
@@ -4312,92 +4161,1013 @@ export default function CoachReportBuilderPage() {
           }
         `}</style>
         <div className="space-y-6">
-        <section className="panel rounded-2xl p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <PageBack />
-              <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                Rapport
-              </p>
-            </div>
-            {!isEditing && activeBuilderStep !== "report" ? (
-              <button
-                type="button"
-                onClick={handleSkipSetup}
-                className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
-              >
-                Passer
-              </button>
-            ) : null}
-          </div>
-          <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
-            {isEditing ? "Modifier le rapport" : "Nouveau rapport"}
-          </h2>
-          <p className="mt-2 text-sm text-[var(--muted)]">
-            {isEditing
-              ? "Mets a jour les sections et le contenu du rapport."
-              : activeBuilderStep === "layout"
-              ? "Choisis un layout de depart pour structurer le rapport."
-              : activeBuilderStep === "sections"
-              ? "Selectionne et organise les sections avant la redaction."
-              : "Remplis le contenu et ajuste les sections au fil du rapport."}
-          </p>
-          <div className="mt-4 flex flex-wrap items-center gap-2 text-[0.6rem] uppercase tracking-[0.25em] text-[var(--muted)]">
-            {[
-              { id: "layout", label: "Layout" },
-              { id: "sections", label: "Sections" },
-              { id: "report", label: "Rapport" },
-            ].map((step, index) => (
-              <span
-                key={step.id}
-                className={`rounded-full border px-3 py-1 ${
-                  activeBuilderStep === step.id
-                    ? "border-emerald-300/40 bg-emerald-400/10 text-emerald-100"
-                    : "border-white/10 bg-white/5"
-                }`}
-              >
-                {index + 1}. {step.label}
-              </span>
-            ))}
-          </div>
-          {loadingReport ? (
-            <p className="mt-3 text-sm text-[var(--muted)]">
-              Chargement du rapport...
-            </p>
-          ) : null}
-        </section>
-
-        {activeBuilderStep === "layout" ? (
-          <section className="panel-soft rounded-2xl p-6">
+          <section className="panel rounded-2xl p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h3 className="text-lg font-semibold text-[var(--text)]">
-                  Choisir un layout
-                </h3>
-                <p className="mt-1 text-xs text-[var(--muted)]">
-                  Selectionne une base, tu pourras ajuster les sections ensuite.
+              <div className="flex items-center gap-2">
+                <PageBack />
+                <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                  Rapport
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              {!isEditing && activeBuilderStep !== "report" ? (
                 <button
                   type="button"
-                  onClick={startCreateLayout}
+                  onClick={handleSkipSetup}
                   className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
                 >
-                  Creer un layout
+                  Passer
                 </button>
-                <button
-                  type="button"
-                  onClick={handleAiLayoutClick}
-                  aria-disabled={aiLocked}
-                  className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
-                    aiLocked
-                      ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
-                      : "border-emerald-300/30 bg-emerald-400/10 text-emerald-100 hover:bg-emerald-400/20"
+              ) : null}
+            </div>
+            <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
+              {isEditing ? "Modifier le rapport" : "Nouveau rapport"}
+            </h2>
+            <p className="mt-2 text-sm text-[var(--muted)]">
+              {isEditing
+                ? "Mets a jour les sections et le contenu du rapport."
+                : activeBuilderStep === "layout"
+                  ? "Choisis un layout de depart pour structurer le rapport."
+                  : activeBuilderStep === "sections"
+                    ? "Selectionne et organise les sections avant la redaction."
+                    : "Remplis le contenu et ajuste les sections au fil du rapport."}
+            </p>
+            <div className="mt-4 flex flex-wrap items-center gap-2 text-[0.6rem] uppercase tracking-[0.25em] text-[var(--muted)]">
+              {[
+                { id: "layout", label: "Layout" },
+                { id: "sections", label: "Sections" },
+                { id: "report", label: "Rapport" },
+              ].map((step, index) => (
+                <span
+                  key={step.id}
+                  className={`rounded-full border px-3 py-1 ${
+                    activeBuilderStep === step.id
+                      ? "border-emerald-300/40 bg-emerald-400/10 text-emerald-100"
+                      : "border-white/10 bg-white/5"
                   }`}
                 >
-                  <span className="flex items-center gap-2">
-                    {aiLocked ? (
+                  {index + 1}. {step.label}
+                </span>
+              ))}
+            </div>
+            {loadingReport ? (
+              <p className="mt-3 text-sm text-[var(--muted)]">Chargement du rapport...</p>
+            ) : null}
+          </section>
+
+          {activeBuilderStep === "layout" ? (
+            <section className="panel-soft rounded-2xl p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-[var(--text)]">
+                    Choisir un layout
+                  </h3>
+                  <p className="mt-1 text-xs text-[var(--muted)]">
+                    Selectionne une base, tu pourras ajuster les sections ensuite.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={startCreateLayout}
+                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                  >
+                    Creer un layout
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAiLayoutClick}
+                    aria-disabled={aiLocked}
+                    className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
+                      aiLocked
+                        ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
+                        : "border-emerald-300/30 bg-emerald-400/10 text-emerald-100 hover:bg-emerald-400/20"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      {aiLocked ? (
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-3.5 w-3.5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <rect x="3" y="11" width="18" height="11" rx="2" />
+                          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                        </svg>
+                      ) : null}
+                      Layout IA
+                    </span>
+                  </button>
+                  <span className="text-[0.6rem] uppercase tracking-[0.2em] text-[var(--muted)]">
+                    {layoutOptions.length} option
+                    {layoutOptions.length > 1 ? "s" : ""}
+                  </span>
+                </div>
+              </div>
+              <div className="mt-5 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {layoutOptions.map((option) => {
+                    const selected = selectedLayoutOption?.id === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => handleSelectLayoutOption(option)}
+                        className={`rounded-2xl border p-4 text-left transition ${
+                          selected
+                            ? "border-emerald-300/40 bg-emerald-400/10"
+                            : "border-white/10 bg-white/5 hover:border-white/20"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-semibold text-[var(--text)]">
+                              {option.title}
+                            </p>
+                            <p className="mt-1 text-xs text-[var(--muted)]">
+                              {option.hint}
+                            </p>
+                          </div>
+                          <span
+                            className={`rounded-full border px-2 py-1 text-[0.55rem] uppercase tracking-wide ${
+                              option.source === "ai"
+                                ? featureTones.ai.badge
+                                : "border-white/10 bg-white/5 text-[var(--muted)]"
+                            }`}
+                          >
+                            {option.source === "saved"
+                              ? "Sauvegarde"
+                              : option.source === "ai"
+                                ? "IA"
+                                : "Suggestion"}
+                          </span>
+                        </div>
+                        {option.templates.length === 0 ? (
+                          <p className="mt-3 text-xs text-[var(--muted)]">
+                            Aucune section pour l instant.
+                          </p>
+                        ) : (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {option.templates
+                              .slice(0, 4)
+                              .map((template) => renderTemplateChip(template, option.id))}
+                            {option.templates.length > 4 ? (
+                              <span className="text-[0.55rem] uppercase tracking-wide text-[var(--muted)]">
+                                +{option.templates.length - 4} autres
+                              </span>
+                            ) : null}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="panel rounded-2xl p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                    Apercu du layout
+                  </p>
+                  {selectedLayoutOption ? (
+                    <>
+                      <p className="mt-2 text-sm font-semibold text-[var(--text)]">
+                        {selectedLayoutOption.title}
+                      </p>
+                      <p className="mt-1 text-xs text-[var(--muted)]">
+                        {selectedLayoutOption.hint}
+                      </p>
+                      <div className="mt-4 space-y-2">
+                        {selectedLayoutOption.templates.length === 0 ? (
+                          <p className="text-xs text-[var(--muted)]">
+                            Ajoute des sections a l etape suivante.
+                          </p>
+                        ) : (
+                          selectedLayoutOption.templates.map((template) => {
+                            const featureKey = getSectionFeatureKey(template);
+                            return (
+                              <div
+                                key={`preview-${template.id ?? template.title}`}
+                                className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)]"
+                              >
+                                <span>{template.title}</span>
+                                {featureKey ? (
+                                  renderFeatureBadge(featureKey)
+                                ) : (
+                                  <span className="text-[0.55rem] uppercase tracking-wide text-[var(--muted)]">
+                                    Texte
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                      {selectedLayout && selectedLayoutOption.source === "saved" ? (
+                        <div className="mt-4 flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => startEditLayout(selectedLayout)}
+                            className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                          >
+                            Modifier le layout
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void handleDeleteLayout(selectedLayout);
+                            }}
+                            className="rounded-full border border-red-400/30 bg-red-500/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-red-200 transition hover:bg-red-500/20"
+                          >
+                            Supprimer le layout
+                          </button>
+                        </div>
+                      ) : null}
+                    </>
+                  ) : (
+                    <p className="mt-3 text-xs text-[var(--muted)]">
+                      Selectionne un layout pour voir le detail.
+                    </p>
+                  )}
+                  <div className="mt-5 flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleContinueFromLayout}
+                      disabled={!selectedLayoutOption}
+                      className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
+                    >
+                      Continuer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSkipSetup}
+                      className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                    >
+                      Passer au rapport
+                    </button>
+                  </div>
+                  {layoutMessage ? (
+                    <p
+                      className={`mt-3 text-xs ${
+                        layoutMessageType === "error"
+                          ? "text-red-400"
+                          : "text-[var(--muted)]"
+                      }`}
+                    >
+                      {layoutMessage}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          {activeBuilderStep === "report" ? (
+            <section className="panel-soft rounded-2xl p-5">
+              <div className="grid gap-4 md:grid-cols-3">
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Eleve
+                  </label>
+                  <select
+                    value={studentId}
+                    onChange={(event) => setStudentId(event.target.value)}
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                  >
+                    <option value="">Choisir un eleve</option>
+                    {students.map((student) => (
+                      <option key={student.id} value={student.id}>
+                        {student.first_name} {student.last_name ?? ""}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!studentId) return;
+                      router.push(`/app/coach/eleves/${studentId}`);
+                    }}
+                    disabled={!studentId}
+                    className={`mt-2 rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
+                      studentId
+                        ? "border-white/10 bg-white/5 text-[var(--text)] hover:bg-white/10"
+                        : "cursor-not-allowed border-white/5 bg-white/5 text-[var(--muted)] opacity-60"
+                    }`}
+                  >
+                    Dashboard eleve
+                  </button>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Titre du rapport
+                  </label>
+                  <input
+                    type="text"
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                    placeholder="Bilan swing du 20/01"
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Date
+                  </label>
+                  <input
+                    type="date"
+                    value={reportDate}
+                    onChange={(event) => setReportDate(event.target.value)}
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                  />
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          {activeBuilderStep !== "layout" ? (
+            <section className={`grid gap-6 ${reportGridClass}`}>
+              {showSectionsPanel ? (
+                <div className="panel relative rounded-2xl p-6">
+                  <div className="flex items-start justify-between gap-3">
+                    <h3 className="text-lg font-semibold text-[var(--text)]">
+                      Sections disponibles
+                    </h3>
+                    <span
+                      ref={(node) => {
+                        if (node) {
+                          tooltipRefs.current.set("sections", node);
+                        } else {
+                          tooltipRefs.current.delete("sections");
+                        }
+                      }}
+                      className="group relative shrink-0"
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setActiveTooltip((prev) =>
+                            prev === "sections" ? null : "sections"
+                          )
+                        }
+                        className="flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[0.7rem] text-[var(--muted)] transition hover:text-[var(--text)]"
+                        aria-label="Aide sur les sections disponibles"
+                        aria-expanded={activeTooltip === "sections"}
+                      >
+                        ?
+                      </button>
+                      <span
+                        className={`absolute right-0 top-full z-20 mt-2 w-64 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text)] shadow-xl transition ${
+                          activeTooltip === "sections"
+                            ? "pointer-events-auto opacity-100"
+                            : "pointer-events-none opacity-0"
+                        } group-hover:opacity-100 group-focus-within:opacity-100`}
+                      >
+                        <span className="block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                          Ce que c est
+                        </span>
+                        <span className="mt-1 block">
+                          Bibliotheque de blocs reutilisables par coach.
+                        </span>
+                        <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                          Pourquoi
+                        </span>
+                        <span className="mt-1 block">
+                          Chaque section structure le rapport et guide l IA.
+                        </span>
+                        <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                          Impact
+                        </span>
+                        <span className="mt-1 block">
+                          Plus tu enrichis la liste, plus tes rapports sont sur mesure et
+                          rapides a produire.
+                        </span>
+                      </span>
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs text-[var(--muted)]">
+                    Clique pour ajouter une section au rapport ou cree la tienne.
+                  </p>
+                  {showLayoutTools ? (
+                    <>
+                      <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="flex items-start gap-2">
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                                Layouts
+                              </p>
+                              <p className="mt-1 text-xs text-[var(--muted)]">
+                                Applique un ensemble de sections en 1 clic.
+                              </p>
+                            </div>
+                            <span
+                              ref={(node) => {
+                                if (node) {
+                                  tooltipRefs.current.set("layouts", node);
+                                } else {
+                                  tooltipRefs.current.delete("layouts");
+                                }
+                              }}
+                              className="group relative mt-0.5 shrink-0"
+                            >
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setActiveTooltip((prev) =>
+                                    prev === "layouts" ? null : "layouts"
+                                  )
+                                }
+                                className="flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[0.7rem] text-[var(--muted)] transition hover:text-[var(--text)]"
+                                aria-label="Aide sur les layouts"
+                                aria-expanded={activeTooltip === "layouts"}
+                              >
+                                ?
+                              </button>
+                              <span
+                                className={`absolute right-0 top-full z-20 mt-2 w-64 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text)] shadow-xl transition ${
+                                  activeTooltip === "layouts"
+                                    ? "pointer-events-auto opacity-100"
+                                    : "pointer-events-none opacity-0"
+                                } group-hover:opacity-100 group-focus-within:opacity-100`}
+                              >
+                                <span className="block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                                  Ce que c est
+                                </span>
+                                <span className="mt-1 block">
+                                  Pack de sections preconfigure (ex: seance practice,
+                                  parcours).
+                                </span>
+                                <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                                  Usage
+                                </span>
+                                <span className="mt-1 block">
+                                  Un clic pour charger la structure, puis tu ajustes au
+                                  cas par cas.
+                                </span>
+                                <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                                  Impact
+                                </span>
+                                <span className="mt-1 block">
+                                  Rapports coherents et ultra-personnalises sans repartir
+                                  de zero.
+                                </span>
+                              </span>
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={startCreateLayout}
+                            className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
+                          >
+                            Creer un layout
+                          </button>
+                        </div>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+                          <select
+                            value={selectedLayoutId}
+                            onChange={(event) => setSelectedLayoutId(event.target.value)}
+                            className="w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                          >
+                            <option value="">Selectionner un layout</option>
+                            {layouts.map((layout) => (
+                              <option key={layout.id} value={layout.id}>
+                                {layout.title}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={handleApplyLayout}
+                            className="rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
+                          >
+                            Appliquer
+                          </button>
+                        </div>
+                        {selectedLayoutTemplates.length > 0 ? (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {selectedLayoutTemplates.map((template) =>
+                              renderTemplateChip(template, "layout-preview")
+                            )}
+                          </div>
+                        ) : selectedLayoutId ? (
+                          <p className="mt-3 text-xs text-[var(--muted)]">
+                            Aucune section dans ce layout.
+                          </p>
+                        ) : null}
+                        {selectedLayout ? (
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => startEditLayout(selectedLayout)}
+                              className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                            >
+                              Modifier
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteLayout(selectedLayout)}
+                              className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:text-red-200"
+                            >
+                              Supprimer
+                            </button>
+                          </div>
+                        ) : null}
+                        {layoutMessage ? (
+                          <p
+                            className={`mt-3 text-xs ${
+                              layoutMessageType === "error"
+                                ? "text-red-400"
+                                : "text-[var(--muted)]"
+                            }`}
+                          >
+                            {layoutMessage}
+                          </p>
+                        ) : null}
+                      </div>
+                      {layoutEditorOpen ? (
+                        <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                              {layoutEditingId ? "Modifier un layout" : "Nouveau layout"}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={resetLayoutEditor}
+                              className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                            >
+                              Fermer
+                            </button>
+                          </div>
+                          <div className="mt-3">
+                            <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                              Titre du layout
+                            </label>
+                            <input
+                              type="text"
+                              value={layoutTitle}
+                              onChange={(event) => setLayoutTitle(event.target.value)}
+                              placeholder="Seance practice - jeu de fers"
+                              className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                            />
+                          </div>
+                          <div className="mt-4 space-y-3">
+                            <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                              Sections du layout
+                            </p>
+                            {layoutTemplateIds.length === 0 ? (
+                              <p className="text-xs text-[var(--muted)]">
+                                Aucune section ajoutee pour l instant.
+                              </p>
+                            ) : (
+                              <div className="space-y-2">
+                                {layoutTemplateIds.map((templateId, index) => {
+                                  const template = templateById.get(templateId);
+                                  const label = template?.title ?? "Section inconnue";
+                                  const featureKey = template
+                                    ? getSectionFeatureKey(template)
+                                    : null;
+                                  const tone = featureKey
+                                    ? featureTones[featureKey]
+                                    : null;
+                                  return (
+                                    <div
+                                      key={`layout-item-${templateId}`}
+                                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)]"
+                                    >
+                                      <span className="inline-flex items-center gap-2">
+                                        {tone ? (
+                                          <span
+                                            className={`h-2 w-2 rounded-full ${tone.dot}`}
+                                          />
+                                        ) : null}
+                                        {label}
+                                      </span>
+                                      <div className="flex items-center gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleMoveLayoutTemplate(index, "up")
+                                          }
+                                          disabled={index === 0}
+                                          className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-40"
+                                          aria-label="Monter"
+                                          title="Monter"
+                                        >
+                                          <svg
+                                            viewBox="0 0 24 24"
+                                            className="h-3.5 w-3.5"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                          >
+                                            <path d="M12 19V5" />
+                                            <path d="M5 12l7-7 7 7" />
+                                          </svg>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleMoveLayoutTemplate(index, "down")
+                                          }
+                                          disabled={
+                                            index === layoutTemplateIds.length - 1
+                                          }
+                                          className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-40"
+                                          aria-label="Descendre"
+                                          title="Descendre"
+                                        >
+                                          <svg
+                                            viewBox="0 0 24 24"
+                                            className="h-3.5 w-3.5"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                          >
+                                            <path d="M12 5v14" />
+                                            <path d="M5 12l7 7 7-7" />
+                                          </svg>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleRemoveTemplateFromLayout(templateId)
+                                          }
+                                          className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-red-200"
+                                          aria-label="Retirer"
+                                          title="Retirer"
+                                        >
+                                          <svg
+                                            viewBox="0 0 24 24"
+                                            className="h-3.5 w-3.5"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                          >
+                                            <path d="M18 6L6 18" />
+                                            <path d="M6 6l12 12" />
+                                          </svg>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                          <div className="mt-4">
+                            <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                              Ajouter une section existante
+                            </p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {layoutAvailableTemplates.length === 0 ? (
+                                <span className="text-xs text-[var(--muted)]">
+                                  Toutes les sections sont deja dans ce layout.
+                                </span>
+                              ) : (
+                                layoutAvailableTemplates.map((template) => {
+                                  const featureKey = getSectionFeatureKey(template);
+                                  const tone = featureKey
+                                    ? featureTones[featureKey]
+                                    : null;
+                                  const isLocked = isFeatureLocked(featureKey);
+                                  return (
+                                    <button
+                                      key={`layout-add-${template.id}`}
+                                      type="button"
+                                      onClick={() =>
+                                        handleAddTemplateToLayout(template.id as string)
+                                      }
+                                      title={
+                                        isLocked ? "Option requise" : "Ajouter au layout"
+                                      }
+                                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 ${
+                                        tone
+                                          ? tone.button
+                                          : "border-white/10 bg-white/10 text-[var(--text)]"
+                                      } ${isLocked ? "cursor-not-allowed opacity-60" : ""}`}
+                                      aria-disabled={isLocked}
+                                    >
+                                      {tone ? (
+                                        <span
+                                          className={`h-1.5 w-1.5 rounded-full ${tone.dot}`}
+                                        />
+                                      ) : null}
+                                      {template.title}
+                                      {isLocked ? (
+                                        <svg
+                                          viewBox="0 0 24 24"
+                                          className="h-3.5 w-3.5 text-[var(--muted)]"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          strokeWidth="2"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          aria-hidden="true"
+                                        >
+                                          <rect
+                                            x="5"
+                                            y="11"
+                                            width="14"
+                                            height="9"
+                                            rx="2"
+                                          />
+                                          <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+                                        </svg>
+                                      ) : null}
+                                    </button>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
+                          <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-3">
+                            <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                              Nouvelle section
+                            </p>
+                            <p className="mt-1 text-xs text-[var(--muted)]">
+                              Un titre clair guide la generation IA.
+                            </p>
+                            <label className="mt-3 block text-xs uppercase tracking-wide text-[var(--muted)]">
+                              Nom de la section
+                            </label>
+                            <input
+                              type="text"
+                              value={layoutCustomTitle}
+                              onChange={(event) =>
+                                setLayoutCustomTitle(event.target.value)
+                              }
+                              placeholder="Ex: Plan 3 mois"
+                              className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                            />
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              <span className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                                Type
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setLayoutCustomType("text")}
+                                className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
+                                  layoutCustomType === "text"
+                                    ? "border-emerald-300/40 bg-emerald-400/15 text-emerald-100"
+                                    : "border-white/10 bg-white/5 text-[var(--muted)]"
+                                }`}
+                                aria-pressed={layoutCustomType === "text"}
+                              >
+                                Texte
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setLayoutCustomType("image")}
+                                className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
+                                  layoutCustomType === "image"
+                                    ? "border-sky-300/40 bg-sky-400/20 text-sky-100"
+                                    : "border-white/10 bg-white/5 text-[var(--muted)]"
+                                }`}
+                                aria-pressed={layoutCustomType === "image"}
+                              >
+                                Image
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!radarAddonEnabled) {
+                                    openRadarAddonModal();
+                                    return;
+                                  }
+                                  setLayoutCustomType("radar");
+                                }}
+                                className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
+                                  layoutCustomType === "radar"
+                                    ? "border-violet-300/40 bg-violet-400/15 text-violet-100"
+                                    : "border-white/10 bg-white/5 text-[var(--muted)]"
+                                } ${!radarAddonEnabled ? "cursor-not-allowed opacity-60" : ""}`}
+                                aria-pressed={layoutCustomType === "radar"}
+                                aria-disabled={!radarAddonEnabled}
+                              >
+                                Datas
+                              </button>
+                            </div>
+                            {layoutCustomType === "image" ? (
+                              <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-sky-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-sky-100/80 select-none">
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  className="h-3.5 w-3.5"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <path d="M4 7h3l2-2h6l2 2h3v12H4z" />
+                                  <circle cx="12" cy="13" r="3" />
+                                </svg>
+                                Image: upload d images et legendes.
+                              </div>
+                            ) : layoutCustomType === "radar" ? (
+                              <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-violet-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-violet-100/80 select-none">
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  className="h-3.5 w-3.5"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <circle cx="12" cy="12" r="8" />
+                                  <path d="M12 12l4-4" />
+                                  <path d="M12 8v-2" />
+                                  <path d="M16 12h2" />
+                                </svg>
+                                Datas: import d exports et graphes.
+                              </div>
+                            ) : (
+                              <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-emerald-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-emerald-100/80 select-none">
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  className="h-3.5 w-3.5"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <path d="M4 6h16" />
+                                  <path d="M4 12h16" />
+                                  <path d="M4 18h10" />
+                                </svg>
+                                Texte: section ecrite libre.
+                              </div>
+                            )}
+                            <button
+                              type="button"
+                              onClick={handleAddCustomTemplateToLayout}
+                              className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10"
+                            >
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="h-3.5 w-3.5"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M12 5v14" />
+                                <path d="M5 12h14" />
+                              </svg>
+                              Ajouter au layout
+                            </button>
+                          </div>
+                          <div className="mt-4 flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={layoutSaving}
+                              onClick={handleSaveLayout}
+                              className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
+                            >
+                              {layoutSaving ? "Sauvegarde..." : "Enregistrer le layout"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={resetLayoutEditor}
+                              className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                            >
+                              Annuler
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </>
+                  ) : null}
+                  <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Nouvelle section
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--muted)]">
+                      Un titre clair aide l assistant IA a etre plus pertinent.
+                    </p>
+                    <label className="mt-3 block text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Nom de la section
+                    </label>
+                    <input
+                      type="text"
+                      value={customSection}
+                      onChange={(event) => setCustomSection(event.target.value)}
+                      placeholder="Ex: Routine pre-shot"
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                    />
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <span className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                        Type
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setCustomType("text")}
+                        className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
+                          customType === "text"
+                            ? "border-emerald-300/40 bg-emerald-400/15 text-emerald-100"
+                            : "border-white/10 bg-white/5 text-[var(--muted)]"
+                        }`}
+                        aria-pressed={customType === "text"}
+                      >
+                        Texte
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCustomType("image")}
+                        className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
+                          customType === "image"
+                            ? "border-sky-300/40 bg-sky-400/20 text-sky-100"
+                            : "border-white/10 bg-white/5 text-[var(--muted)]"
+                        }`}
+                        aria-pressed={customType === "image"}
+                      >
+                        Image
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!radarAddonEnabled) {
+                            openRadarAddonModal();
+                            return;
+                          }
+                          setCustomType("radar");
+                        }}
+                        className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
+                          customType === "radar"
+                            ? "border-violet-300/40 bg-violet-400/15 text-violet-100"
+                            : "border-white/10 bg-white/5 text-[var(--muted)]"
+                        } ${!radarAddonEnabled ? "cursor-not-allowed opacity-60" : ""}`}
+                        aria-pressed={customType === "radar"}
+                        aria-disabled={!radarAddonEnabled}
+                      >
+                        Datas
+                      </button>
+                    </div>
+                    {customType === "image" ? (
+                      <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-sky-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-sky-100/80 select-none">
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-3.5 w-3.5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M4 7h3l2-2h6l2 2h3v12H4z" />
+                          <circle cx="12" cy="13" r="3" />
+                        </svg>
+                        Image: upload d images et legendes.
+                      </div>
+                    ) : customType === "radar" ? (
+                      <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-violet-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-violet-100/80 select-none">
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-3.5 w-3.5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <circle cx="12" cy="12" r="8" />
+                          <path d="M12 12l4-4" />
+                          <path d="M12 8v-2" />
+                          <path d="M16 12h2" />
+                        </svg>
+                        Datas: import d exports et graphes.
+                      </div>
+                    ) : (
+                      <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-emerald-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-emerald-100/80 select-none">
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-3.5 w-3.5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M4 6h16" />
+                          <path d="M4 12h16" />
+                          <path d="M4 18h10" />
+                        </svg>
+                        Texte: section ecrite libre.
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleAddCustomSection}
+                      className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10"
+                    >
                       <svg
                         viewBox="0 0 24 24"
                         className="h-3.5 w-3.5"
@@ -4407,499 +5177,310 @@ export default function CoachReportBuilderPage() {
                         strokeLinecap="round"
                         strokeLinejoin="round"
                       >
-                        <rect x="3" y="11" width="18" height="11" rx="2" />
-                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                        <path d="M12 5v14" />
+                        <path d="M5 12h14" />
                       </svg>
+                      Ajouter
+                    </button>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    <div className="mt-4 -mx-6 border-y border-white/10 bg-gradient-to-r from-white/5 via-white/5 to-sky-400/10 px-6 py-4">
+                      <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                        Recherche
+                      </label>
+                      <input
+                        type="search"
+                        value={sectionSearch}
+                        onChange={(event) => setSectionSearch(event.target.value)}
+                        placeholder="Chercher une section"
+                        className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                      />
+                    </div>
+                    {templatesLoading ? (
+                      <p className="text-xs text-[var(--muted)]">
+                        Chargement des sections...
+                      </p>
+                    ) : filteredAvailableSections.length === 0 ? (
+                      <p className="text-xs text-[var(--muted)]">
+                        Aucune section disponible. Cree-en une ou applique un layout.
+                      </p>
+                    ) : (
+                      visibleAvailableSections.map((section) => {
+                        const featureKey = getSectionFeatureKey(section);
+                        const tone = featureKey ? featureTones[featureKey] : null;
+                        const isLocked = isFeatureLocked(featureKey);
+                        return (
+                          <div
+                            key={`${section.title}-${section.type}`}
+                            className={`relative flex flex-col gap-3 rounded-xl border px-4 py-3 pl-11 text-sm text-[var(--text)] sm:flex-row sm:items-center sm:justify-between sm:pr-16 ${
+                              tone ? tone.panel : "border-white/5 bg-white/5"
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveFromAvailable(section)}
+                              className="absolute left-0 top-0 flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-[var(--bg-elevated)] text-[var(--muted)] shadow transition hover:border-red-400/40 hover:bg-red-500/20 hover:text-red-300"
+                              aria-label="Supprimer la section"
+                              title="Supprimer"
+                            >
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="h-3 w-3"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M18 6L6 18" />
+                                <path d="M6 6l12 12" />
+                              </svg>
+                            </button>
+                            <div className="min-w-0 flex-1">
+                              {editingSection === section.title ? (
+                                <input
+                                  type="text"
+                                  value={editingValue}
+                                  onChange={(event) =>
+                                    setEditingValue(event.target.value)
+                                  }
+                                  className="w-full rounded-lg border border-white/10 bg-[var(--bg-elevated)] px-3 py-1 text-sm text-[var(--text)]"
+                                />
+                              ) : (
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="block break-words">
+                                    {section.title}
+                                  </span>
+                                  {renderFeatureBadge(getSectionFeatureKey(section))}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              {editingSection === section.title ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={handleSaveEdit}
+                                    className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--text)] transition hover:bg-white/20"
+                                    aria-label="Valider"
+                                    title="Valider"
+                                  >
+                                    <svg
+                                      viewBox="0 0 24 24"
+                                      className="h-4 w-4"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    >
+                                      <path d="M5 12l4 4L19 6" />
+                                    </svg>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleCancelEdit}
+                                    className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                                    aria-label="Annuler"
+                                    title="Annuler"
+                                  >
+                                    <svg
+                                      viewBox="0 0 24 24"
+                                      className="h-4 w-4"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    >
+                                      <path d="M15 6l-6 6 6 6" />
+                                    </svg>
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (isLocked) {
+                                        openFeatureModal(featureKey);
+                                        return;
+                                      }
+                                      handleAddToReport(section);
+                                    }}
+                                    title={isLocked ? "Option requise" : "Ajouter"}
+                                    className={`flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--text)] transition hover:bg-white/20 ${
+                                      isLocked ? "cursor-not-allowed opacity-60" : ""
+                                    }`}
+                                    aria-label="Ajouter au rapport"
+                                    aria-disabled={isLocked}
+                                  >
+                                    {isLocked ? (
+                                      <svg
+                                        viewBox="0 0 24 24"
+                                        className="h-4 w-4"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        aria-hidden="true"
+                                      >
+                                        <rect x="5" y="11" width="14" height="9" rx="2" />
+                                        <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+                                      </svg>
+                                    ) : (
+                                      <svg
+                                        viewBox="0 0 24 24"
+                                        className="h-4 w-4"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                      >
+                                        <path d="M12 5v14" />
+                                        <path d="M5 12h14" />
+                                      </svg>
+                                    )}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleEditSection(section)}
+                                    className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                                    aria-label="Modifier la section"
+                                    title="Modifier"
+                                  >
+                                    <svg
+                                      viewBox="0 0 24 24"
+                                      className="h-4 w-4"
+                                      fill="currentColor"
+                                      aria-hidden="true"
+                                    >
+                                      <circle cx="5" cy="12" r="1.8" />
+                                      <circle cx="12" cy="12" r="1.8" />
+                                      <circle cx="19" cy="12" r="1.8" />
+                                    </svg>
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                            {dragEnabled ? (
+                              <button
+                                type="button"
+                                draggable={editingSection !== section.title}
+                                disabled={editingSection === section.title}
+                                onDragStart={(event) =>
+                                  handleAvailableDragStart(section, event)
+                                }
+                                onDragEnd={handleDragEnd}
+                                className={`absolute right-3 top-3 bottom-3 flex w-7 items-center justify-center rounded-lg border border-dashed border-white/10 bg-white/5 text-[var(--muted)] transition hover:border-[var(--accent)] hover:text-[var(--text)] ${
+                                  editingSection === section.title
+                                    ? "cursor-not-allowed opacity-40"
+                                    : "cursor-grab"
+                                }`}
+                                aria-label="Glisser vers le rapport"
+                                title="Glisser vers le rapport"
+                              >
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  className="h-4 w-4"
+                                  fill="currentColor"
+                                  aria-hidden="true"
+                                >
+                                  <circle cx="9" cy="6" r="1.4" />
+                                  <circle cx="9" cy="12" r="1.4" />
+                                  <circle cx="9" cy="18" r="1.4" />
+                                  <circle cx="15" cy="6" r="1.4" />
+                                  <circle cx="15" cy="12" r="1.4" />
+                                  <circle cx="15" cy="18" r="1.4" />
+                                </svg>
+                              </button>
+                            ) : null}
+                          </div>
+                        );
+                      })
+                    )}
+                    {!normalizedSectionSearch && hiddenAvailableCount > 0 ? (
+                      <p className="text-xs text-[var(--muted)]">
+                        {hiddenAvailableCount} autres sections disponibles via la
+                        recherche.
+                      </p>
                     ) : null}
-                    Layout IA
-                  </span>
-                </button>
-                <span className="text-[0.6rem] uppercase tracking-[0.2em] text-[var(--muted)]">
-                  {layoutOptions.length} option
-                  {layoutOptions.length > 1 ? "s" : ""}
-                </span>
-              </div>
-            </div>
-            <div className="mt-5 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-              <div className="grid gap-3 sm:grid-cols-2">
-                {layoutOptions.map((option) => {
-                  const selected = selectedLayoutOption?.id === option.id;
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      onClick={() => handleSelectLayoutOption(option)}
-                      className={`rounded-2xl border p-4 text-left transition ${
-                        selected
-                          ? "border-emerald-300/40 bg-emerald-400/10"
-                          : "border-white/10 bg-white/5 hover:border-white/20"
+                  </div>
+                  {sectionsMessage ? (
+                    <p
+                      className={`mt-4 text-xs ${
+                        sectionsMessageType === "error"
+                          ? "text-red-400"
+                          : "text-[var(--muted)]"
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-semibold text-[var(--text)]">
-                            {option.title}
-                          </p>
-                          <p className="mt-1 text-xs text-[var(--muted)]">
-                            {option.hint}
-                          </p>
-                        </div>
-                        <span
-                          className={`rounded-full border px-2 py-1 text-[0.55rem] uppercase tracking-wide ${
-                            option.source === "ai"
-                              ? featureTones.ai.badge
-                              : "border-white/10 bg-white/5 text-[var(--muted)]"
-                          }`}
-                        >
-                          {option.source === "saved"
-                            ? "Sauvegarde"
-                            : option.source === "ai"
-                            ? "IA"
-                            : "Suggestion"}
-                        </span>
-                      </div>
-                      {option.templates.length === 0 ? (
-                        <p className="mt-3 text-xs text-[var(--muted)]">
-                          Aucune section pour l instant.
-                        </p>
-                      ) : (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {option.templates
-                            .slice(0, 4)
-                            .map((template) =>
-                              renderTemplateChip(template, option.id)
-                            )}
-                          {option.templates.length > 4 ? (
-                            <span className="text-[0.55rem] uppercase tracking-wide text-[var(--muted)]">
-                              +{option.templates.length - 4} autres
-                            </span>
-                          ) : null}
-                        </div>
-                      )}
+                      {sectionsMessage}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {activeBuilderStep === "sections" ? (
+                <div className="panel relative rounded-2xl p-6">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-semibold text-[var(--text)]">
+                        Apercu du rapport
+                      </h3>
+                      <p className="mt-1 text-xs text-[var(--muted)]">
+                        Ecran de verification avant la redaction. Organise les sections si
+                        besoin.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setBuilderStep("layout")}
+                      className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                    >
+                      Retour layout
                     </button>
-                  );
-                })}
-              </div>
-              <div className="panel rounded-2xl p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Apercu du layout
-                </p>
-                {selectedLayoutOption ? (
-                  <>
-                    <p className="mt-2 text-sm font-semibold text-[var(--text)]">
-                      {selectedLayoutOption.title}
-                    </p>
-                    <p className="mt-1 text-xs text-[var(--muted)]">
-                      {selectedLayoutOption.hint}
-                    </p>
-                    <div className="mt-4 space-y-2">
-                      {selectedLayoutOption.templates.length === 0 ? (
-                        <p className="text-xs text-[var(--muted)]">
-                          Ajoute des sections a l etape suivante.
-                        </p>
-                      ) : (
-                        selectedLayoutOption.templates.map((template) => {
-                          const featureKey = getSectionFeatureKey(template);
-                          return (
-                            <div
-                              key={`preview-${template.id ?? template.title}`}
-                              className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)]"
-                            >
-                              <span>{template.title}</span>
-                              {featureKey ? (
-                                renderFeatureBadge(featureKey)
-                              ) : (
+                  </div>
+                  {selectedLayoutOption ? (
+                    <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.55rem] uppercase tracking-wide text-[var(--muted)]">
+                      Layout: {selectedLayoutOption.title}
+                    </div>
+                  ) : null}
+                  <div className="mt-4 space-y-3">
+                    {reportSections.length === 0 ? (
+                      <p className="text-xs text-[var(--muted)]">
+                        Ajoute des sections a gauche pour demarrer.
+                      </p>
+                    ) : (
+                      reportSections.map((section, index) => (
+                        <div
+                          key={`preview-section-${section.id}`}
+                          ref={(node) => {
+                            if (node) {
+                              itemRefs.current.set(section.id, node);
+                            } else {
+                              itemRefs.current.delete(section.id);
+                            }
+                          }}
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-[var(--text)]"
+                        >
+                          <div>
+                            <p className="text-sm font-semibold text-[var(--text)]">
+                              {section.title}
+                            </p>
+                            <div className="mt-1">
+                              {renderFeatureBadge(getSectionFeatureKey(section)) ?? (
                                 <span className="text-[0.55rem] uppercase tracking-wide text-[var(--muted)]">
                                   Texte
                                 </span>
                               )}
                             </div>
-                          );
-                        })
-                      )}
-                    </div>
-                    {selectedLayout && selectedLayoutOption.source === "saved" ? (
-                      <div className="mt-4 flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => startEditLayout(selectedLayout)}
-                          className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
-                        >
-                          Modifier le layout
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            void handleDeleteLayout(selectedLayout);
-                          }}
-                          className="rounded-full border border-red-400/30 bg-red-500/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-red-200 transition hover:bg-red-500/20"
-                        >
-                          Supprimer le layout
-                        </button>
-                      </div>
-                    ) : null}
-                  </>
-                ) : (
-                  <p className="mt-3 text-xs text-[var(--muted)]">
-                    Selectionne un layout pour voir le detail.
-                  </p>
-                )}
-                <div className="mt-5 flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={handleContinueFromLayout}
-                    disabled={!selectedLayoutOption}
-                    className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
-                  >
-                    Continuer
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSkipSetup}
-                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
-                  >
-                    Passer au rapport
-                  </button>
-                </div>
-                {layoutMessage ? (
-                  <p
-                    className={`mt-3 text-xs ${
-                      layoutMessageType === "error"
-                        ? "text-red-400"
-                        : "text-[var(--muted)]"
-                    }`}
-                  >
-                    {layoutMessage}
-                  </p>
-                ) : null}
-              </div>
-            </div>
-          </section>
-        ) : null}
-
-        {activeBuilderStep === "report" ? (
-      <section className="panel-soft rounded-2xl p-5">
-        <div className="grid gap-4 md:grid-cols-3">
-          <div>
-            <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-              Eleve
-            </label>
-            <select
-              value={studentId}
-              onChange={(event) => setStudentId(event.target.value)}
-              className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
-            >
-              <option value="">Choisir un eleve</option>
-              {students.map((student) => (
-                <option key={student.id} value={student.id}>
-                  {student.first_name} {student.last_name ?? ""}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={() => {
-                if (!studentId) return;
-                router.push(`/app/coach/eleves/${studentId}`);
-              }}
-              disabled={!studentId}
-              className={`mt-2 rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
-                studentId
-                  ? "border-white/10 bg-white/5 text-[var(--text)] hover:bg-white/10"
-                  : "cursor-not-allowed border-white/5 bg-white/5 text-[var(--muted)] opacity-60"
-              }`}
-            >
-              Dashboard eleve
-            </button>
-          </div>
-          <div>
-            <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-              Titre du rapport
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="Bilan swing du 20/01"
-              className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
-            />
-          </div>
-          <div>
-            <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-              Date
-            </label>
-            <input
-              type="date"
-              value={reportDate}
-              onChange={(event) => setReportDate(event.target.value)}
-              className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
-            />
-          </div>
-        </div>
-      </section>
-        ) : null}
-
-      {activeBuilderStep !== "layout" ? (
-      <section className={`grid gap-6 ${reportGridClass}`}>
-        {showSectionsPanel ? (
-        <div className="panel relative rounded-2xl p-6">
-          <div className="flex items-start justify-between gap-3">
-            <h3 className="text-lg font-semibold text-[var(--text)]">
-              Sections disponibles
-            </h3>
-            <span
-              ref={(node) => {
-                if (node) {
-                  tooltipRefs.current.set("sections", node);
-                } else {
-                  tooltipRefs.current.delete("sections");
-                }
-              }}
-              className="group relative shrink-0"
-            >
-              <button
-                type="button"
-                onClick={() =>
-                  setActiveTooltip((prev) =>
-                    prev === "sections" ? null : "sections"
-                  )
-                }
-                className="flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[0.7rem] text-[var(--muted)] transition hover:text-[var(--text)]"
-                aria-label="Aide sur les sections disponibles"
-                aria-expanded={activeTooltip === "sections"}
-              >
-                ?
-              </button>
-              <span
-                className={`absolute right-0 top-full z-20 mt-2 w-64 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text)] shadow-xl transition ${
-                  activeTooltip === "sections"
-                    ? "pointer-events-auto opacity-100"
-                    : "pointer-events-none opacity-0"
-                } group-hover:opacity-100 group-focus-within:opacity-100`}
-              >
-                <span className="block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                  Ce que c est
-                </span>
-                <span className="mt-1 block">
-                  Bibliotheque de blocs reutilisables par coach.
-                </span>
-                <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                  Pourquoi
-                </span>
-                <span className="mt-1 block">
-                  Chaque section structure le rapport et guide l IA.
-                </span>
-                <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                  Impact
-                </span>
-                <span className="mt-1 block">
-                  Plus tu enrichis la liste, plus tes rapports sont sur mesure et
-                  rapides a produire.
-                </span>
-              </span>
-            </span>
-          </div>
-          <p className="mt-2 text-xs text-[var(--muted)]">
-            Clique pour ajouter une section au rapport ou cree la tienne.
-          </p>
-          {showLayoutTools ? (
-            <>
-          <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-                <div className="flex items-start gap-2">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                      Layouts
-                    </p>
-                    <p className="mt-1 text-xs text-[var(--muted)]">
-                      Applique un ensemble de sections en 1 clic.
-                    </p>
-                  </div>
-                <span
-                  ref={(node) => {
-                    if (node) {
-                      tooltipRefs.current.set("layouts", node);
-                    } else {
-                      tooltipRefs.current.delete("layouts");
-                    }
-                  }}
-                  className="group relative mt-0.5 shrink-0"
-                >
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setActiveTooltip((prev) =>
-                        prev === "layouts" ? null : "layouts"
-                      )
-                    }
-                    className="flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[0.7rem] text-[var(--muted)] transition hover:text-[var(--text)]"
-                    aria-label="Aide sur les layouts"
-                    aria-expanded={activeTooltip === "layouts"}
-                  >
-                    ?
-                  </button>
-                  <span
-                    className={`absolute right-0 top-full z-20 mt-2 w-64 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text)] shadow-xl transition ${
-                      activeTooltip === "layouts"
-                        ? "pointer-events-auto opacity-100"
-                        : "pointer-events-none opacity-0"
-                    } group-hover:opacity-100 group-focus-within:opacity-100`}
-                  >
-                    <span className="block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                      Ce que c est
-                    </span>
-                    <span className="mt-1 block">
-                      Pack de sections preconfigure (ex: seance practice, parcours).
-                    </span>
-                    <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                      Usage
-                    </span>
-                    <span className="mt-1 block">
-                      Un clic pour charger la structure, puis tu ajustes au cas par
-                      cas.
-                    </span>
-                    <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                      Impact
-                    </span>
-                    <span className="mt-1 block">
-                      Rapports coherents et ultra-personnalises sans repartir de
-                      zero.
-                    </span>
-                  </span>
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={startCreateLayout}
-                className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
-              >
-                Creer un layout
-              </button>
-            </div>
-            <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
-              <select
-                value={selectedLayoutId}
-                onChange={(event) => setSelectedLayoutId(event.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
-              >
-                <option value="">Selectionner un layout</option>
-                {layouts.map((layout) => (
-                  <option key={layout.id} value={layout.id}>
-                    {layout.title}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={handleApplyLayout}
-                className="rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
-              >
-                Appliquer
-              </button>
-            </div>
-            {selectedLayoutTemplates.length > 0 ? (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {selectedLayoutTemplates.map((template) =>
-                  renderTemplateChip(template, "layout-preview")
-                )}
-              </div>
-            ) : selectedLayoutId ? (
-              <p className="mt-3 text-xs text-[var(--muted)]">
-                Aucune section dans ce layout.
-              </p>
-            ) : null}
-            {selectedLayout ? (
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => startEditLayout(selectedLayout)}
-                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
-                >
-                  Modifier
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDeleteLayout(selectedLayout)}
-                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:text-red-200"
-                >
-                  Supprimer
-                </button>
-              </div>
-            ) : null}
-            {layoutMessage ? (
-              <p
-                className={`mt-3 text-xs ${
-                  layoutMessageType === "error"
-                    ? "text-red-400"
-                    : "text-[var(--muted)]"
-                }`}
-              >
-                {layoutMessage}
-              </p>
-            ) : null}
-          </div>
-          {layoutEditorOpen ? (
-            <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                  {layoutEditingId ? "Modifier un layout" : "Nouveau layout"}
-                </p>
-                <button
-                  type="button"
-                  onClick={resetLayoutEditor}
-                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
-                >
-                  Fermer
-                </button>
-              </div>
-              <div className="mt-3">
-                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                  Titre du layout
-                </label>
-                <input
-                  type="text"
-                  value={layoutTitle}
-                  onChange={(event) => setLayoutTitle(event.target.value)}
-                  placeholder="Seance practice - jeu de fers"
-                  className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
-                />
-              </div>
-              <div className="mt-4 space-y-3">
-                <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                  Sections du layout
-                </p>
-                {layoutTemplateIds.length === 0 ? (
-                  <p className="text-xs text-[var(--muted)]">
-                    Aucune section ajoutee pour l instant.
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {layoutTemplateIds.map((templateId, index) => {
-                      const template = templateById.get(templateId);
-                      const label = template?.title ?? "Section inconnue";
-                      const featureKey = template
-                        ? getSectionFeatureKey(template)
-                        : null;
-                      const tone = featureKey ? featureTones[featureKey] : null;
-                      return (
-                        <div
-                          key={`layout-item-${templateId}`}
-                          className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)]"
-                        >
-                          <span className="inline-flex items-center gap-2">
-                            {tone ? (
-                              <span
-                                className={`h-2 w-2 rounded-full ${tone.dot}`}
-                              />
-                            ) : null}
-                            {label}
-                          </span>
+                          </div>
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
-                              onClick={() =>
-                                handleMoveLayoutTemplate(index, "up")
-                              }
+                              onClick={() => handleMoveSection(index, "up")}
                               disabled={index === 0}
                               className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-40"
                               aria-label="Monter"
@@ -4920,10 +5501,8 @@ export default function CoachReportBuilderPage() {
                             </button>
                             <button
                               type="button"
-                              onClick={() =>
-                                handleMoveLayoutTemplate(index, "down")
-                              }
-                              disabled={index === layoutTemplateIds.length - 1}
+                              onClick={() => handleMoveSection(index, "down")}
+                              disabled={index === reportSections.length - 1}
                               className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-40"
                               aria-label="Descendre"
                               title="Descendre"
@@ -4943,9 +5522,7 @@ export default function CoachReportBuilderPage() {
                             </button>
                             <button
                               type="button"
-                              onClick={() =>
-                                handleRemoveTemplateFromLayout(templateId)
-                              }
+                              onClick={() => handleRemoveFromReport(section)}
                               className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-red-200"
                               aria-label="Retirer"
                               title="Retirer"
@@ -4965,1735 +5542,194 @@ export default function CoachReportBuilderPage() {
                             </button>
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-              <div className="mt-4">
-                <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                  Ajouter une section existante
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {layoutAvailableTemplates.length === 0 ? (
-                    <span className="text-xs text-[var(--muted)]">
-                      Toutes les sections sont deja dans ce layout.
-                    </span>
-                  ) : (
-                    layoutAvailableTemplates.map((template) => {
-                      const featureKey = getSectionFeatureKey(template);
-                      const tone = featureKey ? featureTones[featureKey] : null;
-                      const isLocked = isFeatureLocked(featureKey);
-                      return (
-                        <button
-                          key={`layout-add-${template.id}`}
-                          type="button"
-                          onClick={() =>
-                            handleAddTemplateToLayout(template.id as string)
-                          }
-                          title={
-                            isLocked
-                              ? "Option requise"
-                              : "Ajouter au layout"
-                          }
-                          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 ${
-                            tone
-                              ? tone.button
-                              : "border-white/10 bg-white/10 text-[var(--text)]"
-                          } ${isLocked ? "cursor-not-allowed opacity-60" : ""}`}
-                          aria-disabled={isLocked}
-                        >
-                          {tone ? (
-                            <span
-                              className={`h-1.5 w-1.5 rounded-full ${tone.dot}`}
-                            />
-                          ) : null}
-                          {template.title}
-                          {isLocked ? (
-                            <svg
-                              viewBox="0 0 24 24"
-                              className="h-3.5 w-3.5 text-[var(--muted)]"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              aria-hidden="true"
-                            >
-                              <rect x="5" y="11" width="14" height="9" rx="2" />
-                              <path d="M8 11V8a4 4 0 0 1 8 0v3" />
-                            </svg>
-                          ) : null}
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-              <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-3">
-                <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Nouvelle section
-                </p>
-                <p className="mt-1 text-xs text-[var(--muted)]">
-                  Un titre clair guide la generation IA.
-                </p>
-                <label className="mt-3 block text-xs uppercase tracking-wide text-[var(--muted)]">
-                  Nom de la section
-                </label>
-                <input
-                  type="text"
-                  value={layoutCustomTitle}
-                  onChange={(event) => setLayoutCustomTitle(event.target.value)}
-                  placeholder="Ex: Plan 3 mois"
-                  className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
-                />
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <span className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                    Type
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setLayoutCustomType("text")}
-                    className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
-                      layoutCustomType === "text"
-                        ? "border-emerald-300/40 bg-emerald-400/15 text-emerald-100"
-                        : "border-white/10 bg-white/5 text-[var(--muted)]"
-                    }`}
-                    aria-pressed={layoutCustomType === "text"}
-                  >
-                    Texte
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setLayoutCustomType("image")}
-                    className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
-                      layoutCustomType === "image"
-                        ? "border-sky-300/40 bg-sky-400/20 text-sky-100"
-                        : "border-white/10 bg-white/5 text-[var(--muted)]"
-                    }`}
-                    aria-pressed={layoutCustomType === "image"}
-                  >
-                    Image
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!radarAddonEnabled) {
-                        openRadarAddonModal();
-                        return;
-                      }
-                      setLayoutCustomType("radar");
-                    }}
-                    className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
-                      layoutCustomType === "radar"
-                        ? "border-violet-300/40 bg-violet-400/15 text-violet-100"
-                        : "border-white/10 bg-white/5 text-[var(--muted)]"
-                    } ${!radarAddonEnabled ? "cursor-not-allowed opacity-60" : ""}`}
-                    aria-pressed={layoutCustomType === "radar"}
-                    aria-disabled={!radarAddonEnabled}
-                  >
-                    Datas
-                  </button>
-                </div>
-                {layoutCustomType === "image" ? (
-                  <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-sky-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-sky-100/80 select-none">
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="h-3.5 w-3.5"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M4 7h3l2-2h6l2 2h3v12H4z" />
-                      <circle cx="12" cy="13" r="3" />
-                    </svg>
-                    Image: upload d images et legendes.
-                  </div>
-                ) : layoutCustomType === "radar" ? (
-                  <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-violet-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-violet-100/80 select-none">
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="h-3.5 w-3.5"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <circle cx="12" cy="12" r="8" />
-                      <path d="M12 12l4-4" />
-                      <path d="M12 8v-2" />
-                      <path d="M16 12h2" />
-                    </svg>
-                    Datas: import d exports et graphes.
-                  </div>
-                ) : (
-                  <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-emerald-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-emerald-100/80 select-none">
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="h-3.5 w-3.5"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M4 6h16" />
-                      <path d="M4 12h16" />
-                      <path d="M4 18h10" />
-                    </svg>
-                    Texte: section ecrite libre.
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={handleAddCustomTemplateToLayout}
-                  className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10"
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-3.5 w-3.5"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M12 5v14" />
-                    <path d="M5 12h14" />
-                  </svg>
-                  Ajouter au layout
-                </button>
-              </div>
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  disabled={layoutSaving}
-                  onClick={handleSaveLayout}
-                  className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
-                >
-                  {layoutSaving ? "Sauvegarde..." : "Enregistrer le layout"}
-                </button>
-                <button
-                  type="button"
-                  onClick={resetLayoutEditor}
-                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
-                >
-                  Annuler
-                </button>
-              </div>
-            </div>
-          ) : null}
-            </>
-          ) : null}
-          <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-            <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
-              Nouvelle section
-            </p>
-            <p className="mt-1 text-xs text-[var(--muted)]">
-              Un titre clair aide l assistant IA a etre plus pertinent.
-            </p>
-            <label className="mt-3 block text-xs uppercase tracking-wide text-[var(--muted)]">
-              Nom de la section
-            </label>
-            <input
-              type="text"
-              value={customSection}
-              onChange={(event) => setCustomSection(event.target.value)}
-              placeholder="Ex: Routine pre-shot"
-              className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
-            />
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                Type
-              </span>
-              <button
-                type="button"
-                onClick={() => setCustomType("text")}
-                className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
-                  customType === "text"
-                    ? "border-emerald-300/40 bg-emerald-400/15 text-emerald-100"
-                    : "border-white/10 bg-white/5 text-[var(--muted)]"
-                }`}
-                aria-pressed={customType === "text"}
-              >
-                Texte
-              </button>
-              <button
-                type="button"
-                onClick={() => setCustomType("image")}
-                className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
-                  customType === "image"
-                    ? "border-sky-300/40 bg-sky-400/20 text-sky-100"
-                    : "border-white/10 bg-white/5 text-[var(--muted)]"
-                }`}
-                aria-pressed={customType === "image"}
-              >
-                Image
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!radarAddonEnabled) {
-                    openRadarAddonModal();
-                    return;
-                  }
-                  setCustomType("radar");
-                }}
-                className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
-                  customType === "radar"
-                    ? "border-violet-300/40 bg-violet-400/15 text-violet-100"
-                    : "border-white/10 bg-white/5 text-[var(--muted)]"
-                } ${!radarAddonEnabled ? "cursor-not-allowed opacity-60" : ""}`}
-                aria-pressed={customType === "radar"}
-                aria-disabled={!radarAddonEnabled}
-              >
-                Datas
-              </button>
-            </div>
-            {customType === "image" ? (
-              <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-sky-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-sky-100/80 select-none">
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-3.5 w-3.5"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M4 7h3l2-2h6l2 2h3v12H4z" />
-                  <circle cx="12" cy="13" r="3" />
-                </svg>
-                Image: upload d images et legendes.
-              </div>
-            ) : customType === "radar" ? (
-              <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-violet-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-violet-100/80 select-none">
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-3.5 w-3.5"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <circle cx="12" cy="12" r="8" />
-                  <path d="M12 12l4-4" />
-                  <path d="M12 8v-2" />
-                  <path d="M16 12h2" />
-                </svg>
-                Datas: import d exports et graphes.
-              </div>
-            ) : (
-              <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-emerald-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-emerald-100/80 select-none">
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-3.5 w-3.5"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M4 6h16" />
-                  <path d="M4 12h16" />
-                  <path d="M4 18h10" />
-                </svg>
-                Texte: section ecrite libre.
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={handleAddCustomSection}
-              className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                className="h-3.5 w-3.5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M12 5v14" />
-                <path d="M5 12h14" />
-              </svg>
-              Ajouter
-            </button>
-          </div>
-          <div className="mt-4 space-y-3">
-            <div className="mt-4 -mx-6 border-y border-white/10 bg-gradient-to-r from-white/5 via-white/5 to-sky-400/10 px-6 py-4">
-              <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                Recherche
-              </label>
-              <input
-                type="search"
-                value={sectionSearch}
-                onChange={(event) => setSectionSearch(event.target.value)}
-                placeholder="Chercher une section"
-                className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
-              />
-            </div>
-            {templatesLoading ? (
-              <p className="text-xs text-[var(--muted)]">
-                Chargement des sections...
-              </p>
-            ) : filteredAvailableSections.length === 0 ? (
-              <p className="text-xs text-[var(--muted)]">
-                Aucune section disponible. Cree-en une ou applique un layout.
-              </p>
-            ) : (
-              visibleAvailableSections.map((section) => {
-                const featureKey = getSectionFeatureKey(section);
-                const tone = featureKey ? featureTones[featureKey] : null;
-                const isLocked = isFeatureLocked(featureKey);
-                return (
-                <div
-                  key={`${section.title}-${section.type}`}
-                  className={`relative flex flex-col gap-3 rounded-xl border px-4 py-3 pl-11 text-sm text-[var(--text)] sm:flex-row sm:items-center sm:justify-between sm:pr-16 ${
-                    tone ? tone.panel : "border-white/5 bg-white/5"
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveFromAvailable(section)}
-                    className="absolute left-0 top-0 flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-[var(--bg-elevated)] text-[var(--muted)] shadow transition hover:border-red-400/40 hover:bg-red-500/20 hover:text-red-300"
-                    aria-label="Supprimer la section"
-                    title="Supprimer"
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="h-3 w-3"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M18 6L6 18" />
-                      <path d="M6 6l12 12" />
-                    </svg>
-                  </button>
-                  <div className="min-w-0 flex-1">
-                    {editingSection === section.title ? (
-                      <input
-                        type="text"
-                        value={editingValue}
-                        onChange={(event) => setEditingValue(event.target.value)}
-                        className="w-full rounded-lg border border-white/10 bg-[var(--bg-elevated)] px-3 py-1 text-sm text-[var(--text)]"
-                      />
-                    ) : (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="block break-words">
-                          {section.title}
-                        </span>
-                        {renderFeatureBadge(getSectionFeatureKey(section))}
-                      </div>
+                      ))
                     )}
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {editingSection === section.title ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={handleSaveEdit}
-                          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--text)] transition hover:bg-white/20"
-                          aria-label="Valider"
-                          title="Valider"
-                        >
-                          <svg
-                            viewBox="0 0 24 24"
-                            className="h-4 w-4"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M5 12l4 4L19 6" />
-                          </svg>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleCancelEdit}
-                          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
-                          aria-label="Annuler"
-                          title="Annuler"
-                        >
-                          <svg
-                            viewBox="0 0 24 24"
-                            className="h-4 w-4"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M15 6l-6 6 6 6" />
-                          </svg>
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (isLocked) {
-                              openFeatureModal(featureKey);
-                              return;
-                            }
-                            handleAddToReport(section);
-                          }}
-                          title={
-                            isLocked
-                              ? "Option requise"
-                              : "Ajouter"
-                          }
-                          className={`flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--text)] transition hover:bg-white/20 ${
-                            isLocked ? "cursor-not-allowed opacity-60" : ""
-                          }`}
-                          aria-label="Ajouter au rapport"
-                          aria-disabled={isLocked}
-                        >
-                          {isLocked ? (
-                            <svg
-                              viewBox="0 0 24 24"
-                              className="h-4 w-4"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              aria-hidden="true"
-                            >
-                              <rect x="5" y="11" width="14" height="9" rx="2" />
-                              <path d="M8 11V8a4 4 0 0 1 8 0v3" />
-                            </svg>
-                          ) : (
-                            <svg
-                              viewBox="0 0 24 24"
-                              className="h-4 w-4"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M12 5v14" />
-                              <path d="M5 12h14" />
-                            </svg>
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleEditSection(section)}
-                          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
-                          aria-label="Modifier la section"
-                          title="Modifier"
-                        >
-                          <svg
-                            viewBox="0 0 24 24"
-                            className="h-4 w-4"
-                            fill="currentColor"
-                            aria-hidden="true"
-                          >
-                            <circle cx="5" cy="12" r="1.8" />
-                            <circle cx="12" cy="12" r="1.8" />
-                            <circle cx="19" cy="12" r="1.8" />
-                          </svg>
-                        </button>
-                      </>
-                    )}
-                  </div>
-                  {dragEnabled ? (
+                  <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
                     <button
                       type="button"
-                      draggable={editingSection !== section.title}
-                      disabled={editingSection === section.title}
-                      onDragStart={(event) =>
-                        handleAvailableDragStart(section, event)
-                      }
-                      onDragEnd={handleDragEnd}
-                      className={`absolute right-3 top-3 bottom-3 flex w-7 items-center justify-center rounded-lg border border-dashed border-white/10 bg-white/5 text-[var(--muted)] transition hover:border-[var(--accent)] hover:text-[var(--text)] ${
-                        editingSection === section.title
-                          ? "cursor-not-allowed opacity-40"
-                          : "cursor-grab"
-                      }`}
-                      aria-label="Glisser vers le rapport"
-                      title="Glisser vers le rapport"
+                      onClick={() => setBuilderStep("layout")}
+                      className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
                     >
-                      <svg
-                        viewBox="0 0 24 24"
-                        className="h-4 w-4"
-                        fill="currentColor"
-                        aria-hidden="true"
-                      >
-                        <circle cx="9" cy="6" r="1.4" />
-                        <circle cx="9" cy="12" r="1.4" />
-                        <circle cx="9" cy="18" r="1.4" />
-                        <circle cx="15" cy="6" r="1.4" />
-                        <circle cx="15" cy="12" r="1.4" />
-                        <circle cx="15" cy="18" r="1.4" />
-                      </svg>
-                    </button>
-                  ) : null}
-                </div>
-              );
-              })
-            )}
-            {!normalizedSectionSearch && hiddenAvailableCount > 0 ? (
-              <p className="text-xs text-[var(--muted)]">
-                {hiddenAvailableCount} autres sections disponibles via la
-                recherche.
-              </p>
-            ) : null}
-          </div>
-          {sectionsMessage ? (
-            <p
-              className={`mt-4 text-xs ${
-                sectionsMessageType === "error"
-                  ? "text-red-400"
-                  : "text-[var(--muted)]"
-              }`}
-            >
-              {sectionsMessage}
-            </p>
-          ) : null}
-        </div>
-        ) : null}
-
-        {activeBuilderStep === "sections" ? (
-        <div className="panel relative rounded-2xl p-6">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h3 className="text-lg font-semibold text-[var(--text)]">
-                Apercu du rapport
-              </h3>
-              <p className="mt-1 text-xs text-[var(--muted)]">
-                Ecran de verification avant la redaction. Organise les sections
-                si besoin.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setBuilderStep("layout")}
-              className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
-            >
-              Retour layout
-            </button>
-          </div>
-          {selectedLayoutOption ? (
-            <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.55rem] uppercase tracking-wide text-[var(--muted)]">
-              Layout: {selectedLayoutOption.title}
-            </div>
-          ) : null}
-          <div className="mt-4 space-y-3">
-            {reportSections.length === 0 ? (
-              <p className="text-xs text-[var(--muted)]">
-                Ajoute des sections a gauche pour demarrer.
-              </p>
-            ) : (
-              reportSections.map((section, index) => (
-                <div
-                  key={`preview-section-${section.id}`}
-                  ref={(node) => {
-                    if (node) {
-                      itemRefs.current.set(section.id, node);
-                    } else {
-                      itemRefs.current.delete(section.id);
-                    }
-                  }}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-[var(--text)]"
-                >
-                  <div>
-                    <p className="text-sm font-semibold text-[var(--text)]">
-                      {section.title}
-                    </p>
-                    <div className="mt-1">
-                      {renderFeatureBadge(getSectionFeatureKey(section)) ?? (
-                        <span className="text-[0.55rem] uppercase tracking-wide text-[var(--muted)]">
-                          Texte
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleMoveSection(index, "up")}
-                      disabled={index === 0}
-                      className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-40"
-                      aria-label="Monter"
-                      title="Monter"
-                    >
-                      <svg
-                        viewBox="0 0 24 24"
-                        className="h-3.5 w-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M12 19V5" />
-                        <path d="M5 12l7-7 7 7" />
-                      </svg>
+                      Retour
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleMoveSection(index, "down")}
-                      disabled={index === reportSections.length - 1}
-                      className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-40"
-                      aria-label="Descendre"
-                      title="Descendre"
+                      onClick={handleContinueFromSections}
+                      className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90"
                     >
-                      <svg
-                        viewBox="0 0 24 24"
-                        className="h-3.5 w-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M12 5v14" />
-                        <path d="M5 12l7 7 7-7" />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveFromReport(section)}
-                      className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-red-200"
-                      aria-label="Retirer"
-                      title="Retirer"
-                    >
-                      <svg
-                        viewBox="0 0 24 24"
-                        className="h-3.5 w-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M18 6L6 18" />
-                        <path d="M6 6l12 12" />
-                      </svg>
+                      Passer au rapport
                     </button>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={() => setBuilderStep("layout")}
-              className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
-            >
-              Retour
-            </button>
-            <button
-              type="button"
-              onClick={handleContinueFromSections}
-              className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90"
-            >
-              Passer au rapport
-            </button>
-          </div>
-        </div>
-        ) : (
-        <div className="panel relative rounded-2xl p-6">
-          <div className="flex items-start justify-between gap-3">
-            <h3 className="text-lg font-semibold text-[var(--text)]">
-              Rapport en cours
-            </h3>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setBuilderStep("layout")}
-                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
-                aria-label="Revenir aux layouts"
-                title="Layouts"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <rect x="3" y="4" width="7" height="7" rx="1.5" />
-                  <rect x="14" y="4" width="7" height="7" rx="1.5" />
-                  <rect x="3" y="13" width="7" height="7" rx="1.5" />
-                  <rect x="14" y="13" width="7" height="7" rx="1.5" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                onClick={handleReportSectionsToggle}
-                className={`flex h-9 w-9 items-center justify-center rounded-full border transition ${
-                  sectionsPanelCollapsed
-                    ? "border-emerald-300/40 bg-emerald-400/10 text-emerald-100"
-                    : "border-white/10 bg-white/5 text-[var(--muted)] hover:text-[var(--text)]"
-                }`}
-                aria-label="Afficher les sections"
-                title="Sections"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <rect x="3" y="5" width="7" height="14" rx="1.5" />
-                  <rect x="14" y="5" width="7" height="14" rx="1.5" />
-                </svg>
-              </button>
-              <span
-                ref={(node) => {
-                  if (node) {
-                    tooltipRefs.current.set("report", node);
-                  } else {
-                    tooltipRefs.current.delete("report");
-                  }
-                }}
-                className="group relative shrink-0"
-              >
-                <button
-                  type="button"
-                  onClick={() =>
-                    setActiveTooltip((prev) =>
-                      prev === "report" ? null : "report"
-                    )
-                  }
-                  className="flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[0.7rem] text-[var(--muted)] transition hover:text-[var(--text)]"
-                  aria-label="Aide sur le rapport en cours"
-                  aria-expanded={activeTooltip === "report"}
-                >
-                  ?
-                </button>
-                <span
-                  className={`absolute right-0 top-full z-20 mt-2 w-64 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text)] shadow-xl transition ${
-                    activeTooltip === "report"
-                      ? "pointer-events-auto opacity-100"
-                      : "pointer-events-none opacity-0"
-                  } group-hover:opacity-100 group-focus-within:opacity-100`}
-                >
-                  <span className="block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                    Construction
-                  </span>
-                  <span className="mt-1 block">
-                    Tu saisis des notes de travail en cours. Le rapport se construit
-                    au fur et a mesure selon les sections presentes.
-                  </span>
-                  <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                    Propagation
-                  </span>
-                  <span className="mt-1 block">
-                    L IA relit, complete et propage les idees pour accelerer la
-                    redaction.
-                  </span>
-                  <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                    Finalisation
-                  </span>
-                  <span className="mt-1 block">
-                    Le resume et les sections de planification se generent a la fin,
-                    selon le titre des sections (ex: plan 3 mois, plan 7 jours).
-                  </span>
-                </span>
-              </span>
-            </div>
-          </div>
-          <p className="mt-2 text-xs text-[var(--muted)]">
-            Organise les sections et remplis le contenu. Drag & drop actif.
-          </p>
-          {tpiContext ? (
-            <div className="mt-3 inline-flex flex-wrap items-center gap-2 rounded-full border border-rose-300/20 bg-rose-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-rose-100">
-              <span className="h-1.5 w-1.5 rounded-full bg-rose-300" />
-              Profil TPI detecte
-              {selectedStudent ? (
-                <span className="text-[0.55rem] text-rose-100/80">
-                  - {selectedStudent.first_name}{" "}
-                  {selectedStudent.last_name ?? ""}
-                </span>
-              ) : null}
-              <span className="text-[0.55rem] text-rose-100/80">
-                L assistant IA l utilisera pour ses recommandations.
-              </span>
-            </div>
-          ) : null}
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            {showPublish ? (
-              <button
-                type="button"
-                disabled={saving || loadingReport}
-                onClick={() => handleSaveReport(true)}
-                className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
-              >
-                {saving ? "Envoi..." : sendLabel}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              disabled={saving || loadingReport}
-              onClick={() => handleSaveReport(false)}
-              className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10 disabled:opacity-60"
-            >
-              {saving ? "Sauvegarde..." : saveLabel}
-            </button>
-            {isEditing ? (
-              <span
-                className={`rounded-md border border-dashed px-2 py-1 text-[0.55rem] uppercase tracking-wide select-none ${
-                  isDraft
-                    ? "border-white/15 bg-white/5 text-[var(--muted)]"
-                    : "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
-                }`}
-              >
-                {isDraft ? "Brouillon" : "Envoye"}
-              </span>
-            ) : null}
-          </div>
-          <div className="relative mt-5 -mx-6 border-y border-white/10 bg-gradient-to-r from-white/5 via-white/5 to-emerald-400/10 px-6 py-4">
-            {aiLocked ? (
-              <button
-                type="button"
-                onClick={() => openPremiumModal()}
-                className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--overlay)] px-6 text-left backdrop-blur-sm"
-                aria-label="Decouvrir Premium"
-              >
-                <div className="flex w-full max-w-md items-center justify-between gap-4 rounded-2xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-amber-200 shadow-[0_16px_40px_rgba(15,23,42,0.25)]">
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full border border-amber-300/40 bg-amber-400/20">
-                      <svg
-                        viewBox="0 0 24 24"
-                        className="h-4 w-4"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
+              ) : (
+                <div className="panel relative rounded-2xl p-6">
+                  <div className="flex items-start justify-between gap-3">
+                    <h3 className="text-lg font-semibold text-[var(--text)]">
+                      Rapport en cours
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setBuilderStep("layout")}
+                        className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                        aria-label="Revenir aux layouts"
+                        title="Layouts"
                       >
-                        <rect x="3" y="11" width="18" height="11" rx="2" />
-                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                      </svg>
-                    </span>
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.2em]">
-                        Assistant IA
-                      </p>
-                      <p className="text-sm text-amber-100/80">
-                        Debloque le mode Premium
-                      </p>
-                    </div>
-                  </div>
-                  <span className="rounded-full border border-amber-300/40 bg-amber-400/20 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-amber-200">
-                    Voir les offres
-                  </span>
-                </div>
-              </button>
-            ) : null}
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                Assistant IA
-              </p>
-              <span
-                className={`rounded-md border border-dashed px-2 py-1 text-[0.55rem] uppercase tracking-wide select-none ${
-                  aiEnabled
-                    ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
-                    : "border-amber-300/30 bg-amber-400/10 text-amber-200"
-                }`}
-                onClick={!aiEnabled ? () => openPremiumModal() : undefined}
-                role={!aiEnabled ? "button" : undefined}
-                aria-label={!aiEnabled ? "Decouvrir Premium" : undefined}
-              >
-                {aiEnabled ? "Actif" : "Premium"}
-              </span>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-              <div>
-                <p className="text-[0.65rem] uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Validation apres propagation
-                </p>
-                <p className="mt-1 text-xs text-[var(--muted)]">
-                  {aiPropagationReview
-                    ? "Le coach valide chaque section avant insertion."
-                    : "L IA remplit automatiquement les sections."}
-                </p>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={aiPropagationReview}
-                aria-label="Basculer la validation apres propagation"
-                onClick={() => setAiPropagationReview((prev) => !prev)}
-                disabled={aiLocked}
-                className={`relative inline-flex h-8 w-14 items-center rounded-full border px-1 transition ${
-                  aiLocked
-                    ? "cursor-not-allowed border-white/10 bg-white/5 opacity-60"
-                    : "border-white/10 bg-white/10 hover:border-white/30"
-                }`}
-              >
-                <span
-                  className={`absolute left-1 top-1 flex h-6 w-6 items-center justify-center rounded-full border text-[0.55rem] font-semibold uppercase shadow-[0_6px_12px_rgba(0,0,0,0.25)] transition-transform ${
-                    aiPropagationReview
-                      ? "translate-x-0 border-emerald-300/40 bg-emerald-400/20 text-emerald-100"
-                      : "translate-x-6 border-rose-300/40 bg-rose-400/20 text-rose-100"
-                  }`}
-                >
-                  {aiPropagationReview ? "On" : "Off"}
-                </span>
-              </button>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  disabled={!!aiBusyId}
-                  onClick={() => {
-                    if (aiLocked) {
-                      openPremiumModal();
-                      return;
-                    }
-                    handleAiSummary();
-                  }}
-                  className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
-                  aiLocked
-                    ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
-                    : "border-white/10 bg-white/10 text-[var(--text)]"
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  {aiLocked ? (
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="h-3.5 w-3.5"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <rect x="3" y="11" width="18" height="11" rx="2" />
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                    </svg>
-                  ) : null}
-                    {aiBusyId === "summary" ? "IA..." : "Resume du rapport"}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  disabled={radarAiAutoBusy}
-                  onClick={() => {
-                    if (aiLocked) {
-                      openPremiumModal();
-                      return;
-                    }
-                    setRadarAiQaAnswers({});
-                    setRadarAiQaError("");
-                    setRadarAiQaOpen(true);
-                    setRadarAiQuestions(DEFAULT_RADAR_AI_QUESTIONS);
-                    void loadRadarAiQuestions();
-                  }}
-                  className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
-                    aiLocked
-                      ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
-                      : "border-violet-300/40 bg-violet-400/15 text-violet-100"
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    {aiLocked ? (
-                      <svg
-                        viewBox="0 0 24 24"
-                        className="h-3.5 w-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <rect x="3" y="11" width="18" height="11" rx="2" />
-                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                      </svg>
-                    ) : null}
-                    {radarAiAutoBusy ? "IA..." : "Auto detect datas graph"}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  disabled={!!aiBusyId}
-                  onClick={() => {
-                    if (aiLocked) {
-                      openPremiumModal();
-                      return;
-                    }
-                    handleAiFinalize();
-                  }}
-                  className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
-                  aiLocked
-                    ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
-                    : "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  {aiLocked ? (
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="h-3.5 w-3.5"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <rect x="3" y="11" width="18" height="11" rx="2" />
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                    </svg>
-                  ) : null}
-                    {aiBusyId === "finalize" ? "IA..." : "Finaliser"}
-                  </span>
-                </button>
-              </div>
-              {radarAiAutoBusy ? (
-                <div className="mt-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-                  <div className="flex items-center justify-between text-xs text-[var(--muted)]">
-                    <span>
-                      Auto detect datas graph
-                      <span className="tpi-dots" aria-hidden="true">
-                        <span />
-                        <span />
-                        <span />
-                      </span>
-                    </span>
-                    <span className="min-w-[3ch] text-right text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                      {Math.round(radarAiAutoProgress)}%
-                    </span>
-                  </div>
-                  <div className="mt-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                    Mode:{" "}
-                    {radarAiAutoPreset === "ultra"
-                      ? "Ultra focus (1 min)"
-                      : "Standard (4 min)"}
-                  </div>
-                  <div className="mt-2 h-2 w-full rounded-full bg-white/10">
-                    <div
-                      className="h-2 rounded-full bg-violet-300 transition-all duration-700 ease-out"
-                      style={{ width: `${radarAiAutoProgress}%` }}
-                    />
-                  </div>
-                </div>
-              ) : null}
-              <details className="mt-3">
-                <summary className="cursor-pointer text-xs uppercase tracking-wide text-[var(--muted)]">
-                  Reglages IA
-                </summary>
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-xs text-[var(--muted)]">
-                    Reinitialise les reglages IA aux valeurs par defaut.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={resetAiSettings}
-                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
-                  >
-                    Reinitialiser IA
-                  </button>
-                </div>
-                <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1fr]">
-                  <div>
-                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                      Ton
-                    </label>
-                  <select
-                    value={aiTone}
-                    onChange={(event) => setAiTone(event.target.value)}
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
-                  >
-                    <option value="bienveillant">Bienveillant</option>
-                    <option value="direct">Direct</option>
-                    <option value="motivant">Motivant</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                    Technicite
-                  </label>
-                  <select
-                    value={aiTechLevel}
-                    onChange={(event) => setAiTechLevel(event.target.value)}
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
-                  >
-                    <option value="debutant">Debutant</option>
-                    <option value="intermediaire">Intermediaire</option>
-                    <option value="avance">Avance</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                    Style
-                  </label>
-                  <select
-                    value={aiStyle}
-                    onChange={(event) => setAiStyle(event.target.value)}
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
-                  >
-                    <option value="redactionnel">Redactionnel</option>
-                    <option value="structure">Structure</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                    Longueur
-                  </label>
-                  <select
-                    value={aiLength}
-                    onChange={(event) => setAiLength(event.target.value)}
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
-                  >
-                    <option value="court">Court</option>
-                    <option value="normal">Normal</option>
-                    <option value="long">Long</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                    Metaphores
-                  </label>
-                  <select
-                    value={aiImagery}
-                    onChange={(event) => setAiImagery(event.target.value)}
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
-                  >
-                    <option value="faible">Faible</option>
-                    <option value="equilibre">Equilibre</option>
-                    <option value="fort">Fort</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                    Focus
-                  </label>
-                  <select
-                    value={aiFocus}
-                    onChange={(event) => setAiFocus(event.target.value)}
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
-                  >
-                    <option value="mix">Mix</option>
-                    <option value="technique">Technique</option>
-                    <option value="mental">Mental</option>
-                    <option value="strategie">Strategie</option>
-                  </select>
-                </div>
-              </div>
-            </details>
-            {aiError ? (
-              <p className="mt-3 text-xs text-red-400">{aiError}</p>
-            ) : null}
-            <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Travail en cours
-                </p>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={aiLocked || !!aiBusyId}
-                      onClick={resetWorkingContext}
-                      className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-60"
-                    >
-                      Reinitialiser
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!!aiBusyId}
-                      onClick={() => {
-                        if (aiLocked) {
-                          openPremiumModal();
-                          return;
-                        }
-                        handleAiPropagateFromWorking();
-                      }}
-                    className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
-                      aiLocked
-                        ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
-                        : "border-white/10 bg-white/10 text-[var(--text)]"
-                    }`}
-                  >
-                    <span className="flex items-center gap-2">
-                      {aiLocked ? (
                         <svg
                           viewBox="0 0 24 24"
-                          className="h-3.5 w-3.5"
+                          className="h-4 w-4"
                           fill="none"
                           stroke="currentColor"
                           strokeWidth="2"
                           strokeLinecap="round"
                           strokeLinejoin="round"
                         >
-                          <rect x="3" y="11" width="18" height="11" rx="2" />
-                          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                          <rect x="3" y="4" width="7" height="7" rx="1.5" />
+                          <rect x="14" y="4" width="7" height="7" rx="1.5" />
+                          <rect x="3" y="13" width="7" height="7" rx="1.5" />
+                          <rect x="14" y="13" width="7" height="7" rx="1.5" />
                         </svg>
-                      ) : null}
-                      {aiBusyId === "propagate" ? "IA..." : "Propager"}
-                    </span>
-                  </button>
-                </div>
-              </div>
-              {aiBusyId ? (
-                <div className="mt-2 flex items-center gap-2 text-xs text-[var(--muted)]">
-                  <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-white/10 bg-white/10">
-                    <span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-white/20 border-t-white/70" />
-                  </span>
-                  Traitement IA en cours...
-                </div>
-                ) : null}
-                <p className="mt-2 text-xs text-[var(--muted)]">
-                  Constats + travail en cours. L IA remplit les sections vides et
-                  complete les sections deja remplies.
-                </p>
-              <div className="mt-3 grid gap-3 md:grid-cols-[0.6fr_1.4fr]">
-                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                  Club concerne
-                </label>
-                <input
-                  type="text"
-                  value={workingClub}
-                  onChange={(event) => setWorkingClub(event.target.value)}
-                  placeholder="Ex: Fer 7, Driver, Putter..."
-                  className="w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
-                />
-              </div>
-              <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                <div>
-                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                    Constats
-                  </label>
-                  <textarea
-                    ref={(node) => {
-                      workingObservationsRef.current = node;
-                    }}
-                    rows={3}
-                    placeholder="Ex: chemin de club trop a gauche, perte de posture..."
-                    value={workingObservations}
-                    onInput={handleWorkingObservationsInput}
-                    className="mt-2 w-full resize-none overflow-hidden rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                    Travail en cours
-                  </label>
-                  <textarea
-                    ref={(node) => {
-                      workingNotesRef.current = node;
-                    }}
-                    rows={3}
-                    placeholder="Ex: stabiliser l'appui pied droit au backswing."
-                    value={workingNotes}
-                    onInput={handleWorkingNotesInput}
-                    className="mt-2 w-full resize-none overflow-hidden rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-            <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
-              <button
-                type="button"
-                disabled={saving || loadingReport || reportSections.length === 0}
-                onClick={handleClearReportContent}
-                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-50"
-              >
-                Vider le contenu
-              </button>
-              <button
-                type="button"
-                disabled={saving || loadingReport || reportSections.length === 0}
-                onClick={handleClearReportSections}
-              className="rounded-full border border-rose-300/30 bg-rose-400/10 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-rose-100 transition hover:bg-rose-400/20 disabled:opacity-50"
-            >
-              Retirer tout
-            </button>
-          </div>
-          {aiSummary ? (
-            <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-              <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                Resume IA
-              </p>
-              <p className="mt-2 text-sm text-[var(--text)] whitespace-pre-wrap">
-                {aiSummary}
-              </p>
-            </div>
-          ) : null}
-          <div className="mt-4 space-y-3">
-            {reportSections.map((section, index) => {
-              const isCollapsed = collapsedSections[section.id] ?? false;
-              const trimmedContent = section.content.trim();
-              const contentPreview = trimmedContent
-                ? `${trimmedContent.slice(0, 160)}${
-                    trimmedContent.length > 160 ? "..." : ""
-                  }`
-                : "Section repliee.";
-              const imagePreview =
-                section.mediaUrls.length > 0
-                  ? `${section.mediaUrls.length} image(s)`
-                  : "Aucune image ajoutee.";
-              const radarFile = section.radarFileId
-                ? radarFileMap.get(section.radarFileId)
-                : null;
-              const radarPreview = radarFile
-                ? `${radarFile.original_name ?? "Fichier datas"} • ${
-                    radarFile.shots?.length ?? 0
-                  } coups`
-                : "Aucun fichier datas selectionne.";
-
-              const featureKey = getSectionFeatureKey(section);
-              const tone = featureKey ? featureTones[featureKey] : null;
-              const radarLocked = section.type === "radar" && !radarAddonEnabled;
-
-              return (
-              <div key={`${section.id}-slot`} className="space-y-3">
-                <div
-                  onDragOver={handleDragOver}
-                  onDragEnter={() => setHoverIndex(index)}
-                  onDrop={() => handleDrop(index)}
-                  className={`overflow-hidden transition-[height,margin] duration-200 ease-out ${
-                    showSlots
-                      ? hoverIndex === index
-                        ? "my-2 h-16"
-                        : "my-2 h-2"
-                      : "my-0 h-0"
-                  }`}
-                >
-                  {showSlots && hoverIndex === index ? (
-                    <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-[var(--accent)] bg-[var(--accent)]/10 text-xs uppercase tracking-[0.2em] text-[var(--accent)]">
-                      Deposer ici
-                    </div>
-                  ) : (
-                    <div className="h-full rounded-full bg-white/10" />
-                  )}
-                </div>
-
-                <div
-                  ref={(node) => {
-                    if (node) {
-                      itemRefs.current.set(section.id, node);
-                    } else {
-                      itemRefs.current.delete(section.id);
-                    }
-                  }}
-                  onDragEnd={handleDragEnd}
-                  className={`relative rounded-2xl border px-4 py-4 transition ${
-                    dragIndex === index
-                      ? "border-white/20 bg-white/10 opacity-80 shadow-[0_20px_45px_rgba(0,0,0,0.45)]"
-                      : tone
-                        ? tone.panel
-                        : "border-white/10 bg-white/5"
-                  }`}
-                >
-                  <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex min-w-0 flex-1 items-center gap-3">
-                      {dragEnabled ? (
-                        <button
-                          type="button"
-                          draggable
-                          onDragStart={(event) => handleDragStart(index, event)}
-                          className="flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-2.5 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] active:cursor-grabbing"
-                          title="Glisser pour reordonner"
-                        >
-                          <span className="text-xs">|||</span>
-                          Glisser
-                        </button>
-                      ) : null}
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold text-[var(--text)] break-words">
-                          {section.title}
-                        </p>
-                        {renderFeatureBadge(featureKey)}
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
+                      </button>
                       <button
                         type="button"
-                        onClick={() => toggleSectionCollapse(section.id)}
-                        className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)]"
-                        aria-label={
-                          isCollapsed ? "Developper" : "Replier"
-                        }
-                        title={isCollapsed ? "Developper" : "Replier"}
+                        onClick={handleReportSectionsToggle}
+                        className={`flex h-9 w-9 items-center justify-center rounded-full border transition ${
+                          sectionsPanelCollapsed
+                            ? "border-emerald-300/40 bg-emerald-400/10 text-emerald-100"
+                            : "border-white/10 bg-white/5 text-[var(--muted)] hover:text-[var(--text)]"
+                        }`}
+                        aria-label="Afficher les sections"
+                        title="Sections"
                       >
                         <svg
                           viewBox="0 0 24 24"
-                          className={`h-4 w-4 transition-transform ${
-                            isCollapsed ? "rotate-180" : ""
-                          }`}
+                          className="h-4 w-4"
                           fill="none"
                           stroke="currentColor"
                           strokeWidth="2"
                           strokeLinecap="round"
                           strokeLinejoin="round"
                         >
-                          <path d="M6 9l6 6 6-6" />
+                          <rect x="3" y="5" width="7" height="14" rx="1.5" />
+                          <rect x="14" y="5" width="7" height="14" rx="1.5" />
                         </svg>
                       </button>
-                      {!dragEnabled ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => handleMoveSection(index, "up")}
-                            disabled={index === 0}
-                            className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-40"
-                            aria-label="Monter"
-                            title="Monter"
-                          >
-                            <svg
-                              viewBox="0 0 24 24"
-                              className="h-4 w-4"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M12 19V5" />
-                              <path d="M5 12l7-7 7 7" />
-                            </svg>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleMoveSection(index, "down")}
-                            disabled={index === reportSections.length - 1}
-                            className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-40"
-                            aria-label="Descendre"
-                            title="Descendre"
-                          >
-                            <svg
-                              viewBox="0 0 24 24"
-                              className="h-4 w-4"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M12 5v14" />
-                              <path d="M5 12l7 7 7-7" />
-                            </svg>
-                          </button>
-                        </>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveFromReport(section)}
-                        className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
-                      >
-                        Retirer
-                      </button>
-                    </div>
-                  </div>
-                  {isCollapsed ? (
-                    <p className="mt-3 text-xs text-[var(--muted)]">
-                      {section.type === "text"
-                        ? contentPreview
-                        : section.type === "radar"
-                          ? radarPreview
-                          : imagePreview}
-                    </p>
-                  ) : section.type === "text" ? (
-                    <>
-                      <textarea
-                        rows={4}
-                        placeholder="Ecris le contenu de cette section..."
-                        value={section.content}
-                        onInput={(event) =>
-                          handleSectionInput(section.id, event)
-                        }
+                      <span
                         ref={(node) => {
                           if (node) {
-                            textareaRefs.current.set(section.id, node);
+                            tooltipRefs.current.set("report", node);
                           } else {
-                            textareaRefs.current.delete(section.id);
+                            tooltipRefs.current.delete("report");
                           }
                         }}
-                        className="mt-3 w-full resize-none overflow-hidden rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
-                      />
-                      {aiPreviews[section.id] ? (
-                        <div className="mt-3 rounded-2xl border border-emerald-400/20 bg-emerald-400/5 p-3">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-[0.7rem] uppercase tracking-[0.2em] text-emerald-200">
-                              {aiPreviews[section.id].mode === "improve"
-                                ? "Corrections IA"
-                                : aiPreviews[section.id].mode === "finalize"
-                                ? "Finalisation IA"
-                                : "Proposition IA"}
-                            </p>
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => handleAiApply(section.id)}
-                                className="flex h-7 w-7 items-center justify-center rounded-full border border-emerald-300/40 bg-emerald-400/20 text-emerald-200 transition hover:bg-emerald-400/30"
-                                aria-label="Valider les corrections"
-                                title="Valider"
-                              >
-                                <svg
-                                  viewBox="0 0 24 24"
-                                  className="h-4 w-4"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                >
-                                  <path d="M20 6L9 17l-5-5" />
-                                </svg>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleAiReject(section.id)}
-                                className="flex h-7 w-7 items-center justify-center rounded-full border border-rose-300/40 bg-rose-400/10 text-rose-200 transition hover:bg-rose-400/20"
-                                aria-label="Refuser les corrections"
-                                title="Refuser"
-                              >
-                                <svg
-                                  viewBox="0 0 24 24"
-                                  className="h-4 w-4"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                >
-                                  <path d="M18 6L6 18" />
-                                  <path d="M6 6l12 12" />
-                                </svg>
-                              </button>
-                            </div>
-                          </div>
-                          <p className="mt-2 whitespace-pre-wrap text-sm text-[var(--text)]">
-                            {aiPreviews[section.id].mode === "improve"
-                              ? buildDiffSegments(
-                                  aiPreviews[section.id].original,
-                                  aiPreviews[section.id].suggestion
-                                ).map((segment, segmentIndex) => {
-                                  if (segment.type === "delete") return null;
-                                  if (segment.type === "insert") {
-                                    return (
-                                      <span
-                                        key={`${section.id}-insert-${segmentIndex}`}
-                                        className="rounded bg-emerald-400/30 px-0.5 text-emerald-100"
-                                      >
-                                        {segment.text}
-                                      </span>
-                                    );
-                                  }
-                                  return (
-                                    <span
-                                      key={`${section.id}-equal-${segmentIndex}`}
-                                    >
-                                      {segment.text}
-                                    </span>
-                                  );
-                                })
-                              : aiPreviews[section.id].suggestion}
-                          </p>
-                        </div>
+                        className="group relative shrink-0"
+                      >
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setActiveTooltip((prev) =>
+                              prev === "report" ? null : "report"
+                            )
+                          }
+                          className="flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[0.7rem] text-[var(--muted)] transition hover:text-[var(--text)]"
+                          aria-label="Aide sur le rapport en cours"
+                          aria-expanded={activeTooltip === "report"}
+                        >
+                          ?
+                        </button>
+                        <span
+                          className={`absolute right-0 top-full z-20 mt-2 w-64 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text)] shadow-xl transition ${
+                            activeTooltip === "report"
+                              ? "pointer-events-auto opacity-100"
+                              : "pointer-events-none opacity-0"
+                          } group-hover:opacity-100 group-focus-within:opacity-100`}
+                        >
+                          <span className="block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                            Construction
+                          </span>
+                          <span className="mt-1 block">
+                            Tu saisis des notes de travail en cours. Le rapport se
+                            construit au fur et a mesure selon les sections presentes.
+                          </span>
+                          <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                            Propagation
+                          </span>
+                          <span className="mt-1 block">
+                            L IA relit, complete et propage les idees pour accelerer la
+                            redaction.
+                          </span>
+                          <span className="mt-2 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                            Finalisation
+                          </span>
+                          <span className="mt-1 block">
+                            Le resume et les sections de planification se generent a la
+                            fin, selon le titre des sections (ex: plan 3 mois, plan 7
+                            jours).
+                          </span>
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                  <p className="mt-2 text-xs text-[var(--muted)]">
+                    Organise les sections et remplis le contenu. Drag & drop actif.
+                  </p>
+                  {tpiContext ? (
+                    <div className="mt-3 inline-flex flex-wrap items-center gap-2 rounded-full border border-rose-300/20 bg-rose-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-rose-100">
+                      <span className="h-1.5 w-1.5 rounded-full bg-rose-300" />
+                      Profil TPI detecte
+                      {selectedStudent ? (
+                        <span className="text-[0.55rem] text-rose-100/80">
+                          - {selectedStudent.first_name} {selectedStudent.last_name ?? ""}
+                        </span>
                       ) : null}
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          disabled={!!aiBusyId}
-                          onClick={() => {
-                            if (aiLocked) {
-                              openPremiumModal();
-                              return;
-                            }
-                            handleAiImprove(section);
-                          }}
-                          className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
-                            aiLocked
-                              ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
-                              : "border-white/10 bg-white/10 text-[var(--text)]"
-                          }`}
-                        >
-                          <span className="flex items-center gap-2">
-                            {aiLocked ? (
-                              <svg
-                                viewBox="0 0 24 24"
-                                className="h-3.5 w-3.5"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <rect x="3" y="11" width="18" height="11" rx="2" />
-                                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                              </svg>
-                            ) : null}
-                            {aiBusyId === section.id ? "IA..." : "IA relire"}
-                          </span>
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!!aiBusyId}
-                          onClick={() => {
-                            if (aiLocked) {
-                              openPremiumModal();
-                              return;
-                            }
-                            handleAiWrite(section);
-                          }}
-                          className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
-                            aiLocked
-                              ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
-                              : "border-white/10 bg-white/10 text-[var(--text)]"
-                          }`}
-                        >
-                          <span className="flex items-center gap-2">
-                            {aiLocked ? (
-                              <svg
-                                viewBox="0 0 24 24"
-                                className="h-3.5 w-3.5"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <rect x="3" y="11" width="18" height="11" rx="2" />
-                                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                              </svg>
-                            ) : null}
-                            {aiBusyId === section.id ? "IA..." : "IA completer"}
-                          </span>
-                        </button>
-                      </div>
-                    </>
-                  ) : section.type === "radar" ? (
-                    <div className="relative mt-3 space-y-3">
-                      {radarLocked ? (
-                        <div
-                          role="button"
-                          tabIndex={0}
-                          onClick={openRadarAddonModal}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              openRadarAddonModal();
-                            }
-                          }}
-                          className="absolute inset-0 z-10 flex cursor-pointer items-center justify-center rounded-2xl border border-violet-300/40 bg-violet-500/10 text-center text-xs uppercase tracking-[0.2em] text-violet-100 backdrop-blur-sm"
-                        >
-                          <div className="flex flex-col items-center gap-3 px-6">
-                            <span className="flex items-center gap-2">
+                      <span className="text-[0.55rem] text-rose-100/80">
+                        L assistant IA l utilisera pour ses recommandations.
+                      </span>
+                    </div>
+                  ) : null}
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    {showPublish ? (
+                      <button
+                        type="button"
+                        disabled={saving || loadingReport}
+                        onClick={() => handleSaveReport(true)}
+                        className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
+                      >
+                        {saving ? "Envoi..." : sendLabel}
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={saving || loadingReport}
+                      onClick={() => handleSaveReport(false)}
+                      className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10 disabled:opacity-60"
+                    >
+                      {saving ? "Sauvegarde..." : saveLabel}
+                    </button>
+                    {isEditing ? (
+                      <span
+                        className={`rounded-md border border-dashed px-2 py-1 text-[0.55rem] uppercase tracking-wide select-none ${
+                          isDraft
+                            ? "border-white/15 bg-white/5 text-[var(--muted)]"
+                            : "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
+                        }`}
+                      >
+                        {isDraft ? "Brouillon" : "Envoye"}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="relative mt-5 -mx-6 border-y border-white/10 bg-gradient-to-r from-white/5 via-white/5 to-emerald-400/10 px-6 py-4">
+                    {aiLocked ? (
+                      <button
+                        type="button"
+                        onClick={() => openPremiumModal()}
+                        className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--overlay)] px-6 text-left backdrop-blur-sm"
+                        aria-label="Decouvrir Premium"
+                      >
+                        <div className="flex w-full max-w-md items-center justify-between gap-4 rounded-2xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-amber-200 shadow-[0_16px_40px_rgba(15,23,42,0.25)]">
+                          <div className="flex items-center gap-3">
+                            <span className="flex h-9 w-9 items-center justify-center rounded-full border border-amber-300/40 bg-amber-400/20">
                               <svg
                                 viewBox="0 0 24 24"
                                 className="h-4 w-4"
@@ -6702,260 +5738,353 @@ export default function CoachReportBuilderPage() {
                                 strokeWidth="2"
                                 strokeLinecap="round"
                                 strokeLinejoin="round"
-                                aria-hidden="true"
                               >
-                                <rect x="5" y="11" width="14" height="9" rx="2" />
-                                <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+                                <rect x="3" y="11" width="18" height="11" rx="2" />
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                               </svg>
-                              Add-on Datas requis
                             </span>
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openRadarAddonModal();
-                              }}
-                              className="rounded-full border border-violet-200/40 bg-violet-400/20 px-4 py-1 text-[0.6rem] uppercase tracking-wide text-violet-100 transition hover:bg-violet-400/30"
-                            >
-                              Voir les offres
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
-                      <div className="flex flex-wrap items-center gap-2">
-                        <select
-                          value={section.radarFileId ?? ""}
-                          onChange={(event) => {
-                            const nextId = event.target.value || null;
-                            const picked = nextId ? radarFileMap.get(nextId) : null;
-                            const base = picked?.config ?? defaultRadarConfig;
-                            const merged: RadarConfig = {
-                              ...defaultRadarConfig,
-                              ...(base ?? {}),
-                              charts: {
-                                ...defaultRadarConfig.charts,
-                                ...(base?.charts ?? {}),
-                              },
-                              thresholds: {
-                                ...defaultRadarConfig.thresholds,
-                                ...(base?.thresholds ?? {}),
-                              },
-                              options: {
-                                ...defaultRadarConfig.options,
-                                ...(base?.options ?? {}),
-                              },
-                            };
-                            setReportSections((prev) =>
-                              prev.map((entry) =>
-                                entry.id === section.id
-                                  ? {
-                                      ...entry,
-                                      radarFileId: nextId,
-                                      radarConfig: nextId ? merged : null,
-                                    }
-                                  : entry
-                              )
-                            );
-                          }}
-                          disabled={radarLocked}
-                          className="min-w-[220px] rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          <option value="">
-                            {radarVisibleFiles.length
-                              ? "Choisir un fichier datas"
-                              : "Importer un fichier datas pour cette section"}
-                          </option>
-                          {radarVisibleFiles.map((file) => (
-                            <option key={file.id} value={file.id}>
-                              {file.original_name || "Export Flightscope"}{" "}
-                              {file.status === "ready" ? "" : "(analyse)"}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (radarLocked) {
-                              openRadarAddonModal();
-                              return;
-                            }
-                            radarInputRef.current?.click();
-                          }}
-                          disabled={radarUploading}
-                          className={`rounded-full border border-white/10 bg-white/10 px-3 py-2 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20 ${
-                            radarLocked ? "cursor-not-allowed opacity-60" : ""
-                          } disabled:opacity-60`}
-                          aria-disabled={radarLocked}
-                        >
-                          Importer
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenRadarSectionConfig(section.id)}
-                          disabled={!section.radarFileId || radarLocked}
-                          className={`rounded-full border px-3 py-2 text-[0.65rem] uppercase tracking-wide transition ${
-                            section.radarFileId && !radarLocked
-                              ? "border-white/10 bg-white/5 text-[var(--text)] hover:bg-white/10"
-                              : "cursor-not-allowed border-white/5 bg-white/5 text-[var(--muted)]"
-                          }`}
-                        >
-                          Configurer
-                        </button>
-                        <input
-                          ref={radarInputRef}
-                          type="file"
-                          accept="image/*"
-                          multiple
-                          className="hidden"
-                          onChange={(event) => {
-                            const files = Array.from(event.target.files ?? []);
-                            if (files.length) void handleRadarUploadBatch(files);
-                            event.target.value = "";
-                          }}
-                        />
-                      </div>
-                      <p className="text-xs text-[var(--muted)]">
-                        Seuls les fichiers importes dans ce rapport sont listes.
-                        Tu peux en importer plusieurs, ils seront ajoutes a la
-                        liste.
-                      </p>
-                      {radarUploading ? (
-                        <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-                          <div className="flex items-center justify-between text-xs text-[var(--muted)]">
-                            <span>
-                              Extraction datas
-                              <span className="tpi-dots" aria-hidden="true">
-                                <span />
-                                <span />
-                                <span />
-                              </span>
-                            </span>
-                            <span className="min-w-[3ch] text-right text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                              {Math.round(radarUploadProgress)}%
-                            </span>
-                          </div>
-                          {radarUploadBatch ? (
-                            <div className="mt-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                              Fichier {radarUploadBatch.current}/
-                              {radarUploadBatch.total}
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.2em]">
+                                Assistant IA
+                              </p>
+                              <p className="text-sm text-amber-100/80">
+                                Debloque le mode Premium
+                              </p>
                             </div>
-                          ) : null}
-                          <div className="mt-2 h-2 w-full rounded-full bg-white/10">
-                            <div
-                              className="h-2 rounded-full bg-violet-300 transition-all duration-700 ease-out"
-                              style={{ width: `${radarUploadProgress}%` }}
-                            />
                           </div>
-                        </div>
-                      ) : null}
-                      {radarError ? (
-                        <p className="text-xs text-red-400">{radarError}</p>
-                      ) : null}
-                      {radarLoading ? (
-                        <p className="text-xs text-[var(--muted)]">
-                          Chargement des fichiers datas...
-                        </p>
-                      ) : null}
-                        {radarFile ? (
-                          (() => {
-                            const baseConfig =
-                              section.radarConfig ?? radarFile.config ?? defaultRadarConfig;
-                            const aiSelectionKeys =
-                              baseConfig.options?.aiSelectionKeys ?? [];
-                            const aiNeedsSelection =
-                              baseConfig.mode === "ai" && aiSelectionKeys.length === 0;
-                            if (aiNeedsSelection) {
-                              return (
-                                <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
-                                  Mode IA actif. Lance &quot;Auto detect datas graph&quot; pour
-                                  afficher les graphes.
-                                </div>
-                              );
-                            }
-                            return (
-                              <RadarCharts
-                                columns={radarFile.columns ?? []}
-                                shots={radarFile.shots ?? []}
-                                stats={radarFile.stats}
-                                summary={radarFile.summary}
-                                config={baseConfig}
-                                analytics={radarFile.analytics}
-                                compact
-                              />
-                            );
-                          })()
-                        ) : (
-                        <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
-                          Selectionne un fichier datas pour previsualiser les
-                          graphes.
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="mt-3 space-y-3">
-                      <div
-                        onDragOver={(event) => event.preventDefault()}
-                        onDrop={(event) => handleImageDrop(section.id, event)}
-                        className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 bg-white/5 px-4 py-6 text-center text-xs text-[var(--muted)]"
-                      >
-                        <p>Glisse des images ici</p>
-                        <label
-                          htmlFor={`image-upload-${section.id}`}
-                          className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
-                        >
-                          Parcourir
-                        </label>
-                        <input
-                          id={`image-upload-${section.id}`}
-                          type="file"
-                          accept="image/*"
-                          multiple
-                          onChange={(event) => {
-                            if (event.target.files) {
-                              handleImageFiles(section.id, event.target.files);
-                              event.target.value = "";
-                            }
-                          }}
-                          className="hidden"
-                        />
-                      </div>
-                      {uploadingSections[section.id] ? (
-                        <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
-                          Upload en cours
-                          <span className="tpi-dots" aria-hidden="true">
-                            <span />
-                            <span />
-                            <span />
+                          <span className="rounded-full border border-amber-300/40 bg-amber-400/20 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-amber-200">
+                            Voir les offres
                           </span>
                         </div>
-                      ) : null}
-                      {imageErrors[section.id] ? (
-                        <p className="text-xs text-red-400">
-                          {imageErrors[section.id]}
+                      </button>
+                    ) : null}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                        Assistant IA
+                      </p>
+                      <span
+                        className={`rounded-md border border-dashed px-2 py-1 text-[0.55rem] uppercase tracking-wide select-none ${
+                          aiEnabled
+                            ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
+                            : "border-amber-300/30 bg-amber-400/10 text-amber-200"
+                        }`}
+                        onClick={!aiEnabled ? () => openPremiumModal() : undefined}
+                        role={!aiEnabled ? "button" : undefined}
+                        aria-label={!aiEnabled ? "Decouvrir Premium" : undefined}
+                      >
+                        {aiEnabled ? "Actif" : "Premium"}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                      <div>
+                        <p className="text-[0.65rem] uppercase tracking-[0.2em] text-[var(--muted)]">
+                          Validation apres propagation
                         </p>
-                      ) : null}
-                      {section.mediaUrls.length > 0 ? (
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          {section.mediaUrls.map((url, index) => (
-                            <div
-                              key={url}
-                              className="relative overflow-hidden rounded-xl border border-white/10 bg-black/30"
+                        <p className="mt-1 text-xs text-[var(--muted)]">
+                          {aiPropagationReview
+                            ? "Le coach valide chaque section avant insertion."
+                            : "L IA remplit automatiquement les sections."}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={aiPropagationReview}
+                        aria-label="Basculer la validation apres propagation"
+                        onClick={() => setAiPropagationReview((prev) => !prev)}
+                        disabled={aiLocked}
+                        className={`relative inline-flex h-8 w-14 items-center rounded-full border px-1 transition ${
+                          aiLocked
+                            ? "cursor-not-allowed border-white/10 bg-white/5 opacity-60"
+                            : "border-white/10 bg-white/10 hover:border-white/30"
+                        }`}
+                      >
+                        <span
+                          className={`absolute left-1 top-1 flex h-6 w-6 items-center justify-center rounded-full border text-[0.55rem] font-semibold uppercase shadow-[0_6px_12px_rgba(0,0,0,0.25)] transition-transform ${
+                            aiPropagationReview
+                              ? "translate-x-0 border-emerald-300/40 bg-emerald-400/20 text-emerald-100"
+                              : "translate-x-6 border-rose-300/40 bg-rose-400/20 text-rose-100"
+                          }`}
+                        >
+                          {aiPropagationReview ? "On" : "Off"}
+                        </span>
+                      </button>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={!!aiBusyId}
+                        onClick={() => {
+                          if (aiLocked) {
+                            openPremiumModal();
+                            return;
+                          }
+                          handleAiSummary();
+                        }}
+                        className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
+                          aiLocked
+                            ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
+                            : "border-white/10 bg-white/10 text-[var(--text)]"
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          {aiLocked ? (
+                            <svg
+                              viewBox="0 0 24 24"
+                              className="h-3.5 w-3.5"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
                             >
-                              <img
-                                src={url}
-                                alt={section.title}
-                                className="h-40 w-full object-cover"
-                                loading="lazy"
-                              />
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleRemoveImage(section.id, index)
-                                }
-                                className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-black/50 text-white/70 transition hover:text-white"
-                                aria-label="Supprimer l'image"
-                                title="Supprimer"
-                              >
+                              <rect x="3" y="11" width="18" height="11" rx="2" />
+                              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                            </svg>
+                          ) : null}
+                          {aiBusyId === "summary" ? "IA..." : "Resume du rapport"}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={radarAiAutoBusy}
+                        onClick={() => {
+                          if (aiLocked) {
+                            openPremiumModal();
+                            return;
+                          }
+                          setRadarAiQaAnswers({});
+                          setRadarAiQaError("");
+                          setRadarAiQaOpen(true);
+                          setRadarAiQuestions(DEFAULT_RADAR_AI_QUESTIONS);
+                          void loadRadarAiQuestions();
+                        }}
+                        className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
+                          aiLocked
+                            ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
+                            : "border-violet-300/40 bg-violet-400/15 text-violet-100"
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          {aiLocked ? (
+                            <svg
+                              viewBox="0 0 24 24"
+                              className="h-3.5 w-3.5"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <rect x="3" y="11" width="18" height="11" rx="2" />
+                              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                            </svg>
+                          ) : null}
+                          {radarAiAutoBusy ? "IA..." : "Auto detect datas graph"}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!!aiBusyId}
+                        onClick={() => {
+                          if (aiLocked) {
+                            openPremiumModal();
+                            return;
+                          }
+                          handleAiFinalize();
+                        }}
+                        className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
+                          aiLocked
+                            ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
+                            : "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          {aiLocked ? (
+                            <svg
+                              viewBox="0 0 24 24"
+                              className="h-3.5 w-3.5"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <rect x="3" y="11" width="18" height="11" rx="2" />
+                              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                            </svg>
+                          ) : null}
+                          {aiBusyId === "finalize" ? "IA..." : "Finaliser"}
+                        </span>
+                      </button>
+                    </div>
+                    {radarAiAutoBusy ? (
+                      <div className="mt-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+                        <div className="flex items-center justify-between text-xs text-[var(--muted)]">
+                          <span>
+                            Auto detect datas graph
+                            <span className="tpi-dots" aria-hidden="true">
+                              <span />
+                              <span />
+                              <span />
+                            </span>
+                          </span>
+                          <span className="min-w-[3ch] text-right text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                            {Math.round(radarAiAutoProgress)}%
+                          </span>
+                        </div>
+                        <div className="mt-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                          Mode:{" "}
+                          {radarAiAutoPreset === "ultra"
+                            ? "Ultra focus (1 min)"
+                            : "Standard (4 min)"}
+                        </div>
+                        <div className="mt-2 h-2 w-full rounded-full bg-white/10">
+                          <div
+                            className="h-2 rounded-full bg-violet-300 transition-all duration-700 ease-out"
+                            style={{ width: `${radarAiAutoProgress}%` }}
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+                    <details className="mt-3">
+                      <summary className="cursor-pointer text-xs uppercase tracking-wide text-[var(--muted)]">
+                        Reglages IA
+                      </summary>
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs text-[var(--muted)]">
+                          Reinitialise les reglages IA aux valeurs par defaut.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={resetAiSettings}
+                          className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                        >
+                          Reinitialiser IA
+                        </button>
+                      </div>
+                      <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1fr]">
+                        <div>
+                          <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                            Ton
+                          </label>
+                          <select
+                            value={aiTone}
+                            onChange={(event) => setAiTone(event.target.value)}
+                            className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                          >
+                            <option value="bienveillant">Bienveillant</option>
+                            <option value="direct">Direct</option>
+                            <option value="motivant">Motivant</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                            Technicite
+                          </label>
+                          <select
+                            value={aiTechLevel}
+                            onChange={(event) => setAiTechLevel(event.target.value)}
+                            className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                          >
+                            <option value="debutant">Debutant</option>
+                            <option value="intermediaire">Intermediaire</option>
+                            <option value="avance">Avance</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                            Style
+                          </label>
+                          <select
+                            value={aiStyle}
+                            onChange={(event) => setAiStyle(event.target.value)}
+                            className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                          >
+                            <option value="redactionnel">Redactionnel</option>
+                            <option value="structure">Structure</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                            Longueur
+                          </label>
+                          <select
+                            value={aiLength}
+                            onChange={(event) => setAiLength(event.target.value)}
+                            className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                          >
+                            <option value="court">Court</option>
+                            <option value="normal">Normal</option>
+                            <option value="long">Long</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                            Metaphores
+                          </label>
+                          <select
+                            value={aiImagery}
+                            onChange={(event) => setAiImagery(event.target.value)}
+                            className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                          >
+                            <option value="faible">Faible</option>
+                            <option value="equilibre">Equilibre</option>
+                            <option value="fort">Fort</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                            Focus
+                          </label>
+                          <select
+                            value={aiFocus}
+                            onChange={(event) => setAiFocus(event.target.value)}
+                            className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                          >
+                            <option value="mix">Mix</option>
+                            <option value="technique">Technique</option>
+                            <option value="mental">Mental</option>
+                            <option value="strategie">Strategie</option>
+                          </select>
+                        </div>
+                      </div>
+                    </details>
+                    {aiError ? (
+                      <p className="mt-3 text-xs text-red-400">{aiError}</p>
+                    ) : null}
+                    <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                          Travail en cours
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={aiLocked || !!aiBusyId}
+                            onClick={resetWorkingContext}
+                            className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-60"
+                          >
+                            Reinitialiser
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!!aiBusyId}
+                            onClick={() => {
+                              if (aiLocked) {
+                                openPremiumModal();
+                                return;
+                              }
+                              handleAiPropagateFromWorking();
+                            }}
+                            className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
+                              aiLocked
+                                ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
+                                : "border-white/10 bg-white/10 text-[var(--text)]"
+                            }`}
+                          >
+                            <span className="flex items-center gap-2">
+                              {aiLocked ? (
                                 <svg
                                   viewBox="0 0 24 24"
                                   className="h-3.5 w-3.5"
@@ -6965,100 +6094,854 @@ export default function CoachReportBuilderPage() {
                                   strokeLinecap="round"
                                   strokeLinejoin="round"
                                 >
-                                  <path d="M18 6L6 18" />
-                                  <path d="M6 6l12 12" />
+                                  <rect x="3" y="11" width="18" height="11" rx="2" />
+                                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                                 </svg>
-                              </button>
-                              <div className="bg-black/60 p-2">
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="text"
-                                    value={section.mediaCaptions[index] ?? ""}
-                                    onChange={(event) =>
-                                      handleCaptionChange(
-                                        section.id,
-                                        index,
-                                        event.target.value
-                                      )
-                                    }
-                                    maxLength={CAPTION_LIMIT}
-                                    placeholder="Ajouter une description..."
-                                    className="flex-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-[var(--text)] placeholder:text-zinc-400"
-                                  />
-                                  <span className="text-[0.6rem] text-white/50">
-                                    {(section.mediaCaptions[index] ?? "").length}/
-                                    {CAPTION_LIMIT}
-                                  </span>
+                              ) : null}
+                              {aiBusyId === "propagate" ? "IA..." : "Propager"}
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+                      {aiBusyId ? (
+                        <div className="mt-2 flex items-center gap-2 text-xs text-[var(--muted)]">
+                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-white/10 bg-white/10">
+                            <span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-white/20 border-t-white/70" />
+                          </span>
+                          Traitement IA en cours...
+                        </div>
+                      ) : null}
+                      <p className="mt-2 text-xs text-[var(--muted)]">
+                        Constats + travail en cours. L IA remplit les sections vides et
+                        complete les sections deja remplies.
+                      </p>
+                      <div className="mt-3 grid gap-3 md:grid-cols-[0.6fr_1.4fr]">
+                        <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                          Club concerne
+                        </label>
+                        <input
+                          type="text"
+                          value={workingClub}
+                          onChange={(event) => setWorkingClub(event.target.value)}
+                          placeholder="Ex: Fer 7, Driver, Putter..."
+                          className="w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                        />
+                      </div>
+                      <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                        <div>
+                          <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                            Constats
+                          </label>
+                          <textarea
+                            ref={(node) => {
+                              workingObservationsRef.current = node;
+                            }}
+                            rows={3}
+                            placeholder="Ex: chemin de club trop a gauche, perte de posture..."
+                            value={workingObservations}
+                            onInput={handleWorkingObservationsInput}
+                            className="mt-2 w-full resize-none overflow-hidden rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                            Travail en cours
+                          </label>
+                          <textarea
+                            ref={(node) => {
+                              workingNotesRef.current = node;
+                            }}
+                            rows={3}
+                            placeholder="Ex: stabiliser l'appui pied droit au backswing."
+                            value={workingNotes}
+                            onInput={handleWorkingNotesInput}
+                            className="mt-2 w-full resize-none overflow-hidden rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      disabled={saving || loadingReport || reportSections.length === 0}
+                      onClick={handleClearReportContent}
+                      className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-50"
+                    >
+                      Vider le contenu
+                    </button>
+                    <button
+                      type="button"
+                      disabled={saving || loadingReport || reportSections.length === 0}
+                      onClick={handleClearReportSections}
+                      className="rounded-full border border-rose-300/30 bg-rose-400/10 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-rose-100 transition hover:bg-rose-400/20 disabled:opacity-50"
+                    >
+                      Retirer tout
+                    </button>
+                  </div>
+                  {aiSummary ? (
+                    <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                        Resume IA
+                      </p>
+                      <p className="mt-2 text-sm text-[var(--text)] whitespace-pre-wrap">
+                        {aiSummary}
+                      </p>
+                    </div>
+                  ) : null}
+                  <div className="mt-4 space-y-3">
+                    {reportSections.map((section, index) => {
+                      const isCollapsed = collapsedSections[section.id] ?? false;
+                      const trimmedContent = section.content.trim();
+                      const contentPreview = trimmedContent
+                        ? `${trimmedContent.slice(0, 160)}${
+                            trimmedContent.length > 160 ? "..." : ""
+                          }`
+                        : "Section repliee.";
+                      const imagePreview =
+                        section.mediaUrls.length > 0
+                          ? `${section.mediaUrls.length} image(s)`
+                          : "Aucune image ajoutee.";
+                      const radarFile = section.radarFileId
+                        ? radarFileMap.get(section.radarFileId)
+                        : null;
+                      const radarPreview = radarFile
+                        ? `${radarFile.original_name ?? "Fichier datas"} • ${
+                            radarFile.shots?.length ?? 0
+                          } coups`
+                        : "Aucun fichier datas selectionne.";
+
+                      const featureKey = getSectionFeatureKey(section);
+                      const tone = featureKey ? featureTones[featureKey] : null;
+                      const radarLocked = section.type === "radar" && !radarAddonEnabled;
+
+                      return (
+                        <div key={`${section.id}-slot`} className="space-y-3">
+                          <div
+                            onDragOver={handleDragOver}
+                            onDragEnter={() => setHoverIndex(index)}
+                            onDrop={() => handleDrop(index)}
+                            className={`overflow-hidden transition-[height,margin] duration-200 ease-out ${
+                              showSlots
+                                ? hoverIndex === index
+                                  ? "my-2 h-16"
+                                  : "my-2 h-2"
+                                : "my-0 h-0"
+                            }`}
+                          >
+                            {showSlots && hoverIndex === index ? (
+                              <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-[var(--accent)] bg-[var(--accent)]/10 text-xs uppercase tracking-[0.2em] text-[var(--accent)]">
+                                Deposer ici
+                              </div>
+                            ) : (
+                              <div className="h-full rounded-full bg-white/10" />
+                            )}
+                          </div>
+
+                          <div
+                            ref={(node) => {
+                              if (node) {
+                                itemRefs.current.set(section.id, node);
+                              } else {
+                                itemRefs.current.delete(section.id);
+                              }
+                            }}
+                            onDragEnd={handleDragEnd}
+                            className={`relative rounded-2xl border px-4 py-4 transition ${
+                              dragIndex === index
+                                ? "border-white/20 bg-white/10 opacity-80 shadow-[0_20px_45px_rgba(0,0,0,0.45)]"
+                                : tone
+                                  ? tone.panel
+                                  : "border-white/10 bg-white/5"
+                            }`}
+                          >
+                            <div className="flex flex-wrap items-center gap-3">
+                              <div className="flex min-w-0 flex-1 items-center gap-3">
+                                {dragEnabled ? (
+                                  <button
+                                    type="button"
+                                    draggable
+                                    onDragStart={(event) => handleDragStart(index, event)}
+                                    className="flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-2.5 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] active:cursor-grabbing"
+                                    title="Glisser pour reordonner"
+                                  >
+                                    <span className="text-xs">|||</span>
+                                    Glisser
+                                  </button>
+                                ) : null}
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="text-sm font-semibold text-[var(--text)] break-words">
+                                    {section.title}
+                                  </p>
+                                  {renderFeatureBadge(featureKey)}
                                 </div>
                               </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleSectionCollapse(section.id)}
+                                  className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)]"
+                                  aria-label={isCollapsed ? "Developper" : "Replier"}
+                                  title={isCollapsed ? "Developper" : "Replier"}
+                                >
+                                  <svg
+                                    viewBox="0 0 24 24"
+                                    className={`h-4 w-4 transition-transform ${
+                                      isCollapsed ? "rotate-180" : ""
+                                    }`}
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <path d="M6 9l6 6 6-6" />
+                                  </svg>
+                                </button>
+                                {!dragEnabled ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleMoveSection(index, "up")}
+                                      disabled={index === 0}
+                                      className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-40"
+                                      aria-label="Monter"
+                                      title="Monter"
+                                    >
+                                      <svg
+                                        viewBox="0 0 24 24"
+                                        className="h-4 w-4"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                      >
+                                        <path d="M12 19V5" />
+                                        <path d="M5 12l7-7 7 7" />
+                                      </svg>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleMoveSection(index, "down")}
+                                      disabled={index === reportSections.length - 1}
+                                      className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-40"
+                                      aria-label="Descendre"
+                                      title="Descendre"
+                                    >
+                                      <svg
+                                        viewBox="0 0 24 24"
+                                        className="h-4 w-4"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                      >
+                                        <path d="M12 5v14" />
+                                        <path d="M5 12l7 7 7-7" />
+                                      </svg>
+                                    </button>
+                                  </>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveFromReport(section)}
+                                  className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                                >
+                                  Retirer
+                                </button>
+                              </div>
                             </div>
-                          ))}
+                            {isCollapsed ? (
+                              <p className="mt-3 text-xs text-[var(--muted)]">
+                                {section.type === "text"
+                                  ? contentPreview
+                                  : section.type === "radar"
+                                    ? radarPreview
+                                    : imagePreview}
+                              </p>
+                            ) : section.type === "text" ? (
+                              <>
+                                <textarea
+                                  rows={4}
+                                  placeholder="Ecris le contenu de cette section..."
+                                  value={section.content}
+                                  onInput={(event) =>
+                                    handleSectionInput(section.id, event)
+                                  }
+                                  ref={(node) => {
+                                    if (node) {
+                                      textareaRefs.current.set(section.id, node);
+                                    } else {
+                                      textareaRefs.current.delete(section.id);
+                                    }
+                                  }}
+                                  className="mt-3 w-full resize-none overflow-hidden rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                                />
+                                {aiPreviews[section.id] ? (
+                                  <div className="mt-3 rounded-2xl border border-emerald-400/20 bg-emerald-400/5 p-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                      <p className="text-[0.7rem] uppercase tracking-[0.2em] text-emerald-200">
+                                        {aiPreviews[section.id].mode === "improve"
+                                          ? "Corrections IA"
+                                          : aiPreviews[section.id].mode === "finalize"
+                                            ? "Finalisation IA"
+                                            : "Proposition IA"}
+                                      </p>
+                                      <div className="flex items-center gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleAiApply(section.id)}
+                                          className="flex h-7 w-7 items-center justify-center rounded-full border border-emerald-300/40 bg-emerald-400/20 text-emerald-200 transition hover:bg-emerald-400/30"
+                                          aria-label="Valider les corrections"
+                                          title="Valider"
+                                        >
+                                          <svg
+                                            viewBox="0 0 24 24"
+                                            className="h-4 w-4"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                          >
+                                            <path d="M20 6L9 17l-5-5" />
+                                          </svg>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleAiReject(section.id)}
+                                          className="flex h-7 w-7 items-center justify-center rounded-full border border-rose-300/40 bg-rose-400/10 text-rose-200 transition hover:bg-rose-400/20"
+                                          aria-label="Refuser les corrections"
+                                          title="Refuser"
+                                        >
+                                          <svg
+                                            viewBox="0 0 24 24"
+                                            className="h-4 w-4"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                          >
+                                            <path d="M18 6L6 18" />
+                                            <path d="M6 6l12 12" />
+                                          </svg>
+                                        </button>
+                                      </div>
+                                    </div>
+                                    <p className="mt-2 whitespace-pre-wrap text-sm text-[var(--text)]">
+                                      {aiPreviews[section.id].mode === "improve"
+                                        ? buildDiffSegments(
+                                            aiPreviews[section.id].original,
+                                            aiPreviews[section.id].suggestion
+                                          ).map((segment, segmentIndex) => {
+                                            if (segment.type === "delete") return null;
+                                            if (segment.type === "insert") {
+                                              return (
+                                                <span
+                                                  key={`${section.id}-insert-${segmentIndex}`}
+                                                  className="rounded bg-emerald-400/30 px-0.5 text-emerald-100"
+                                                >
+                                                  {segment.text}
+                                                </span>
+                                              );
+                                            }
+                                            return (
+                                              <span
+                                                key={`${section.id}-equal-${segmentIndex}`}
+                                              >
+                                                {segment.text}
+                                              </span>
+                                            );
+                                          })
+                                        : aiPreviews[section.id].suggestion}
+                                    </p>
+                                  </div>
+                                ) : null}
+                                <div className="mt-3 flex flex-wrap items-center gap-2">
+                                  <button
+                                    type="button"
+                                    disabled={!!aiBusyId}
+                                    onClick={() => {
+                                      if (aiLocked) {
+                                        openPremiumModal();
+                                        return;
+                                      }
+                                      handleAiImprove(section);
+                                    }}
+                                    className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
+                                      aiLocked
+                                        ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
+                                        : "border-white/10 bg-white/10 text-[var(--text)]"
+                                    }`}
+                                  >
+                                    <span className="flex items-center gap-2">
+                                      {aiLocked ? (
+                                        <svg
+                                          viewBox="0 0 24 24"
+                                          className="h-3.5 w-3.5"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          strokeWidth="2"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                        >
+                                          <rect
+                                            x="3"
+                                            y="11"
+                                            width="18"
+                                            height="11"
+                                            rx="2"
+                                          />
+                                          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                                        </svg>
+                                      ) : null}
+                                      {aiBusyId === section.id ? "IA..." : "IA relire"}
+                                    </span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={!!aiBusyId}
+                                    onClick={() => {
+                                      if (aiLocked) {
+                                        openPremiumModal();
+                                        return;
+                                      }
+                                      handleAiWrite(section);
+                                    }}
+                                    className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
+                                      aiLocked
+                                        ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
+                                        : "border-white/10 bg-white/10 text-[var(--text)]"
+                                    }`}
+                                  >
+                                    <span className="flex items-center gap-2">
+                                      {aiLocked ? (
+                                        <svg
+                                          viewBox="0 0 24 24"
+                                          className="h-3.5 w-3.5"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          strokeWidth="2"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                        >
+                                          <rect
+                                            x="3"
+                                            y="11"
+                                            width="18"
+                                            height="11"
+                                            rx="2"
+                                          />
+                                          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                                        </svg>
+                                      ) : null}
+                                      {aiBusyId === section.id ? "IA..." : "IA completer"}
+                                    </span>
+                                  </button>
+                                </div>
+                              </>
+                            ) : section.type === "radar" ? (
+                              <div className="relative mt-3 space-y-3">
+                                {radarLocked ? (
+                                  <div
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={openRadarAddonModal}
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Enter" || event.key === " ") {
+                                        event.preventDefault();
+                                        openRadarAddonModal();
+                                      }
+                                    }}
+                                    className="absolute inset-0 z-10 flex cursor-pointer items-center justify-center rounded-2xl border border-violet-300/40 bg-violet-500/10 text-center text-xs uppercase tracking-[0.2em] text-violet-100 backdrop-blur-sm"
+                                  >
+                                    <div className="flex flex-col items-center gap-3 px-6">
+                                      <span className="flex items-center gap-2">
+                                        <svg
+                                          viewBox="0 0 24 24"
+                                          className="h-4 w-4"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          strokeWidth="2"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          aria-hidden="true"
+                                        >
+                                          <rect
+                                            x="5"
+                                            y="11"
+                                            width="14"
+                                            height="9"
+                                            rx="2"
+                                          />
+                                          <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+                                        </svg>
+                                        Add-on Datas requis
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          openRadarAddonModal();
+                                        }}
+                                        className="rounded-full border border-violet-200/40 bg-violet-400/20 px-4 py-1 text-[0.6rem] uppercase tracking-wide text-violet-100 transition hover:bg-violet-400/30"
+                                      >
+                                        Voir les offres
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : null}
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <select
+                                    value={section.radarFileId ?? ""}
+                                    onChange={(event) => {
+                                      const nextId = event.target.value || null;
+                                      const picked = nextId
+                                        ? radarFileMap.get(nextId)
+                                        : null;
+                                      const base = picked?.config ?? defaultRadarConfig;
+                                      const merged: RadarConfig = {
+                                        ...defaultRadarConfig,
+                                        ...(base ?? {}),
+                                        charts: {
+                                          ...defaultRadarConfig.charts,
+                                          ...(base?.charts ?? {}),
+                                        },
+                                        thresholds: {
+                                          ...defaultRadarConfig.thresholds,
+                                          ...(base?.thresholds ?? {}),
+                                        },
+                                        options: {
+                                          ...defaultRadarConfig.options,
+                                          ...(base?.options ?? {}),
+                                        },
+                                      };
+                                      setReportSections((prev) =>
+                                        prev.map((entry) =>
+                                          entry.id === section.id
+                                            ? {
+                                                ...entry,
+                                                radarFileId: nextId,
+                                                radarConfig: nextId ? merged : null,
+                                              }
+                                            : entry
+                                        )
+                                      );
+                                    }}
+                                    disabled={radarLocked}
+                                    className="min-w-[220px] rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    <option value="">
+                                      {radarVisibleFiles.length
+                                        ? "Choisir un fichier datas"
+                                        : "Importer un fichier datas pour cette section"}
+                                    </option>
+                                    {radarVisibleFiles.map((file) => (
+                                      <option key={file.id} value={file.id}>
+                                        {file.original_name || "Export Flightscope"}{" "}
+                                        {file.status === "ready" ? "" : "(analyse)"}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (radarLocked) {
+                                        openRadarAddonModal();
+                                        return;
+                                      }
+                                      radarInputRef.current?.click();
+                                    }}
+                                    disabled={radarUploading}
+                                    className={`rounded-full border border-white/10 bg-white/10 px-3 py-2 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20 ${
+                                      radarLocked ? "cursor-not-allowed opacity-60" : ""
+                                    } disabled:opacity-60`}
+                                    aria-disabled={radarLocked}
+                                  >
+                                    Importer
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleOpenRadarSectionConfig(section.id)
+                                    }
+                                    disabled={!section.radarFileId || radarLocked}
+                                    className={`rounded-full border px-3 py-2 text-[0.65rem] uppercase tracking-wide transition ${
+                                      section.radarFileId && !radarLocked
+                                        ? "border-white/10 bg-white/5 text-[var(--text)] hover:bg-white/10"
+                                        : "cursor-not-allowed border-white/5 bg-white/5 text-[var(--muted)]"
+                                    }`}
+                                  >
+                                    Configurer
+                                  </button>
+                                  <input
+                                    ref={radarInputRef}
+                                    type="file"
+                                    accept="image/*"
+                                    multiple
+                                    className="hidden"
+                                    onChange={(event) => {
+                                      const files = Array.from(event.target.files ?? []);
+                                      if (files.length)
+                                        void handleRadarUploadBatch(files);
+                                      event.target.value = "";
+                                    }}
+                                  />
+                                </div>
+                                <p className="text-xs text-[var(--muted)]">
+                                  Seuls les fichiers importes dans ce rapport sont listes.
+                                  Tu peux en importer plusieurs, ils seront ajoutes a la
+                                  liste.
+                                </p>
+                                {radarUploading ? (
+                                  <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+                                    <div className="flex items-center justify-between text-xs text-[var(--muted)]">
+                                      <span>
+                                        Extraction datas
+                                        <span className="tpi-dots" aria-hidden="true">
+                                          <span />
+                                          <span />
+                                          <span />
+                                        </span>
+                                      </span>
+                                      <span className="min-w-[3ch] text-right text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                                        {Math.round(radarUploadProgress)}%
+                                      </span>
+                                    </div>
+                                    {radarUploadBatch ? (
+                                      <div className="mt-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                                        Fichier {radarUploadBatch.current}/
+                                        {radarUploadBatch.total}
+                                      </div>
+                                    ) : null}
+                                    <div className="mt-2 h-2 w-full rounded-full bg-white/10">
+                                      <div
+                                        className="h-2 rounded-full bg-violet-300 transition-all duration-700 ease-out"
+                                        style={{ width: `${radarUploadProgress}%` }}
+                                      />
+                                    </div>
+                                  </div>
+                                ) : null}
+                                {radarError ? (
+                                  <p className="text-xs text-red-400">{radarError}</p>
+                                ) : null}
+                                {radarLoading ? (
+                                  <p className="text-xs text-[var(--muted)]">
+                                    Chargement des fichiers datas...
+                                  </p>
+                                ) : null}
+                                {radarFile ? (
+                                  (() => {
+                                    const baseConfig =
+                                      section.radarConfig ??
+                                      radarFile.config ??
+                                      defaultRadarConfig;
+                                    const aiSelectionKeys =
+                                      baseConfig.options?.aiSelectionKeys ?? [];
+                                    const aiNeedsSelection =
+                                      baseConfig.mode === "ai" &&
+                                      aiSelectionKeys.length === 0;
+                                    if (aiNeedsSelection) {
+                                      return (
+                                        <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
+                                          Mode IA actif. Lance &quot;Auto detect datas
+                                          graph&quot; pour afficher les graphes.
+                                        </div>
+                                      );
+                                    }
+                                    return (
+                                      <RadarCharts
+                                        columns={radarFile.columns ?? []}
+                                        shots={radarFile.shots ?? []}
+                                        stats={radarFile.stats}
+                                        summary={radarFile.summary}
+                                        config={baseConfig}
+                                        analytics={radarFile.analytics}
+                                        compact
+                                      />
+                                    );
+                                  })()
+                                ) : (
+                                  <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
+                                    Selectionne un fichier datas pour previsualiser les
+                                    graphes.
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="mt-3 space-y-3">
+                                <div
+                                  onDragOver={(event) => event.preventDefault()}
+                                  onDrop={(event) => handleImageDrop(section.id, event)}
+                                  className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 bg-white/5 px-4 py-6 text-center text-xs text-[var(--muted)]"
+                                >
+                                  <p>Glisse des images ici</p>
+                                  <label
+                                    htmlFor={`image-upload-${section.id}`}
+                                    className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
+                                  >
+                                    Parcourir
+                                  </label>
+                                  <input
+                                    id={`image-upload-${section.id}`}
+                                    type="file"
+                                    accept="image/*"
+                                    multiple
+                                    onChange={(event) => {
+                                      if (event.target.files) {
+                                        handleImageFiles(section.id, event.target.files);
+                                        event.target.value = "";
+                                      }
+                                    }}
+                                    className="hidden"
+                                  />
+                                </div>
+                                {uploadingSections[section.id] ? (
+                                  <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
+                                    Upload en cours
+                                    <span className="tpi-dots" aria-hidden="true">
+                                      <span />
+                                      <span />
+                                      <span />
+                                    </span>
+                                  </div>
+                                ) : null}
+                                {imageErrors[section.id] ? (
+                                  <p className="text-xs text-red-400">
+                                    {imageErrors[section.id]}
+                                  </p>
+                                ) : null}
+                                {section.mediaUrls.length > 0 ? (
+                                  <div className="grid gap-2 sm:grid-cols-2">
+                                    {section.mediaUrls.map((url, index) => (
+                                      <div
+                                        key={url}
+                                        className="relative overflow-hidden rounded-xl border border-white/10 bg-black/30"
+                                      >
+                                        <img
+                                          src={url}
+                                          alt={section.title}
+                                          className="h-40 w-full object-cover"
+                                          loading="lazy"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleRemoveImage(section.id, index)
+                                          }
+                                          className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-black/50 text-white/70 transition hover:text-white"
+                                          aria-label="Supprimer l'image"
+                                          title="Supprimer"
+                                        >
+                                          <svg
+                                            viewBox="0 0 24 24"
+                                            className="h-3.5 w-3.5"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                          >
+                                            <path d="M18 6L6 18" />
+                                            <path d="M6 6l12 12" />
+                                          </svg>
+                                        </button>
+                                        <div className="bg-black/60 p-2">
+                                          <div className="flex items-center gap-2">
+                                            <input
+                                              type="text"
+                                              value={section.mediaCaptions[index] ?? ""}
+                                              onChange={(event) =>
+                                                handleCaptionChange(
+                                                  section.id,
+                                                  index,
+                                                  event.target.value
+                                                )
+                                              }
+                                              maxLength={CAPTION_LIMIT}
+                                              placeholder="Ajouter une description..."
+                                              className="flex-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-[var(--text)] placeholder:text-zinc-400"
+                                            />
+                                            <span className="text-[0.6rem] text-white/50">
+                                              {
+                                                (section.mediaCaptions[index] ?? "")
+                                                  .length
+                                              }
+                                              /{CAPTION_LIMIT}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-xs text-[var(--muted)]">
+                                    Aucune image ajoutee pour le moment.
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div
+                      onDragOver={handleDragOver}
+                      onDragEnter={() => setHoverIndex(reportSections.length)}
+                      onDrop={() => handleDrop(reportSections.length)}
+                      className={`overflow-hidden transition-[height,margin] duration-200 ease-out ${
+                        showSlots
+                          ? hoverIndex === reportSections.length
+                            ? "my-2 h-16"
+                            : "my-2 h-2"
+                          : "my-0 h-0"
+                      }`}
+                    >
+                      {showSlots && hoverIndex === reportSections.length ? (
+                        <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-[var(--accent)] bg-[var(--accent)]/10 text-xs uppercase tracking-[0.2em] text-[var(--accent)]">
+                          Deposer ici
                         </div>
                       ) : (
-                        <p className="text-xs text-[var(--muted)]">
-                          Aucune image ajoutee pour le moment.
-                        </p>
+                        <div className="h-full rounded-full bg-white/10" />
                       )}
                     </div>
-                  )}
+                  </div>
+                  <div className="mt-6 flex flex-wrap items-center gap-3">
+                    {showPublish ? (
+                      <button
+                        type="button"
+                        disabled={saving || loadingReport}
+                        onClick={() => handleSaveReport(true)}
+                        className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
+                      >
+                        {saving ? "Envoi..." : sendLabel}
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={saving || loadingReport}
+                      onClick={() => handleSaveReport(false)}
+                      className="rounded-full border border-white/10 bg-white/5 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10 disabled:opacity-60"
+                    >
+                      {saving ? "Sauvegarde..." : saveLabel}
+                    </button>
+                  </div>
+                  {statusMessage ? (
+                    <p
+                      className={`mt-4 text-sm ${
+                        statusType === "error" ? "text-red-400" : "text-[var(--muted)]"
+                      }`}
+                    >
+                      {statusMessage}
+                    </p>
+                  ) : null}
                 </div>
-              </div>
-            );
-            })}
-            <div
-              onDragOver={handleDragOver}
-              onDragEnter={() => setHoverIndex(reportSections.length)}
-              onDrop={() => handleDrop(reportSections.length)}
-              className={`overflow-hidden transition-[height,margin] duration-200 ease-out ${
-                showSlots
-                  ? hoverIndex === reportSections.length
-                    ? "my-2 h-16"
-                    : "my-2 h-2"
-                  : "my-0 h-0"
-              }`}
-            >
-              {showSlots && hoverIndex === reportSections.length ? (
-                <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-[var(--accent)] bg-[var(--accent)]/10 text-xs uppercase tracking-[0.2em] text-[var(--accent)]">
-                  Deposer ici
-                </div>
-              ) : (
-                <div className="h-full rounded-full bg-white/10" />
               )}
-            </div>
-          </div>
-          <div className="mt-6 flex flex-wrap items-center gap-3">
-            {showPublish ? (
-              <button
-                type="button"
-                disabled={saving || loadingReport}
-                onClick={() => handleSaveReport(true)}
-                className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
-              >
-                {saving ? "Envoi..." : sendLabel}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              disabled={saving || loadingReport}
-              onClick={() => handleSaveReport(false)}
-              className="rounded-full border border-white/10 bg-white/5 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10 disabled:opacity-60"
-            >
-              {saving ? "Sauvegarde..." : saveLabel}
-            </button>
-          </div>
-          {statusMessage ? (
-            <p
-              className={`mt-4 text-sm ${
-                statusType === "error" ? "text-red-400" : "text-[var(--muted)]"
-              }`}
-            >
-              {statusMessage}
-            </p>
+            </section>
           ) : null}
-        </div>
-        )}
-      </section>
-      ) : null}
         </div>
         {layoutEditorOpen ? (
           <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 px-4 py-10">
@@ -7072,8 +6955,8 @@ export default function CoachReportBuilderPage() {
                     {layoutEditingId ? "Modifier le layout" : "Creer un layout"}
                   </h3>
                   <p className="mt-2 text-sm text-[var(--muted)]">
-                    Compose un layout a partir des sections disponibles ou ajoute
-                    tes propres sections.
+                    Compose un layout a partir des sections disponibles ou ajoute tes
+                    propres sections.
                   </p>
                 </div>
                 <button
@@ -7119,32 +7002,28 @@ export default function CoachReportBuilderPage() {
                     </p>
                   ) : (
                     <div className="space-y-2">
-                    {layoutTemplateIds.map((templateId, index) => {
-                      const template = templateById.get(templateId);
-                      const label = template?.title ?? "Section inconnue";
-                      const featureKey = template
-                        ? getSectionFeatureKey(template)
-                        : null;
-                      const tone = featureKey ? featureTones[featureKey] : null;
-                      return (
-                        <div
-                          key={`layout-item-${templateId}`}
-                          className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)]"
-                        >
-                          <span className="inline-flex items-center gap-2">
-                            {tone ? (
-                              <span
-                                className={`h-2 w-2 rounded-full ${tone.dot}`}
-                              />
-                            ) : null}
-                            {label}
-                          </span>
+                      {layoutTemplateIds.map((templateId, index) => {
+                        const template = templateById.get(templateId);
+                        const label = template?.title ?? "Section inconnue";
+                        const featureKey = template
+                          ? getSectionFeatureKey(template)
+                          : null;
+                        const tone = featureKey ? featureTones[featureKey] : null;
+                        return (
+                          <div
+                            key={`layout-item-${templateId}`}
+                            className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)]"
+                          >
+                            <span className="inline-flex items-center gap-2">
+                              {tone ? (
+                                <span className={`h-2 w-2 rounded-full ${tone.dot}`} />
+                              ) : null}
+                              {label}
+                            </span>
                             <div className="flex items-center gap-2">
                               <button
                                 type="button"
-                                onClick={() =>
-                                  handleMoveLayoutTemplate(index, "up")
-                                }
+                                onClick={() => handleMoveLayoutTemplate(index, "up")}
                                 disabled={index === 0}
                                 className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-40"
                                 aria-label="Monter"
@@ -7165,9 +7044,7 @@ export default function CoachReportBuilderPage() {
                               </button>
                               <button
                                 type="button"
-                                onClick={() =>
-                                  handleMoveLayoutTemplate(index, "down")
-                                }
+                                onClick={() => handleMoveLayoutTemplate(index, "down")}
                                 disabled={index === layoutTemplateIds.length - 1}
                                 className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-40"
                                 aria-label="Descendre"
@@ -7188,9 +7065,7 @@ export default function CoachReportBuilderPage() {
                               </button>
                               <button
                                 type="button"
-                                onClick={() =>
-                                  handleRemoveTemplateFromLayout(templateId)
-                                }
+                                onClick={() => handleRemoveTemplateFromLayout(templateId)}
                                 className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-red-200"
                                 aria-label="Retirer"
                                 title="Retirer"
@@ -7225,53 +7100,47 @@ export default function CoachReportBuilderPage() {
                         Toutes les sections sont deja dans ce layout.
                       </span>
                     ) : (
-                    layoutAvailableTemplates.map((template) => {
-                      const featureKey = getSectionFeatureKey(template);
-                      const tone = featureKey ? featureTones[featureKey] : null;
-                      const isLocked = isFeatureLocked(featureKey);
-                      return (
-                        <button
-                          key={`layout-add-${template.id}`}
-                          type="button"
-                          onClick={() =>
-                            handleAddTemplateToLayout(template.id as string)
-                          }
-                          title={
-                            isLocked
-                              ? "Option requise"
-                              : "Ajouter au layout"
-                          }
-                          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 ${
-                            tone
-                              ? tone.button
-                              : "border-white/10 bg-white/10 text-[var(--text)]"
-                          } ${isLocked ? "cursor-not-allowed opacity-60" : ""}`}
-                          aria-disabled={isLocked}
-                        >
-                          {tone ? (
-                            <span
-                              className={`h-1.5 w-1.5 rounded-full ${tone.dot}`}
-                            />
-                          ) : null}
-                          {template.title}
-                          {isLocked ? (
-                            <svg
-                              viewBox="0 0 24 24"
-                              className="h-3.5 w-3.5 text-[var(--muted)]"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              aria-hidden="true"
-                            >
-                              <rect x="5" y="11" width="14" height="9" rx="2" />
-                              <path d="M8 11V8a4 4 0 0 1 8 0v3" />
-                            </svg>
-                          ) : null}
-                        </button>
-                      );
-                    })
+                      layoutAvailableTemplates.map((template) => {
+                        const featureKey = getSectionFeatureKey(template);
+                        const tone = featureKey ? featureTones[featureKey] : null;
+                        const isLocked = isFeatureLocked(featureKey);
+                        return (
+                          <button
+                            key={`layout-add-${template.id}`}
+                            type="button"
+                            onClick={() =>
+                              handleAddTemplateToLayout(template.id as string)
+                            }
+                            title={isLocked ? "Option requise" : "Ajouter au layout"}
+                            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 ${
+                              tone
+                                ? tone.button
+                                : "border-white/10 bg-white/10 text-[var(--text)]"
+                            } ${isLocked ? "cursor-not-allowed opacity-60" : ""}`}
+                            aria-disabled={isLocked}
+                          >
+                            {tone ? (
+                              <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
+                            ) : null}
+                            {template.title}
+                            {isLocked ? (
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="h-3.5 w-3.5 text-[var(--muted)]"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden="true"
+                              >
+                                <rect x="5" y="11" width="14" height="9" rx="2" />
+                                <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+                              </svg>
+                            ) : null}
+                          </button>
+                        );
+                      })
                     )}
                   </div>
                 </div>
@@ -7373,9 +7242,7 @@ export default function CoachReportBuilderPage() {
                   <button
                     type="button"
                     onClick={async () => {
-                      const layout = layouts.find(
-                        (item) => item.id === layoutEditingId
-                      );
+                      const layout = layouts.find((item) => item.id === layoutEditingId);
                       if (!layout) return;
                       const deleted = await handleDeleteLayout(layout);
                       if (deleted) {
@@ -7418,8 +7285,7 @@ export default function CoachReportBuilderPage() {
                     Layout optimise
                   </h3>
                   <p className="mt-2 text-sm text-[var(--muted)]">
-                    Reponds a quelques questions pour obtenir un layout
-                    pertinent.
+                    Reponds a quelques questions pour obtenir un layout pertinent.
                   </p>
                 </div>
                 <button
@@ -7589,9 +7455,7 @@ export default function CoachReportBuilderPage() {
                         setAiLayoutCountTouched(true);
                         setAiLayoutAnswers((prev) => ({
                           ...prev,
-                          sectionCount: clampAiLayoutCount(
-                            Number(event.target.value)
-                          ),
+                          sectionCount: clampAiLayoutCount(Number(event.target.value)),
                         }));
                       }}
                       className="mt-3 w-full accent-emerald-300"
@@ -7672,9 +7536,7 @@ export default function CoachReportBuilderPage() {
                     </p>
                   )}
                   {aiLayoutMessage ? (
-                    <p className="mt-3 text-xs text-red-400">
-                      {aiLayoutMessage}
-                    </p>
+                    <p className="mt-3 text-xs text-red-400">{aiLayoutMessage}</p>
                   ) : null}
                 </div>
               </div>
@@ -7747,10 +7609,10 @@ export default function CoachReportBuilderPage() {
                     Mode
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
-                      {[
-                        { id: "default", label: "Defaut" },
-                        { id: "custom", label: "Personnalise" },
-                        { id: "ai", label: "IA" },
+                    {[
+                      { id: "default", label: "Defaut" },
+                      { id: "custom", label: "Personnalise" },
+                      { id: "ai", label: "IA" },
                     ].map((option) => (
                       <button
                         key={option.id}
@@ -7760,33 +7622,31 @@ export default function CoachReportBuilderPage() {
                             option.id === "default"
                               ? { ...defaultRadarConfig, mode: "default" }
                               : option.id === "custom"
-                              ? { ...prev, mode: "custom" }
-                              : {
-                                  ...prev,
-                                  mode: "ai",
-                                  charts: Object.fromEntries(
-                                    Array.from(
-                                      new Set([
-                                        ...Object.keys(defaultRadarConfig.charts),
-                                        ...RADAR_CHART_DEFINITIONS.map(
-                                          (definition) => definition.key
-                                        ),
-                                      ])
-                                    ).map((key) => [key, false])
-                                  ) as RadarConfig["charts"],
-                                  options: {
-                                    ...prev.options,
-                                    aiSelectionKeys: [],
-                                    aiNarratives: undefined,
-                                    aiSelectionSummary: null,
-                                    aiSessionSummary: null,
-                                    aiPreset:
-                                      prev.options?.aiPreset ?? "standard",
-                                    aiSyntax:
-                                      prev.options?.aiSyntax ??
-                                      "exp-tech-solution",
-                                  },
-                                }
+                                ? { ...prev, mode: "custom" }
+                                : {
+                                    ...prev,
+                                    mode: "ai",
+                                    charts: Object.fromEntries(
+                                      Array.from(
+                                        new Set([
+                                          ...Object.keys(defaultRadarConfig.charts),
+                                          ...RADAR_CHART_DEFINITIONS.map(
+                                            (definition) => definition.key
+                                          ),
+                                        ])
+                                      ).map((key) => [key, false])
+                                    ) as RadarConfig["charts"],
+                                    options: {
+                                      ...prev.options,
+                                      aiSelectionKeys: [],
+                                      aiNarratives: undefined,
+                                      aiSelectionSummary: null,
+                                      aiSessionSummary: null,
+                                      aiPreset: prev.options?.aiPreset ?? "standard",
+                                      aiSyntax:
+                                        prev.options?.aiSyntax ?? "exp-tech-solution",
+                                    },
+                                  }
                           )
                         }
                         className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
@@ -7838,8 +7698,8 @@ export default function CoachReportBuilderPage() {
                                   }))
                                 }
                                 className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
-                                  (radarConfigDraft.options?.aiPreset ??
-                                    "standard") === option.id
+                                  (radarConfigDraft.options?.aiPreset ?? "standard") ===
+                                  option.id
                                     ? "border-emerald-300/40 bg-emerald-400/20 text-emerald-50"
                                     : "border-emerald-200/20 text-emerald-100/70"
                                 }`}
@@ -7919,20 +7779,21 @@ export default function CoachReportBuilderPage() {
                       onClick={() =>
                         setRadarConfigDraft((prev) => ({
                           ...prev,
-                          [item.key]: !prev[
-                            item.key as "showSummary" | "showTable" | "showSegments"
-                          ],
+                          [item.key]:
+                            !prev[
+                              item.key as "showSummary" | "showTable" | "showSegments"
+                            ],
                         }))
                       }
-                        className={`rounded-2xl border px-3 py-3 text-left text-sm transition ${
-                          radarConfigDraft[
-                            item.key as "showSummary" | "showTable" | "showSegments"
-                          ]
-                            ? "border-violet-300/40 bg-violet-400/10 text-violet-100"
-                            : "border-white/10 bg-white/5 text-[var(--muted)]"
-                        } ${
-                          radarConfigDraft.mode !== "custom"
-                            ? "cursor-not-allowed opacity-60"
+                      className={`rounded-2xl border px-3 py-3 text-left text-sm transition ${
+                        radarConfigDraft[
+                          item.key as "showSummary" | "showTable" | "showSegments"
+                        ]
+                          ? "border-violet-300/40 bg-violet-400/10 text-violet-100"
+                          : "border-white/10 bg-white/5 text-[var(--muted)]"
+                      } ${
+                        radarConfigDraft.mode !== "custom"
+                          ? "cursor-not-allowed opacity-60"
                           : "hover:text-[var(--text)]"
                       }`}
                     >
@@ -7960,8 +7821,7 @@ export default function CoachReportBuilderPage() {
                       {
                         key: "speeds",
                         label: "Vitesse club/balle",
-                        description:
-                          "Evolution des vitesses pour estimer l efficacite.",
+                        description: "Evolution des vitesses pour estimer l efficacite.",
                       },
                       {
                         key: "spinCarry",
@@ -7996,144 +7856,142 @@ export default function CoachReportBuilderPage() {
                         title={item.description}
                         className={`rounded-2xl border px-3 py-3 text-left text-sm transition ${
                           radarConfigDraft.mode === "custom" &&
-                          radarConfigDraft.charts[
-                            item.key as keyof RadarConfig["charts"]
-                          ]
+                          radarConfigDraft.charts[item.key as keyof RadarConfig["charts"]]
                             ? "border-violet-300/40 bg-violet-400/10 text-violet-100"
                             : "border-white/10 bg-white/5 text-[var(--muted)]"
                         } ${
                           radarConfigDraft.mode !== "custom"
                             ? "cursor-not-allowed opacity-60"
                             : "hover:text-[var(--text)]"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span>{item.label}</span>
-                        <span
-                          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/20 bg-white/5 text-[0.6rem] font-semibold text-[var(--text)]"
-                          title={item.description}
-                        >
-                          ?
-                        </span>
-                      </div>
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span>{item.label}</span>
+                          <span
+                            className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/20 bg-white/5 text-[0.6rem] font-semibold text-[var(--text)]"
+                            title={item.description}
+                          >
+                            ?
+                          </span>
+                        </div>
                       </button>
                     ))}
                   </div>
-                    <details className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-3">
-                      <summary className="cursor-pointer text-xs uppercase tracking-wide text-[var(--muted)]">
-                        Graphes avances
-                      </summary>
-                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-[0.65rem] text-[var(--muted)]">
-                          Astuce: passe en mode personnalise pour activer/desactiver.
-                        </p>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            disabled={radarConfigDraft.mode !== "custom"}
-                            onClick={() =>
-                              setRadarConfigDraft((prev) => ({
-                                ...prev,
-                                charts: {
-                                  ...prev.charts,
-                                  ...Object.fromEntries(
-                                    RADAR_CHART_DEFINITIONS.map((definition) => [
-                                      definition.key,
-                                      true,
-                                    ])
-                                  ),
-                                },
-                              }))
-                            }
-                            className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
-                              radarConfigDraft.mode !== "custom"
-                                ? "border-white/10 text-[var(--muted)] opacity-60"
-                                : "border-white/20 text-[var(--text)] hover:text-white"
-                            }`}
-                          >
-                            Tout activer
-                          </button>
-                          <button
-                            type="button"
-                            disabled={radarConfigDraft.mode !== "custom"}
-                            onClick={() =>
-                              setRadarConfigDraft((prev) => ({
-                                ...prev,
-                                charts: {
-                                  ...prev.charts,
-                                  ...Object.fromEntries(
-                                    RADAR_CHART_DEFINITIONS.map((definition) => [
-                                      definition.key,
-                                      false,
-                                    ])
-                                  ),
-                                },
-                              }))
-                            }
-                            className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
-                              radarConfigDraft.mode !== "custom"
-                                ? "border-white/10 text-[var(--muted)] opacity-60"
-                                : "border-white/20 text-[var(--text)] hover:text-white"
-                            }`}
-                          >
-                            Tout desactiver
-                          </button>
-                        </div>
+                  <details className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-3">
+                    <summary className="cursor-pointer text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Graphes avances
+                    </summary>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-[0.65rem] text-[var(--muted)]">
+                        Astuce: passe en mode personnalise pour activer/desactiver.
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={radarConfigDraft.mode !== "custom"}
+                          onClick={() =>
+                            setRadarConfigDraft((prev) => ({
+                              ...prev,
+                              charts: {
+                                ...prev.charts,
+                                ...Object.fromEntries(
+                                  RADAR_CHART_DEFINITIONS.map((definition) => [
+                                    definition.key,
+                                    true,
+                                  ])
+                                ),
+                              },
+                            }))
+                          }
+                          className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
+                            radarConfigDraft.mode !== "custom"
+                              ? "border-white/10 text-[var(--muted)] opacity-60"
+                              : "border-white/20 text-[var(--text)] hover:text-white"
+                          }`}
+                        >
+                          Tout activer
+                        </button>
+                        <button
+                          type="button"
+                          disabled={radarConfigDraft.mode !== "custom"}
+                          onClick={() =>
+                            setRadarConfigDraft((prev) => ({
+                              ...prev,
+                              charts: {
+                                ...prev.charts,
+                                ...Object.fromEntries(
+                                  RADAR_CHART_DEFINITIONS.map((definition) => [
+                                    definition.key,
+                                    false,
+                                  ])
+                                ),
+                              },
+                            }))
+                          }
+                          className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
+                            radarConfigDraft.mode !== "custom"
+                              ? "border-white/10 text-[var(--muted)] opacity-60"
+                              : "border-white/20 text-[var(--text)] hover:text-white"
+                          }`}
+                        >
+                          Tout desactiver
+                        </button>
                       </div>
-                      <div className="mt-3 space-y-4">
-                        {RADAR_CHART_GROUPS.map((group) => {
-                          const charts = RADAR_CHART_DEFINITIONS.filter(
-                            (definition) => definition.group === group.key
-                          );
-                          if (!charts.length) return null;
-                          return (
-                            <div key={group.key} className="space-y-2">
-                              <p className="text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                                {group.label}
-                              </p>
-                              <div className="grid gap-2 sm:grid-cols-2">
-                                {charts.map((definition) => (
-                                  <button
-                                    key={definition.key}
-                                    type="button"
-                                    disabled={radarConfigDraft.mode !== "custom"}
-                                    onClick={() =>
-                                      setRadarConfigDraft((prev) => ({
-                                        ...prev,
-                                        charts: {
-                                          ...prev.charts,
-                                          [definition.key]: !prev.charts[definition.key],
-                                        },
-                                      }))
-                                    }
-                                    className={`rounded-2xl border px-3 py-3 text-left text-[0.7rem] transition ${
-                                      radarConfigDraft.mode === "custom" &&
-                                      radarConfigDraft.charts[definition.key]
-                                        ? "border-violet-300/40 bg-violet-400/10 text-violet-100"
-                                        : "border-white/10 bg-white/5 text-[var(--muted)]"
-                                    } ${
-                                      radarConfigDraft.mode !== "custom"
-                                        ? "cursor-not-allowed opacity-60"
-                                        : "hover:text-[var(--text)]"
-                                    }`}
-                                  >
-                                    <div className="flex items-center justify-between gap-2">
-                                      <span>{definition.title}</span>
-                                      <span
-                                        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/20 bg-white/5 text-[0.55rem] font-semibold text-[var(--text)]"
-                                        title={definition.description}
-                                      >
-                                        ?
-                                      </span>
-                                    </div>
-                                  </button>
-                                ))}
-                              </div>
+                    </div>
+                    <div className="mt-3 space-y-4">
+                      {RADAR_CHART_GROUPS.map((group) => {
+                        const charts = RADAR_CHART_DEFINITIONS.filter(
+                          (definition) => definition.group === group.key
+                        );
+                        if (!charts.length) return null;
+                        return (
+                          <div key={group.key} className="space-y-2">
+                            <p className="text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                              {group.label}
+                            </p>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {charts.map((definition) => (
+                                <button
+                                  key={definition.key}
+                                  type="button"
+                                  disabled={radarConfigDraft.mode !== "custom"}
+                                  onClick={() =>
+                                    setRadarConfigDraft((prev) => ({
+                                      ...prev,
+                                      charts: {
+                                        ...prev.charts,
+                                        [definition.key]: !prev.charts[definition.key],
+                                      },
+                                    }))
+                                  }
+                                  className={`rounded-2xl border px-3 py-3 text-left text-[0.7rem] transition ${
+                                    radarConfigDraft.mode === "custom" &&
+                                    radarConfigDraft.charts[definition.key]
+                                      ? "border-violet-300/40 bg-violet-400/10 text-violet-100"
+                                      : "border-white/10 bg-white/5 text-[var(--muted)]"
+                                  } ${
+                                    radarConfigDraft.mode !== "custom"
+                                      ? "cursor-not-allowed opacity-60"
+                                      : "hover:text-[var(--text)]"
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span>{definition.title}</span>
+                                    <span
+                                      className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/20 bg-white/5 text-[0.55rem] font-semibold text-[var(--text)]"
+                                      title={definition.description}
+                                    >
+                                      ?
+                                    </span>
+                                  </div>
+                                </button>
+                              ))}
                             </div>
-                          );
-                        })}
-                      </div>
-                    </details>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </details>
                 </div>
               </div>
               {radarConfigError ? (
@@ -8309,8 +8167,8 @@ export default function CoachReportBuilderPage() {
                     Precisions rapides
                   </h3>
                   <p className="mt-2 text-sm text-[var(--muted)]">
-                    Quelques questions pour affiner la propagation et eviter
-                    toute approximation.
+                    Quelques questions pour affiner la propagation et eviter toute
+                    approximation.
                   </p>
                 </div>
                 <button
@@ -8383,9 +8241,7 @@ export default function CoachReportBuilderPage() {
                                           ? current
                                           : [];
                                         const next = list.includes(choice)
-                                          ? list.filter(
-                                              (item) => item !== choice
-                                            )
+                                          ? list.filter((item) => item !== choice)
                                           : [...list, choice];
                                         return { ...prev, [question.id]: next };
                                       }
@@ -8473,8 +8329,8 @@ export default function CoachReportBuilderPage() {
                     Choisir un axe par section
                   </h3>
                   <p className="mt-2 text-sm text-[var(--muted)]">
-                    Selectionne l angle de reponse le plus pertinent pour chaque
-                    section. L IA generera ensuite le contenu.
+                    Selectionne l angle de reponse le plus pertinent pour chaque section.
+                    L IA generera ensuite le contenu.
                   </p>
                 </div>
                 <button
@@ -8508,8 +8364,7 @@ export default function CoachReportBuilderPage() {
                     </p>
                     <div className="mt-3 grid gap-3 md:grid-cols-2">
                       {entry.options.map((option) => {
-                        const selected =
-                          axesSelection[entry.section] === option.id;
+                        const selected = axesSelection[entry.section] === option.id;
                         return (
                           <button
                             key={option.id}
@@ -8553,9 +8408,7 @@ export default function CoachReportBuilderPage() {
                   disabled={aiBusyId === "propagate"}
                   className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
                 >
-                  {aiBusyId === "propagate"
-                    ? "Propagation..."
-                    : "Lancer la propagation"}
+                  {aiBusyId === "propagate" ? "Propagation..." : "Lancer la propagation"}
                 </button>
               </div>
             </div>

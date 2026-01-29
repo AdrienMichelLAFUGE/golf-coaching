@@ -1,39 +1,32 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import Brevo from "@getbrevo/brevo";
+import { env } from "@/env";
+import { formatZodError, parseRequestJson } from "@/lib/validation";
 
-type Payload = {
-  to: string;
-  studentName?: string;
-  reportTitle?: string;
-  reportUrl: string;
-};
+const emailPayloadSchema = z.object({
+  to: z.string().email(),
+  studentName: z.string().optional(),
+  reportTitle: z.string().optional(),
+  reportUrl: z.string().url(),
+});
 
 export async function POST(request: Request) {
-  const apiKey = process.env.BREVO_API_KEY;
-  const senderEmail = process.env.BREVO_SENDER_EMAIL;
-  const senderName = process.env.BREVO_SENDER_NAME;
-
-  if (!apiKey || !senderEmail || !senderName) {
+  const parsed = await parseRequestJson(request, emailPayloadSchema);
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: "Missing Brevo env vars." },
-      { status: 500 }
+      { error: "Payload invalide.", details: formatZodError(parsed.error) },
+      { status: 422 }
     );
   }
+  const body = parsed.data;
 
-  const body = (await request.json()) as Payload;
-
-  if (!body?.to || !body?.reportUrl) {
-    return NextResponse.json(
-      { error: "Missing required fields." },
-      { status: 400 }
-    );
-  }
+  const apiKey = env.BREVO_API_KEY;
+  const senderEmail = env.BREVO_SENDER_EMAIL;
+  const senderName = env.BREVO_SENDER_NAME;
 
   const apiInstance = new Brevo.TransactionalEmailsApi();
-  apiInstance.setApiKey(
-    Brevo.TransactionalEmailsApiApiKeys.apiKey,
-    apiKey
-  );
+  apiInstance.setApiKey(Brevo.TransactionalEmailsApiApiKeys.apiKey, apiKey);
 
   await apiInstance.sendTransacEmail({
     sender: { email: senderEmail, name: senderName },

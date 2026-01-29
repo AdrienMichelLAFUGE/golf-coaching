@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabase/client";
 import AdminGuard from "../../_components/admin-guard";
 import PageBack from "../../_components/page-back";
 
@@ -95,7 +95,11 @@ const featureTones = {
 const getFeatureKeyFromLabel = (label: string): FeatureKey | null => {
   const lowered = label.toLowerCase();
   if (lowered.includes("tpi")) return "tpi";
-  if (lowered.includes("radar") || lowered.includes("datas") || lowered.includes("data")) {
+  if (
+    lowered.includes("radar") ||
+    lowered.includes("datas") ||
+    lowered.includes("data")
+  ) {
     return "radar";
   }
   if (lowered.includes("image")) return "image";
@@ -120,9 +124,7 @@ export default function AdminAnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedCoachId, setSelectedCoachId] = useState<string | null>(null);
-  const [coachDetail, setCoachDetail] = useState<CoachAnalyticsPayload | null>(
-    null
-  );
+  const [coachDetail, setCoachDetail] = useState<CoachAnalyticsPayload | null>(null);
   const [coachLoading, setCoachLoading] = useState(false);
   const [coachError, setCoachError] = useState("");
 
@@ -242,9 +244,7 @@ export default function AdminAnalyticsPage() {
               Analytics
             </p>
           </div>
-          <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
-            Suivi IA
-          </h2>
+          <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">Suivi IA</h2>
           <p className="mt-2 text-sm text-[var(--muted)]">
             Usage des appels IA sur les 30 derniers jours.
           </p>
@@ -389,10 +389,7 @@ export default function AdminAnalyticsPage() {
                   {
                     id: "usage-duration",
                     label: "Temps moyen IA",
-                    value: `${formatNumber(
-                      analytics.totals.avgDurationMs / 1000,
-                      1
-                    )} s`,
+                    value: `${formatNumber(analytics.totals.avgDurationMs / 1000, 1)} s`,
                     helper: "Par requete",
                     cost: formatUsd(analytics.totals.costPerRequestUsd),
                   },
@@ -437,18 +434,14 @@ export default function AdminAnalyticsPage() {
                     id: "cost-tpi",
                     label: "Cout / TPI",
                     value: formatUsd(analytics.totals.costPerTpiUsd),
-                    helper: `${formatNumber(
-                      analytics.totals.tpiReportsReady
-                    )} imports`,
+                    helper: `${formatNumber(analytics.totals.tpiReportsReady)} imports`,
                     cost: formatUsd(analytics.totals.costPerTpiUsd),
                   },
                   {
                     id: "cost-radar",
                     label: "Cout / Datas",
                     value: formatUsd(analytics.totals.costPerRadarUsd),
-                    helper: `${formatNumber(
-                      analytics.totals.radarImportsTotal
-                    )} imports`,
+                    helper: `${formatNumber(analytics.totals.radarImportsTotal)} imports`,
                     cost: formatUsd(analytics.totals.costPerRadarUsd),
                   },
                 ];
@@ -474,9 +467,7 @@ export default function AdminAnalyticsPage() {
                         {item.value}
                       </p>
                       {item.helper ? (
-                        <p className="mt-2 text-xs text-[var(--muted)]">
-                          {item.helper}
-                        </p>
+                        <p className="mt-2 text-xs text-[var(--muted)]">{item.helper}</p>
                       ) : null}
                       {item.cost ? (
                         <p className="absolute bottom-3 right-4 text-xs text-[var(--muted)]">
@@ -531,27 +522,19 @@ export default function AdminAnalyticsPage() {
                     </div>
                   ) : (
                     analytics.daily.map((day) => (
-                      <div
-                        key={day.date}
-                        className="flex items-center gap-3"
-                      >
+                      <div key={day.date} className="flex items-center gap-3">
                         <span className="w-24">{day.date}</span>
                         <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
                           <div
                             className="h-full rounded-full bg-emerald-300/70"
                             style={{
                               width: maxTokens
-                                ? `${Math.max(
-                                    5,
-                                    (day.tokens / maxTokens) * 100
-                                  )}%`
+                                ? `${Math.max(5, (day.tokens / maxTokens) * 100)}%`
                                 : "0%",
                             }}
                           />
                         </div>
-                        <span className="w-28 text-right">
-                          {day.tokens} tokens
-                        </span>
+                        <span className="w-28 text-right">{day.tokens} tokens</span>
                       </div>
                     ))
                   )}
@@ -560,9 +543,7 @@ export default function AdminAnalyticsPage() {
 
               <div className="space-y-6">
                 <div className="panel rounded-2xl p-6">
-                  <h3 className="text-lg font-semibold text-[var(--text)]">
-                    Top coachs
-                  </h3>
+                  <h3 className="text-lg font-semibold text-[var(--text)]">Top coachs</h3>
                   <div className="mt-4 space-y-3 text-sm text-[var(--muted)]">
                     {analytics.topCoaches.length === 0 ? (
                       <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
@@ -611,8 +592,7 @@ export default function AdminAnalyticsPage() {
                           className="flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-4 py-2"
                         >
                           <div className="text-[var(--text)]">
-                            {renderFeatureDot(feature.feature) ??
-                              feature.feature}
+                            {renderFeatureDot(feature.feature) ?? feature.feature}
                           </div>
                           <span>
                             {feature.requests} req - {feature.tokens} tokens •{" "}
@@ -709,7 +689,8 @@ export default function AdminAnalyticsPage() {
                                   {action.action}
                                 </span>
                                 <span>
-                                  {action.requests} req - {action.tokens} tokens - {formatUsd(action.costUsd)}
+                                  {action.requests} req - {action.tokens} tokens -{" "}
+                                  {formatUsd(action.costUsd)}
                                 </span>
                               </div>
                             ))
@@ -731,11 +712,10 @@ export default function AdminAnalyticsPage() {
                                 key={model.model}
                                 className="flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-4 py-2"
                               >
-                                <span className="text-[var(--text)]">
-                                  {model.model}
-                                </span>
+                                <span className="text-[var(--text)]">{model.model}</span>
                                 <span>
-                                  {model.requests} req - {model.tokens} tokens - {formatUsd(model.costUsd)}
+                                  {model.requests} req - {model.tokens} tokens -{" "}
+                                  {formatUsd(model.costUsd)}
                                 </span>
                               </div>
                             ))
@@ -757,11 +737,11 @@ export default function AdminAnalyticsPage() {
                                   className="flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-4 py-2"
                                 >
                                   <div className="text-[var(--text)]">
-                                    {renderFeatureDot(feature.feature) ??
-                                      feature.feature}
+                                    {renderFeatureDot(feature.feature) ?? feature.feature}
                                   </div>
                                   <span>
-                                    {feature.requests} req - {feature.tokens} tokens - {formatUsd(feature.costUsd)}
+                                    {feature.requests} req - {feature.tokens} tokens -{" "}
+                                    {formatUsd(feature.costUsd)}
                                   </span>
                                 </div>
                               ))
@@ -797,9 +777,7 @@ export default function AdminAnalyticsPage() {
                                   }}
                                 />
                               </div>
-                              <span className="w-28 text-right">
-                                {day.tokens} tokens
-                              </span>
+                              <span className="w-28 text-right">{day.tokens} tokens</span>
                             </div>
                           ))
                         )}

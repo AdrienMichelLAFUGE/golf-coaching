@@ -51,7 +51,11 @@ export const defaultSectionTemplates: DefaultSectionTemplate[] = [
   { title: "Mental - focus", type: "text", tags: ["mental", "focus"] },
   { title: "Gestion du stress", type: "text", tags: ["mental", "stress"] },
   { title: "Confiance et intention", type: "text", tags: ["mental", "confidence"] },
-  { title: "Respiration et routine mentale", type: "text", tags: ["mental", "breathing", "routine"] },
+  {
+    title: "Respiration et routine mentale",
+    type: "text",
+    tags: ["mental", "breathing", "routine"],
+  },
   { title: "Physique / mobilite", type: "text", tags: ["physical", "mobility"] },
   { title: "Preparation avant parcours", type: "text", tags: ["prep", "routine"] },
   { title: "Exercices recommandes", type: "text", tags: ["practice", "exercises"] },

@@ -37,9 +37,7 @@ const median = (values: number[]) => {
   if (!values.length) return null;
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? (sorted[mid - 1] + sorted[mid]) / 2
-    : sorted[mid];
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 };
 
 const percentile = (values: number[], p: number) => {
@@ -67,8 +65,7 @@ const summaryStats = (values: number[]) => {
     };
   }
   const mean = values.reduce((acc, val) => acc + val, 0) / count;
-  const variance =
-    values.reduce((acc, val) => acc + (val - mean) ** 2, 0) / count;
+  const variance = values.reduce((acc, val) => acc + (val - mean) ** 2, 0) / count;
   const std = Math.sqrt(variance);
   return {
     count,
@@ -137,9 +134,7 @@ const regression = (
       if (y === null || features.some((value) => value === null)) return null;
       return { y, features: features as number[] };
     })
-    .filter(
-      (row): row is { y: number; features: number[] } => row !== null
-    );
+    .filter((row): row is { y: number; features: number[] } => row !== null);
   if (rows.length < Math.max(8, featureKeys.length + 2)) return null;
   const n = rows.length;
   const k = featureKeys.length + 1;
@@ -195,19 +190,13 @@ const buildSummary = (analytics: {
       : null;
   const target = analytics.derived.carryTarget;
   const pieces = [
-    target
-      ? `Carry moyen cible ${target.toFixed(1)}.`
-      : null,
+    target ? `Carry moyen cible ${target.toFixed(1)}.` : null,
     consistency ? `Regularite carry (CV) ${consistency}% .` : null,
   ].filter(Boolean);
   return pieces.join(" ");
 };
 
-const formatInsightValue = (
-  value: number | null,
-  unit?: string | null,
-  digits = 1
-) => {
+const formatInsightValue = (value: number | null, unit?: string | null, digits = 1) => {
   if (value === null || !Number.isFinite(value)) return null;
   const rounded = Number(value.toFixed(digits));
   return unit ? `${rounded} ${unit}` : `${rounded}`;
@@ -317,7 +306,7 @@ export const computeAnalytics = ({
   const carryTarget = carryValues.length
     ? carryOutlierRatio > 0.1
       ? carryMedian
-      : carryMean ?? carryMedian
+      : (carryMean ?? carryMedian)
     : null;
 
   const thresholds = config?.thresholds ?? {};
@@ -352,69 +341,63 @@ export const computeAnalytics = ({
     thresholds.bins?.quantiles?.[1] ?? 0.66
   );
 
-  const shotsWithDerived: Array<Record<string, unknown>> = normalizedShots.map(
-    (shot) => {
-      const carry = toNumber(shot.carry);
-      const lateral = toNumber(shot.lateral);
-      const ftp = toNumber(shot.ftp);
-      const launchH = toNumber(shot.launch_h);
-      const spinAxis = toNumber(shot.spin_axis);
-      const impactLat = toNumber(shot.impact_lat);
-      const impactVert = toNumber(shot.impact_vert);
-      const shotIndex = toNumber(shot.shot_index) ?? 0;
-      const distanceFromTarget =
-        carry !== null && carryTarget !== null ? carry - carryTarget : null;
-      const radialMiss =
-        lateral !== null && distanceFromTarget !== null
-          ? Math.sqrt(lateral ** 2 + distanceFromTarget ** 2)
-          : null;
-      const leftRight = lateral === null ? null : lateral < 0 ? "L" : "R";
-      const absFtp = ftp !== null ? Math.abs(ftp) : null;
-      const absLaunchH = launchH !== null ? Math.abs(launchH) : null;
-      const absSpinAxis = spinAxis !== null ? Math.abs(spinAxis) : null;
+  const shotsWithDerived: Array<Record<string, unknown>> = normalizedShots.map((shot) => {
+    const carry = toNumber(shot.carry);
+    const lateral = toNumber(shot.lateral);
+    const ftp = toNumber(shot.ftp);
+    const launchH = toNumber(shot.launch_h);
+    const spinAxis = toNumber(shot.spin_axis);
+    const impactLat = toNumber(shot.impact_lat);
+    const impactVert = toNumber(shot.impact_vert);
+    const shotIndex = toNumber(shot.shot_index) ?? 0;
+    const distanceFromTarget =
+      carry !== null && carryTarget !== null ? carry - carryTarget : null;
+    const radialMiss =
+      lateral !== null && distanceFromTarget !== null
+        ? Math.sqrt(lateral ** 2 + distanceFromTarget ** 2)
+        : null;
+    const leftRight = lateral === null ? null : lateral < 0 ? "L" : "R";
+    const absFtp = ftp !== null ? Math.abs(ftp) : null;
+    const absLaunchH = launchH !== null ? Math.abs(launchH) : null;
+    const absSpinAxis = spinAxis !== null ? Math.abs(spinAxis) : null;
 
-      let impactZone: string | null = null;
-      if (impactLat !== null && impactVert !== null) {
-        const latZone =
-          Math.abs(impactLat) <= impactBox.lat
-            ? "center"
-            : impactLat > 0
-            ? "toe"
-            : "heel";
-        const vertZone =
-          Math.abs(impactVert) <= impactBox.vert
-            ? "center"
-            : impactVert > 0
+    let impactZone: string | null = null;
+    if (impactLat !== null && impactVert !== null) {
+      const latZone =
+        Math.abs(impactLat) <= impactBox.lat ? "center" : impactLat > 0 ? "toe" : "heel";
+      const vertZone =
+        Math.abs(impactVert) <= impactBox.vert
+          ? "center"
+          : impactVert > 0
             ? "high"
             : "low";
-        impactZone = `${latZone}-${vertZone}`;
-      }
+      impactZone = `${latZone}-${vertZone}`;
+    }
 
-      return {
-        ...shot,
-        carry_target: carryTarget,
-        distance_from_target: distanceFromTarget,
-        radial_miss: radialMiss,
-        abs_lateral: lateral !== null ? Math.abs(lateral) : null,
-        abs_ftp: absFtp,
-        abs_launch_h: absLaunchH,
-        abs_spin_axis: absSpinAxis,
-        left_right: leftRight,
-        smash_bin: assignBin(toNumber(shot.smash), [smashQ1, smashQ2]),
-        ball_speed_bin: assignBin(toNumber(shot.ball_speed), [ballQ1, ballQ2]),
-        launch_v_bin: assignBin(toNumber(shot.launch_v), [launchQ1, launchQ2]),
-        abs_ftp_bin: assignBin(absFtp, [ftpQ1, ftpQ2]),
-        period_tertile:
-          shotIndex <= normalizedShots.length / 3
-            ? "start"
-            : shotIndex <= (normalizedShots.length * 2) / 3
+    return {
+      ...shot,
+      carry_target: carryTarget,
+      distance_from_target: distanceFromTarget,
+      radial_miss: radialMiss,
+      abs_lateral: lateral !== null ? Math.abs(lateral) : null,
+      abs_ftp: absFtp,
+      abs_launch_h: absLaunchH,
+      abs_spin_axis: absSpinAxis,
+      left_right: leftRight,
+      smash_bin: assignBin(toNumber(shot.smash), [smashQ1, smashQ2]),
+      ball_speed_bin: assignBin(toNumber(shot.ball_speed), [ballQ1, ballQ2]),
+      launch_v_bin: assignBin(toNumber(shot.launch_v), [launchQ1, launchQ2]),
+      abs_ftp_bin: assignBin(absFtp, [ftpQ1, ftpQ2]),
+      period_tertile:
+        shotIndex <= normalizedShots.length / 3
+          ? "start"
+          : shotIndex <= (normalizedShots.length * 2) / 3
             ? "mid"
             : "end",
-        impact_zone: impactZone,
-        strike_score: toNumber(shot.smash) ?? toNumber(shot.ball_speed) ?? null,
-      };
-    }
-  );
+      impact_zone: impactZone,
+      strike_score: toNumber(shot.smash) ?? toNumber(shot.ball_speed) ?? null,
+    };
+  });
 
   units.radial_miss = units.carry ?? null;
   units.distance_from_target = units.carry ?? null;
@@ -431,9 +414,10 @@ export const computeAnalytics = ({
   const corridorPercent = (values: number[], threshold: number) =>
     values.length
       ? Number(
-          ((values.filter((val) => Math.abs(val) <= threshold).length /
-            values.length) *
-            100).toFixed(1)
+          (
+            (values.filter((val) => Math.abs(val) <= threshold).length / values.length) *
+            100
+          ).toFixed(1)
         )
       : null;
 
@@ -536,24 +520,25 @@ export const computeAnalytics = ({
           denomB += (b - meanB) ** 2;
         });
         matrix[i][j] =
-          denomA && denomB ? Number((numerator / Math.sqrt(denomA * denomB)).toFixed(3)) : 0;
+          denomA && denomB
+            ? Number((numerator / Math.sqrt(denomA * denomB)).toFixed(3))
+            : 0;
       }
     }
     return { variables, matrix };
   })();
 
   const models = {
-    regressionDistance: regression(shotsWithDerived, "carry", [
-      "ball_speed",
-      "launch_v",
-      "spin_rpm",
-    ]) ?? undefined,
-    regressionLateral: regression(shotsWithDerived, "lateral", [
-      "launch_h",
-      "ftp",
-      "spin_axis",
-      "impact_lat",
-    ]) ?? undefined,
+    regressionDistance:
+      regression(shotsWithDerived, "carry", ["ball_speed", "launch_v", "spin_rpm"]) ??
+      undefined,
+    regressionLateral:
+      regression(shotsWithDerived, "lateral", [
+        "launch_h",
+        "ftp",
+        "spin_axis",
+        "impact_lat",
+      ]) ?? undefined,
   };
 
   const chartsData = buildChartsData({
@@ -622,9 +607,7 @@ export const computeAnalytics = ({
         latMean !== null
           ? `Moyenne laterale ${formatInsightValue(latMean, units.lateral)}`
           : null,
-        latStd !== null
-          ? `ET ${formatInsightValue(latStd, units.lateral)}`
-          : null,
+        latStd !== null ? `ET ${formatInsightValue(latStd, units.lateral)}` : null,
         withinLat10 !== null
           ? `${withinLat10}% des coups dans ±${latThresholds[1]}${units.lateral ? ` ${units.lateral}` : "m"}`
           : null,
@@ -692,9 +675,7 @@ export const computeAnalytics = ({
         smashMean !== null
           ? `Smash moyen ${formatInsightValue(smashMean, units.smash, 2)}`
           : null,
-        smashStd !== null
-          ? `ET ${formatInsightValue(smashStd, units.smash, 2)}`
-          : null,
+        smashStd !== null ? `ET ${formatInsightValue(smashStd, units.smash, 2)}` : null,
         smashCv !== null ? `CV ${formatInsightValue(smashCv, "%", 1)}` : null,
       ].filter(Boolean);
       if (smashParts.length) {

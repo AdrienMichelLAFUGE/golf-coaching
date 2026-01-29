@@ -1,13 +1,16 @@
-import { createClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import OpenAI from "openai";
-import {
-  RADAR_CHART_DEFINITIONS,
-  RADAR_CHART_GROUPS,
-} from "@/lib/radar/charts/registry";
+import { RADAR_CHART_DEFINITIONS, RADAR_CHART_GROUPS } from "@/lib/radar/charts/registry";
 import { DEFAULT_RADAR_CONFIG } from "@/lib/radar/config";
 import { PGA_BENCHMARKS } from "@/lib/radar/pga-benchmarks";
 import type { RadarAnalytics } from "@/lib/radar/types";
+import { env } from "@/env";
+import {
+  createSupabaseAdminClient,
+  createSupabaseServerClientFromRequest,
+} from "@/lib/supabase/server";
 import { applyTemplate, loadPromptSection } from "@/lib/promptLoader";
+import { formatZodError, parseRequestJson } from "@/lib/validation";
 
 export const runtime = "nodejs";
 
@@ -54,6 +57,23 @@ type RadarAutoResponse = {
   sections: RadarAutoSection[];
 };
 
+const radarAiRequestSchema = z.object({
+  mode: z.enum(["questions", "auto"]),
+  context: z.string().optional(),
+  sections: z.array(z.object({ title: z.string(), content: z.string() })).optional(),
+  answers: z.record(z.string()).optional(),
+  radarSections: z
+    .array(
+      z.object({
+        id: z.string(),
+        radarFileId: z.string(),
+        preset: z.string().nullable().optional(),
+        syntax: z.string().nullable().optional(),
+      })
+    )
+    .optional(),
+});
+
 const BASE_CHART_KEYS = [
   "dispersion",
   "carryTotal",
@@ -63,13 +83,7 @@ const BASE_CHART_KEYS = [
   "faceImpact",
 ];
 
-const AI_PRESETS = new Set([
-  "ultra",
-  "synthetic",
-  "standard",
-  "pousse",
-  "complet",
-]);
+const AI_PRESETS = new Set(["ultra", "synthetic", "standard", "pousse", "complet"]);
 
 const AI_SYNTAXES = new Set([
   "exp-tech",
@@ -108,17 +122,17 @@ const resolveImageryHint = async (value: string) =>
   value === "faible"
     ? await loadPromptSection("ai_hint_imagery_faible")
     : value === "fort"
-    ? await loadPromptSection("ai_hint_imagery_fort")
-    : await loadPromptSection("ai_hint_imagery_equilibre");
+      ? await loadPromptSection("ai_hint_imagery_fort")
+      : await loadPromptSection("ai_hint_imagery_equilibre");
 
 const resolveFocusHint = async (value: string) =>
   value === "technique"
     ? await loadPromptSection("ai_hint_focus_technique")
     : value === "mental"
-    ? await loadPromptSection("ai_hint_focus_mental")
-    : value === "strategie"
-    ? await loadPromptSection("ai_hint_focus_strategie")
-    : await loadPromptSection("ai_hint_focus_mix");
+      ? await loadPromptSection("ai_hint_focus_mental")
+      : value === "strategie"
+        ? await loadPromptSection("ai_hint_focus_strategie")
+        : await loadPromptSection("ai_hint_focus_mix");
 
 const truncate = (value: string, max = 420) =>
   value.length > max ? `${value.slice(0, max)}...` : value;
@@ -169,9 +183,7 @@ const summarizePayload = (payload: {
   }
   if (payload.type === "hist" && payload.bins?.length) {
     const total = payload.bins.reduce((acc, bin) => acc + bin.count, 0);
-    const top = payload.bins.reduce((best, bin) =>
-      bin.count > best.count ? bin : best
-    );
+    const top = payload.bins.reduce((best, bin) => (bin.count > best.count ? bin : best));
     return {
       sample: total,
       top_bin: top?.label ?? null,
@@ -289,8 +301,7 @@ const buildRadarSummary = (analytics: RadarAnalytics) => {
       title: definition.title,
       description: definition.description,
       group:
-        RADAR_CHART_GROUPS.find((group) => group.key === definition.group)
-          ?.label ?? null,
+        RADAR_CHART_GROUPS.find((group) => group.key === definition.group)?.label ?? null,
       available: !!chartData?.available && !!payload,
       type: payload?.type ?? null,
       insight: payload?.insight ?? null,
@@ -364,29 +375,18 @@ const buildRadarSelectionPrompt = (
 };
 
 export async function POST(req: Request) {
-  const payload = (await req.json()) as RadarAiRequest;
-  if (!payload?.mode) {
-    return Response.json({ error: "mode requis." }, { status: 400 });
-  }
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const openaiKey = process.env.OPENAI_API_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey || !openaiKey) {
+  const parsed = await parseRequestJson(req, radarAiRequestSchema);
+  if (!parsed.success) {
     return Response.json(
-      { error: "Configuration serveur incomplete." },
-      { status: 500 }
+      { error: "Payload invalide.", details: formatZodError(parsed.error) },
+      { status: 422 }
     );
   }
+  const payload = parsed.data as RadarAiRequest;
 
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    global: {
-      headers: { Authorization: req.headers.get("authorization") ?? "" },
-    },
-  });
-  const admin = createClient(supabaseUrl, serviceRoleKey);
+  const supabase = createSupabaseServerClientFromRequest(req);
+  const admin = createSupabaseAdminClient();
+  const openaiKey = env.OPENAI_API_KEY;
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData.user) {
@@ -432,13 +432,11 @@ export async function POST(req: Request) {
   });
 
   const startedAt = Date.now();
-  let usage:
-    | {
-        input_tokens?: number;
-        output_tokens?: number;
-        total_tokens?: number;
-      }
-    | null = null;
+  let usage: {
+    input_tokens?: number;
+    output_tokens?: number;
+    total_tokens?: number;
+  } | null = null;
 
   const recordUsage = async (
     action: string,
@@ -538,10 +536,7 @@ export async function POST(req: Request) {
       const parsed = JSON.parse(text) as { questions: RadarQuestion[] };
       return Response.json(parsed);
     } catch {
-      return Response.json(
-        { error: "Reponse IA invalide.", raw: text },
-        { status: 500 }
-      );
+      return Response.json({ error: "Reponse IA invalide.", raw: text }, { status: 500 });
     }
   }
 
@@ -585,10 +580,7 @@ export async function POST(req: Request) {
   }>;
 
   if (!summaries.length) {
-    return Response.json(
-      { error: "Analyses datas indisponibles." },
-      { status: 400 }
-    );
+    return Response.json({ error: "Analyses datas indisponibles." }, { status: 400 });
   }
 
   const autoSystemPrompt = await loadRadarPrompt("auto_system");
@@ -683,22 +675,11 @@ export async function POST(req: Request) {
                           commentary: { type: "string" },
                           solution: { type: "string" },
                         },
-                        required: [
-                          "key",
-                          "title",
-                          "reason",
-                          "commentary",
-                          "solution",
-                        ],
+                        required: ["key", "title", "reason", "commentary", "solution"],
                       },
                     },
                   },
-                  required: [
-                    "sectionId",
-                    "selectionSummary",
-                    "sessionSummary",
-                    "charts",
-                  ],
+                  required: ["sectionId", "selectionSummary", "sessionSummary", "charts"],
                 },
               },
             },
@@ -749,8 +730,7 @@ export async function POST(req: Request) {
     if (!isValidSelection(parsed)) {
       return Response.json(
         {
-          error:
-            "Reponse IA invalide (selection vide ou section manquante).",
+          error: "Reponse IA invalide (selection vide ou section manquante).",
           raw: text,
         },
         { status: 500 }
@@ -758,9 +738,6 @@ export async function POST(req: Request) {
     }
     return Response.json(parsed);
   } catch {
-    return Response.json(
-      { error: "Reponse IA invalide.", raw: text },
-      { status: 500 }
-    );
+    return Response.json({ error: "Reponse IA invalide.", raw: text }, { status: 500 });
   }
 }

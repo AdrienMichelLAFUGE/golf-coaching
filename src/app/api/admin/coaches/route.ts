@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import { isAdminEmail } from "@/lib/admin";
+import {
+  createSupabaseAdminClient,
+  createSupabaseServerClientFromRequest,
+} from "@/lib/supabase/server";
+import { formatZodError, parseRequestJson } from "@/lib/validation";
 
 export const runtime = "nodejs";
 
@@ -12,24 +17,16 @@ type CoachUpdatePayload = {
   ai_model?: string | null;
 };
 
+const coachUpdateSchema = z.object({
+  orgId: z.string().min(1),
+  ai_enabled: z.boolean().optional(),
+  tpi_enabled: z.boolean().optional(),
+  radar_enabled: z.boolean().optional(),
+  ai_model: z.string().nullable().optional(),
+});
+
 const requireAdmin = async (request: Request) => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
-    return {
-      error: NextResponse.json(
-        { error: "Missing Supabase env vars." },
-        { status: 500 }
-      ),
-    };
-  }
-
-  const authHeader = request.headers.get("authorization") ?? "";
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    global: { headers: { Authorization: authHeader } },
-  });
+  const supabase = createSupabaseServerClientFromRequest(request);
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
   const email = userData.user?.email ?? "";
@@ -40,7 +37,7 @@ const requireAdmin = async (request: Request) => {
   }
 
   return {
-    admin: createClient(supabaseUrl, serviceRoleKey),
+    admin: createSupabaseAdminClient(),
   };
 };
 
@@ -53,10 +50,7 @@ export async function GET(request: Request) {
     .select("id, name, ai_enabled, tpi_enabled, radar_enabled, ai_model");
 
   if (orgError) {
-    return NextResponse.json(
-      { error: orgError.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: orgError.message }, { status: 500 });
   }
 
   const { data: owners, error: ownerError } = await auth.admin
@@ -65,10 +59,7 @@ export async function GET(request: Request) {
     .eq("role", "owner");
 
   if (ownerError) {
-    return NextResponse.json(
-      { error: ownerError.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: ownerError.message }, { status: 500 });
   }
 
   const ownerByOrg = new Map(
@@ -95,12 +86,16 @@ export async function PATCH(request: Request) {
   const auth = await requireAdmin(request);
   if ("error" in auth) return auth.error;
 
-  const payload = (await request.json()) as CoachUpdatePayload;
-  const orgId = payload.orgId?.trim();
-
-  if (!orgId) {
-    return NextResponse.json({ error: "Missing orgId." }, { status: 400 });
+  const parsed = await parseRequestJson(request, coachUpdateSchema);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Payload invalide.", details: formatZodError(parsed.error) },
+      { status: 422 }
+    );
   }
+
+  const payload = parsed.data as CoachUpdatePayload;
+  const orgId = payload.orgId?.trim();
 
   const updates: Record<string, unknown> = {};
   if (typeof payload.ai_enabled === "boolean") {
@@ -126,10 +121,7 @@ export async function PATCH(request: Request) {
     .eq("id", orgId);
 
   if (updateError) {
-    return NextResponse.json(
-      { error: updateError.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: updateError.message }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });

@@ -24,8 +24,7 @@ const mean = (values: number[]) =>
 const std = (values: number[]) => {
   if (!values.length) return null;
   const avg = mean(values) ?? 0;
-  const variance =
-    values.reduce((acc, val) => acc + (val - avg) ** 2, 0) / values.length;
+  const variance = values.reduce((acc, val) => acc + (val - avg) ** 2, 0) / values.length;
   return Math.sqrt(variance);
 };
 
@@ -86,8 +85,7 @@ export const buildSegments = (
         ftp_mean: mean(ftpValues),
         path_mean: mean(pathValues),
         withinLat10: withinLat !== null ? Number((withinLat * 100).toFixed(1)) : null,
-        withinDist10:
-          withinDist !== null ? Number((withinDist * 100).toFixed(1)) : null,
+        withinDist10: withinDist !== null ? Number((withinDist * 100).toFixed(1)) : null,
       });
     });
 
@@ -96,9 +94,7 @@ export const buildSegments = (
 
   return {
     byShotType: segment("byShotType", (shot) =>
-      typeof shot.shot_type === "string" && shot.shot_type.trim()
-        ? shot.shot_type
-        : null
+      typeof shot.shot_type === "string" && shot.shot_type.trim() ? shot.shot_type : null
     ),
     byLeftRight: segment("byLeftRight", (shot) =>
       typeof shot.left_right === "string" ? shot.left_right : null
@@ -120,4 +116,3 @@ export const buildSegments = (
     ),
   };
 };
-

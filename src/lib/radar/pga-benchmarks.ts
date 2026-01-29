@@ -138,6 +138,9 @@ export const findPgaBenchmark = (clubName?: string | null) => {
   if (normalized.includes("driver")) {
     return PGA_BENCHMARKS.find((entry) => entry.club === "Driver") ?? null;
   }
+  if (/(bois|wood)\s*1/.test(normalized) || /1\s*(bois|wood)/.test(normalized)) {
+    return PGA_BENCHMARKS.find((entry) => entry.club === "Driver") ?? null;
+  }
   if (normalized.includes("pw") || normalized.includes("pitch")) {
     return PGA_BENCHMARKS.find((entry) => entry.club === "PW") ?? null;
   }

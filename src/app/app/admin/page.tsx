@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabase/client";
 import AdminGuard from "../_components/admin-guard";
 import PageBack from "../_components/page-back";
 
@@ -74,23 +74,19 @@ export default function AdminDashboardPage() {
           {[
             {
               label: "Organisations",
-              value:
-                !loading && overview ? `${overview.orgsCount}` : "-",
+              value: !loading && overview ? `${overview.orgsCount}` : "-",
             },
             {
               label: "Coachs",
-              value:
-                !loading && overview ? `${overview.coachesCount}` : "-",
+              value: !loading && overview ? `${overview.coachesCount}` : "-",
             },
             {
               label: "Eleves",
-              value:
-                !loading && overview ? `${overview.studentsCount}` : "-",
+              value: !loading && overview ? `${overview.studentsCount}` : "-",
             },
             {
               label: "IA 30 jours",
-              value:
-                !loading && overview ? `${overview.aiRequests30d}` : "-",
+              value: !loading && overview ? `${overview.aiRequests30d}` : "-",
             },
           ].map((item) => (
             <div key={item.label} className="panel-soft rounded-2xl p-4">
@@ -100,9 +96,7 @@ export default function AdminDashboardPage() {
               <p className="mt-3 text-2xl font-semibold text-[var(--text)]">
                 {item.value}
               </p>
-              <p className="mt-2 text-xs text-[var(--muted)]">
-                Donnees internes
-              </p>
+              <p className="mt-2 text-xs text-[var(--muted)]">Donnees internes</p>
             </div>
           ))}
         </section>
@@ -117,36 +111,26 @@ export default function AdminDashboardPage() {
           {[
             {
               title: "Tarifs & features",
-              description:
-                "Modifie les prix et les listes de features visibles.",
+              description: "Modifie les prix et les listes de features visibles.",
               href: "/app/admin/pricing",
               cta: "Ouvrir les tarifs",
             },
             {
               title: "Acces coach",
-              description:
-                "Active ou coupe le premium et choisis le modele IA.",
+              description: "Active ou coupe le premium et choisis le modele IA.",
               href: "/app/admin/coaches",
               cta: "Gerer les coachs",
             },
             {
               title: "Analytics IA",
-              description:
-                "Suivi des appels IA, tokens et activite par coach.",
+              description: "Suivi des appels IA, tokens et activite par coach.",
               href: "/app/admin/analytics",
               cta: "Voir les analytics",
             },
           ].map((card) => (
-            <div
-              key={card.title}
-              className="panel rounded-2xl p-6"
-            >
-              <h3 className="text-lg font-semibold text-[var(--text)]">
-                {card.title}
-              </h3>
-              <p className="mt-2 text-sm text-[var(--muted)]">
-                {card.description}
-              </p>
+            <div key={card.title} className="panel rounded-2xl p-6">
+              <h3 className="text-lg font-semibold text-[var(--text)]">{card.title}</h3>
+              <p className="mt-2 text-sm text-[var(--muted)]">{card.description}</p>
               <Link
                 href={card.href}
                 className="mt-4 inline-flex rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"

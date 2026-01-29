@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../_components/role-guard";
 import { useProfile } from "../../_components/profile-context";
 
@@ -90,9 +90,7 @@ export default function StudentReportsPage() {
       allowedRoles={["student"]}
       fallback={
         <section className="panel rounded-2xl p-6">
-          <p className="text-sm text-[var(--muted)]">
-            Acces reserve aux eleves.
-          </p>
+          <p className="text-sm text-[var(--muted)]">Acces reserve aux eleves.</p>
         </section>
       }
     >

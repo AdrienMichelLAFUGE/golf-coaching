@@ -1,8 +1,15 @@
-import { createClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import OpenAI from "openai";
 import { computeAnalytics } from "@/lib/radar/computeAnalytics";
 import { DEFAULT_RADAR_CONFIG } from "@/lib/radar/config";
+import { PGA_BENCHMARKS, findPgaBenchmark } from "@/lib/radar/pga-benchmarks";
+import { env } from "@/env";
+import {
+  createSupabaseAdminClient,
+  createSupabaseServerClientFromRequest,
+} from "@/lib/supabase/server";
 import { applyTemplate, loadPromptSection } from "@/lib/promptLoader";
+import { formatZodError, parseRequestJson } from "@/lib/validation";
 
 export const runtime = "nodejs";
 
@@ -32,6 +39,10 @@ type RadarVerification = {
   confidence: number;
   issues: string[];
 };
+
+const radarExtractSchema = z.object({
+  radarFileId: z.string().min(1),
+});
 
 const buildRadarSchema = () => ({
   type: "object",
@@ -172,10 +183,7 @@ const buildKey = (group: string | null, label: string) => {
   };
   const direct = known[key];
   if (direct) return direct;
-  const fallback = `${groupToken || "col"}_${labelToken || "value"}`.replace(
-    /\s+/g,
-    "_"
-  );
+  const fallback = `${groupToken || "col"}_${labelToken || "value"}`.replace(/\s+/g, "_");
   return fallback || "col_value";
 };
 
@@ -200,6 +208,121 @@ const parseCellValue = (value: string | number | null) => {
   const numeric = Number(trimmed.replace(",", ".").replace(/[^\d.-]/g, ""));
   if (Number.isFinite(numeric)) return numeric;
   return trimmed;
+};
+
+const normalizeUnit = (value?: string | null) =>
+  (value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9/]/g, "")
+    .trim();
+
+const toMph = (value: number | null, unit?: string | null) => {
+  if (value === null || !Number.isFinite(value)) return null;
+  const normalized = normalizeUnit(unit);
+  if (!normalized || normalized.includes("mph")) return value;
+  if (normalized.includes("km")) return value / 1.60934;
+  if (normalized.includes("m/s") || normalized.includes("mps")) {
+    return value * 2.23694;
+  }
+  return value;
+};
+
+const toYards = (value: number | null, unit?: string | null) => {
+  if (value === null || !Number.isFinite(value)) return null;
+  const normalized = normalizeUnit(unit);
+  if (!normalized || normalized.includes("yd")) return value;
+  if (normalized.includes("m")) return value * 1.09361;
+  if (normalized.includes("ft")) return value / 3;
+  return value;
+};
+
+const normalizeClubLabel = (value?: string | null) => {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed) return null;
+  const normalized = normalizeToken(trimmed);
+  if (!normalized) return trimmed;
+  if (
+    normalized.includes("driver") ||
+    normalized === "drive" ||
+    normalized === "drv" ||
+    normalized.includes("1w") ||
+    normalized.includes("w1") ||
+    normalized.includes("bois 1") ||
+    normalized.includes("1 bois") ||
+    normalized.includes("wood 1") ||
+    normalized.includes("1 wood")
+  ) {
+    return "Driver";
+  }
+  if (normalized.includes("pw") || normalized.includes("pitch")) return "PW";
+  const ironMatch = normalized.match(/(^| )([3-9])\s?i(ron)?($| )/);
+  if (ironMatch) return `${ironMatch[2]} Iron`;
+  return trimmed;
+};
+
+const scoreBenchmark = (
+  benchmark: { club_speed_mph: number; carry_yds: number },
+  evidence: { clubSpeedMph: number | null; carryYds: number | null }
+) => {
+  let score = 0;
+  let count = 0;
+  if (evidence.clubSpeedMph !== null) {
+    score += Math.abs(evidence.clubSpeedMph - benchmark.club_speed_mph) / 12;
+    count += 1;
+  }
+  if (evidence.carryYds !== null) {
+    score += Math.abs(evidence.carryYds - benchmark.carry_yds) / 20;
+    count += 1;
+  }
+  return count ? score / count : null;
+};
+
+const resolveClubFromAnalytics = (
+  rawClub: string | null | undefined,
+  analytics: {
+    globalStats?: Record<string, { mean: number | null }>;
+    meta?: { units?: Record<string, string | null> };
+  } | null
+) => {
+  const normalizedClub = normalizeClubLabel(rawClub);
+  const units = analytics?.meta?.units ?? {};
+  const clubSpeedMph = toMph(
+    analytics?.globalStats?.club_speed?.mean ?? null,
+    units.club_speed
+  );
+  const carryYds = toYards(
+    analytics?.globalStats?.carry?.mean ?? null,
+    units.carry ?? units.total ?? null
+  );
+
+  if (clubSpeedMph === null && carryYds === null) {
+    return normalizedClub;
+  }
+
+  const evidence = { clubSpeedMph, carryYds };
+  let inferred: string | null = null;
+  let bestScore: number | null = null;
+  for (const bench of PGA_BENCHMARKS) {
+    const score = scoreBenchmark(bench, evidence);
+    if (score === null) continue;
+    if (bestScore === null || score < bestScore) {
+      bestScore = score;
+      inferred = bench.club;
+    }
+  }
+
+  if (!normalizedClub) return inferred;
+  if (!inferred) return normalizedClub;
+
+  const normalizedBenchmark = findPgaBenchmark(normalizedClub);
+  const inferredBenchmark = findPgaBenchmark(inferred);
+  if (!normalizedBenchmark || !inferredBenchmark) return normalizedClub;
+
+  const normalizedScore = scoreBenchmark(normalizedBenchmark, evidence);
+  const inferredScore = scoreBenchmark(inferredBenchmark, evidence);
+  if (normalizedScore === null || inferredScore === null) return normalizedClub;
+
+  return inferredScore + 0.2 < normalizedScore ? inferred : normalizedClub;
 };
 
 const computeStats = (shots: Array<Record<string, unknown>>) => {
@@ -279,29 +402,18 @@ const extractOutputText = (response: {
 };
 
 export async function POST(req: Request) {
-  const { radarFileId } = (await req.json()) as { radarFileId?: string };
-  if (!radarFileId) {
-    return Response.json({ error: "radarFileId requis." }, { status: 400 });
-  }
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const openaiKey = process.env.OPENAI_API_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey || !openaiKey) {
+  const parsed = await parseRequestJson(req, radarExtractSchema);
+  if (!parsed.success) {
     return Response.json(
-      { error: "Configuration serveur incomplete." },
-      { status: 500 }
+      { error: "Payload invalide.", details: formatZodError(parsed.error) },
+      { status: 422 }
     );
   }
 
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    global: {
-      headers: { Authorization: req.headers.get("authorization") ?? "" },
-    },
-  });
-  const admin = createClient(supabaseUrl, serviceRoleKey);
+  const { radarFileId } = parsed.data;
+  const supabase = createSupabaseServerClientFromRequest(req);
+  const admin = createSupabaseAdminClient();
+  const openaiKey = env.OPENAI_API_KEY;
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
   const userId = userData.user?.id;
@@ -313,9 +425,7 @@ export async function POST(req: Request) {
 
   const { data: radarFile, error: radarError } = await supabase
     .from("radar_files")
-    .select(
-      "id, org_id, student_id, file_url, file_mime, original_name, source"
-    )
+    .select("id, org_id, student_id, file_url, file_mime, original_name, source")
     .eq("id", radarFileId)
     .single();
 
@@ -340,10 +450,7 @@ export async function POST(req: Request) {
     .single();
 
   if (!isAdmin && !orgData?.radar_enabled) {
-    return Response.json(
-      { error: "Add-on Datas requis." },
-      { status: 403 }
-    );
+    return Response.json({ error: "Add-on Datas requis." }, { status: 403 });
   }
 
   const { data: fileData, error: fileError } = await admin.storage
@@ -355,10 +462,7 @@ export async function POST(req: Request) {
       .from("radar_files")
       .update({ status: "error", error: "Fichier introuvable." })
       .eq("id", radarFileId);
-    return Response.json(
-      { error: "Fichier datas introuvable." },
-      { status: 500 }
-    );
+    return Response.json({ error: "Fichier datas introuvable." }, { status: 500 });
   }
 
   const buffer = Buffer.from(await fileData.arrayBuffer());
@@ -386,8 +490,7 @@ export async function POST(req: Request) {
     if (!usagePayload) return;
     const inputTokens = usagePayload.input_tokens ?? 0;
     const outputTokens = usagePayload.output_tokens ?? 0;
-    const totalTokens =
-      usagePayload.total_tokens ?? inputTokens + outputTokens;
+    const totalTokens = usagePayload.total_tokens ?? inputTokens + outputTokens;
     await admin.from("ai_usage").insert([
       {
         user_id: userId,
@@ -403,6 +506,7 @@ export async function POST(req: Request) {
   };
 
   let extracted: RadarExtraction;
+  let verificationWarning: string | null = null;
   const verifyStartedAt = Date.now();
   try {
     const promptTemplate = await loadPromptSection("radar_extract_system");
@@ -470,100 +574,109 @@ export async function POST(req: Request) {
   try {
     const verifyPrompt = await loadPromptSection("radar_extract_verify_system");
     const verificationSnapshot = buildVerificationSnapshot(extracted);
-    const verifyResponse = await openai.responses.create({
-      model: "gpt-5.2",
-      input: [
-        {
-          role: "system",
-          content: [{ type: "input_text", text: verifyPrompt }],
-        },
-        {
-          role: "user",
-          content: [
-            {
-              type: "input_text",
-              text:
-                "Voici l extraction a verifier. Compare a l image source et signale toute incoherence.\n" +
-                JSON.stringify(verificationSnapshot, null, 2),
-            },
-            {
-              type: "input_image",
-              image_url: `data:${radarFile.file_mime || "image/png"};base64,${buffer.toString(
-                "base64"
-              )}`,
-              detail: "high",
-            },
-          ],
-        },
-      ],
-      max_output_tokens: 900,
-      text: {
-        format: {
-          type: "json_schema",
-          name: "radar_extract_verify",
-          description: "Verification extraction Flightscope.",
-          schema: buildRadarVerifySchema(),
-          strict: true,
-        },
-      },
-    });
+    const baseVerifyText =
+      "Voici l extraction a verifier. Compare a l image source et signale toute incoherence.\n" +
+      JSON.stringify(verificationSnapshot, null, 2);
 
+    const callVerify = async (extraHint?: string) =>
+      openai.responses.create({
+        model: "gpt-5.2",
+        input: [
+          {
+            role: "system",
+            content: [{ type: "input_text", text: verifyPrompt }],
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: extraHint ? `${baseVerifyText}\n\n${extraHint}` : baseVerifyText,
+              },
+              {
+                type: "input_image",
+                image_url: `data:${radarFile.file_mime || "image/png"};base64,${buffer.toString(
+                  "base64"
+                )}`,
+                detail: "high",
+              },
+            ],
+          },
+        ],
+        max_output_tokens: 900,
+        text: {
+          format: {
+            type: "json_schema",
+            name: "radar_extract_verify",
+            description: "Verification extraction Flightscope.",
+            schema: buildRadarVerifySchema(),
+            strict: true,
+          },
+        },
+      });
+
+    let verifyResponse = await callVerify();
     verifyUsage = verifyResponse.usage ?? verifyUsage;
-    const verifyText = extractOutputText(verifyResponse);
+    let verifyText = extractOutputText(verifyResponse);
     if (!verifyText) {
       throw new Error("Verification vide.");
     }
-    const verification = JSON.parse(verifyText) as RadarVerification;
+
+    let verification = JSON.parse(verifyText) as RadarVerification;
+    if (!verification.is_valid && (verification.confidence ?? 0) < 0.6) {
+      verifyResponse = await callVerify(
+        "Si tu as un doute, retourne is_valid=true avec une confidence basse et liste les points a verifier."
+      );
+      verifyUsage = verifyResponse.usage ?? verifyUsage;
+      verifyText = extractOutputText(verifyResponse);
+      if (verifyText) {
+        verification = JSON.parse(verifyText) as RadarVerification;
+      }
+    }
+
     if (!verification.is_valid) {
       const issueText = verification.issues?.slice(0, 3).join(" | ");
-      await admin
-        .from("radar_files")
-        .update({
-          status: "error",
-          error: issueText
-            ? `Verification extraction echouee: ${issueText}`
-            : "Verification extraction echouee.",
-        })
-        .eq("id", radarFileId);
-      await recordUsage(
-        "radar_extract_verify",
-        verifyUsage,
-        Date.now() - verifyStartedAt
-      );
-      return Response.json(
-        { error: "Verification extraction echouee." },
-        { status: 422 }
-      );
+      const message = issueText
+        ? `Verification extraction echouee: ${issueText}`
+        : "Verification extraction echouee.";
+      verificationWarning = message;
     }
-    await recordUsage(
-      "radar_extract_verify",
-      verifyUsage,
-      Date.now() - verifyStartedAt
-    );
+
+    await recordUsage("radar_extract_verify", verifyUsage, Date.now() - verifyStartedAt);
   } catch (error) {
-    await admin
-      .from("radar_files")
-      .update({
-        status: "error",
-        error: (error as Error).message ?? "Verification extraction impossible.",
-      })
-      .eq("id", radarFileId);
-    await recordUsage(
-      "radar_extract_verify",
-      verifyUsage,
-      Date.now() - verifyStartedAt
-    );
-    return Response.json(
-      { error: (error as Error).message ?? "Verification extraction impossible." },
-      { status: 500 }
-    );
+    verificationWarning =
+      (error as Error).message ?? "Verification extraction impossible.";
+    await recordUsage("radar_extract_verify", verifyUsage, Date.now() - verifyStartedAt);
   }
 
-  const columns = (extracted.columns ?? []).map((column) => ({
+  const rawColumns = (extracted.columns ?? []).map((column) => ({
     group: column.group ?? null,
     label: column.label?.trim() ?? "",
     unit: column.unit ?? null,
   }));
+  const rawRows = extracted.rows ?? [];
+
+  const isShotColumn = (column: { label: string }) => {
+    const label = column.label.trim();
+    if (label === "#") return true;
+    const token = normalizeToken(label);
+    return (
+      token === "shot" ||
+      token === "shot no" ||
+      token === "shot number" ||
+      token === "shot num" ||
+      token === "shot n"
+    );
+  };
+
+  const isHashColumn = (column: { label: string }) => column.label.trim() === "#";
+
+  const shouldDropShotTitle =
+    rawColumns.length >= 2 && isHashColumn(rawColumns[0]) && isShotColumn(rawColumns[1]);
+
+  const columns = shouldDropShotTitle
+    ? rawColumns.filter((_column, index) => index !== 1)
+    : rawColumns;
   const keyCount = new Map<string, number>();
   const normalizedColumns = columns.map((column) => {
     const baseKey = buildKey(column.group, column.label);
@@ -573,24 +686,53 @@ export async function POST(req: Request) {
     return { ...column, key };
   });
 
-  const shots = (extracted.rows ?? []).map((row, rowIndex) => {
-    const shotIndexRaw = row.shot ?? rowIndex + 1;
+  const dataColumnCount = normalizedColumns.filter(
+    (column) => !column.key.startsWith("shot_index")
+  ).length;
+
+  const shots = rawRows.map((row, rowIndex) => {
+    const values = Array.isArray(row.values) ? row.values : [];
+    let valueIndex = 0;
+    let shotValue = row.shot ?? null;
+    const valuesIncludeShot = values.length === dataColumnCount + 1;
+    if (valuesIncludeShot) {
+      if (shotValue === null || shotValue === undefined || shotValue === "") {
+        shotValue = values[0] ?? null;
+      }
+      valueIndex = 1;
+    }
+
+    const shotIndexRaw = shotValue ?? rowIndex + 1;
     const shotIndex =
       typeof shotIndexRaw === "number"
         ? shotIndexRaw
         : Number(String(shotIndexRaw).replace(/[^\d-]/g, "")) || rowIndex + 1;
     const shot: Record<string, unknown> = { shot_index: shotIndex };
-    row.values.forEach((value, colIndex) => {
-      const column = normalizedColumns[colIndex];
-      if (!column) return;
+    normalizedColumns.forEach((column) => {
+      if (column.key.startsWith("shot_index")) {
+        return;
+      }
+      const value = values[valueIndex];
       shot[column.key] = parseCellValue(value);
+      valueIndex += 1;
     });
     return shot;
   });
 
+  const rawAvg = Array.isArray(extracted.avg) ? extracted.avg : null;
+  const rawDev = Array.isArray(extracted.dev) ? extracted.dev : null;
+  const alignedAvg =
+    shouldDropShotTitle && rawAvg && rawAvg.length === rawColumns.length
+      ? rawAvg.filter((_value, index) => index !== 1)
+      : rawAvg;
+  const alignedDev =
+    shouldDropShotTitle && rawDev && rawDev.length === rawColumns.length
+      ? rawDev.filter((_value, index) => index !== 1)
+      : rawDev;
+
   const statsFromModel = {
-    avg: extracted.avg ?? null,
-    dev: extracted.dev ?? null,
+    avg: alignedAvg ?? null,
+    dev: alignedDev ?? null,
   };
 
   const statsFromRows = computeStats(shots);
@@ -604,19 +746,25 @@ export async function POST(req: Request) {
     const parsedAvg = parseCellValue(avgValue) as number | string | null;
     const parsedDev = parseCellValue(devValue) as number | string | null;
     avg[column.key] =
-      typeof parsedAvg === "number" ? parsedAvg : statsFromRows.avg[column.key] ?? null;
+      typeof parsedAvg === "number" ? parsedAvg : (statsFromRows.avg[column.key] ?? null);
     dev[column.key] =
-      typeof parsedDev === "number" ? parsedDev : statsFromRows.dev[column.key] ?? null;
+      typeof parsedDev === "number" ? parsedDev : (statsFromRows.dev[column.key] ?? null);
   });
 
   const config = DEFAULT_RADAR_CONFIG;
+
+  const metadataForAnalytics = {
+    club: normalizeClubLabel(extracted.metadata?.club ?? null),
+    ball: extracted.metadata?.ball ?? null,
+  };
 
   const analytics = computeAnalytics({
     columns: normalizedColumns,
     shots,
     config,
-    metadata: extracted.metadata ?? null,
+    metadata: metadataForAnalytics,
   });
+  analytics.meta.club = resolveClubFromAnalytics(metadataForAnalytics.club, analytics);
 
   await admin
     .from("radar_files")
@@ -629,7 +777,7 @@ export async function POST(req: Request) {
       config,
       analytics,
       extracted_at: new Date().toISOString(),
-      error: null,
+      error: verificationWarning,
     })
     .eq("id", radarFileId);
 

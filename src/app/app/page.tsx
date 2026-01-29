@@ -11,9 +11,7 @@ export default function AppPage() {
   return (
     <div className="space-y-6">
       <section className="panel rounded-2xl p-6">
-        <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-          Accueil
-        </p>
+        <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">Accueil</p>
         <h2 className="mt-3 font-[var(--font-display)] text-3xl font-semibold">
           Bienvenue sur Golf Coaching
         </h2>

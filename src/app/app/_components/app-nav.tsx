@@ -258,9 +258,7 @@ export default function AppNav() {
               </p>
             ) : null}
             <div
-              className={`space-y-2 ${
-                collapsed ? "" : "border-l border-white/10 pl-3"
-              }`}
+              className={`space-y-2 ${collapsed ? "" : "border-l border-white/10 pl-3"}`}
             >
               {section.items.map((item) => {
                 const active = isActive(item.href);
@@ -306,9 +304,7 @@ export default function AppNav() {
                     {!collapsed ? (
                       <span
                         className={`ml-auto flex h-5 w-5 items-center justify-center text-[var(--muted)] transition ${
-                          active
-                            ? "text-[var(--text)]"
-                            : "group-hover:text-[var(--text)]"
+                          active ? "text-[var(--text)]" : "group-hover:text-[var(--text)]"
                         }`}
                         aria-hidden="true"
                       >
@@ -339,17 +335,13 @@ export default function AppNav() {
               </p>
             ) : null}
             <div
-              className={`space-y-2 ${
-                collapsed ? "" : "border-l border-white/10 pl-3"
-              }`}
+              className={`space-y-2 ${collapsed ? "" : "border-l border-white/10 pl-3"}`}
             >
               <button
                 type="button"
                 onClick={() => {
                   if (typeof window === "undefined") return;
-                  window.dispatchEvent(
-                    new CustomEvent("gc:toggle-report-sections")
-                  );
+                  window.dispatchEvent(new CustomEvent("gc:toggle-report-sections"));
                 }}
                 className={`group relative flex w-full items-center gap-3 transition ${
                   collapsed

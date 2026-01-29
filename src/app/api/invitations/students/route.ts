@@ -1,26 +1,26 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { z } from "zod";
+import {
+  createSupabaseAdminClient,
+  createSupabaseServerClientFromRequest,
+} from "@/lib/supabase/server";
+import { formatZodError, parseRequestJson } from "@/lib/validation";
 
-type Payload = {
-  studentId?: string;
-};
+const invitationSchema = z.object({
+  studentId: z.string().min(1),
+});
 
 export async function POST(request: Request) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
+  const parsed = await parseRequestJson(request, invitationSchema);
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: "Missing Supabase env vars." },
-      { status: 500 }
+      { error: "Payload invalide.", details: formatZodError(parsed.error) },
+      { status: 422 }
     );
   }
+  const { studentId } = parsed.data;
 
-  const authHeader = request.headers.get("authorization") ?? "";
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    global: { headers: { Authorization: authHeader } },
-  });
+  const supabase = createSupabaseServerClientFromRequest(request);
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData.user) {
@@ -41,15 +41,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
-  const body = (await request.json()) as Payload;
-  if (!body.studentId) {
-    return NextResponse.json({ error: "Student ID missing." }, { status: 400 });
-  }
-
   const { data: student, error: studentError } = await supabase
     .from("students")
     .select("id, email, first_name, last_name")
-    .eq("id", body.studentId)
+    .eq("id", studentId)
     .maybeSingle();
 
   if (studentError || !student) {
@@ -57,15 +52,10 @@ export async function POST(request: Request) {
   }
 
   if (!student.email) {
-    return NextResponse.json(
-      { error: "Cet eleve n a pas d email." },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Cet eleve n a pas d email." }, { status: 400 });
   }
 
-  const admin = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false },
-  });
+  const admin = createSupabaseAdminClient();
 
   const origin = request.headers.get("origin") ?? "";
   const redirectTo = origin ? `${origin}/auth/reset` : undefined;

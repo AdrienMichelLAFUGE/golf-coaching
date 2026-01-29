@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabase/client";
 
 export type Profile = {
   id: string;
@@ -43,8 +43,7 @@ const ProfileContext = createContext<ProfileState | null>(null);
 
 export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [organization, setOrganization] =
-    useState<OrganizationSettings | null>(null);
+  const [organization, setOrganization] = useState<OrganizationSettings | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -124,11 +123,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     [profile, organization, userEmail, loading, error]
   );
 
-  return (
-    <ProfileContext.Provider value={value}>
-      {children}
-    </ProfileContext.Provider>
-  );
+  return <ProfileContext.Provider value={value}>{children}</ProfileContext.Provider>;
 }
 
 export function useProfile() {

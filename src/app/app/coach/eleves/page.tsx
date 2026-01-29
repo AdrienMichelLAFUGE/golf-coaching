@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../_components/role-guard";
 import PageBack from "../../_components/page-back";
 
@@ -121,9 +121,7 @@ export default function CoachStudentsPage() {
     return () => window.removeEventListener("click", handleClick);
   }, [menuOpenId]);
 
-  const handleCreateStudent = async (
-    event: React.FormEvent<HTMLFormElement>
-  ) => {
+  const handleCreateStudent = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setCreating(true);
     setError("");
@@ -399,16 +397,12 @@ export default function CoachStudentsPage() {
               {creating ? "Ajout..." : "Ajouter"}
             </button>
           </form>
-          {error ? (
-            <p className="mt-3 text-sm text-red-400">{error}</p>
-          ) : null}
+          {error ? <p className="mt-3 text-sm text-red-400">{error}</p> : null}
           {inviteError ? (
             <p className="mt-3 text-sm text-red-400">{inviteError}</p>
           ) : null}
           {inviteMessage ? (
-            <p className="mt-3 text-sm text-[var(--muted)]">
-              {inviteMessage}
-            </p>
+            <p className="mt-3 text-sm text-[var(--muted)]">{inviteMessage}</p>
           ) : null}
         </section>
 
@@ -584,9 +578,7 @@ export default function CoachStudentsPage() {
                               disabled={deletingId === student.id}
                               className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:bg-white/10 hover:text-red-200 disabled:opacity-60"
                             >
-                              {deletingId === student.id
-                                ? "Suppression..."
-                                : "Supprimer"}
+                              {deletingId === student.id ? "Suppression..." : "Supprimer"}
                             </button>
                           </div>
                         ) : null}

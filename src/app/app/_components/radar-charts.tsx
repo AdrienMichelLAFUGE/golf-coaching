@@ -62,6 +62,8 @@ const isDriverClub = (club?: string | null) => {
   const normalized = normalizeToken(club);
   return (
     normalized.includes("driver") ||
+    normalized.includes("drive") ||
+    normalized.includes("drv") ||
     normalized.includes("1w") ||
     normalized.includes("w1") ||
     normalized.includes("bois 1") ||
@@ -74,9 +76,7 @@ const isDriverClub = (club?: string | null) => {
 const findColumn = (columns: RadarColumn[], patterns: string[]) => {
   const normalizedPatterns = patterns.map((pattern) => normalizeToken(pattern));
   const direct = columns.find((column) =>
-    normalizedPatterns.some((pattern) =>
-      normalizeToken(column.key).startsWith(pattern)
-    )
+    normalizedPatterns.some((pattern) => normalizeToken(column.key).startsWith(pattern))
   );
   if (direct) return direct;
   const fallback = columns.find((column) => {
@@ -92,18 +92,11 @@ const findColumn = (columns: RadarColumn[], patterns: string[]) => {
 const formatAxisLabel = (label: string, unit?: string | null) =>
   unit ? `${label} (${unit})` : label;
 
-const ChartLegend = ({
-  items,
-}: {
-  items: Array<{ label: string; color: string }>;
-}) => (
+const ChartLegend = ({ items }: { items: Array<{ label: string; color: string }> }) => (
   <div className="mt-2 flex flex-wrap gap-3 text-[0.65rem] uppercase tracking-wide text-[var(--muted)]">
     {items.map((item) => (
       <span key={item.label} className="inline-flex items-center gap-2">
-        <span
-          className="h-2 w-2 rounded-full"
-          style={{ backgroundColor: item.color }}
-        />
+        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
         {item.label}
       </span>
     ))}
@@ -123,10 +116,8 @@ const buildGridLines = ({
 }) => {
   const lines: Array<ReactElement> = [];
   for (let i = 1; i < count; i += 1) {
-    const x =
-      padding + (i / count) * (width - padding * 2);
-    const y =
-      padding + (i / count) * (height - padding * 2);
+    const x = padding + (i / count) * (width - padding * 2);
+    const y = padding + (i / count) * (height - padding * 2);
     lines.push(
       <line
         key={`grid-x-${i}`}
@@ -155,14 +146,12 @@ const buildGridLines = ({
 
 const formatTickValue = (value: number, unit?: string | null) => {
   if (!Number.isFinite(value)) return "-";
-  const rounded =
-    Math.abs(value) >= 100 ? value.toFixed(0) : value.toFixed(1);
+  const rounded = Math.abs(value) >= 100 ? value.toFixed(0) : value.toFixed(1);
   const cleaned = rounded.replace(/\.0$/, "");
   return unit ? `${cleaned} ${unit}` : cleaned;
 };
 
-const normalizeUnit = (unit?: string | null) =>
-  unit?.trim().toLowerCase() ?? null;
+const normalizeUnit = (unit?: string | null) => unit?.trim().toLowerCase() ?? null;
 
 const unitForYAxisTicks = (unit?: string | null) => {
   const normalized = normalizeUnit(unit);
@@ -181,12 +170,7 @@ const formatInsightValue = (
 };
 
 const StarIcon = ({ className }: { className?: string }) => (
-  <svg
-    viewBox="0 0 24 24"
-    className={className}
-    aria-hidden="true"
-    focusable="false"
-  >
+  <svg viewBox="0 0 24 24" className={className} aria-hidden="true" focusable="false">
     <path
       fill="currentColor"
       d="M12 2l2.9 6.1 6.7.9-4.9 4.8 1.2 6.6-5.9-3.2-5.9 3.2 1.2-6.6L2.4 9l6.7-.9L12 2z"
@@ -231,14 +215,10 @@ const ThumbBadge = ({ tone }: { tone: "good" | "warn" | "bad" }) => {
 };
 
 const InsightText = ({ text }: { text?: string | null }) =>
-  text ? (
-    <p className="mt-2 text-[0.7rem] text-[var(--muted)]">{text}</p>
-  ) : null;
+  text ? <p className="mt-2 text-[0.7rem] text-[var(--muted)]">{text}</p> : null;
 
 const ChartDescription = ({ text }: { text?: string | null }) =>
-  text ? (
-    <p className="mt-2 text-[0.7rem] text-[var(--muted)]">{text}</p>
-  ) : null;
+  text ? <p className="mt-2 text-[0.7rem] text-[var(--muted)]">{text}</p> : null;
 
 const ChartCommentary = ({ text }: { text?: string | null }) =>
   text ? (
@@ -308,24 +288,19 @@ const AiNarrative = ({
       </p>
       {reason ? (
         <p className="mt-2">
-          <span className="font-semibold text-violet-100">
-            Pourquoi ce graphe:
-          </span>{" "}
+          <span className="font-semibold text-violet-100">Pourquoi ce graphe:</span>{" "}
           {reason}
         </p>
       ) : null}
       {commentary ? (
         <p className="mt-2">
-          <span className="font-semibold text-violet-100">
-            Lecture du graphe:
-          </span>{" "}
+          <span className="font-semibold text-violet-100">Lecture du graphe:</span>{" "}
           {commentary}
         </p>
       ) : null}
       {solution ? (
         <p className="mt-2">
-          <span className="font-semibold text-violet-100">Pistes:</span>{" "}
-          {solution}
+          <span className="font-semibold text-violet-100">Pistes:</span> {solution}
         </p>
       ) : null}
     </div>
@@ -345,17 +320,13 @@ const AiSessionSummary = ({
       </p>
       {selectionSummary ? (
         <p className="mt-2">
-          <span className="font-semibold text-violet-100">
-            Choix des graphes:
-          </span>{" "}
+          <span className="font-semibold text-violet-100">Choix des graphes:</span>{" "}
           {selectionSummary}
         </p>
       ) : null}
       {sessionSummary ? (
         <p className="mt-2">
-          <span className="font-semibold text-violet-100">
-            Synthese seance:
-          </span>{" "}
+          <span className="font-semibold text-violet-100">Synthese seance:</span>{" "}
           {sessionSummary}
         </p>
       ) : null}
@@ -371,9 +342,7 @@ const ChartHighlights = ({
     <div className="flex items-start gap-3 text-right">
       {items.map((item) => (
         <div key={item.label} className="text-right">
-          <div className="text-sm font-semibold text-[var(--text)]">
-            {item.value}
-          </div>
+          <div className="text-sm font-semibold text-[var(--text)]">{item.value}</div>
           <div className="text-[0.55rem] uppercase tracking-wide text-[var(--muted)]">
             {item.label}
           </div>
@@ -389,14 +358,11 @@ const ChartHeaderRight = ({
   count?: number | null;
   highlights: Array<{ value: string; label: string }>;
 }) => {
-  const countLabel =
-    count !== null && count !== undefined ? `${count} coups` : null;
+  const countLabel = count !== null && count !== undefined ? `${count} coups` : null;
   return (
     <div className="flex min-h-[2.25rem] flex-col items-end gap-1 text-xs text-[var(--muted)]">
       <div className="flex items-start gap-4">
-        <span className={countLabel ? "" : "opacity-0"}>
-          {countLabel ?? "0 coups"}
-        </span>
+        <span className={countLabel ? "" : "opacity-0"}>{countLabel ?? "0 coups"}</span>
         <ChartHighlights items={highlights} />
       </div>
     </div>
@@ -415,8 +381,14 @@ const computeInsightFromPayload = (payload: RadarChartPayload) => {
       Math.sqrt(
         values.reduce((acc, value) => acc + (value - avg) ** 2, 0) / values.length
       );
-    const stdX = std(points.map((p) => p.x), meanX);
-    const stdY = std(points.map((p) => p.y), meanY);
+    const stdX = std(
+      points.map((p) => p.x),
+      meanX
+    );
+    const stdY = std(
+      points.map((p) => p.y),
+      meanY
+    );
     const corr = (() => {
       const meanXLocal = meanX;
       const meanYLocal = meanY;
@@ -457,8 +429,8 @@ const computeInsightFromPayload = (payload: RadarChartPayload) => {
       Math.abs(delta) < Math.max(range * 0.15, 0.01)
         ? "stable"
         : delta > 0
-        ? "en hausse"
-        : "en baisse";
+          ? "en hausse"
+          : "en baisse";
     return `Amplitude ${formatTickValue(range, payload.yUnit)} - Tendance ${trend} (Delta ${formatTickValue(
       delta,
       payload.yUnit
@@ -467,9 +439,7 @@ const computeInsightFromPayload = (payload: RadarChartPayload) => {
   if (payload.type === "hist") {
     const total = payload.bins.reduce((acc, bin) => acc + bin.count, 0);
     if (!total) return null;
-    const top = payload.bins.reduce((best, bin) =>
-      bin.count > best.count ? bin : best
-    );
+    const top = payload.bins.reduce((best, bin) => (bin.count > best.count ? bin : best));
     const share = Math.round((top.count / total) * 100);
     return `Zone dominante ${top.label}${payload.xUnit ? ` ${payload.xUnit}` : ""} (${share}% des coups).`;
   }
@@ -480,16 +450,22 @@ const computeInsightFromPayload = (payload: RadarChartPayload) => {
       payload.columns.find((column) => column.toLowerCase().includes("mean")) ??
       payload.columns.find((column) => column.toLowerCase().includes("max"));
     if (!metric) return null;
-    const best = payload.rows.reduce((current, row) => {
-      const value = Number(row[metric]);
-      if (!Number.isFinite(value)) return current;
-      if (!current) return row;
-      const currentValue = Number(current[metric]);
-      return value > currentValue ? row : current;
-    }, null as Record<string, string | number | null> | null);
+    const best = payload.rows.reduce(
+      (current, row) => {
+        const value = Number(row[metric]);
+        if (!Number.isFinite(value)) return current;
+        if (!current) return row;
+        const currentValue = Number(current[metric]);
+        return value > currentValue ? row : current;
+      },
+      null as Record<string, string | number | null> | null
+    );
     if (!best) return null;
-    const label =
-      (best.Groupe ?? best.GROUP ?? best.Group ?? best.key ?? "Groupe") as string;
+    const label = (best.Groupe ??
+      best.GROUP ??
+      best.Group ??
+      best.key ??
+      "Groupe") as string;
     return `${label}: ${metric} ${best[metric]}.`;
   }
   if (payload.type === "matrix") {
@@ -629,10 +605,10 @@ const buildPayloadCommentary = (payload: RadarChartPayload) => {
       Math.abs(r) < 0.2
         ? "faible"
         : Math.abs(r) < 0.5
-        ? "moderee"
-        : Math.abs(r) < 0.7
-        ? "marquee"
-        : "forte";
+          ? "moderee"
+          : Math.abs(r) < 0.7
+            ? "marquee"
+            : "forte";
     const relation =
       Math.abs(r) < 0.2
         ? `Lien faible entre ${payload.xLabel} et ${payload.yLabel}.`
@@ -655,8 +631,8 @@ const buildPayloadCommentary = (payload: RadarChartPayload) => {
       Math.abs(delta) < Math.max(range * 0.15, 0.01)
         ? "stable"
         : delta > 0
-        ? "en hausse"
-        : "en baisse";
+          ? "en hausse"
+          : "en baisse";
     const base = `Tendance ${trend} sur la serie.`;
     const hint = buildTechniqueHint([payload.yLabel]);
     const suggestion = buildTechniqueSuggestion([payload.yLabel]);
@@ -666,9 +642,7 @@ const buildPayloadCommentary = (payload: RadarChartPayload) => {
     if (!payload.bins.length) return null;
     const total = payload.bins.reduce((acc, bin) => acc + bin.count, 0);
     if (!total) return null;
-    const top = payload.bins.reduce((best, bin) =>
-      bin.count > best.count ? bin : best
-    );
+    const top = payload.bins.reduce((best, bin) => (bin.count > best.count ? bin : best));
     const share = Math.round((top.count / total) * 100);
     const base = `Zone la plus frequente: ${top.label} (${share}% des coups).`;
     const hint = buildTechniqueHint([payload.xLabel]);
@@ -737,9 +711,7 @@ const buildPayloadHighlights = (payload: RadarChartPayload) => {
     if (!payload.bins.length) return [];
     const total = payload.bins.reduce((acc, bin) => acc + bin.count, 0);
     if (!total) return [];
-    const top = payload.bins.reduce((best, bin) =>
-      bin.count > best.count ? bin : best
-    );
+    const top = payload.bins.reduce((best, bin) => (bin.count > best.count ? bin : best));
     const share = Math.round((top.count / total) * 100);
     return [
       { value: `${share}%`, label: "Top zone" },
@@ -817,9 +789,7 @@ const buildPayloadTone = (payload: RadarChartPayload): "good" | "warn" | "bad" =
   if (payload.type === "hist") {
     const total = payload.bins.reduce((acc, bin) => acc + bin.count, 0);
     if (!total) return "warn";
-    const top = payload.bins.reduce((best, bin) =>
-      bin.count > best.count ? bin : best
-    );
+    const top = payload.bins.reduce((best, bin) => (bin.count > best.count ? bin : best));
     const share = top.count / total;
     if (share >= 0.4) return "good";
     if (share >= 0.25) return "warn";
@@ -877,9 +847,7 @@ const buildAxisTicks = ({
   const xScale = (value: number) =>
     padding + ((value - xMin) / (xMax - xMin || 1)) * (width - padding * 2);
   const yScale = (value: number) =>
-    height -
-    padding -
-    ((value - yMin) / (yMax - yMin || 1)) * (height - padding * 2);
+    height - padding - ((value - yMin) / (yMax - yMin || 1)) * (height - padding * 2);
   const xTickY = height - padding + 16;
   const yTickX = padding - 12;
   const yTickUnit = unitForYAxisTicks(yUnit);
@@ -919,9 +887,7 @@ const getNumericSeries = (shots: RadarShot[], key: string | null) => {
       const value = shot[key];
       const shotIndexRaw = shot.shot_index;
       const shotIndex =
-        typeof shotIndexRaw === "number"
-          ? shotIndexRaw
-          : Number(shotIndexRaw ?? NaN);
+        typeof shotIndexRaw === "number" ? shotIndexRaw : Number(shotIndexRaw ?? NaN);
       if (typeof value === "number" && Number.isFinite(value)) {
         return {
           value,
@@ -931,8 +897,7 @@ const getNumericSeries = (shots: RadarShot[], key: string | null) => {
       return null;
     })
     .filter(
-      (entry): entry is { value: number; shotIndex: number | undefined } =>
-        entry !== null
+      (entry): entry is { value: number; shotIndex: number | undefined } => entry !== null
     );
 };
 
@@ -1007,134 +972,131 @@ const ScatterPlot = ({
     <svg viewBox={`0 0 ${width} ${height}`} className="h-full w-full">
       <g transform={`translate(${xOffset} 0)`}>
         {buildGridLines({ width, height, padding })}
-      <rect
-        x={padding}
-        y={padding}
-        width={width - padding * 2}
-        height={height - padding * 2}
-        fill="none"
-        stroke="rgba(255,255,255,0.1)"
-        strokeWidth="1"
-      />
-      {meanX !== null ? (
+        <rect
+          x={padding}
+          y={padding}
+          width={width - padding * 2}
+          height={height - padding * 2}
+          fill="none"
+          stroke="rgba(255,255,255,0.1)"
+          strokeWidth="1"
+        />
+        {meanX !== null ? (
+          <line
+            x1={padding + ((meanX - xMin) / xRange) * (width - padding * 2)}
+            x2={padding + ((meanX - xMin) / xRange) * (width - padding * 2)}
+            y1={padding}
+            y2={height - padding}
+            stroke="rgba(255,255,255,0.2)"
+            strokeDasharray="4 4"
+          />
+        ) : null}
+        {meanY !== null ? (
+          <line
+            x1={padding}
+            x2={width - padding}
+            y1={height - padding - ((meanY - yMin) / yRange) * (height - padding * 2)}
+            y2={height - padding - ((meanY - yMin) / yRange) * (height - padding * 2)}
+            stroke="rgba(255,255,255,0.2)"
+            strokeDasharray="4 4"
+          />
+        ) : null}
+        {meanX !== null ? (
+          <text
+            x={padding + ((meanX - xMin) / xRange) * (width - padding * 2)}
+            y={padding - 8}
+            textAnchor="middle"
+            className="fill-[var(--muted)] text-[0.7rem]"
+          >
+            {`Moy. X ${formatTickValue(meanX, xUnit)}`}
+          </text>
+        ) : null}
+        {meanY !== null ? (
+          <text
+            x={padding + 6}
+            y={height - padding - ((meanY - yMin) / yRange) * (height - padding * 2) - 6}
+            textAnchor="start"
+            className="fill-[var(--muted)] text-[0.7rem]"
+          >
+            {`Moy. Y ${formatTickValue(meanY, yUnit)}`}
+          </text>
+        ) : null}
+        {regression ? (
+          <line
+            x1={padding}
+            x2={width - padding}
+            y1={
+              height -
+              padding -
+              ((regression.intercept + regression.slope * xMin - yMin) / yRange) *
+                (height - padding * 2)
+            }
+            y2={
+              height -
+              padding -
+              ((regression.intercept + regression.slope * xMax - yMin) / yRange) *
+                (height - padding * 2)
+            }
+            stroke="rgba(255,255,255,0.35)"
+            strokeWidth="1.2"
+          />
+        ) : null}
+        {points.map((point, index) => {
+          const cx = padding + ((point.x - xMin) / xRange) * (width - padding * 2);
+          const cy =
+            height - padding - ((point.y - yMin) / yRange) * (height - padding * 2);
+          const isOutlier =
+            !!outlierShotSet &&
+            point.shotIndex !== undefined &&
+            outlierShotSet.has(point.shotIndex);
+          return (
+            <circle
+              key={`${point.x}-${point.y}-${index}`}
+              cx={cx}
+              cy={cy}
+              r={isOutlier ? 3.6 : 2.6}
+              fill={isOutlier ? "rgba(239,68,68,0.95)" : color}
+              stroke={isOutlier ? "rgba(239,68,68,0.8)" : "none"}
+              strokeWidth={isOutlier ? 1 : 0}
+              opacity={isOutlier ? 0.95 : 0.85}
+            />
+          );
+        })}
         <line
-          x1={padding + ((meanX - xMin) / xRange) * (width - padding * 2)}
-          x2={padding + ((meanX - xMin) / xRange) * (width - padding * 2)}
+          x1={padding}
+          x2={width - padding}
+          y1={height - padding}
+          y2={height - padding}
+          stroke="rgba(255,255,255,0.2)"
+          strokeWidth="1"
+        />
+        <line
+          x1={padding}
+          x2={padding}
           y1={padding}
           y2={height - padding}
           stroke="rgba(255,255,255,0.2)"
-          strokeDasharray="4 4"
+          strokeWidth="1"
         />
-      ) : null}
-      {meanY !== null ? (
-        <line
-          x1={padding}
-          x2={width - padding}
-          y1={height - padding - ((meanY - yMin) / yRange) * (height - padding * 2)}
-          y2={height - padding - ((meanY - yMin) / yRange) * (height - padding * 2)}
-          stroke="rgba(255,255,255,0.2)"
-          strokeDasharray="4 4"
-        />
-      ) : null}
-      {meanX !== null ? (
+        {buildAxisTicks({
+          width,
+          height,
+          padding,
+          xMin,
+          xMax,
+          yMin,
+          yMax,
+          xUnit,
+          yUnit,
+        })}
         <text
-          x={padding + ((meanX - xMin) / xRange) * (width - padding * 2)}
-          y={padding - 8}
+          x={width / 2}
+          y={height - 4}
           textAnchor="middle"
-          className="fill-[var(--muted)] text-[0.7rem]"
+          className="fill-[var(--muted)] text-[0.8rem]"
         >
-          {`Moy. X ${formatTickValue(meanX, xUnit)}`}
+          {xLabel}
         </text>
-      ) : null}
-      {meanY !== null ? (
-        <text
-          x={padding + 6}
-          y={height - padding - ((meanY - yMin) / yRange) * (height - padding * 2) - 6}
-          textAnchor="start"
-          className="fill-[var(--muted)] text-[0.7rem]"
-        >
-          {`Moy. Y ${formatTickValue(meanY, yUnit)}`}
-        </text>
-      ) : null}
-      {regression ? (
-        <line
-          x1={padding}
-          x2={width - padding}
-          y1={
-            height -
-            padding -
-            ((regression.intercept + regression.slope * xMin - yMin) / yRange) *
-              (height - padding * 2)
-          }
-          y2={
-            height -
-            padding -
-            ((regression.intercept + regression.slope * xMax - yMin) / yRange) *
-              (height - padding * 2)
-          }
-          stroke="rgba(255,255,255,0.35)"
-          strokeWidth="1.2"
-        />
-      ) : null}
-      {points.map((point, index) => {
-        const cx =
-          padding + ((point.x - xMin) / xRange) * (width - padding * 2);
-        const cy =
-          height -
-          padding -
-          ((point.y - yMin) / yRange) * (height - padding * 2);
-        const isOutlier =
-          !!outlierShotSet &&
-          point.shotIndex !== undefined &&
-          outlierShotSet.has(point.shotIndex);
-        return (
-          <circle
-            key={`${point.x}-${point.y}-${index}`}
-            cx={cx}
-            cy={cy}
-            r={isOutlier ? 3.6 : 2.6}
-            fill={isOutlier ? "rgba(239,68,68,0.95)" : color}
-            stroke={isOutlier ? "rgba(239,68,68,0.8)" : "none"}
-            strokeWidth={isOutlier ? 1 : 0}
-            opacity={isOutlier ? 0.95 : 0.85}
-          />
-        );
-      })}
-      <line
-        x1={padding}
-        x2={width - padding}
-        y1={height - padding}
-        y2={height - padding}
-        stroke="rgba(255,255,255,0.2)"
-        strokeWidth="1"
-      />
-      <line
-        x1={padding}
-        x2={padding}
-        y1={padding}
-        y2={height - padding}
-        stroke="rgba(255,255,255,0.2)"
-        strokeWidth="1"
-      />
-      {buildAxisTicks({
-        width,
-        height,
-        padding,
-        xMin,
-        xMax,
-        yMin,
-        yMax,
-        xUnit,
-        yUnit,
-      })}
-      <text
-        x={width / 2}
-        y={height - 4}
-        textAnchor="middle"
-        className="fill-[var(--muted)] text-[0.8rem]"
-      >
-        {xLabel}
-      </text>
         <text
           x={padding}
           y={padding - 8}
@@ -1181,12 +1143,8 @@ const LinePlot = ({
   const buildPath = (values: number[]) =>
     values
       .map((value, index) => {
-        const x =
-          padding + (index / Math.max(length - 1, 1)) * (width - padding * 2);
-        const y =
-          height -
-          padding -
-          ((value - min) / range) * (height - padding * 2);
+        const x = padding + (index / Math.max(length - 1, 1)) * (width - padding * 2);
+        const y = height - padding - ((value - min) / range) * (height - padding * 2);
         return { x, y };
       })
       .map((point, index, pts) => {
@@ -1213,68 +1171,66 @@ const LinePlot = ({
     <svg viewBox={`0 0 ${width} ${height}`} className="h-full w-full">
       <g transform={`translate(${xOffset} 0)`}>
         {buildGridLines({ width, height, padding })}
-      <rect
-        x={padding}
-        y={padding}
-        width={width - padding * 2}
-        height={height - padding * 2}
-        fill="none"
-        stroke="rgba(255,255,255,0.1)"
-        strokeWidth="1"
-      />
-      {series.map((item) => (
-        <path
-          key={item.label}
-          d={buildPath(item.values)}
+        <rect
+          x={padding}
+          y={padding}
+          width={width - padding * 2}
+          height={height - padding * 2}
           fill="none"
-          stroke={item.color}
-          strokeWidth="2"
+          stroke="rgba(255,255,255,0.1)"
+          strokeWidth="1"
         />
-      ))}
-      {series.map((item) =>
-        item.shotIndices && outlierShotSet
-          ? item.values.map((value, index) => {
-              const shotIndex = item.shotIndices?.[index];
-              if (!shotIndex || !outlierShotSet.has(shotIndex)) return null;
-              const x =
-                padding + (index / Math.max(length - 1, 1)) * (width - padding * 2);
-              const y =
-                height -
-                padding -
-                ((value - min) / range) * (height - padding * 2);
-              return (
-                <circle
-                  key={`line-outlier-${item.label}-${index}`}
-                  cx={x}
-                  cy={y}
-                  r="3.6"
-                  fill="rgba(239,68,68,0.95)"
-                  stroke="rgba(239,68,68,0.8)"
-                  strokeWidth="1"
-                />
-              );
-            })
-          : null
-      )}
-      {buildAxisTicks({
-        width,
-        height,
-        padding,
-        xMin: 1,
-        xMax: length,
-        yMin: min,
-        yMax: max,
-        xUnit: null,
-        yUnit,
-      })}
-      <text
-        x={width / 2}
-        y={height - 4}
-        textAnchor="middle"
-        className="fill-[var(--muted)] text-[0.8rem]"
-      >
-        {xLabel}
-      </text>
+        {series.map((item) => (
+          <path
+            key={item.label}
+            d={buildPath(item.values)}
+            fill="none"
+            stroke={item.color}
+            strokeWidth="2"
+          />
+        ))}
+        {series.map((item) =>
+          item.shotIndices && outlierShotSet
+            ? item.values.map((value, index) => {
+                const shotIndex = item.shotIndices?.[index];
+                if (!shotIndex || !outlierShotSet.has(shotIndex)) return null;
+                const x =
+                  padding + (index / Math.max(length - 1, 1)) * (width - padding * 2);
+                const y =
+                  height - padding - ((value - min) / range) * (height - padding * 2);
+                return (
+                  <circle
+                    key={`line-outlier-${item.label}-${index}`}
+                    cx={x}
+                    cy={y}
+                    r="3.6"
+                    fill="rgba(239,68,68,0.95)"
+                    stroke="rgba(239,68,68,0.8)"
+                    strokeWidth="1"
+                  />
+                );
+              })
+            : null
+        )}
+        {buildAxisTicks({
+          width,
+          height,
+          padding,
+          xMin: 1,
+          xMax: length,
+          yMin: min,
+          yMax: max,
+          xUnit: null,
+          yUnit,
+        })}
+        <text
+          x={width / 2}
+          y={height - 4}
+          textAnchor="middle"
+          className="fill-[var(--muted)] text-[0.8rem]"
+        >
+          {xLabel}
+        </text>
         <text
           x={padding}
           y={padding - 8}
@@ -1331,13 +1287,11 @@ const DispersionPlot = ({
   const meanY = ys.reduce((acc, value) => acc + value, 0) / (ys.length || 1);
   const stdX =
     Math.sqrt(
-      xs.reduce((acc, value) => acc + (value - meanX) ** 2, 0) /
-        (xs.length || 1)
+      xs.reduce((acc, value) => acc + (value - meanX) ** 2, 0) / (xs.length || 1)
     ) || 0;
   const stdY =
     Math.sqrt(
-      ys.reduce((acc, value) => acc + (value - meanY) ** 2, 0) /
-        (ys.length || 1)
+      ys.reduce((acc, value) => acc + (value - meanY) ** 2, 0) / (ys.length || 1)
     ) || 0;
   const radius = Math.max(stdX, stdY);
   const circleR = radius * scale;
@@ -1360,147 +1314,147 @@ const DispersionPlot = ({
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="h-full w-full">
       <g transform={`translate(${xOffset} 0)`}>
-      <defs>
-        <clipPath id={clipId}>
-          <rect x={plotLeft} y={plotTop} width={plotSize} height={plotSize} />
-        </clipPath>
-      </defs>
-      <g clipPath={`url(#${clipId})`}>
-        {buildGridLines({ width, height, padding })}
-        {[0.25, 0.5, 0.75].map((ratio) => {
-          const x = plotLeft + plotSize * ratio;
-          const y = plotTop + plotSize * ratio;
-          return (
-            <g key={`grid-${ratio}`}>
-              <line
-                x1={x}
-                x2={x}
-                y1={plotTop}
-                y2={plotBottom}
-                stroke="rgba(255,255,255,0.08)"
-                strokeWidth="1"
-              />
-              <line
-                x1={plotLeft}
-                x2={plotRight}
-                y1={y}
-                y2={y}
-                stroke="rgba(255,255,255,0.08)"
-                strokeWidth="1"
-              />
-            </g>
-          );
-        })}
-        {rings.map((ratio) => (
-          <circle
-            key={`ring-${ratio}`}
-            cx={centerX}
-            cy={originY}
-            r={plotSize * ratio}
-            fill="none"
-            stroke="rgba(255,255,255,0.08)"
-            strokeDasharray="3 6"
-          />
-        ))}
-        <line
-          x1={centerX}
-          x2={centerX}
-          y1={plotTop}
-          y2={originY}
-          stroke="rgba(255,255,255,0.2)"
-          strokeWidth="1"
-          strokeDasharray="4 4"
-        />
-        {points.length > 0 ? (
+        <defs>
+          <clipPath id={clipId}>
+            <rect x={plotLeft} y={plotTop} width={plotSize} height={plotSize} />
+          </clipPath>
+        </defs>
+        <g clipPath={`url(#${clipId})`}>
+          {buildGridLines({ width, height, padding })}
+          {[0.25, 0.5, 0.75].map((ratio) => {
+            const x = plotLeft + plotSize * ratio;
+            const y = plotTop + plotSize * ratio;
+            return (
+              <g key={`grid-${ratio}`}>
+                <line
+                  x1={x}
+                  x2={x}
+                  y1={plotTop}
+                  y2={plotBottom}
+                  stroke="rgba(255,255,255,0.08)"
+                  strokeWidth="1"
+                />
+                <line
+                  x1={plotLeft}
+                  x2={plotRight}
+                  y1={y}
+                  y2={y}
+                  stroke="rgba(255,255,255,0.08)"
+                  strokeWidth="1"
+                />
+              </g>
+            );
+          })}
+          {rings.map((ratio) => (
+            <circle
+              key={`ring-${ratio}`}
+              cx={centerX}
+              cy={originY}
+              r={plotSize * ratio}
+              fill="none"
+              stroke="rgba(255,255,255,0.08)"
+              strokeDasharray="3 6"
+            />
+          ))}
           <line
-            x1={toCanvas(meanX, 0).cx}
-            x2={toCanvas(meanX, maxRange).cx}
-            y1={originY}
-            y2={plotTop}
-            stroke="rgba(147,197,253,0.5)"
+            x1={centerX}
+            x2={centerX}
+            y1={plotTop}
+            y2={originY}
+            stroke="rgba(255,255,255,0.2)"
             strokeWidth="1"
             strokeDasharray="4 4"
           />
-        ) : null}
-      </g>
-      <rect
-        x={plotLeft}
-        y={plotTop}
-        width={plotSize}
-        height={plotSize}
-        fill="none"
-        stroke="rgba(255,255,255,0.12)"
-        strokeWidth="1"
-      />
-      <g>
-        {points.map((point, index) => {
-          const { cx, cy } = toCanvas(point.x, point.y);
-          const isOutlier =
-            !!outlierShotSet &&
-            point.shotIndex !== undefined &&
-            outlierShotSet.has(point.shotIndex);
-          return (
-            <circle
-              key={`${point.x}-${point.y}-${index}`}
-              cx={cx}
-              cy={cy}
-              r={isOutlier ? 4.2 : 3.5}
-              fill={isOutlier ? "rgba(239,68,68,0.95)" : color}
-              stroke={isOutlier ? "rgba(239,68,68,0.8)" : "none"}
-              strokeWidth={isOutlier ? 1 : 0}
-              opacity={isOutlier ? 0.95 : 0.85}
+          {points.length > 0 ? (
+            <line
+              x1={toCanvas(meanX, 0).cx}
+              x2={toCanvas(meanX, maxRange).cx}
+              y1={originY}
+              y2={plotTop}
+              stroke="rgba(147,197,253,0.5)"
+              strokeWidth="1"
+              strokeDasharray="4 4"
             />
-          );
-        })}
-        {points.length > 0 ? (
-          <>
-            <circle
-              cx={toCanvas(meanX, meanY).cx}
-              cy={toCanvas(meanX, meanY).cy}
-              r={Math.max(circleR, 6)}
-              fill="rgba(110,231,183,0.08)"
-              stroke="rgba(110,231,183,0.5)"
-              strokeWidth="1.5"
-            />
-            <circle
-              cx={toCanvas(meanX, meanY).cx}
-              cy={toCanvas(meanX, meanY).cy}
-              r="3.5"
-              fill="rgba(110,231,183,0.9)"
-            />
-          </>
-        ) : null}
-      </g>
-      {[xMin, 0, xMax].map((value, index) => (
+          ) : null}
+        </g>
+        <rect
+          x={plotLeft}
+          y={plotTop}
+          width={plotSize}
+          height={plotSize}
+          fill="none"
+          stroke="rgba(255,255,255,0.12)"
+          strokeWidth="1"
+        />
+        <g>
+          {points.map((point, index) => {
+            const { cx, cy } = toCanvas(point.x, point.y);
+            const isOutlier =
+              !!outlierShotSet &&
+              point.shotIndex !== undefined &&
+              outlierShotSet.has(point.shotIndex);
+            return (
+              <circle
+                key={`${point.x}-${point.y}-${index}`}
+                cx={cx}
+                cy={cy}
+                r={isOutlier ? 4.2 : 3.5}
+                fill={isOutlier ? "rgba(239,68,68,0.95)" : color}
+                stroke={isOutlier ? "rgba(239,68,68,0.8)" : "none"}
+                strokeWidth={isOutlier ? 1 : 0}
+                opacity={isOutlier ? 0.95 : 0.85}
+              />
+            );
+          })}
+          {points.length > 0 ? (
+            <>
+              <circle
+                cx={toCanvas(meanX, meanY).cx}
+                cy={toCanvas(meanX, meanY).cy}
+                r={Math.max(circleR, 6)}
+                fill="rgba(110,231,183,0.08)"
+                stroke="rgba(110,231,183,0.5)"
+                strokeWidth="1.5"
+              />
+              <circle
+                cx={toCanvas(meanX, meanY).cx}
+                cy={toCanvas(meanX, meanY).cy}
+                r="3.5"
+                fill="rgba(110,231,183,0.9)"
+              />
+            </>
+          ) : null}
+        </g>
+        {[xMin, 0, xMax].map((value, index) => (
+          <text
+            key={`disp-x-${index}`}
+            x={xScale(value)}
+            y={plotBottom + 16}
+            textAnchor="middle"
+            className="fill-[var(--muted)] text-[0.8rem]"
+          >
+            {formatTickValue(value, xUnit)}
+          </text>
+        ))}
+        {[yMin, maxRange / 2, yMax].map((value, index) => (
+          <text
+            key={`disp-y-${index}`}
+            x={plotLeft - 12}
+            y={yScale(value) + 4}
+            textAnchor="end"
+            className="fill-[var(--muted)] text-[0.8rem]"
+          >
+            {formatTickValue(value, yTickUnit)}
+          </text>
+        ))}
         <text
-          key={`disp-x-${index}`}
-          x={xScale(value)}
-          y={plotBottom + 16}
+          x={width / 2}
+          y={height - 4}
           textAnchor="middle"
           className="fill-[var(--muted)] text-[0.8rem]"
         >
-          {formatTickValue(value, xUnit)}
+          {xLabel}
         </text>
-      ))}
-      {[yMin, maxRange / 2, yMax].map((value, index) => (
-        <text
-          key={`disp-y-${index}`}
-          x={plotLeft - 12}
-          y={yScale(value) + 4}
-          textAnchor="end"
-          className="fill-[var(--muted)] text-[0.8rem]"
-        >
-          {formatTickValue(value, yTickUnit)}
-        </text>
-      ))}
-      <text
-        x={width / 2}
-        y={height - 4}
-        textAnchor="middle"
-        className="fill-[var(--muted)] text-[0.8rem]"
-      >
-        {xLabel}
-      </text>
         <text
           x={padding}
           y={padding - 8}
@@ -1573,17 +1527,11 @@ const FaceImpactHeatmap = ({
     const clampedY = Math.min(yMax, Math.max(yMin, point.y));
     const ix = Math.min(
       binsX - 1,
-      Math.max(
-        0,
-        Math.floor(((clampedX - xMin) / (xMax - xMin)) * binsX)
-      )
+      Math.max(0, Math.floor(((clampedX - xMin) / (xMax - xMin)) * binsX))
     );
     const iy = Math.min(
       binsY - 1,
-      Math.max(
-        0,
-        Math.floor(((clampedY - yMin) / (yMax - yMin)) * binsY)
-      )
+      Math.max(0, Math.floor(((clampedY - yMin) / (yMax - yMin)) * binsY))
     );
     grid[iy][ix] += 1;
   });
@@ -1632,21 +1580,15 @@ const FaceImpactHeatmap = ({
     cy: centerY - y * scaleY,
   });
   const mapX = (x: number) => centerX - x * scaleX;
-  const FACE_VIEWBOX_W = isDriver
-    ? DRIVER_FACE_VIEWBOX.width
-    : IMPACT_FACE_VIEWBOX.width;
+  const FACE_VIEWBOX_W = isDriver ? DRIVER_FACE_VIEWBOX.width : IMPACT_FACE_VIEWBOX.width;
   const FACE_VIEWBOX_H = isDriver
     ? DRIVER_FACE_VIEWBOX.height
     : IMPACT_FACE_VIEWBOX.height;
   const faceSvgTransform = isDriver
     ? DRIVER_FACE_SVG_TRANSFORM
     : IMPACT_FACE_SVG_TRANSFORM;
-  const faceOutlinePath = isDriver
-    ? DRIVER_FACE_OUTLINE_PATH
-    : IMPACT_FACE_OUTLINE_PATH;
-  const faceDetailPaths = isDriver
-    ? DRIVER_FACE_DETAIL_PATHS
-    : IMPACT_FACE_DETAIL_PATHS;
+  const faceOutlinePath = isDriver ? DRIVER_FACE_OUTLINE_PATH : IMPACT_FACE_OUTLINE_PATH;
+  const faceDetailPaths = isDriver ? DRIVER_FACE_DETAIL_PATHS : IMPACT_FACE_DETAIL_PATHS;
   const faceCenterOffset = isDriver
     ? DRIVER_FACE_CENTER_OFFSET
     : IMPACT_FACE_CENTER_OFFSET;
@@ -1681,8 +1623,7 @@ const FaceImpactHeatmap = ({
   };
 
   const xScale = (value: number) => mapX(value);
-  const yScale = (value: number) =>
-    plotTop + ((yMax - value) / (yMax - yMin)) * plotH;
+  const yScale = (value: number) => plotTop + ((yMax - value) / (yMax - yMin)) * plotH;
   const xTicks = [xMin, 0, xMax];
   const yTicks = [yMin, 0, yMax];
 
@@ -1884,8 +1825,7 @@ const HistogramPlot = ({
           strokeWidth="1"
         />
         {bins.map((bin, index) => {
-          const barHeight =
-            ((bin.count || 0) / maxCount) * (height - padding * 2);
+          const barHeight = ((bin.count || 0) / maxCount) * (height - padding * 2);
           return (
             <rect
               key={`hist-${index}`}
@@ -2061,7 +2001,9 @@ const ChartCard = ({
         <p className="text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
           {payload.model.name}
         </p>
-        <p>R²: {payload.model.r2.toFixed(2)} — n={payload.model.n}</p>
+        <p>
+          R²: {payload.model.r2.toFixed(2)} — n={payload.model.n}
+        </p>
         <div className="mt-2 text-[0.65rem] text-[var(--muted)]">
           {Object.entries(payload.model.coefficients).map(([key, value]) => (
             <div key={key} className="flex justify-between gap-2">
@@ -2075,7 +2017,11 @@ const ChartCard = ({
   );
 };
 
-const downloadCsv = (filename: string, columns: string[], rows: Array<Record<string, unknown>>) => {
+const downloadCsv = (
+  filename: string,
+  columns: string[],
+  rows: Array<Record<string, unknown>>
+) => {
   const escape = (value: unknown) => {
     const text = value === null || value === undefined ? "" : String(value);
     return `"${text.replace(/"/g, '""')}"`;
@@ -2170,9 +2116,7 @@ export default function RadarCharts({
         if (typeof x !== "number" || typeof y !== "number") return null;
         const shotIndexRaw = shot.shot_index;
         const shotIndex =
-          typeof shotIndexRaw === "number"
-            ? shotIndexRaw
-            : Number(shotIndexRaw ?? NaN);
+          typeof shotIndexRaw === "number" ? shotIndexRaw : Number(shotIndexRaw ?? NaN);
         return {
           x,
           y,
@@ -2208,9 +2152,7 @@ export default function RadarCharts({
         if (typeof x !== "number" || typeof y !== "number") return null;
         const shotIndexRaw = shot.shot_index;
         const shotIndex =
-          typeof shotIndexRaw === "number"
-            ? shotIndexRaw
-            : Number(shotIndexRaw ?? NaN);
+          typeof shotIndexRaw === "number" ? shotIndexRaw : Number(shotIndexRaw ?? NaN);
         return {
           x,
           y,
@@ -2234,9 +2176,7 @@ export default function RadarCharts({
         if (typeof x !== "number" || typeof y !== "number") return null;
         const shotIndexRaw = shot.shot_index;
         const shotIndex =
-          typeof shotIndexRaw === "number"
-            ? shotIndexRaw
-            : Number(shotIndexRaw ?? NaN);
+          typeof shotIndexRaw === "number" ? shotIndexRaw : Number(shotIndexRaw ?? NaN);
         return {
           x,
           y,
@@ -2380,23 +2320,26 @@ export default function RadarCharts({
         withinLat10 >= 70
           ? "Dispersion serree: face et chemin sont bien controles, bon alignement et centrage."
           : withinLat10 >= 50
-          ? "Dispersion moderee: la face ou le chemin varie, travailler l alignement et la stabilite d impact."
-          : "Dispersion large: variations de face/chemin importantes, priorite au centrage et au plan de swing.";
+            ? "Dispersion moderee: la face ou le chemin varie, travailler l alignement et la stabilite d impact."
+            : "Dispersion large: variations de face/chemin importantes, priorite au centrage et au plan de swing.";
       comments.dispersion = label;
     } else if (latStd !== null && latStd !== undefined) {
       const label =
         latStd <= 5
           ? "Dispersion serree: face et chemin sont bien controles, bon alignement et centrage."
           : latStd <= 10
-          ? "Dispersion moderee: la face ou le chemin varie, travailler l alignement et la stabilite d impact."
-          : "Dispersion large: variations de face/chemin importantes, priorite au centrage et au plan de swing.";
+            ? "Dispersion moderee: la face ou le chemin varie, travailler l alignement et la stabilite d impact."
+            : "Dispersion large: variations de face/chemin importantes, priorite au centrage et au plan de swing.";
       comments.dispersion = label;
     }
 
     const carryMean = analytics.globalStats?.carry?.mean;
     const totalMean = analytics.globalStats?.total?.mean;
     const rollMean =
-      carryMean !== null && carryMean !== undefined && totalMean !== null && totalMean !== undefined
+      carryMean !== null &&
+      carryMean !== undefined &&
+      totalMean !== null &&
+      totalMean !== undefined
         ? totalMean - carryMean
         : null;
     if (rollMean !== null && rollMean !== undefined) {
@@ -2406,12 +2349,12 @@ export default function RadarCharts({
         rollRatio !== null && rollRatio < 0.05
           ? "Peu de roll: angle d atterrissage plus raide et/ou spin plus eleve."
           : rollRatio !== null && rollRatio > 0.12
-          ? "Roll important: angle d atterrissage plus plat ou spin plus bas."
-          : rollMean < 5
-          ? "Peu de roll: angle d atterrissage plus raide et/ou spin plus eleve."
-          : rollMean > 15
-          ? "Roll important: angle d atterrissage plus plat ou spin plus bas."
-          : "Roll modere: conditions de lancement equilibrees.";
+            ? "Roll important: angle d atterrissage plus plat ou spin plus bas."
+            : rollMean < 5
+              ? "Peu de roll: angle d atterrissage plus raide et/ou spin plus eleve."
+              : rollMean > 15
+                ? "Roll important: angle d atterrissage plus plat ou spin plus bas."
+                : "Roll modere: conditions de lancement equilibrees.";
       comments.carryTotal = rollLabel;
     }
 
@@ -2421,18 +2364,16 @@ export default function RadarCharts({
         smashMean >= 1.45
           ? "Contact tres efficace: centrage et vitesse de tete de club bien converts."
           : smashMean >= 1.35
-          ? "Contact correct: marge de progression sur le centrage et la vitesse a l impact."
-          : "Contact a travailler: centrage et qualite de compression insuffisants.";
+            ? "Contact correct: marge de progression sur le centrage et la vitesse a l impact."
+            : "Contact a travailler: centrage et qualite de compression insuffisants.";
       comments.speeds = smashLabel;
     }
 
     if (spinCarryPoints.length >= 6) {
       const meanX =
-        spinCarryPoints.reduce((acc, point) => acc + point.x, 0) /
-        spinCarryPoints.length;
+        spinCarryPoints.reduce((acc, point) => acc + point.x, 0) / spinCarryPoints.length;
       const meanY =
-        spinCarryPoints.reduce((acc, point) => acc + point.y, 0) /
-        spinCarryPoints.length;
+        spinCarryPoints.reduce((acc, point) => acc + point.y, 0) / spinCarryPoints.length;
       let numerator = 0;
       let denomX = 0;
       let denomY = 0;
@@ -2447,8 +2388,8 @@ export default function RadarCharts({
           r <= -0.3
             ? "Plus de spin reduit le carry: verifier dynamique loft/angle d attaque."
             : r >= 0.3
-            ? "Plus de spin augmente le carry: attention au rendement si le spin devient excessif."
-            : "Lien faible spin/carry: la distance est surtout liee a la vitesse.";
+              ? "Plus de spin augmente le carry: attention au rendement si le spin devient excessif."
+              : "Lien faible spin/carry: la distance est surtout liee a la vitesse.";
       }
     }
 
@@ -2460,8 +2401,8 @@ export default function RadarCharts({
         smashCv < 0.02
           ? "Smash tres regulier: contact constant et bon controle de la face."
           : smashCv < 0.05
-          ? "Smash plutot regulier: stabiliser encore le centrage."
-          : "Smash variable: contact incoherent, travailler centrage et tempo.";
+            ? "Smash plutot regulier: stabiliser encore le centrage."
+            : "Smash variable: contact incoherent, travailler centrage et tempo.";
       comments.smash = label;
     }
 
@@ -2479,14 +2420,13 @@ export default function RadarCharts({
         meanNorm < 0.25
           ? "Impacts centres: bon controle de la face et de la profondeur de swing."
           : meanNorm < 0.4
-          ? "Impacts plutot centres: leger decalage toe/heel a corriger."
-          : "Impacts decentres: priorite au centrage pour stabiliser la vitesse et la direction.";
+            ? "Impacts plutot centres: leger decalage toe/heel a corriger."
+            : "Impacts decentres: priorite au centrage pour stabiliser la vitesse et la direction.";
       comments.faceImpact = label;
     }
 
     return comments;
   }, [analytics, spinCarryPoints, faceImpactPoints]);
-
 
   const chartHighlights = useMemo(() => {
     if (!analytics) return {};
@@ -2514,7 +2454,10 @@ export default function RadarCharts({
     const carryMean = analytics.globalStats?.carry?.mean;
     const totalMean = analytics.globalStats?.total?.mean;
     const rollMean =
-      carryMean !== null && carryMean !== undefined && totalMean !== null && totalMean !== undefined
+      carryMean !== null &&
+      carryMean !== undefined &&
+      totalMean !== null &&
+      totalMean !== undefined
         ? totalMean - carryMean
         : null;
     const carryItems: Array<{ value: string; label: string } | null> = [
@@ -2652,20 +2595,23 @@ export default function RadarCharts({
         ? withinLat10 >= 70
           ? "good"
           : withinLat10 >= 50
-          ? "warn"
-          : "bad"
+            ? "warn"
+            : "bad"
         : latStd !== null && latStd !== undefined
-        ? latStd <= 5
-          ? "good"
-          : latStd <= 10
-          ? "warn"
-          : "bad"
-        : "warn";
+          ? latStd <= 5
+            ? "good"
+            : latStd <= 10
+              ? "warn"
+              : "bad"
+          : "warn";
 
     const carryMean = analytics.globalStats?.carry?.mean;
     const totalMean = analytics.globalStats?.total?.mean;
     const rollMean =
-      carryMean !== null && carryMean !== undefined && totalMean !== null && totalMean !== undefined
+      carryMean !== null &&
+      carryMean !== undefined &&
+      totalMean !== null &&
+      totalMean !== undefined
         ? totalMean - carryMean
         : null;
     const rollRatio =
@@ -2677,8 +2623,8 @@ export default function RadarCharts({
         ? rollRatio >= 0.05 && rollRatio <= 0.12
           ? "good"
           : rollRatio < 0.04 || rollRatio > 0.15
-          ? "bad"
-          : "warn"
+            ? "bad"
+            : "warn"
         : "warn";
 
     const smashMean = analytics.globalStats?.smash?.mean;
@@ -2687,18 +2633,16 @@ export default function RadarCharts({
         ? smashMean >= 1.45
           ? "good"
           : smashMean >= 1.35
-          ? "warn"
-          : "bad"
+            ? "warn"
+            : "bad"
         : "warn";
 
     let spinCarry: "good" | "warn" | "bad" = "warn";
     if (spinCarryPoints.length >= 6) {
       const meanX =
-        spinCarryPoints.reduce((acc, point) => acc + point.x, 0) /
-        spinCarryPoints.length;
+        spinCarryPoints.reduce((acc, point) => acc + point.x, 0) / spinCarryPoints.length;
       const meanY =
-        spinCarryPoints.reduce((acc, point) => acc + point.y, 0) /
-        spinCarryPoints.length;
+        spinCarryPoints.reduce((acc, point) => acc + point.y, 0) / spinCarryPoints.length;
       let numerator = 0;
       let denomX = 0;
       let denomY = 0;
@@ -2722,8 +2666,8 @@ export default function RadarCharts({
         ? smashCv < 0.02
           ? "good"
           : smashCv < 0.05
-          ? "warn"
-          : "bad"
+            ? "warn"
+            : "bad"
         : "warn";
 
     let faceImpact: "good" | "warn" | "bad" = "warn";
@@ -2769,7 +2713,10 @@ export default function RadarCharts({
     const carryMean = analytics.globalStats?.carry?.mean;
     const totalMean = analytics.globalStats?.total?.mean;
     const rollMean =
-      carryMean !== null && carryMean !== undefined && totalMean !== null && totalMean !== undefined
+      carryMean !== null &&
+      carryMean !== undefined &&
+      totalMean !== null &&
+      totalMean !== undefined
         ? totalMean - carryMean
         : null;
     const carryParts = [
@@ -2850,13 +2797,13 @@ export default function RadarCharts({
   const aiSelectionSummary = resolvedConfig.options?.aiSelectionSummary ?? null;
   const aiSessionSummary = resolvedConfig.options?.aiSessionSummary ?? null;
   const hasAiNarratives =
-    !!aiNarrativesFromConfig &&
-    Object.keys(aiNarrativesFromConfig).length > 0;
+    !!aiNarrativesFromConfig && Object.keys(aiNarrativesFromConfig).length > 0;
   const aiSyntax = resolvedConfig.options?.aiSyntax ?? "exp-tech-solution";
-  const includeComparative =
-    aiSyntax === "exp-comp" || aiSyntax === "global";
+  const includeComparative = aiSyntax === "exp-comp" || aiSyntax === "global";
   const includeSolution =
-    aiSyntax === "exp-solution" || aiSyntax === "exp-tech-solution" || aiSyntax === "global";
+    aiSyntax === "exp-solution" ||
+    aiSyntax === "exp-tech-solution" ||
+    aiSyntax === "global";
   const includeTechnique =
     aiSyntax === "exp-tech" || aiSyntax === "exp-tech-solution" || aiSyntax === "global";
   const aiSelectionSet = useMemo(() => {
@@ -2877,8 +2824,14 @@ export default function RadarCharts({
     const units = analytics.meta?.units ?? {};
     const comparisons: Record<string, string> = {};
 
-    const clubSpeedMph = toMph(analytics.globalStats?.club_speed?.mean ?? null, units.club_speed);
-    const ballSpeedMph = toMph(analytics.globalStats?.ball_speed?.mean ?? null, units.ball_speed);
+    const clubSpeedMph = toMph(
+      analytics.globalStats?.club_speed?.mean ?? null,
+      units.club_speed
+    );
+    const ballSpeedMph = toMph(
+      analytics.globalStats?.ball_speed?.mean ?? null,
+      units.ball_speed
+    );
     const smashMean = analytics.globalStats?.smash?.mean ?? null;
     const carryYds = toYards(analytics.globalStats?.carry?.mean ?? null, units.carry);
     const spinMean = analytics.globalStats?.spin_rpm?.mean ?? null;
@@ -2964,8 +2917,7 @@ export default function RadarCharts({
       { reason?: string | null; commentary?: string | null; solution?: string | null }
     > = {};
     const latThreshold = resolvedConfig.thresholds?.latCorridorMeters?.[1] ?? 10;
-    const lateralUnit =
-      units.lateral ?? metrics.distanceLateral?.unit ?? "m";
+    const lateralUnit = units.lateral ?? metrics.distanceLateral?.unit ?? "m";
     const distanceUnit =
       units.carry ??
       units.total ??
@@ -2978,39 +2930,42 @@ export default function RadarCharts({
       const label =
         withinLat10 >= 70 ? "serree" : withinLat10 >= 50 ? "moderee" : "large";
       const baseReason = `dispersion ${label} (${Math.round(withinLat10)}% dans +/-${latThreshold} ${lateralUnit})`;
-      const reason = includeComparative && pgaComparisons.dispersion
-        ? `${baseReason} | ${pgaComparisons.dispersion}`
-        : baseReason;
+      const reason =
+        includeComparative && pgaComparisons.dispersion
+          ? `${baseReason} | ${pgaComparisons.dispersion}`
+          : baseReason;
       const solution = includeSolution
         ? chartComments.dispersion
         : includeTechnique
-        ? buildTechniqueOnly("dispersion")
-        : null;
+          ? buildTechniqueOnly("dispersion")
+          : null;
       narratives.dispersion = {
         reason,
         solution,
       };
     } else if (latStd !== null && latStd !== undefined) {
       const baseReason = `ET laterale ${formatTickValue(latStd, lateralUnit)}`;
-      const reason = includeComparative && pgaComparisons.dispersion
-        ? `${baseReason} | ${pgaComparisons.dispersion}`
-        : baseReason;
+      const reason =
+        includeComparative && pgaComparisons.dispersion
+          ? `${baseReason} | ${pgaComparisons.dispersion}`
+          : baseReason;
       const solution = includeSolution
         ? chartComments.dispersion
         : includeTechnique
-        ? buildTechniqueOnly("dispersion")
-        : null;
+          ? buildTechniqueOnly("dispersion")
+          : null;
       narratives.dispersion = { reason, solution };
     } else if (baseInsights.dispersion) {
       const baseReason = baseInsights.dispersion;
-      const reason = includeComparative && pgaComparisons.dispersion
-        ? `${baseReason} | ${pgaComparisons.dispersion}`
-        : baseReason;
+      const reason =
+        includeComparative && pgaComparisons.dispersion
+          ? `${baseReason} | ${pgaComparisons.dispersion}`
+          : baseReason;
       const solution = includeSolution
         ? chartComments.dispersion
         : includeTechnique
-        ? buildTechniqueOnly("dispersion")
-        : null;
+          ? buildTechniqueOnly("dispersion")
+          : null;
       narratives.dispersion = { reason, solution };
     }
 
@@ -3020,25 +2975,27 @@ export default function RadarCharts({
       carryMean !== null && totalMean !== null ? totalMean - carryMean : null;
     if (rollMean !== null) {
       const baseReason = `ecart carry/total ${formatTickValue(rollMean, distanceUnit)}`;
-      const reason = includeComparative && pgaComparisons.carryTotal
-        ? `${baseReason} | ${pgaComparisons.carryTotal}`
-        : baseReason;
+      const reason =
+        includeComparative && pgaComparisons.carryTotal
+          ? `${baseReason} | ${pgaComparisons.carryTotal}`
+          : baseReason;
       const solution = includeSolution
         ? chartComments.carryTotal
         : includeTechnique
-        ? buildTechniqueOnly("carryTotal")
-        : null;
+          ? buildTechniqueOnly("carryTotal")
+          : null;
       narratives.carryTotal = { reason, solution };
     } else if (baseInsights.carryTotal) {
       const baseReason = baseInsights.carryTotal;
-      const reason = includeComparative && pgaComparisons.carryTotal
-        ? `${baseReason} | ${pgaComparisons.carryTotal}`
-        : baseReason;
+      const reason =
+        includeComparative && pgaComparisons.carryTotal
+          ? `${baseReason} | ${pgaComparisons.carryTotal}`
+          : baseReason;
       const solution = includeSolution
         ? chartComments.carryTotal
         : includeTechnique
-        ? buildTechniqueOnly("carryTotal")
-        : null;
+          ? buildTechniqueOnly("carryTotal")
+          : null;
       narratives.carryTotal = { reason, solution };
     }
 
@@ -3047,46 +3004,47 @@ export default function RadarCharts({
     const ballMean = analytics.globalStats?.ball_speed?.mean ?? null;
     if (smashMean !== null && smashMean !== undefined) {
       const baseReason = `smash moyen ${smashMean.toFixed(2)}`;
-      const reason = includeComparative && pgaComparisons.speeds
-        ? `${baseReason} | ${pgaComparisons.speeds}`
-        : baseReason;
+      const reason =
+        includeComparative && pgaComparisons.speeds
+          ? `${baseReason} | ${pgaComparisons.speeds}`
+          : baseReason;
       const solution = includeSolution
         ? chartComments.speeds
         : includeTechnique
-        ? buildTechniqueOnly("speeds")
-        : null;
+          ? buildTechniqueOnly("speeds")
+          : null;
       narratives.speeds = { reason, solution };
     } else if (clubMean && ballMean) {
       const baseReason = `ratio balle/club ${(ballMean / clubMean).toFixed(2)}`;
-      const reason = includeComparative && pgaComparisons.speeds
-        ? `${baseReason} | ${pgaComparisons.speeds}`
-        : baseReason;
+      const reason =
+        includeComparative && pgaComparisons.speeds
+          ? `${baseReason} | ${pgaComparisons.speeds}`
+          : baseReason;
       const solution = includeSolution
         ? chartComments.speeds
         : includeTechnique
-        ? buildTechniqueOnly("speeds")
-        : null;
+          ? buildTechniqueOnly("speeds")
+          : null;
       narratives.speeds = { reason, solution };
     } else if (baseInsights.speeds) {
       const baseReason = baseInsights.speeds;
-      const reason = includeComparative && pgaComparisons.speeds
-        ? `${baseReason} | ${pgaComparisons.speeds}`
-        : baseReason;
+      const reason =
+        includeComparative && pgaComparisons.speeds
+          ? `${baseReason} | ${pgaComparisons.speeds}`
+          : baseReason;
       const solution = includeSolution
         ? chartComments.speeds
         : includeTechnique
-        ? buildTechniqueOnly("speeds")
-        : null;
+          ? buildTechniqueOnly("speeds")
+          : null;
       narratives.speeds = { reason, solution };
     }
 
     if (spinCarryPoints.length >= 6) {
       const meanX =
-        spinCarryPoints.reduce((acc, point) => acc + point.x, 0) /
-        spinCarryPoints.length;
+        spinCarryPoints.reduce((acc, point) => acc + point.x, 0) / spinCarryPoints.length;
       const meanY =
-        spinCarryPoints.reduce((acc, point) => acc + point.y, 0) /
-        spinCarryPoints.length;
+        spinCarryPoints.reduce((acc, point) => acc + point.y, 0) / spinCarryPoints.length;
       let numerator = 0;
       let denomX = 0;
       let denomY = 0;
@@ -3099,34 +3057,30 @@ export default function RadarCharts({
         const r = numerator / Math.sqrt(denomX * denomY);
         const abs = Math.abs(r);
         const strength =
-          abs < 0.2
-            ? "faible"
-            : abs < 0.5
-            ? "moderee"
-            : abs < 0.7
-            ? "marquee"
-            : "forte";
+          abs < 0.2 ? "faible" : abs < 0.5 ? "moderee" : abs < 0.7 ? "marquee" : "forte";
         const baseReason = `relation ${strength} spin/carry (r=${r.toFixed(2)})`;
-        const reason = includeComparative && pgaComparisons.spinCarry
-          ? `${baseReason} | ${pgaComparisons.spinCarry}`
-          : baseReason;
+        const reason =
+          includeComparative && pgaComparisons.spinCarry
+            ? `${baseReason} | ${pgaComparisons.spinCarry}`
+            : baseReason;
         const solution = includeSolution
           ? chartComments.spinCarry
           : includeTechnique
-          ? buildTechniqueOnly("spinCarry")
-          : null;
+            ? buildTechniqueOnly("spinCarry")
+            : null;
         narratives.spinCarry = { reason, solution };
       }
     } else if (baseInsights.spinCarry) {
       const baseReason = baseInsights.spinCarry;
-      const reason = includeComparative && pgaComparisons.spinCarry
-        ? `${baseReason} | ${pgaComparisons.spinCarry}`
-        : baseReason;
+      const reason =
+        includeComparative && pgaComparisons.spinCarry
+          ? `${baseReason} | ${pgaComparisons.spinCarry}`
+          : baseReason;
       const solution = includeSolution
         ? chartComments.spinCarry
         : includeTechnique
-        ? buildTechniqueOnly("spinCarry")
-        : null;
+          ? buildTechniqueOnly("spinCarry")
+          : null;
       narratives.spinCarry = { reason, solution };
     }
 
@@ -3135,25 +3089,27 @@ export default function RadarCharts({
       const max = Math.max(...smashValues);
       const range = max - min;
       const baseReason = `amplitude smash ${range.toFixed(2)}`;
-      const reason = includeComparative && pgaComparisons.smash
-        ? `${baseReason} | ${pgaComparisons.smash}`
-        : baseReason;
+      const reason =
+        includeComparative && pgaComparisons.smash
+          ? `${baseReason} | ${pgaComparisons.smash}`
+          : baseReason;
       const solution = includeSolution
         ? chartComments.smash
         : includeTechnique
-        ? buildTechniqueOnly("smash")
-        : null;
+          ? buildTechniqueOnly("smash")
+          : null;
       narratives.smash = { reason, solution };
     } else if (baseInsights.smash) {
       const baseReason = baseInsights.smash;
-      const reason = includeComparative && pgaComparisons.smash
-        ? `${baseReason} | ${pgaComparisons.smash}`
-        : baseReason;
+      const reason =
+        includeComparative && pgaComparisons.smash
+          ? `${baseReason} | ${pgaComparisons.smash}`
+          : baseReason;
       const solution = includeSolution
         ? chartComments.smash
         : includeTechnique
-        ? buildTechniqueOnly("smash")
-        : null;
+          ? buildTechniqueOnly("smash")
+          : null;
       narratives.smash = { reason, solution };
     }
 
@@ -3166,34 +3122,34 @@ export default function RadarCharts({
         faceImpactPoints.length;
       const dist = Math.sqrt(meanX * meanX + meanY * meanY);
       const baseReason = `centrage moyen ${formatTickValue(dist, impactUnit)}`;
-      const reason = includeComparative && pgaComparisons.faceImpact
-        ? `${baseReason} | ${pgaComparisons.faceImpact}`
-        : baseReason;
+      const reason =
+        includeComparative && pgaComparisons.faceImpact
+          ? `${baseReason} | ${pgaComparisons.faceImpact}`
+          : baseReason;
       const solution = includeSolution
         ? chartComments.faceImpact
         : includeTechnique
-        ? buildTechniqueOnly("faceImpact")
-        : null;
+          ? buildTechniqueOnly("faceImpact")
+          : null;
       narratives.faceImpact = { reason, solution };
     } else if (baseInsights.faceImpact) {
       const baseReason = baseInsights.faceImpact;
-      const reason = includeComparative && pgaComparisons.faceImpact
-        ? `${baseReason} | ${pgaComparisons.faceImpact}`
-        : baseReason;
+      const reason =
+        includeComparative && pgaComparisons.faceImpact
+          ? `${baseReason} | ${pgaComparisons.faceImpact}`
+          : baseReason;
       const solution = includeSolution
         ? chartComments.faceImpact
         : includeTechnique
-        ? buildTechniqueOnly("faceImpact")
-        : null;
+          ? buildTechniqueOnly("faceImpact")
+          : null;
       narratives.faceImpact = { reason, solution };
     }
 
     Object.entries(analytics.chartsData ?? {}).forEach(([key, data]) => {
       if (!data?.payload) return;
       const baseReason =
-        data.payload.insight ??
-        computeInsightFromPayload(data.payload) ??
-        null;
+        data.payload.insight ?? computeInsightFromPayload(data.payload) ?? null;
       const reason =
         includeComparative && pgaComparisons[key]
           ? `${baseReason ?? ""}${baseReason ? " | " : ""}${pgaComparisons[key]}`
@@ -3201,8 +3157,8 @@ export default function RadarCharts({
       const solution = includeSolution
         ? buildPayloadCommentary(data.payload)
         : includeTechnique
-        ? buildTechniqueHint([data.payload.title ?? ""]) ?? null
-        : null;
+          ? (buildTechniqueHint([data.payload.title ?? ""]) ?? null)
+          : null;
       if (reason || solution) {
         narratives[key] = { reason, solution };
       }
@@ -3227,12 +3183,9 @@ export default function RadarCharts({
   const aiNarrativeSmash = resolveAiNarrative("smash");
   const aiNarrativeFaceImpact = resolveAiNarrative("faceImpact");
 
-const buildSegmentInsight = (summaries: Array<Record<string, unknown>>) => {
+  const buildSegmentInsight = (summaries: Array<Record<string, unknown>>) => {
     if (!summaries.length) return null;
-    const pickNumeric = (
-      key: string,
-      predicate?: (value: number) => boolean
-    ) => {
+    const pickNumeric = (key: string, predicate?: (value: number) => boolean) => {
       let bestRow: Record<string, unknown> | null = null;
       let bestValue = 0;
       let hasBest = false;
@@ -3268,9 +3221,7 @@ const buildSegmentInsight = (summaries: Array<Record<string, unknown>>) => {
           carry.row["shot_type"] ??
           "groupe"
       );
-      return `Carry moyen le plus eleve: ${label} (${carry.value.toFixed(
-        1
-      )}).`;
+      return `Carry moyen le plus eleve: ${label} (${carry.value.toFixed(1)}).`;
     }
     const smash = pickNumeric("smash_mean");
     if (smash) {
@@ -3281,9 +3232,7 @@ const buildSegmentInsight = (summaries: Array<Record<string, unknown>>) => {
           smash.row["shot_type"] ??
           "groupe"
       );
-      return `Smash moyen le plus eleve: ${label} (${smash.value.toFixed(
-        2
-      )}).`;
+      return `Smash moyen le plus eleve: ${label} (${smash.value.toFixed(2)}).`;
     }
     return null;
   };
@@ -3507,7 +3456,9 @@ const buildSegmentInsight = (summaries: Array<Record<string, unknown>>) => {
                 <InsightText text={baseInsights.dispersion} />
               </div>
             ) : (
-              <div className={`${tallChartHeight} mt-3 flex items-center justify-center text-xs text-[var(--muted)]`}>
+              <div
+                className={`${tallChartHeight} mt-3 flex items-center justify-center text-xs text-[var(--muted)]`}
+              >
                 Donnees insuffisantes
               </div>
             )}
@@ -3571,7 +3522,9 @@ const buildSegmentInsight = (summaries: Array<Record<string, unknown>>) => {
                 <InsightText text={baseInsights.carryTotal} />
               </div>
             ) : (
-              <div className={`${chartHeight} mt-3 flex items-center justify-center text-xs text-[var(--muted)]`}>
+              <div
+                className={`${chartHeight} mt-3 flex items-center justify-center text-xs text-[var(--muted)]`}
+              >
                 Donnees insuffisantes
               </div>
             )}
@@ -3635,7 +3588,9 @@ const buildSegmentInsight = (summaries: Array<Record<string, unknown>>) => {
                 <InsightText text={baseInsights.speeds} />
               </div>
             ) : (
-              <div className={`${chartHeight} mt-3 flex items-center justify-center text-xs text-[var(--muted)]`}>
+              <div
+                className={`${chartHeight} mt-3 flex items-center justify-center text-xs text-[var(--muted)]`}
+              >
                 Donnees insuffisantes
               </div>
             )}
@@ -3683,7 +3638,9 @@ const buildSegmentInsight = (summaries: Array<Record<string, unknown>>) => {
                 <InsightText text={baseInsights.spinCarry} />
               </div>
             ) : (
-              <div className={`${chartHeight} mt-3 flex items-center justify-center text-xs text-[var(--muted)]`}>
+              <div
+                className={`${chartHeight} mt-3 flex items-center justify-center text-xs text-[var(--muted)]`}
+              >
                 Donnees insuffisantes
               </div>
             )}
@@ -3736,7 +3693,9 @@ const buildSegmentInsight = (summaries: Array<Record<string, unknown>>) => {
                 <InsightText text={baseInsights.smash} />
               </div>
             ) : (
-              <div className={`${chartHeight} mt-3 flex items-center justify-center text-xs text-[var(--muted)]`}>
+              <div
+                className={`${chartHeight} mt-3 flex items-center justify-center text-xs text-[var(--muted)]`}
+              >
                 Donnees insuffisantes
               </div>
             )}
@@ -3789,7 +3748,9 @@ const buildSegmentInsight = (summaries: Array<Record<string, unknown>>) => {
                 <InsightText text={baseInsights.faceImpact} />
               </div>
             ) : (
-              <div className={`${tallChartHeight} mt-3 flex items-center justify-center text-xs text-[var(--muted)]`}>
+              <div
+                className={`${tallChartHeight} mt-3 flex items-center justify-center text-xs text-[var(--muted)]`}
+              >
                 Donnees insuffisantes
               </div>
             )}
@@ -3828,17 +3789,17 @@ const buildSegmentInsight = (summaries: Array<Record<string, unknown>>) => {
                       ? chartData.payload.type === "scatter"
                         ? chartData.payload.points.length
                         : chartData.payload.type === "line"
-                        ? chartData.payload.series[0]?.values.length ?? null
-                        : chartData.payload.type === "hist"
-                        ? chartData.payload.bins.reduce(
-                            (acc, bin) => acc + bin.count,
-                            0
-                          )
-                        : chartData.payload.type === "matrix"
-                        ? chartData.payload.variables.length
-                        : chartData.payload.type === "model"
-                        ? chartData.payload.model.n
-                        : null
+                          ? (chartData.payload.series[0]?.values.length ?? null)
+                          : chartData.payload.type === "hist"
+                            ? chartData.payload.bins.reduce(
+                                (acc, bin) => acc + bin.count,
+                                0
+                              )
+                            : chartData.payload.type === "matrix"
+                              ? chartData.payload.variables.length
+                              : chartData.payload.type === "model"
+                                ? chartData.payload.model.n
+                                : null
                       : null;
                     const chartNarrative = resolveAiNarrative(chart.key);
                     return (
@@ -3937,11 +3898,7 @@ const buildSegmentInsight = (summaries: Array<Record<string, unknown>>) => {
                   <button
                     type="button"
                     onClick={() =>
-                      downloadCsv(
-                        `datas-${table.key}.csv`,
-                        columnKeys,
-                        summaries
-                      )
+                      downloadCsv(`datas-${table.key}.csv`, columnKeys, summaries)
                     }
                     className="rounded-full border border-white/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)] hover:text-[var(--text)]"
                   >
@@ -3965,8 +3922,8 @@ const buildSegmentInsight = (summaries: Array<Record<string, unknown>>) => {
                       typeof row.Count === "number"
                         ? row.Count
                         : typeof row.count === "number"
-                        ? row.count
-                        : null;
+                          ? row.count
+                          : null;
                     const numericKeys = Object.keys(row).filter((key) => {
                       if (key.toLowerCase() === "count") return false;
                       return typeof row[key] === "number";
@@ -4012,7 +3969,10 @@ const buildSegmentInsight = (summaries: Array<Record<string, unknown>>) => {
                         </div>
                         <div className="mt-2 grid grid-cols-2 gap-2 text-[0.65rem] text-[var(--muted)]">
                           {metricKeys.map((key) => (
-                            <div key={key} className="flex items-center justify-between gap-2">
+                            <div
+                              key={key}
+                              className="flex items-center justify-between gap-2"
+                            >
                               <span className="truncate">{prettifyMetricLabel(key)}</span>
                               <span className="text-[var(--text)]">
                                 {formatSegmentValue(key, row[key])}

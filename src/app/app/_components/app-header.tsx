@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabase/client";
 import { useProfile } from "./profile-context";
 
 export default function AppHeader() {
@@ -23,12 +23,8 @@ export default function AppHeader() {
   const { profile, organization } = useProfile();
 
   const roleLabel = profile?.role === "student" ? "Eleve" : "Coach";
-  const avatarFallback = (profile?.full_name || email || "Coach")
-    .charAt(0)
-    .toUpperCase();
-  const logoFallback = (organization?.name || "Golf Coaching")
-    .charAt(0)
-    .toUpperCase();
+  const avatarFallback = (profile?.full_name || email || "Coach").charAt(0).toUpperCase();
+  const logoFallback = (organization?.name || "Golf Coaching").charAt(0).toUpperCase();
 
   useEffect(() => {
     let active = true;

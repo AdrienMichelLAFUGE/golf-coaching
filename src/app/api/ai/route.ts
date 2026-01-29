@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import OpenAI from "openai";
-import { createClient } from "@supabase/supabase-js";
+import { env } from "@/env";
+import {
+  createSupabaseAdminClient,
+  createSupabaseServerClientFromRequest,
+} from "@/lib/supabase/server";
+import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { applyTemplate, loadPromptSection } from "@/lib/promptLoader";
 
 export const runtime = "nodejs";
@@ -41,12 +47,35 @@ type AiPayload = {
   settings?: Partial<AiSettings>;
 };
 
+const aiPayloadSchema = z.object({
+  action: z.enum(["improve", "write", "summary", "propagate", "plan", "clarify", "axes"]),
+  sectionTitle: z.string().optional(),
+  sectionContent: z.string().optional(),
+  allSections: z.array(z.object({ title: z.string(), content: z.string() })).optional(),
+  targetSections: z.array(z.string()).optional(),
+  propagateMode: z.enum(["empty", "append"]).optional(),
+  tpiContext: z.string().optional(),
+  clarifications: z
+    .array(z.object({ question: z.string(), answer: z.string() }))
+    .optional(),
+  axesSelections: z
+    .array(z.object({ section: z.string(), title: z.string(), summary: z.string() }))
+    .optional(),
+  settings: z
+    .object({
+      tone: z.string().optional(),
+      techLevel: z.string().optional(),
+      style: z.string().optional(),
+      length: z.string().optional(),
+      imagery: z.string().optional(),
+      focus: z.string().optional(),
+    })
+    .optional(),
+});
+
 const buildContext = (sections: AiSection[] = []) =>
   sections
-    .map(
-      (section, index) =>
-        `${index + 1}. ${section.title}\n${section.content}`.trim()
-    )
+    .map((section, index) => `${index + 1}. ${section.title}\n${section.content}`.trim())
     .join("\n\n");
 
 const resolveSettings = (
@@ -75,9 +104,7 @@ const inferPlanHorizon = (title?: string) => {
   );
   if (match) {
     const count = match[1];
-    const unit = match[2]
-      .replace("annees", "ans")
-      .replace("annee", "an");
+    const unit = match[2].replace("annees", "ans").replace("annee", "an");
     return `${count} ${unit}`;
   }
   if (text.includes("trimestre")) return "3 mois";
@@ -103,24 +130,24 @@ const buildSystemPrompt = async (
     settings.length === "court"
       ? await loadPromptSection("ai_hint_length_court")
       : settings.length === "long"
-      ? await loadPromptSection("ai_hint_length_long")
-      : await loadPromptSection("ai_hint_length_normal");
+        ? await loadPromptSection("ai_hint_length_long")
+        : await loadPromptSection("ai_hint_length_normal");
 
   const imageryHint =
     settings.imagery === "faible"
       ? await loadPromptSection("ai_hint_imagery_faible")
       : settings.imagery === "fort"
-      ? await loadPromptSection("ai_hint_imagery_fort")
-      : await loadPromptSection("ai_hint_imagery_equilibre");
+        ? await loadPromptSection("ai_hint_imagery_fort")
+        : await loadPromptSection("ai_hint_imagery_equilibre");
 
   const focusHint =
     settings.focus === "technique"
       ? await loadPromptSection("ai_hint_focus_technique")
       : settings.focus === "mental"
-      ? await loadPromptSection("ai_hint_focus_mental")
-      : settings.focus === "strategie"
-      ? await loadPromptSection("ai_hint_focus_strategie")
-      : await loadPromptSection("ai_hint_focus_mix");
+        ? await loadPromptSection("ai_hint_focus_mental")
+        : settings.focus === "strategie"
+          ? await loadPromptSection("ai_hint_focus_strategie")
+          : await loadPromptSection("ai_hint_focus_mix");
 
   const baseTemplate = await loadPromptSection("ai_api_system_base");
   const base = applyTemplate(baseTemplate, {
@@ -323,20 +350,18 @@ const extractClarify = (response: {
     type?: string;
     content?: unknown;
   }>;
-}):
-  | {
-      confidence: number;
-      questions: Array<{
-        id: string;
-        question: string;
-        type: "text" | "choices";
-        choices?: string[];
-        multi?: boolean;
-        required?: boolean;
-        placeholder?: string;
-      }>;
-    }
-  | null => {
+}): {
+  confidence: number;
+  questions: Array<{
+    id: string;
+    question: string;
+    type: "text" | "choices";
+    choices?: string[];
+    multi?: boolean;
+    required?: boolean;
+    placeholder?: string;
+  }>;
+} | null => {
   const raw = response.output_text?.trim();
   if (!raw && response.output) {
     const parts: string[] = [];
@@ -348,11 +373,7 @@ const extractClarify = (response: {
         content.forEach((chunk) => {
           if (typeof chunk === "string") {
             parts.push(chunk);
-          } else if (
-            chunk &&
-            typeof chunk === "object" &&
-            "text" in chunk
-          ) {
+          } else if (chunk && typeof chunk === "object" && "text" in chunk) {
             const typed = chunk as { text?: string };
             if (typed.text) parts.push(typed.text);
           }
@@ -412,14 +433,12 @@ const extractAxes = (response: {
     type?: string;
     content?: unknown;
   }>;
-}):
-  | {
-      axes: Array<{
-        section: string;
-        options: Array<{ title: string; summary: string }>;
-      }>;
-    }
-  | null => {
+}): {
+  axes: Array<{
+    section: string;
+    options: Array<{ title: string; summary: string }>;
+  }>;
+} | null => {
   const raw = response.output_text?.trim();
   if (!raw && response.output) {
     const parts: string[] = [];
@@ -475,25 +494,9 @@ const extractAxes = (response: {
 
 export async function POST(request: Request) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    const openaiKey = process.env.OPENAI_API_KEY;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!supabaseUrl || !supabaseAnonKey || !openaiKey) {
-      return NextResponse.json(
-        { error: "Missing env vars." },
-        { status: 500 }
-      );
-    }
-
-    const authHeader = request.headers.get("authorization") ?? "";
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const admin = serviceRoleKey
-      ? createClient(supabaseUrl, serviceRoleKey)
-      : null;
+    const supabase = createSupabaseServerClientFromRequest(request);
+    const admin = createSupabaseAdminClient();
+    const openaiKey = env.OPENAI_API_KEY;
 
     const { data: userData, error: userError } = await supabase.auth.getUser();
     if (userError || !userData.user) {
@@ -507,10 +510,7 @@ export async function POST(request: Request) {
       .maybeSingle();
 
     if (profileError || !profile) {
-      return NextResponse.json(
-        { error: "Profil introuvable." },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Profil introuvable." }, { status: 403 });
     }
 
     if (!["owner", "coach", "staff"].includes(profile.role)) {
@@ -526,29 +526,27 @@ export async function POST(request: Request) {
       .maybeSingle();
 
     if (orgError || !org) {
-      return NextResponse.json(
-        { error: "Organisation introuvable." },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Organisation introuvable." }, { status: 403 });
     }
 
     if (!org.ai_enabled) {
       return NextResponse.json({ error: "AI disabled." }, { status: 403 });
     }
 
-    const payload = (await request.json()) as AiPayload;
-    if (!payload.action) {
-      return NextResponse.json({ error: "Action manquante." }, { status: 400 });
+    const parsedPayload = await parseRequestJson(request, aiPayloadSchema);
+    if (!parsedPayload.success) {
+      return NextResponse.json(
+        { error: "Payload invalide.", details: formatZodError(parsedPayload.error) },
+        { status: 422 }
+      );
     }
+    const payload = parsedPayload.data as AiPayload;
 
     if (
       payload.action === "improve" &&
       (!payload.sectionTitle || !payload.sectionContent)
     ) {
-      return NextResponse.json(
-        { error: "Section manquante." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Section manquante." }, { status: 400 });
     }
 
     if (payload.action === "write") {
@@ -574,23 +572,23 @@ export async function POST(request: Request) {
       (payload.action === "summary" || payload.action === "plan") &&
       (!payload.allSections || payload.allSections.length === 0)
     ) {
-      return NextResponse.json(
-        { error: "Contenu manquant." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Contenu manquant." }, { status: 400 });
     }
 
     const startedAt = Date.now();
     const userId = userData.user.id;
     const orgId = profile.org_id;
     const recordUsage = async (
-      usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number } | null
+      usage?: {
+        input_tokens?: number;
+        output_tokens?: number;
+        total_tokens?: number;
+      } | null
     ) => {
       if (!admin) return;
       const inputTokens = usage?.input_tokens ?? 0;
       const outputTokens = usage?.output_tokens ?? 0;
-      const totalTokens =
-        usage?.total_tokens ?? (inputTokens + outputTokens);
+      const totalTokens = usage?.total_tokens ?? inputTokens + outputTokens;
 
       await admin.from("ai_usage").insert([
         {
@@ -608,31 +606,19 @@ export async function POST(request: Request) {
 
     if (payload.action === "propagate") {
       if (!payload.sectionTitle || !payload.sectionContent?.trim()) {
-        return NextResponse.json(
-          { error: "Section source manquante." },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: "Section source manquante." }, { status: 400 });
       }
       if (!payload.targetSections || payload.targetSections.length === 0) {
-        return NextResponse.json(
-          { error: "Aucune section cible." },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: "Aucune section cible." }, { status: 400 });
       }
     }
 
     if (payload.action === "clarify") {
       if (!payload.sectionTitle || !payload.sectionContent?.trim()) {
-        return NextResponse.json(
-          { error: "Section source manquante." },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: "Section source manquante." }, { status: 400 });
       }
       if (!payload.targetSections || payload.targetSections.length === 0) {
-        return NextResponse.json(
-          { error: "Aucune section cible." },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: "Aucune section cible." }, { status: 400 });
       }
     }
 
@@ -663,9 +649,7 @@ export async function POST(request: Request) {
     const clarificationsBlock = clarificationsText
       ? `Clarifications du coach:\n${clarificationsText}`
       : "";
-    const axesBlock = axesText
-      ? `Axes choisis par section:\n${axesText}`
-      : "";
+    const axesBlock = axesText ? `Axes choisis par section:\n${axesText}` : "";
 
     const tpiBlock = payload.tpiContext?.trim()
       ? `Profil TPI (a utiliser si pertinent):\n${payload.tpiContext.trim()}`
@@ -675,14 +659,14 @@ export async function POST(request: Request) {
       payload.action === "improve"
         ? "ai_api_user_improve"
         : payload.action === "write"
-        ? "ai_api_user_write"
-        : payload.action === "clarify"
-        ? "ai_api_user_clarify"
-        : payload.action === "axes"
-        ? "ai_api_user_axes"
-        : payload.action === "propagate"
-        ? "ai_api_user_propagate"
-        : "ai_api_user_summary";
+          ? "ai_api_user_write"
+          : payload.action === "clarify"
+            ? "ai_api_user_clarify"
+            : payload.action === "axes"
+              ? "ai_api_user_axes"
+              : payload.action === "propagate"
+                ? "ai_api_user_propagate"
+                : "ai_api_user_summary";
 
     const userTemplate = await loadPromptSection(userTemplateKey);
     const userPrompt = applyTemplate(userTemplate, {
@@ -700,20 +684,18 @@ export async function POST(request: Request) {
     const openai = new OpenAI({ apiKey: openaiKey });
     const model = org.ai_model ?? "gpt-5-mini";
     const targetCount = payload.targetSections?.length ?? 0;
-    const propagateMaxTokens = Math.min(
-      1800,
-      Math.max(600, 300 + targetCount * 140)
-    );
+    const propagateMaxTokens = Math.min(1800, Math.max(600, 300 + targetCount * 140));
+    const axesMaxTokens = Math.min(2400, Math.max(900, 260 + targetCount * 200));
     const maxTokens =
       payload.action === "improve"
         ? 600
         : payload.action === "clarify"
-        ? 500
-        : payload.action === "axes"
-        ? 700
-        : payload.action === "propagate"
-        ? propagateMaxTokens
-        : maxTokensForLength(settings.length);
+          ? 500
+          : payload.action === "axes"
+            ? axesMaxTokens
+            : payload.action === "propagate"
+              ? propagateMaxTokens
+              : maxTokensForLength(settings.length);
     const textConfig =
       payload.action === "propagate"
         ? {
@@ -745,104 +727,100 @@ export async function POST(request: Request) {
             },
           }
         : payload.action === "clarify"
-        ? {
-            format: {
-              type: "json_schema" as const,
-              name: "clarify",
-              description:
-                "Retourne un objet JSON avec confidence (0-1) et questions.",
-              schema: {
-                type: "object",
-                additionalProperties: false,
-                properties: {
-                  confidence: { type: "number", minimum: 0, maximum: 1 },
-                  questions: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      additionalProperties: false,
-                      properties: {
-                        id: { type: "string" },
-                        question: { type: "string" },
-                        type: { type: "string", enum: ["text", "choices"] },
-                        choices: {
-                          type: "array",
-                          items: { type: "string" },
-                        },
-                        multi: { type: "boolean" },
-                        required: { type: "boolean" },
-                        placeholder: { type: "string" },
-                      },
-                      required: [
-                        "id",
-                        "question",
-                        "type",
-                        "choices",
-                        "multi",
-                        "required",
-                        "placeholder",
-                      ],
-                    },
-                  },
-                },
-                required: ["confidence", "questions"],
-              },
-              strict: true,
-            },
-          }
-        : payload.action === "axes"
-        ? {
-            format: {
-              type: "json_schema" as const,
-              name: "axes",
-              description:
-                "Retourne un objet JSON avec axes (section, options).",
-              schema: {
-                type: "object",
-                additionalProperties: false,
-                properties: {
-                  axes: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      additionalProperties: false,
-                      properties: {
-                        section: { type: "string" },
-                        options: {
-                          type: "array",
-                          items: {
-                            type: "object",
-                            additionalProperties: false,
-                            properties: {
-                              title: { type: "string" },
-                              summary: { type: "string" },
-                            },
-                            required: ["title", "summary"],
+          ? {
+              format: {
+                type: "json_schema" as const,
+                name: "clarify",
+                description: "Retourne un objet JSON avec confidence (0-1) et questions.",
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    confidence: { type: "number", minimum: 0, maximum: 1 },
+                    questions: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        additionalProperties: false,
+                        properties: {
+                          id: { type: "string" },
+                          question: { type: "string" },
+                          type: { type: "string", enum: ["text", "choices"] },
+                          choices: {
+                            type: "array",
+                            items: { type: "string" },
                           },
+                          multi: { type: "boolean" },
+                          required: { type: "boolean" },
+                          placeholder: { type: "string" },
                         },
+                        required: [
+                          "id",
+                          "question",
+                          "type",
+                          "choices",
+                          "multi",
+                          "required",
+                          "placeholder",
+                        ],
                       },
-                      required: ["section", "options"],
                     },
                   },
+                  required: ["confidence", "questions"],
                 },
-                required: ["axes"],
+                strict: true,
               },
-              strict: true,
-            },
-          }
-        : {
-            format: { type: "text" as const },
-            verbosity: "low" as const,
-          };
-    const reasoning =
-      model.startsWith("gpt-5") ? { effort: "low" as const } : undefined;
+            }
+          : payload.action === "axes"
+            ? {
+                format: {
+                  type: "json_schema" as const,
+                  name: "axes",
+                  description: "Retourne un objet JSON avec axes (section, options).",
+                  schema: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      axes: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          additionalProperties: false,
+                          properties: {
+                            section: { type: "string" },
+                            options: {
+                              type: "array",
+                              items: {
+                                type: "object",
+                                additionalProperties: false,
+                                properties: {
+                                  title: { type: "string" },
+                                  summary: { type: "string" },
+                                },
+                                required: ["title", "summary"],
+                              },
+                            },
+                          },
+                          required: ["section", "options"],
+                        },
+                      },
+                    },
+                    required: ["axes"],
+                  },
+                  strict: true,
+                },
+              }
+            : {
+                format: { type: "text" as const },
+                verbosity: "low" as const,
+              };
+    const reasoning = model.startsWith("gpt-5") ? { effort: "low" as const } : undefined;
     const propagateTool =
       payload.action === "propagate"
         ? {
             type: "function" as const,
             name: "propagate_sections",
-            description:
-              "Genere des suggestions pour chaque section cible du rapport.",
+            description: "Genere des suggestions pour chaque section cible du rapport.",
             strict: true,
             parameters: {
               type: "object",
@@ -904,10 +882,7 @@ export async function POST(request: Request) {
         });
       }
 
-      return NextResponse.json(
-        { error: "JSON invalide." },
-        { status: 502 }
-      );
+      return NextResponse.json({ error: "JSON invalide." }, { status: 502 });
     }
 
     if (payload.action === "axes") {
@@ -916,6 +891,47 @@ export async function POST(request: Request) {
         await recordUsage(usage);
         return NextResponse.json({ axes: axes.axes ?? [] });
       }
+
+      const retry = await openai.responses.create({
+        model,
+        input: [
+          {
+            role: "system",
+            content: [{ type: "input_text", text: systemPrompt }],
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text:
+                  `${userPrompt}\n\nIMPORTANT: Reponds en JSON valide. ` +
+                  "Limite chaque resume a 160 caracteres maximum.",
+              },
+            ],
+          },
+        ],
+        max_output_tokens: maxTokens,
+        text: textConfig,
+        ...(reasoning ? { reasoning } : {}),
+      });
+
+      const retryAxes = extractAxes(retry);
+      if (retryAxes) {
+        usage = retry.usage ?? usage;
+        await recordUsage(usage);
+        return NextResponse.json({ axes: retryAxes.axes ?? [] });
+      }
+
+      const outputDebug = (response.output ?? []).map((item) => ({
+        type: (item as { type?: string }).type,
+      }));
+      console.error("AI empty axes response", {
+        model,
+        outputCount: response.output?.length ?? 0,
+        retryCount: retry.output?.length ?? 0,
+        outputDebug,
+      });
 
       return NextResponse.json({ error: "JSON invalide." }, { status: 502 });
     }
@@ -952,8 +968,7 @@ export async function POST(request: Request) {
 
       const outputDebug = (response.output ?? []).map((item) => ({
         type: (item as { type?: string }).type,
-        hasArguments:
-          typeof (item as { arguments?: string }).arguments === "string",
+        hasArguments: typeof (item as { arguments?: string }).arguments === "string",
       }));
       console.error("AI empty propagation response", {
         model,
@@ -962,10 +977,7 @@ export async function POST(request: Request) {
         outputDebug,
       });
 
-      return NextResponse.json(
-        { error: "JSON invalide." },
-        { status: 502 }
-      );
+      return NextResponse.json({ error: "JSON invalide." }, { status: 502 });
     }
 
     const outputText = response.output_text?.trim();
@@ -980,11 +992,7 @@ export async function POST(request: Request) {
         for (const chunk of content) {
           if (typeof chunk === "string") {
             parts.push(chunk);
-          } else if (
-            chunk &&
-            typeof chunk === "object" &&
-            "type" in chunk
-          ) {
+          } else if (chunk && typeof chunk === "object" && "type" in chunk) {
             const typed = chunk as {
               type: string;
               text?: string;
@@ -1072,8 +1080,7 @@ export async function POST(request: Request) {
         }
       }
 
-      const retryText =
-        retry.output_text?.trim() ?? retryParts.join("\n").trim();
+      const retryText = retry.output_text?.trim() ?? retryParts.join("\n").trim();
 
       text = retryText;
       if (text) {
@@ -1085,8 +1092,9 @@ export async function POST(request: Request) {
           return {
             type: (item as { type?: string }).type,
             contentType: Array.isArray(content)
-              ? (content as Array<{ type?: string }>)
-                  .map((chunk) => chunk.type ?? typeof chunk)
+              ? (content as Array<{ type?: string }>).map(
+                  (chunk) => chunk.type ?? typeof chunk
+                )
               : typeof content,
           };
         });
@@ -1102,10 +1110,7 @@ export async function POST(request: Request) {
     }
 
     if (!text) {
-      return NextResponse.json(
-        { error: "Empty response." },
-        { status: 502 }
-      );
+      return NextResponse.json({ error: "Empty response." }, { status: 502 });
     }
 
     if (text.startsWith("Refus:")) {
@@ -1118,9 +1123,6 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("AI route error:", error);
-    return NextResponse.json(
-      { error: "Erreur IA." },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Erreur IA." }, { status: 500 });
   }
 }

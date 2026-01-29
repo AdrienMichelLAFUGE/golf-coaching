@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../../_components/role-guard";
 import { useProfile } from "../../../_components/profile-context";
 import PageBack from "../../../_components/page-back";
@@ -15,10 +15,7 @@ import RadarCharts, {
   type RadarShot,
   type RadarStats,
 } from "../../../_components/radar-charts";
-import {
-  RADAR_CHART_DEFINITIONS,
-  RADAR_CHART_GROUPS,
-} from "@/lib/radar/charts/registry";
+import { RADAR_CHART_DEFINITIONS, RADAR_CHART_GROUPS } from "@/lib/radar/charts/registry";
 import type { RadarAnalytics } from "@/lib/radar/types";
 
 type Student = {
@@ -98,12 +95,8 @@ const tpiLegendByColor: Record<TpiTest["result_color"], string> = {
 };
 
 const formatTpiTestName = (name: string) => {
-  const shortened = name
-    .replace(/Extension/g, "Ext.")
-    .replace(/Rotation/g, "Rota.");
-  return shortened === "Wrist Flexion/Ext."
-    ? "Wrist Flex./Ext."
-    : shortened;
+  const shortened = name.replace(/Extension/g, "Ext.").replace(/Rotation/g, "Rota.");
+  return shortened === "Wrist Flexion/Ext." ? "Wrist Flex./Ext." : shortened;
 };
 
 const formatDate = (
@@ -156,9 +149,7 @@ export default function CoachStudentDetailPage() {
   const [radarProgress, setRadarProgress] = useState(0);
   const [radarPhase, setRadarPhase] = useState<"upload" | "analyse">("upload");
   const radarInputRef = useRef<HTMLInputElement | null>(null);
-  const radarProgressTimer = useRef<ReturnType<typeof setInterval> | null>(
-    null
-  );
+  const radarProgressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const [radarPreview, setRadarPreview] = useState<RadarFile | null>(null);
   const [radarConfigOpen, setRadarConfigOpen] = useState(false);
   const [radarConfigDraft, setRadarConfigDraft] =
@@ -195,12 +186,14 @@ export default function CoachStudentDetailPage() {
   } | null>(null);
 
   const openPremiumModal = useCallback(
-    (notice?: {
-      title: string;
-      description: string;
-      tags?: string[];
-      status?: { label: string; value: string }[];
-    } | null) => {
+    (
+      notice?: {
+        title: string;
+        description: string;
+        tags?: string[];
+        status?: { label: string; value: string }[];
+      } | null
+    ) => {
       setPremiumNotice(notice ?? null);
       setPremiumModalOpen(true);
     },
@@ -242,88 +235,91 @@ export default function CoachStudentDetailPage() {
     });
   }, [aiEnabled, openPremiumModal, tpiAddonEnabled]);
 
-  const loadTpi = useCallback(async (reportId?: string | null) => {
-    if (!studentId) return;
+  const loadTpi = useCallback(
+    async (reportId?: string | null) => {
+      if (!studentId) return;
 
-    setTpiLoading(true);
-    setTpiError("");
+      setTpiLoading(true);
+      setTpiError("");
 
-    let reportData: TpiReport | null = null;
+      let reportData: TpiReport | null = null;
 
-    if (reportId) {
-      const { data, error } = await supabase
-        .from("tpi_reports")
-        .select("id, status, file_url, file_type, original_name, created_at")
-        .eq("id", reportId)
-        .single();
-      if (!error && data) reportData = data as TpiReport;
-    }
-
-    if (!reportData) {
-      const { data, error } = await supabase
-        .from("tpi_reports")
-        .select("id, status, file_url, file_type, original_name, created_at")
-        .eq("student_id", studentId)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (!error && data) reportData = data as TpiReport;
-    }
-
-    if (reportData && reportData.status !== "ready") {
-      const { data, error } = await supabase
-        .from("tpi_reports")
-        .select("id, status, file_url, file_type, original_name, created_at")
-        .eq("student_id", studentId)
-        .eq("status", "ready")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (!error && data) reportData = data as TpiReport;
-    }
-
-    if (!reportData) {
-      setTpiReport(null);
-      setTpiTests([]);
-      setSelectedTpi(null);
-      setTpiLoading(false);
-      return;
-    }
-
-    setTpiReport(reportData);
-
-    const { data: testsData, error: testsError } = await supabase
-      .from("tpi_tests")
-      .select(
-        "id, test_name, result_color, mini_summary, details, details_translated, position"
-      )
-      .eq("report_id", reportData.id)
-      .order("position", { ascending: true });
-
-    if (testsError) {
-      setTpiError(testsError.message);
-      setTpiTests([]);
-      setSelectedTpi(null);
-      setTpiLoading(false);
-      return;
-    }
-
-    const normalizedTests = (testsData ?? []) as TpiTest[];
-    const sorted = [...normalizedTests].sort((a, b) => {
-      const rank = tpiColorRank[a.result_color] - tpiColorRank[b.result_color];
-      if (rank !== 0) return rank;
-      return a.position - b.position;
-    });
-    setTpiTests(sorted);
-    setSelectedTpi((current) => {
-      if (!sorted.length) return null;
-      if (current && sorted.some((test) => test.id === current.id)) {
-        return current;
+      if (reportId) {
+        const { data, error } = await supabase
+          .from("tpi_reports")
+          .select("id, status, file_url, file_type, original_name, created_at")
+          .eq("id", reportId)
+          .single();
+        if (!error && data) reportData = data as TpiReport;
       }
-      return sorted[0];
-    });
-    setTpiLoading(false);
-  }, [studentId]);
+
+      if (!reportData) {
+        const { data, error } = await supabase
+          .from("tpi_reports")
+          .select("id, status, file_url, file_type, original_name, created_at")
+          .eq("student_id", studentId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (!error && data) reportData = data as TpiReport;
+      }
+
+      if (reportData && reportData.status !== "ready") {
+        const { data, error } = await supabase
+          .from("tpi_reports")
+          .select("id, status, file_url, file_type, original_name, created_at")
+          .eq("student_id", studentId)
+          .eq("status", "ready")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (!error && data) reportData = data as TpiReport;
+      }
+
+      if (!reportData) {
+        setTpiReport(null);
+        setTpiTests([]);
+        setSelectedTpi(null);
+        setTpiLoading(false);
+        return;
+      }
+
+      setTpiReport(reportData);
+
+      const { data: testsData, error: testsError } = await supabase
+        .from("tpi_tests")
+        .select(
+          "id, test_name, result_color, mini_summary, details, details_translated, position"
+        )
+        .eq("report_id", reportData.id)
+        .order("position", { ascending: true });
+
+      if (testsError) {
+        setTpiError(testsError.message);
+        setTpiTests([]);
+        setSelectedTpi(null);
+        setTpiLoading(false);
+        return;
+      }
+
+      const normalizedTests = (testsData ?? []) as TpiTest[];
+      const sorted = [...normalizedTests].sort((a, b) => {
+        const rank = tpiColorRank[a.result_color] - tpiColorRank[b.result_color];
+        if (rank !== 0) return rank;
+        return a.position - b.position;
+      });
+      setTpiTests(sorted);
+      setSelectedTpi((current) => {
+        if (!sorted.length) return null;
+        if (current && sorted.some((test) => test.id === current.id)) {
+          return current;
+        }
+        return sorted[0];
+      });
+      setTpiLoading(false);
+    },
+    [studentId]
+  );
 
   const loadRadars = useCallback(async () => {
     if (!studentId) return;
@@ -332,9 +328,9 @@ export default function CoachStudentDetailPage() {
 
     const { data, error } = await supabase
       .from("radar_files")
-        .select(
-          "id, status, source, original_name, file_url, file_mime, columns, shots, stats, config, summary, analytics, created_at, extracted_at, error"
-        )
+      .select(
+        "id, status, source, original_name, file_url, file_mime, columns, shots, stats, config, summary, analytics, created_at, extracted_at, error"
+      )
       .eq("student_id", studentId)
       .order("created_at", { ascending: false });
 
@@ -350,14 +346,10 @@ export default function CoachStudentDetailPage() {
         ...file,
         columns: Array.isArray(file.columns) ? file.columns : [],
         shots: Array.isArray(file.shots) ? file.shots : [],
-        stats:
-          file.stats && typeof file.stats === "object" ? file.stats : null,
-        config:
-          file.config && typeof file.config === "object" ? file.config : null,
+        stats: file.stats && typeof file.stats === "object" ? file.stats : null,
+        config: file.config && typeof file.config === "object" ? file.config : null,
         analytics:
-          file.analytics && typeof file.analytics === "object"
-            ? file.analytics
-            : null,
+          file.analytics && typeof file.analytics === "object" ? file.analytics : null,
       })) ?? [];
 
     setRadarFiles(normalized as RadarFile[]);
@@ -436,8 +428,7 @@ export default function CoachStudentDetailPage() {
     }
     if (!studentId || !organization?.id) return;
     const isPdf =
-      file.type === "application/pdf" ||
-      file.name.toLowerCase().endsWith(".pdf");
+      file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
     if (!isPdf) {
       setTpiError("Importe uniquement le PDF TPI Pro recu par email.");
       return;
@@ -778,9 +769,7 @@ export default function CoachStudentDetailPage() {
     }
 
     if (storageError) {
-    setRadarError(
-        `Fichier datas supprime, mais erreur de stockage: ${storageError}`
-      );
+      setRadarError(`Fichier datas supprime, mais erreur de stockage: ${storageError}`);
     }
     setRadarDeletingId(null);
   };
@@ -897,9 +886,7 @@ export default function CoachStudentDetailPage() {
 
     setRadarFiles((prev) =>
       prev.map((file) =>
-        file.id === radarConfigFile.id
-          ? { ...file, config: radarConfigDraft }
-          : file
+        file.id === radarConfigFile.id ? { ...file, config: radarConfigDraft } : file
       )
     );
     setRadarConfigSaving(false);
@@ -911,15 +898,11 @@ export default function CoachStudentDetailPage() {
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       {loading ? (
         <section className="panel rounded-2xl p-6">
-          <p className="text-sm text-[var(--muted)]">
-            Chargement de l eleve...
-          </p>
+          <p className="text-sm text-[var(--muted)]">Chargement de l eleve...</p>
         </section>
       ) : error || !student ? (
         <section className="panel rounded-2xl p-6">
-          <p className="text-sm text-red-400">
-            {error || "Eleve introuvable."}
-          </p>
+          <p className="text-sm text-red-400">{error || "Eleve introuvable."}</p>
         </section>
       ) : (
         <div className="space-y-6">
@@ -965,11 +948,7 @@ export default function CoachStudentDetailPage() {
                   aria-expanded={headerMenuOpen}
                   aria-haspopup="menu"
                 >
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-4 w-4"
-                    fill="currentColor"
-                  >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
                     <circle cx="12" cy="5" r="2" />
                     <circle cx="12" cy="12" r="2" />
                     <circle cx="12" cy="19" r="2" />
@@ -996,9 +975,7 @@ export default function CoachStudentDetailPage() {
             <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
               {student.first_name} {student.last_name ?? ""}
             </h2>
-            <p className="mt-2 text-sm text-[var(--muted)]">
-              {student.email || "-"}
-            </p>
+            <p className="mt-2 text-sm text-[var(--muted)]">{student.email || "-"}</p>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs uppercase tracking-wide">
               {student.activated_at ? (
                 <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-emerald-200">
@@ -1015,17 +992,15 @@ export default function CoachStudentDetailPage() {
               )}
             </div>
             <p className="mt-2 text-xs text-[var(--muted)]">
-              Invite le {formatDate(student.invited_at, locale, timezone)} -
-              Cree le {formatDate(student.created_at, locale, timezone)}
+              Invite le {formatDate(student.invited_at, locale, timezone)} - Cree le{" "}
+              {formatDate(student.created_at, locale, timezone)}
             </p>
           </section>
 
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
             <section className="panel rounded-2xl p-6">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-[var(--text)]">
-                  Rapports
-                </h3>
+                <h3 className="text-lg font-semibold text-[var(--text)]">Rapports</h3>
                 <Link
                   href={`/app/coach/rapports/nouveau?studentId=${student.id}`}
                   className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)]"
@@ -1080,9 +1055,7 @@ export default function CoachStudentDetailPage() {
                           disabled={deletingId === report.id}
                           className="w-28 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-center text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:text-red-200 disabled:opacity-60"
                         >
-                          {deletingId === report.id
-                            ? "Suppression..."
-                            : "Supprimer"}
+                          {deletingId === report.id ? "Suppression..." : "Supprimer"}
                         </button>
                       </div>
                     </div>
@@ -1147,12 +1120,12 @@ export default function CoachStudentDetailPage() {
                     ) : null}
                   </h3>
                   <p className="mt-1 text-sm text-[var(--muted)]">
-                    Ajoute un screening TPI pour obtenir une synthese claire des
-                    points a travailler et des points forts.
+                    Ajoute un screening TPI pour obtenir une synthese claire des points a
+                    travailler et des points forts.
                   </p>
                   <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-emerald-100">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
-                    L assistant IA s appuie sur ce profil pour ses analyses.
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />L
+                    assistant IA s appuie sur ce profil pour ses analyses.
                   </div>
                 </div>
               </div>
@@ -1212,12 +1185,12 @@ export default function CoachStudentDetailPage() {
                         </span>
                         <ol className="mt-2 list-decimal space-y-1 pl-4 text-[0.68rem] text-[var(--muted)]">
                           <li>
-                            Envoie le rapport TPI depuis myTPI Pro a l eleve, en
-                            te mettant en copie (CC to me).
+                            Envoie le rapport TPI depuis myTPI Pro a l eleve, en te
+                            mettant en copie (CC to me).
                           </li>
                           <li>
-                            Dans ta boite mail, ouvre le mail et clique sur
-                            partager (icone fleche).
+                            Dans ta boite mail, ouvre le mail et clique sur partager
+                            (icone fleche).
                           </li>
                           <li>Selectionne Imprimer.</li>
                           <li>
@@ -1225,8 +1198,8 @@ export default function CoachStudentDetailPage() {
                             Enregistrer dans Fichiers.
                           </li>
                           <li>
-                            Importe le PDF ici. Attends quelques minutes, puis le
-                            profil apparait en dessous dans la langue du compte.
+                            Importe le PDF ici. Attends quelques minutes, puis le profil
+                            apparait en dessous dans la langue du compte.
                           </li>
                         </ol>
                         <span className="mt-3 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
@@ -1234,18 +1207,14 @@ export default function CoachStudentDetailPage() {
                         </span>
                         <ol className="mt-2 list-decimal space-y-1 pl-4 text-[0.68rem] text-[var(--muted)]">
                           <li>
-                            Envoie le rapport TPI depuis myTPI Pro a l eleve, en
-                            te mettant en copie (CC to me).
+                            Envoie le rapport TPI depuis myTPI Pro a l eleve, en te
+                            mettant en copie (CC to me).
                           </li>
+                          <li>Ouvre le mail recu et imprime (Ctrl + P).</li>
+                          <li>Dans la fenetre d impression, choisis Print to PDF.</li>
                           <li>
-                            Ouvre le mail recu et imprime (Ctrl + P).
-                          </li>
-                          <li>
-                            Dans la fenetre d impression, choisis Print to PDF.
-                          </li>
-                          <li>
-                            Importe le PDF ici. Attends quelques minutes, puis le
-                            profil apparait en dessous dans la langue du compte.
+                            Importe le PDF ici. Attends quelques minutes, puis le profil
+                            apparait en dessous dans la langue du compte.
                           </li>
                         </ol>
                       </span>
@@ -1288,11 +1257,13 @@ export default function CoachStudentDetailPage() {
                     <span>
                       {tpiPhase === "upload" ? (
                         <>
-                          Upload du rapport<span className="tpi-dots" aria-hidden="true" />
+                          Upload du rapport
+                          <span className="tpi-dots" aria-hidden="true" />
                         </>
                       ) : (
                         <>
-                          Analyse en cours<span className="tpi-dots" aria-hidden="true" />
+                          Analyse en cours
+                          <span className="tpi-dots" aria-hidden="true" />
                         </>
                       )}
                     </span>
@@ -1313,9 +1284,7 @@ export default function CoachStudentDetailPage() {
                   Chargement des donnees TPI...
                 </p>
               ) : null}
-              {tpiError ? (
-                <p className="mt-3 text-xs text-red-300">{tpiError}</p>
-              ) : null}
+              {tpiError ? <p className="mt-3 text-xs text-red-300">{tpiError}</p> : null}
 
               {tpiReport && tpiReport.status === "ready" ? (
                 <>
@@ -1332,8 +1301,8 @@ export default function CoachStudentDetailPage() {
                               test.result_color === "green"
                                 ? "bg-emerald-400"
                                 : test.result_color === "orange"
-                                ? "bg-amber-400"
-                                : "bg-rose-400";
+                                  ? "bg-amber-400"
+                                  : "bg-rose-400";
                             const isSelected = selectedTpi?.id === test.id;
                             return (
                               <button
@@ -1364,13 +1333,11 @@ export default function CoachStudentDetailPage() {
                             color === "green"
                               ? "bg-emerald-400"
                               : color === "orange"
-                              ? "bg-amber-400"
-                              : "bg-rose-400";
+                                ? "bg-amber-400"
+                                : "bg-rose-400";
                           return (
                             <div key={color} className="flex items-center gap-2">
-                              <span
-                                className={`h-2.5 w-2.5 rounded-full ${dotClass}`}
-                              />
+                              <span className={`h-2.5 w-2.5 rounded-full ${dotClass}`} />
                               <span>{tpiLegendByColor[color]}</span>
                             </div>
                           );
@@ -1395,12 +1362,10 @@ export default function CoachStudentDetailPage() {
                             type="button"
                             onClick={() => setTpiDetail(selectedTpi)}
                             disabled={
-                              !selectedTpi.details &&
-                              !selectedTpi.details_translated
+                              !selectedTpi.details && !selectedTpi.details_translated
                             }
                             className={`mt-auto w-full rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-wide transition ${
-                              selectedTpi.details ||
-                              selectedTpi.details_translated
+                              selectedTpi.details || selectedTpi.details_translated
                                 ? "border-white/10 bg-white/10 text-[var(--text)] hover:bg-white/20"
                                 : "cursor-not-allowed border-white/5 bg-white/5 text-[var(--muted)]"
                             }`}
@@ -1469,8 +1434,7 @@ export default function CoachStudentDetailPage() {
                     Fichiers datas
                   </h3>
                   <p className="mt-1 text-sm text-[var(--muted)]">
-                    Importe un export Flightscope pour generer graphes, stats et
-                    resume.
+                    Importe un export Flightscope pour generer graphes, stats et resume.
                   </p>
                 </div>
                 <button
@@ -1544,11 +1508,13 @@ export default function CoachStudentDetailPage() {
                     <span>
                       {radarPhase === "upload" ? (
                         <>
-                          Upload du fichier<span className="tpi-dots" aria-hidden="true" />
+                          Upload du fichier
+                          <span className="tpi-dots" aria-hidden="true" />
                         </>
                       ) : (
                         <>
-                          Extraction en cours<span className="tpi-dots" aria-hidden="true" />
+                          Extraction en cours
+                          <span className="tpi-dots" aria-hidden="true" />
                         </>
                       )}
                     </span>
@@ -1586,8 +1552,8 @@ export default function CoachStudentDetailPage() {
                       file.status === "ready"
                         ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
                         : file.status === "error"
-                        ? "border-rose-300/30 bg-rose-400/10 text-rose-100"
-                        : "border-amber-300/30 bg-amber-400/10 text-amber-100";
+                          ? "border-rose-300/30 bg-rose-400/10 text-rose-100"
+                          : "border-amber-300/30 bg-amber-400/10 text-amber-100";
                     return (
                       <div
                         key={file.id}
@@ -1604,20 +1570,26 @@ export default function CoachStudentDetailPage() {
                               {file.status === "ready"
                                 ? "Pret"
                                 : file.status === "error"
-                                ? "Erreur"
-                                : "Analyse"}
-                              {file.status === "processing" ? (
-                                <LoadingDots />
-                              ) : null}
+                                  ? "Erreur"
+                                  : "Analyse"}
+                              {file.status === "processing" ? <LoadingDots /> : null}
                             </span>
                           </div>
                           <p className="mt-1 text-xs text-[var(--muted)]">
-                            {formatDate(file.created_at, locale, timezone)} •{" "}
-                            {shotCount} coups
+                            {formatDate(file.created_at, locale, timezone)} • {shotCount}{" "}
+                            coups
                           </p>
                           {file.error ? (
-                            <p className="mt-1 text-xs text-rose-200">
-                              {file.error}
+                            <p
+                              className={`mt-1 text-xs ${
+                                file.status === "error"
+                                  ? "text-rose-200"
+                                  : "text-amber-200"
+                              }`}
+                            >
+                              {file.status === "error"
+                                ? file.error
+                                : `A verifier: ${file.error}`}
                             </p>
                           ) : null}
                         </div>
@@ -1656,9 +1628,7 @@ export default function CoachStudentDetailPage() {
                                 : "border-rose-300/30 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20"
                             }`}
                           >
-                            {radarDeletingId === file.id
-                              ? "Suppression..."
-                              : "Supprimer"}
+                            {radarDeletingId === file.id ? "Suppression..." : "Supprimer"}
                           </button>
                         </div>
                       </div>
@@ -1732,14 +1702,14 @@ export default function CoachStudentDetailPage() {
                     </button>
                   </div>
                   <div className="mt-4">
-                      <RadarCharts
-                        columns={radarPreview.columns ?? []}
-                        shots={radarPreview.shots ?? []}
-                        stats={radarPreview.stats}
-                        summary={radarPreview.summary}
-                        config={radarPreview.config}
-                        analytics={radarPreview.analytics}
-                      />
+                    <RadarCharts
+                      columns={radarPreview.columns ?? []}
+                      shots={radarPreview.shots ?? []}
+                      stats={radarPreview.stats}
+                      summary={radarPreview.summary}
+                      config={radarPreview.config}
+                      analytics={radarPreview.analytics}
+                    />
                   </div>
                 </div>
               </div>
@@ -1785,12 +1755,12 @@ export default function CoachStudentDetailPage() {
                       <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
                         Mode
                       </p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {[
-                      { id: "default", label: "Defaut" },
-                      { id: "custom", label: "Personnalise" },
-                      { id: "ai", label: "IA" },
-                    ].map((option) => (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {[
+                          { id: "default", label: "Defaut" },
+                          { id: "custom", label: "Personnalise" },
+                          { id: "ai", label: "IA" },
+                        ].map((option) => (
                           <button
                             key={option.id}
                             type="button"
@@ -1799,19 +1769,17 @@ export default function CoachStudentDetailPage() {
                                 option.id === "default"
                                   ? { ...defaultRadarConfig, mode: "default" }
                                   : option.id === "custom"
-                                  ? { ...prev, mode: "custom" }
-                                  : {
-                                      ...prev,
-                                      mode: "ai",
-                                      options: {
-                                        ...prev.options,
-                                        aiPreset:
-                                          prev.options?.aiPreset ?? "standard",
-                                        aiSyntax:
-                                          prev.options?.aiSyntax ??
-                                          "exp-tech-solution",
-                                      },
-                                    }
+                                    ? { ...prev, mode: "custom" }
+                                    : {
+                                        ...prev,
+                                        mode: "ai",
+                                        options: {
+                                          ...prev.options,
+                                          aiPreset: prev.options?.aiPreset ?? "standard",
+                                          aiSyntax:
+                                            prev.options?.aiSyntax ?? "exp-tech-solution",
+                                        },
+                                      }
                               )
                             }
                             className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
@@ -1821,142 +1789,143 @@ export default function CoachStudentDetailPage() {
                             }`}
                           >
                             {option.label}
-                      </button>
-                    ))}
-                  </div>
-                  <p className="mt-2 text-[0.65rem] text-[var(--muted)]">
-                    En mode defaut, la selection des graphes est bloquee.
-                  </p>
-                  {radarConfigDraft.mode === "ai" ? (
-                    <div className="mt-3 rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-3 text-[0.7rem] text-emerald-100">
-                      <p className="text-[0.55rem] uppercase tracking-wide text-emerald-200/80">
-                        Reglages IA datas
-                      </p>
-                      <div className="mt-3 grid gap-3 md:grid-cols-2">
-                        <div>
-                          <p className="text-[0.6rem] uppercase tracking-wide text-emerald-200/80">
-                            Nombre de graph
-                          </p>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {[
-                              { id: "ultra", label: "Ultra focus" },
-                              { id: "synthetic", label: "Synthetique" },
-                              { id: "standard", label: "Standard" },
-                              { id: "pousse", label: "Pousse" },
-                              { id: "complet", label: "Complet" },
-                            ].map((option) => (
-                              <button
-                                key={option.id}
-                                type="button"
-                                onClick={() =>
-                                  setRadarConfigDraft((prev) => ({
-                                    ...prev,
-                                    options: {
-                                      ...prev.options,
-                                      aiPreset: option.id as
-                                        | "ultra"
-                                        | "synthetic"
-                                        | "standard"
-                                        | "pousse"
-                                        | "complet",
-                                    },
-                                  }))
-                                }
-                                className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
-                                  (radarConfigDraft.options?.aiPreset ??
-                                    "standard") === option.id
-                                    ? "border-emerald-300/40 bg-emerald-400/20 text-emerald-50"
-                                    : "border-emerald-200/20 text-emerald-100/70"
-                                }`}
-                              >
-                                {option.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                        <div>
-                          <p className="text-[0.6rem] uppercase tracking-wide text-emerald-200/80">
-                            Synthaxe
-                          </p>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {[
-                              { id: "exp-tech", label: "Explicative + technique" },
-                              {
-                                id: "exp-comp",
-                                label: "Explicative + comparative",
-                              },
-                              {
-                                id: "exp-tech-solution",
-                                label: "Explicative + tech + solution",
-                              },
-                              {
-                                id: "exp-solution",
-                                label: "Explicative + solution",
-                              },
-                              { id: "global", label: "Global" },
-                            ].map((option) => (
-                              <button
-                                key={option.id}
-                                type="button"
-                                onClick={() =>
-                                  setRadarConfigDraft((prev) => ({
-                                    ...prev,
-                                    options: {
-                                      ...prev.options,
-                                      aiSyntax: option.id as
-                                        | "exp-tech"
-                                        | "exp-comp"
-                                        | "exp-tech-solution"
-                                        | "exp-solution"
-                                        | "global",
-                                    },
-                                  }))
-                                }
-                                className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
-                                  (radarConfigDraft.options?.aiSyntax ??
-                                    "exp-tech-solution") === option.id
-                                    ? "border-emerald-300/40 bg-emerald-400/20 text-emerald-50"
-                                    : "border-emerald-200/20 text-emerald-100/70"
-                                }`}
-                              >
-                                {option.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
+                          </button>
+                        ))}
                       </div>
-                      <p className="mt-3 text-[0.65rem] text-emerald-100/70">
-                        Utilise ces reglages pour l auto-selection IA.
+                      <p className="mt-2 text-[0.65rem] text-[var(--muted)]">
+                        En mode defaut, la selection des graphes est bloquee.
                       </p>
+                      {radarConfigDraft.mode === "ai" ? (
+                        <div className="mt-3 rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-3 text-[0.7rem] text-emerald-100">
+                          <p className="text-[0.55rem] uppercase tracking-wide text-emerald-200/80">
+                            Reglages IA datas
+                          </p>
+                          <div className="mt-3 grid gap-3 md:grid-cols-2">
+                            <div>
+                              <p className="text-[0.6rem] uppercase tracking-wide text-emerald-200/80">
+                                Nombre de graph
+                              </p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {[
+                                  { id: "ultra", label: "Ultra focus" },
+                                  { id: "synthetic", label: "Synthetique" },
+                                  { id: "standard", label: "Standard" },
+                                  { id: "pousse", label: "Pousse" },
+                                  { id: "complet", label: "Complet" },
+                                ].map((option) => (
+                                  <button
+                                    key={option.id}
+                                    type="button"
+                                    onClick={() =>
+                                      setRadarConfigDraft((prev) => ({
+                                        ...prev,
+                                        options: {
+                                          ...prev.options,
+                                          aiPreset: option.id as
+                                            | "ultra"
+                                            | "synthetic"
+                                            | "standard"
+                                            | "pousse"
+                                            | "complet",
+                                        },
+                                      }))
+                                    }
+                                    className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
+                                      (radarConfigDraft.options?.aiPreset ??
+                                        "standard") === option.id
+                                        ? "border-emerald-300/40 bg-emerald-400/20 text-emerald-50"
+                                        : "border-emerald-200/20 text-emerald-100/70"
+                                    }`}
+                                  >
+                                    {option.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            <div>
+                              <p className="text-[0.6rem] uppercase tracking-wide text-emerald-200/80">
+                                Synthaxe
+                              </p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {[
+                                  { id: "exp-tech", label: "Explicative + technique" },
+                                  {
+                                    id: "exp-comp",
+                                    label: "Explicative + comparative",
+                                  },
+                                  {
+                                    id: "exp-tech-solution",
+                                    label: "Explicative + tech + solution",
+                                  },
+                                  {
+                                    id: "exp-solution",
+                                    label: "Explicative + solution",
+                                  },
+                                  { id: "global", label: "Global" },
+                                ].map((option) => (
+                                  <button
+                                    key={option.id}
+                                    type="button"
+                                    onClick={() =>
+                                      setRadarConfigDraft((prev) => ({
+                                        ...prev,
+                                        options: {
+                                          ...prev.options,
+                                          aiSyntax: option.id as
+                                            | "exp-tech"
+                                            | "exp-comp"
+                                            | "exp-tech-solution"
+                                            | "exp-solution"
+                                            | "global",
+                                        },
+                                      }))
+                                    }
+                                    className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
+                                      (radarConfigDraft.options?.aiSyntax ??
+                                        "exp-tech-solution") === option.id
+                                        ? "border-emerald-300/40 bg-emerald-400/20 text-emerald-50"
+                                        : "border-emerald-200/20 text-emerald-100/70"
+                                    }`}
+                                  >
+                                    {option.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                          <p className="mt-3 text-[0.65rem] text-emerald-100/70">
+                            Utilise ces reglages pour l auto-selection IA.
+                          </p>
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
-                </div>
 
                     <div className="grid gap-3 sm:grid-cols-2">
-                  {[
-                    { key: "showSummary", label: "Resume IA" },
-                    { key: "showTable", label: "Tableau complet" },
-                    { key: "showSegments", label: "Comparatifs & segments" },
-                  ].map((item) => (
-                    <button
-                      key={item.key}
-                      type="button"
-                      disabled={radarConfigDraft.mode !== "custom"}
-                      onClick={() =>
-                        setRadarConfigDraft((prev) => ({
-                          ...prev,
-                          [item.key]: !prev[
-                            item.key as "showSummary" | "showTable" | "showSegments"
-                          ],
-                        }))
-                      }
-                        className={`rounded-2xl border px-3 py-3 text-left text-sm transition ${
-                          radarConfigDraft[
-                            item.key as "showSummary" | "showTable" | "showSegments"
-                          ]
-                            ? "border-violet-300/40 bg-violet-400/10 text-violet-100"
-                            : "border-white/10 bg-white/5 text-[var(--muted)]"
-                        } ${
+                      {[
+                        { key: "showSummary", label: "Resume IA" },
+                        { key: "showTable", label: "Tableau complet" },
+                        { key: "showSegments", label: "Comparatifs & segments" },
+                      ].map((item) => (
+                        <button
+                          key={item.key}
+                          type="button"
+                          disabled={radarConfigDraft.mode !== "custom"}
+                          onClick={() =>
+                            setRadarConfigDraft((prev) => ({
+                              ...prev,
+                              [item.key]:
+                                !prev[
+                                  item.key as "showSummary" | "showTable" | "showSegments"
+                                ],
+                            }))
+                          }
+                          className={`rounded-2xl border px-3 py-3 text-left text-sm transition ${
+                            radarConfigDraft[
+                              item.key as "showSummary" | "showTable" | "showSegments"
+                            ]
+                              ? "border-violet-300/40 bg-violet-400/10 text-violet-100"
+                              : "border-white/10 bg-white/5 text-[var(--muted)]"
+                          } ${
                             radarConfigDraft.mode !== "custom"
                               ? "cursor-not-allowed opacity-60"
                               : "hover:text-[var(--text)]"
@@ -1967,55 +1936,50 @@ export default function CoachStudentDetailPage() {
                       ))}
                     </div>
 
-
                     <div>
                       <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
                         Graphes
                       </p>
-                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                          {[
-                            {
-                              key: "dispersion",
-                              label: "Dispersion",
-                              description:
-                                "Dispersion laterale vs distance pour evaluer la precision.",
-                            },
-                            {
-                              key: "carryTotal",
-                              label: "Carry vs total",
-                              description:
-                                "Compare carry et distance totale par coup.",
-                            },
-                            {
-                              key: "speeds",
-                              label: "Vitesse club/balle",
-                              description:
-                                "Evolution des vitesses pour estimer l efficacite.",
-                            },
-                            {
-                              key: "spinCarry",
-                              label: "Spin vs carry",
-                              description:
-                                "Relation entre spin et distance (carry).",
-                            },
-                            {
-                              key: "smash",
-                              label: "Smash factor",
-                              description:
-                                "Efficacite d impact au fil des coups.",
-                            },
-                            {
-                              key: "faceImpact",
-                              label: "Impact face",
-                              description:
-                                "Carte des impacts sur la face du club.",
-                            },
-                          ].map((item) => (
-                            <button
-                              key={item.key}
-                              type="button"
-                              disabled={radarConfigDraft.mode !== "custom"}
-                              onClick={() =>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                        {[
+                          {
+                            key: "dispersion",
+                            label: "Dispersion",
+                            description:
+                              "Dispersion laterale vs distance pour evaluer la precision.",
+                          },
+                          {
+                            key: "carryTotal",
+                            label: "Carry vs total",
+                            description: "Compare carry et distance totale par coup.",
+                          },
+                          {
+                            key: "speeds",
+                            label: "Vitesse club/balle",
+                            description:
+                              "Evolution des vitesses pour estimer l efficacite.",
+                          },
+                          {
+                            key: "spinCarry",
+                            label: "Spin vs carry",
+                            description: "Relation entre spin et distance (carry).",
+                          },
+                          {
+                            key: "smash",
+                            label: "Smash factor",
+                            description: "Efficacite d impact au fil des coups.",
+                          },
+                          {
+                            key: "faceImpact",
+                            label: "Impact face",
+                            description: "Carte des impacts sur la face du club.",
+                          },
+                        ].map((item) => (
+                          <button
+                            key={item.key}
+                            type="button"
+                            disabled={radarConfigDraft.mode !== "custom"}
+                            onClick={() =>
                               setRadarConfigDraft((prev) => ({
                                 ...prev,
                                 charts: {
@@ -2025,16 +1989,16 @@ export default function CoachStudentDetailPage() {
                                 },
                               }))
                             }
-                          title={item.description}
-                          className={`rounded-2xl border px-3 py-3 text-left text-sm transition ${
-                            radarConfigDraft.charts[
-                              item.key as keyof RadarConfig["charts"]
-                            ]
-                              ? "border-violet-300/40 bg-violet-400/10 text-violet-100"
-                              : "border-white/10 bg-white/5 text-[var(--muted)]"
-                          } ${
-                            radarConfigDraft.mode !== "custom"
-                              ? "cursor-not-allowed opacity-60"
+                            title={item.description}
+                            className={`rounded-2xl border px-3 py-3 text-left text-sm transition ${
+                              radarConfigDraft.charts[
+                                item.key as keyof RadarConfig["charts"]
+                              ]
+                                ? "border-violet-300/40 bg-violet-400/10 text-violet-100"
+                                : "border-white/10 bg-white/5 text-[var(--muted)]"
+                            } ${
+                              radarConfigDraft.mode !== "custom"
+                                ? "cursor-not-allowed opacity-60"
                                 : "hover:text-[var(--text)]"
                             }`}
                           >
@@ -2047,125 +2011,124 @@ export default function CoachStudentDetailPage() {
                                 ?
                               </span>
                             </div>
+                          </button>
+                        ))}
+                      </div>
+                      <details className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-3">
+                        <summary className="cursor-pointer text-xs uppercase tracking-wide text-[var(--muted)]">
+                          Graphes avances
+                        </summary>
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-[0.65rem] text-[var(--muted)]">
+                            Astuce: passe en mode personnalise pour activer/desactiver.
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={radarConfigDraft.mode !== "custom"}
+                              onClick={() =>
+                                setRadarConfigDraft((prev) => ({
+                                  ...prev,
+                                  charts: {
+                                    ...prev.charts,
+                                    ...Object.fromEntries(
+                                      RADAR_CHART_DEFINITIONS.map((definition) => [
+                                        definition.key,
+                                        true,
+                                      ])
+                                    ),
+                                  },
+                                }))
+                              }
+                              className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
+                                radarConfigDraft.mode !== "custom"
+                                  ? "border-white/10 text-[var(--muted)] opacity-60"
+                                  : "border-white/20 text-[var(--text)] hover:text-white"
+                              }`}
+                            >
+                              Tout activer
                             </button>
-                          ))}
+                            <button
+                              type="button"
+                              disabled={radarConfigDraft.mode !== "custom"}
+                              onClick={() =>
+                                setRadarConfigDraft((prev) => ({
+                                  ...prev,
+                                  charts: {
+                                    ...prev.charts,
+                                    ...Object.fromEntries(
+                                      RADAR_CHART_DEFINITIONS.map((definition) => [
+                                        definition.key,
+                                        false,
+                                      ])
+                                    ),
+                                  },
+                                }))
+                              }
+                              className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
+                                radarConfigDraft.mode !== "custom"
+                                  ? "border-white/10 text-[var(--muted)] opacity-60"
+                                  : "border-white/20 text-[var(--text)] hover:text-white"
+                              }`}
+                            >
+                              Tout desactiver
+                            </button>
+                          </div>
                         </div>
-                        <details className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-3">
-                          <summary className="cursor-pointer text-xs uppercase tracking-wide text-[var(--muted)]">
-                            Graphes avances
-                          </summary>
-                          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-[0.65rem] text-[var(--muted)]">
-                              Astuce: passe en mode personnalise pour activer/desactiver.
-                            </p>
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                disabled={radarConfigDraft.mode !== "custom"}
-                                onClick={() =>
-                                  setRadarConfigDraft((prev) => ({
-                                    ...prev,
-                                    charts: {
-                                      ...prev.charts,
-                                      ...Object.fromEntries(
-                                        RADAR_CHART_DEFINITIONS.map((definition) => [
-                                          definition.key,
-                                          true,
-                                        ])
-                                      ),
-                                    },
-                                  }))
-                                }
-                                className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
-                                  radarConfigDraft.mode !== "custom"
-                                    ? "border-white/10 text-[var(--muted)] opacity-60"
-                                    : "border-white/20 text-[var(--text)] hover:text-white"
-                                }`}
-                              >
-                                Tout activer
-                              </button>
-                              <button
-                                type="button"
-                                disabled={radarConfigDraft.mode !== "custom"}
-                                onClick={() =>
-                                  setRadarConfigDraft((prev) => ({
-                                    ...prev,
-                                    charts: {
-                                      ...prev.charts,
-                                      ...Object.fromEntries(
-                                        RADAR_CHART_DEFINITIONS.map((definition) => [
-                                          definition.key,
-                                          false,
-                                        ])
-                                      ),
-                                    },
-                                  }))
-                                }
-                                className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
-                                  radarConfigDraft.mode !== "custom"
-                                    ? "border-white/10 text-[var(--muted)] opacity-60"
-                                    : "border-white/20 text-[var(--text)] hover:text-white"
-                                }`}
-                              >
-                                Tout desactiver
-                              </button>
-                            </div>
-                          </div>
-                          <div className="mt-3 space-y-4">
-                            {RADAR_CHART_GROUPS.map((group) => {
-                              const charts = RADAR_CHART_DEFINITIONS.filter(
-                                (definition) => definition.group === group.key
-                              );
-                              if (!charts.length) return null;
-                              return (
-                                <div key={group.key} className="space-y-2">
-                                  <p className="text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                                    {group.label}
-                                  </p>
-                                  <div className="grid gap-2 sm:grid-cols-2">
-                                    {charts.map((definition) => (
-                                      <button
-                                        key={definition.key}
-                                        type="button"
-                                        disabled={radarConfigDraft.mode !== "custom"}
-                                        onClick={() =>
-                                          setRadarConfigDraft((prev) => ({
-                                            ...prev,
-                                            charts: {
-                                              ...prev.charts,
-                                              [definition.key]: !prev.charts[
-                                                definition.key
-                                              ],
-                                            },
-                                          }))
-                                        }
-                                        className={`rounded-2xl border px-3 py-3 text-left text-[0.7rem] transition ${
-                                          radarConfigDraft.charts[definition.key]
-                                            ? "border-violet-300/40 bg-violet-400/10 text-violet-100"
-                                            : "border-white/10 bg-white/5 text-[var(--muted)]"
-                                        } ${
-                                          radarConfigDraft.mode !== "custom"
-                                            ? "cursor-not-allowed opacity-60"
-                                            : "hover:text-[var(--text)]"
-                                        }`}
-                                      >
-                                        <div className="flex items-center justify-between gap-2">
-                                          <span>{definition.title}</span>
-                                          <span
-                                            className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/20 bg-white/5 text-[0.55rem] font-semibold text-[var(--text)]"
-                                            title={definition.description}
-                                          >
-                                            ?
-                                          </span>
-                                        </div>
-                                      </button>
-                                    ))}
-                                  </div>
+                        <div className="mt-3 space-y-4">
+                          {RADAR_CHART_GROUPS.map((group) => {
+                            const charts = RADAR_CHART_DEFINITIONS.filter(
+                              (definition) => definition.group === group.key
+                            );
+                            if (!charts.length) return null;
+                            return (
+                              <div key={group.key} className="space-y-2">
+                                <p className="text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                                  {group.label}
+                                </p>
+                                <div className="grid gap-2 sm:grid-cols-2">
+                                  {charts.map((definition) => (
+                                    <button
+                                      key={definition.key}
+                                      type="button"
+                                      disabled={radarConfigDraft.mode !== "custom"}
+                                      onClick={() =>
+                                        setRadarConfigDraft((prev) => ({
+                                          ...prev,
+                                          charts: {
+                                            ...prev.charts,
+                                            [definition.key]:
+                                              !prev.charts[definition.key],
+                                          },
+                                        }))
+                                      }
+                                      className={`rounded-2xl border px-3 py-3 text-left text-[0.7rem] transition ${
+                                        radarConfigDraft.charts[definition.key]
+                                          ? "border-violet-300/40 bg-violet-400/10 text-violet-100"
+                                          : "border-white/10 bg-white/5 text-[var(--muted)]"
+                                      } ${
+                                        radarConfigDraft.mode !== "custom"
+                                          ? "cursor-not-allowed opacity-60"
+                                          : "hover:text-[var(--text)]"
+                                      }`}
+                                    >
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span>{definition.title}</span>
+                                        <span
+                                          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/20 bg-white/5 text-[0.55rem] font-semibold text-[var(--text)]"
+                                          title={definition.description}
+                                        >
+                                          ?
+                                        </span>
+                                      </div>
+                                    </button>
+                                  ))}
                                 </div>
-                              );
-                            })}
-                          </div>
-                        </details>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </details>
                     </div>
                   </div>
                   {radarConfigError ? (
@@ -2284,10 +2247,7 @@ export default function CoachStudentDetailPage() {
                       onChange={(event) =>
                         setEditForm((prev) => ({
                           ...prev,
-                          playing_hand: event.target.value as
-                            | ""
-                            | "left"
-                            | "right",
+                          playing_hand: event.target.value as "" | "left" | "right",
                         }))
                       }
                       className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"

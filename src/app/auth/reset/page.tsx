@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabase/client";
 
 export const dynamic = "force-dynamic";
 
@@ -11,9 +11,7 @@ function ResetPasswordContent() {
   const searchParams = useSearchParams();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [status, setStatus] = useState<"idle" | "saving" | "error" | "success">(
-    "idle"
-  );
+  const [status, setStatus] = useState<"idle" | "saving" | "error" | "success">("idle");
   const [message, setMessage] = useState("");
   const [ready, setReady] = useState(false);
 
@@ -84,9 +82,7 @@ function ResetPasswordContent() {
           <p className="text-sm text-[var(--muted)]">
             Preparation du lien de reinitialisation...
           </p>
-          {message ? (
-            <p className="mt-3 text-sm text-red-400">{message}</p>
-          ) : null}
+          {message ? <p className="mt-3 text-sm text-red-400">{message}</p> : null}
         </div>
       </main>
     );
@@ -159,9 +155,7 @@ export default function ResetPasswordPage() {
       fallback={
         <main className="flex min-h-screen items-center justify-center px-6 text-[var(--text)]">
           <div className="panel rounded-3xl px-6 py-8">
-            <p className="text-sm text-[var(--muted)]">
-              Chargement du formulaire...
-            </p>
+            <p className="text-sm text-[var(--muted)]">Chargement du formulaire...</p>
           </div>
         </main>
       }

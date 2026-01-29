@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { isAdminEmail } from "@/lib/admin";
+import {
+  createSupabaseAdminClient,
+  createSupabaseServerClientFromRequest,
+} from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -26,11 +29,7 @@ const toNumber = (value: number | string | null) => {
   return Number.isFinite(numeric) ? numeric : 0;
 };
 
-const computeCostUsd = (
-  inputTokens: number,
-  outputTokens: number,
-  model: string
-) => {
+const computeCostUsd = (inputTokens: number, outputTokens: number, model: string) => {
   const pricing = getPricing(model);
   return (
     (inputTokens / 1_000_000) * pricing.input +
@@ -59,23 +58,7 @@ const toFeatureCategory = (action: string) => {
 };
 
 const requireAdmin = async (request: Request) => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
-    return {
-      error: NextResponse.json(
-        { error: "Missing Supabase env vars." },
-        { status: 500 }
-      ),
-    };
-  }
-
-  const authHeader = request.headers.get("authorization") ?? "";
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    global: { headers: { Authorization: authHeader } },
-  });
+  const supabase = createSupabaseServerClientFromRequest(request);
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
   const email = userData.user?.email ?? "";
@@ -86,7 +69,7 @@ const requireAdmin = async (request: Request) => {
   }
 
   return {
-    admin: createClient(supabaseUrl, serviceRoleKey),
+    admin: createSupabaseAdminClient(),
   };
 };
 
@@ -104,25 +87,18 @@ export async function GET(request: Request) {
     90,
     Math.max(1, Number(url.searchParams.get("days") ?? 30))
   );
-  const since = new Date(
-    Date.now() - windowDays * 24 * 60 * 60 * 1000
-  ).toISOString();
+  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
 
   const { data: usage, error: usageError } = await auth.admin
     .from("ai_usage")
-    .select(
-      "action, model, total_tokens, input_tokens, output_tokens, created_at"
-    )
+    .select("action, model, total_tokens, input_tokens, output_tokens, created_at")
     .eq("user_id", userId)
     .gte("created_at", since)
     .order("created_at", { ascending: false })
     .limit(2000);
 
   if (usageError) {
-    return NextResponse.json(
-      { error: usageError.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: usageError.message }, { status: 500 });
   }
 
   const { data: profile } = await auth.admin
@@ -161,12 +137,8 @@ export async function GET(request: Request) {
     const inputTokensRaw = toNumber(row.input_tokens);
     const outputTokensRaw = toNumber(row.output_tokens);
     const hasSplit = inputTokensRaw > 0 || outputTokensRaw > 0;
-    const inputTokens = hasSplit
-      ? inputTokensRaw
-      : Math.floor(tokens / 2);
-    const outputTokens = hasSplit
-      ? outputTokensRaw
-      : Math.max(0, tokens - inputTokens);
+    const inputTokens = hasSplit ? inputTokensRaw : Math.floor(tokens / 2);
+    const outputTokens = hasSplit ? outputTokensRaw : Math.max(0, tokens - inputTokens);
     totalTokens += tokens;
     totalRequests += 1;
 
@@ -174,60 +146,50 @@ export async function GET(request: Request) {
     const modelKey = row.model ?? "gpt-5.2";
     const rowCostUsd = computeCostUsd(inputTokens, outputTokens, modelKey);
     totalCostUsd += rowCostUsd;
-    const actionEntry =
-      actionMap.get(actionKey) ?? {
-        action: actionKey,
-        requests: 0,
-        tokens: 0,
-        costUsd: 0,
-      };
+    const actionEntry = actionMap.get(actionKey) ?? {
+      action: actionKey,
+      requests: 0,
+      tokens: 0,
+      costUsd: 0,
+    };
     actionEntry.requests += 1;
     actionEntry.tokens += tokens;
     actionEntry.costUsd += rowCostUsd;
     actionMap.set(actionKey, actionEntry);
 
-    const modelEntry =
-      modelMap.get(modelKey) ?? {
-        model: modelKey,
-        requests: 0,
-        tokens: 0,
-        costUsd: 0,
-      };
+    const modelEntry = modelMap.get(modelKey) ?? {
+      model: modelKey,
+      requests: 0,
+      tokens: 0,
+      costUsd: 0,
+    };
     modelEntry.requests += 1;
     modelEntry.tokens += tokens;
     modelEntry.costUsd += rowCostUsd;
     modelMap.set(modelKey, modelEntry);
 
     const featureKey = toFeatureCategory(actionKey);
-    const featureEntry =
-      featureMap.get(featureKey) ?? {
-        feature: featureKey,
-        requests: 0,
-        tokens: 0,
-        costUsd: 0,
-      };
+    const featureEntry = featureMap.get(featureKey) ?? {
+      feature: featureKey,
+      requests: 0,
+      tokens: 0,
+      costUsd: 0,
+    };
     featureEntry.requests += 1;
     featureEntry.tokens += tokens;
     featureEntry.costUsd += rowCostUsd;
     featureMap.set(featureKey, featureEntry);
 
     const dateKey = row.created_at.slice(0, 10);
-    const dailyEntry =
-      dailyMap.get(dateKey) ?? { date: dateKey, requests: 0, tokens: 0 };
+    const dailyEntry = dailyMap.get(dateKey) ?? { date: dateKey, requests: 0, tokens: 0 };
     dailyEntry.requests += 1;
     dailyEntry.tokens += tokens;
     dailyMap.set(dateKey, dailyEntry);
   });
 
-  const actions = Array.from(actionMap.values()).sort(
-    (a, b) => b.tokens - a.tokens
-  );
-  const models = Array.from(modelMap.values()).sort(
-    (a, b) => b.tokens - a.tokens
-  );
-  const features = Array.from(featureMap.values()).sort(
-    (a, b) => b.tokens - a.tokens
-  );
+  const actions = Array.from(actionMap.values()).sort((a, b) => b.tokens - a.tokens);
+  const models = Array.from(modelMap.values()).sort((a, b) => b.tokens - a.tokens);
+  const features = Array.from(featureMap.values()).sort((a, b) => b.tokens - a.tokens);
   const daily = Array.from(dailyMap.values()).sort((a, b) =>
     a.date.localeCompare(b.date)
   );

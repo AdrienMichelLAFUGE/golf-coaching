@@ -8,14 +8,39 @@
     { "key": "speed_ball", "group": "Speed", "label": "Ball", "unit": "mph" },
     { "key": "spin_rpm", "group": "Spin", "label": "RPM", "unit": "rpm" },
     { "key": "smash_factor", "group": "Smash", "label": "Factor", "unit": null },
-    { "key": "ball_angle_vertical", "group": "Ball Angles", "label": "Vertical", "unit": "deg" },
-    { "key": "ball_angle_horizontal", "group": "Ball Angles", "label": "Horizontal", "unit": "deg" },
+    {
+      "key": "ball_angle_vertical",
+      "group": "Ball Angles",
+      "label": "Vertical",
+      "unit": "deg"
+    },
+    {
+      "key": "ball_angle_horizontal",
+      "group": "Ball Angles",
+      "label": "Horizontal",
+      "unit": "deg"
+    },
     { "key": "club_path", "group": "Club Angles", "label": "Club Path", "unit": "deg" },
     { "key": "club_face_to_path", "group": "Club Angles", "label": "FTP", "unit": "deg" },
     { "key": "club_aoa", "group": "Club Angles", "label": "AOA", "unit": "deg" },
-    { "key": "club_low_point", "group": "Club Angles", "label": "Low Point", "unit": "cm" },
-    { "key": "face_impact_lateral", "group": "Face Impact", "label": "Lateral", "unit": "in" },
-    { "key": "face_impact_vertical", "group": "Face Impact", "label": "Vertical", "unit": "in" },
+    {
+      "key": "club_low_point",
+      "group": "Club Angles",
+      "label": "Low Point",
+      "unit": "cm"
+    },
+    {
+      "key": "face_impact_lateral",
+      "group": "Face Impact",
+      "label": "Lateral",
+      "unit": "in"
+    },
+    {
+      "key": "face_impact_vertical",
+      "group": "Face Impact",
+      "label": "Vertical",
+      "unit": "in"
+    },
     { "key": "shot_type", "group": "Shot Type", "label": "Shot Type", "unit": null }
   ],
   "shots": [

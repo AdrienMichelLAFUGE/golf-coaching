@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabase/client";
 
 type PricingPlan = {
   id: string;
@@ -62,9 +62,7 @@ export default function PremiumOfferModal({
   const [plans, setPlans] = useState<PricingPlan[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [billingInterval, setBillingInterval] = useState<"month" | "year">(
-    "month"
-  );
+  const [billingInterval, setBillingInterval] = useState<"month" | "year">("month");
 
   useEffect(() => {
     if (!open) return;
@@ -124,9 +122,7 @@ export default function PremiumOfferModal({
       .filter((plan) => plan.interval === "month")
       .map((plan) => [toBaseSlug(plan.slug), plan])
   );
-  const visiblePlans = plans.filter(
-    (plan) => plan.interval === billingInterval
-  );
+  const visiblePlans = plans.filter((plan) => plan.interval === billingInterval);
   const groupedPlans = visiblePlans.reduce(
     (acc, plan) => {
       const key = getPlanCategory(plan);
@@ -153,8 +149,8 @@ export default function PremiumOfferModal({
               Debloque l assistant IA
             </h3>
             <p className="mt-2 text-sm text-[var(--muted)]">
-              Generation de layouts, resume automatique, propagation
-              multi-sections et outils IA avances.
+              Generation de layouts, resume automatique, propagation multi-sections et
+              outils IA avances.
             </p>
           </div>
           <button
@@ -182,9 +178,7 @@ export default function PremiumOfferModal({
             <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
               {notice.title}
             </p>
-            <p className="mt-2 text-sm text-[var(--text)]">
-              {notice.description}
-            </p>
+            <p className="mt-2 text-sm text-[var(--text)]">{notice.description}</p>
             {notice.tags && notice.tags.length > 0 ? (
               <div className="mt-3 flex flex-wrap gap-2">
                 {notice.tags.map((tag) => (
@@ -244,7 +238,8 @@ export default function PremiumOfferModal({
             </button>
           </div>
           <p className="text-xs text-[var(--muted)]">
-            Choisis la facturation {billingInterval === "year" ? "annuelle" : "mensuelle"}.
+            Choisis la facturation {billingInterval === "year" ? "annuelle" : "mensuelle"}
+            .
           </p>
         </div>
         <div className="space-y-6 px-6 pb-6">
@@ -261,12 +256,14 @@ export default function PremiumOfferModal({
               Aucune offre disponible.
             </div>
           ) : (
-            ([
-              { key: "base", label: "Base" },
-              { key: "addon", label: "Add-ons" },
-              { key: "pack", label: "Packs" },
-              { key: "other", label: "Autres" },
-            ] as const).map((section) => {
+            (
+              [
+                { key: "base", label: "Base" },
+                { key: "addon", label: "Add-ons" },
+                { key: "pack", label: "Packs" },
+                { key: "other", label: "Autres" },
+              ] as const
+            ).map((section) => {
               const sectionPlans = groupedPlans[section.key];
               if (sectionPlans.length === 0) return null;
               return (
@@ -279,15 +276,11 @@ export default function PremiumOfferModal({
                       const highlight = plan.is_highlighted;
                       const baseSlug = toBaseSlug(plan.slug);
                       const monthlyPlan =
-                        billingInterval === "year"
-                          ? monthlyBySlug.get(baseSlug)
-                          : null;
+                        billingInterval === "year" ? monthlyBySlug.get(baseSlug) : null;
                       const annualSavings =
                         monthlyPlan && monthlyPlan.price_cents > 0
                           ? Math.round(
-                              (1 -
-                                plan.price_cents /
-                                  (monthlyPlan.price_cents * 12)) *
+                              (1 - plan.price_cents / (monthlyPlan.price_cents * 12)) *
                                 100
                             )
                           : null;
@@ -304,9 +297,7 @@ export default function PremiumOfferModal({
                             <div>
                               <p
                                 className={`text-xs uppercase tracking-[0.2em] ${
-                                  highlight
-                                    ? "text-emerald-100"
-                                    : "text-[var(--muted)]"
+                                  highlight ? "text-emerald-100" : "text-[var(--muted)]"
                                 }`}
                               >
                                 {plan.label}
@@ -344,18 +335,14 @@ export default function PremiumOfferModal({
                           </div>
                           <ul
                             className={`mt-4 flex-1 space-y-2 text-xs ${
-                              highlight
-                                ? "text-emerald-100/80"
-                                : "text-[var(--muted)]"
+                              highlight ? "text-emerald-100/80" : "text-[var(--muted)]"
                             }`}
                           >
                             {(plan.features ?? []).length === 0 ? (
                               <li>Aucune feature specifiee.</li>
                             ) : (
                               (plan.features ?? []).map((feature, idx) => (
-                                <li key={`${plan.id}-feature-${idx}`}>
-                                  {feature}
-                                </li>
+                                <li key={`${plan.id}-feature-${idx}`}>{feature}</li>
                               ))
                             )}
                           </ul>
@@ -379,8 +366,7 @@ export default function PremiumOfferModal({
           )}
         </div>
         <div className="border-t border-white/10 px-6 py-4 text-xs text-[var(--muted)]">
-          Besoin d un plan equipe ou club ? Contacte-nous pour une offre sur
-          mesure.
+          Besoin d un plan equipe ou club ? Contacte-nous pour une offre sur mesure.
         </div>
       </div>
     </div>

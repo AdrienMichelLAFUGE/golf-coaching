@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabase/client";
 
 type Status = "idle" | "sending" | "sent" | "error";
 type AccountType = "coach" | "student";
@@ -64,10 +64,7 @@ export default function Home() {
     return { ok: true };
   };
 
-  const signInWithPassword = async (
-    trimmedEmail: string,
-    trimmedPassword: string
-  ) => {
+  const signInWithPassword = async (trimmedEmail: string, trimmedPassword: string) => {
     const { error } = await supabase.auth.signInWithPassword({
       email: trimmedEmail,
       password: trimmedPassword,
@@ -90,10 +87,7 @@ export default function Home() {
     router.replace("/app");
   };
 
-  const signUpCoach = async (
-    trimmedEmail: string,
-    trimmedPassword: string
-  ) => {
+  const signUpCoach = async (trimmedEmail: string, trimmedPassword: string) => {
     const { data, error } = await supabase.auth.signUp({
       email: trimmedEmail,
       password: trimmedPassword,
@@ -110,9 +104,7 @@ export default function Home() {
 
     if (!data.session) {
       setStatus("sent");
-      setMessage(
-        "Compte cree. Verifie ta boite mail pour confirmer, puis connecte-toi."
-      );
+      setMessage("Compte cree. Verifie ta boite mail pour confirmer, puis connecte-toi.");
       return;
     }
 
@@ -170,12 +162,9 @@ export default function Home() {
     setStatus("sending");
     setMessage("");
 
-    const { error } = await supabase.auth.resetPasswordForEmail(
-      trimmedEmail,
-      {
-        redirectTo: `${window.location.origin}/auth/reset`,
-      }
-    );
+    const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
+      redirectTo: `${window.location.origin}/auth/reset`,
+    });
 
     if (error) {
       setStatus("error");
@@ -257,7 +246,10 @@ export default function Home() {
             </div>
           ) : null}
           <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
-            <label className="block text-xs uppercase tracking-wide text-[var(--muted)]" htmlFor="email">
+            <label
+              className="block text-xs uppercase tracking-wide text-[var(--muted)]"
+              htmlFor="email"
+            >
               Email
             </label>
             <input
@@ -294,10 +286,10 @@ export default function Home() {
               {status === "sending"
                 ? "Traitement..."
                 : accountType === "coach" && coachFlow === "signup"
-                ? "Creer un compte coach"
-                : accountType === "student"
-                ? "Connexion eleve"
-                : "Se connecter"}
+                  ? "Creer un compte coach"
+                  : accountType === "student"
+                    ? "Connexion eleve"
+                    : "Se connecter"}
             </button>
           </form>
           <button

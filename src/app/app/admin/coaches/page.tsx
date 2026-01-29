@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabase/client";
 import AdminGuard from "../../_components/admin-guard";
 import PageBack from "../../_components/page-back";
 
@@ -74,8 +74,7 @@ export default function AdminCoachesPage() {
     return organizations.filter((org) => {
       const owner = org.owner?.full_name ?? "";
       return (
-        org.name.toLowerCase().includes(search) ||
-        owner.toLowerCase().includes(search)
+        org.name.toLowerCase().includes(search) || owner.toLowerCase().includes(search)
       );
     });
   }, [organizations, query]);
@@ -164,12 +163,8 @@ export default function AdminCoachesPage() {
               <span>{filtered.length} organisations</span>
             </div>
           </div>
-          {error ? (
-            <p className="mt-3 text-sm text-red-400">{error}</p>
-          ) : null}
-          {message ? (
-            <p className="mt-3 text-sm text-emerald-200">{message}</p>
-          ) : null}
+          {error ? <p className="mt-3 text-sm text-red-400">{error}</p> : null}
+          {message ? <p className="mt-3 text-sm text-emerald-200">{message}</p> : null}
         </section>
 
         <section className="panel rounded-2xl p-6">
@@ -195,12 +190,8 @@ export default function AdminCoachesPage() {
                   className="grid gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-[var(--text)] md:grid-cols-[1.3fr_1fr_1fr_1fr]"
                 >
                   <div>
-                    <p className="font-medium">
-                      {org.name || "Organisation"}
-                    </p>
-                    <p className="mt-1 text-xs text-[var(--muted)]">
-                      {org.id}
-                    </p>
+                    <p className="font-medium">{org.name || "Organisation"}</p>
+                    <p className="mt-1 text-xs text-[var(--muted)]">{org.id}</p>
                   </div>
                   <div className="text-sm text-[var(--muted)]">
                     {org.owner?.full_name ?? "Owner"}

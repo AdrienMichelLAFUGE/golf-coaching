@@ -114,5 +114,4 @@ export const buildColumnMap = (columns: RadarColumn[]): ColumnMap => {
   return map;
 };
 
-export const getUnit = (map: ColumnMap, key: CanonicalField) =>
-  map[key]?.unit ?? null;
+export const getUnit = (map: ColumnMap, key: CanonicalField) => map[key]?.unit ?? null;

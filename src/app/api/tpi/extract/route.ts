@@ -1,6 +1,12 @@
-import { createClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import OpenAI, { toFile } from "openai";
+import { env } from "@/env";
+import {
+  createSupabaseAdminClient,
+  createSupabaseServerClientFromRequest,
+} from "@/lib/supabase/server";
 import { applyTemplate, loadPromptSection } from "@/lib/promptLoader";
+import { formatZodError, parseRequestJson } from "@/lib/validation";
 
 type ExtractedTest = {
   test_name: string;
@@ -10,6 +16,13 @@ type ExtractedTest = {
   details_translated: string;
   position: number;
 };
+
+const tpiExtractSchema = z.object({
+  reportId: z.string().min(1),
+});
+
+const normalizeTestKey = (value: string) =>
+  value.toLowerCase().replace(/\s+/g, " ").trim();
 
 const toLanguageLabel = (locale: string | null) => {
   if (!locale) return "francais";
@@ -126,29 +139,18 @@ const extractOutputText = (response: {
 };
 
 export async function POST(req: Request) {
-  const { reportId } = (await req.json()) as { reportId?: string };
-  if (!reportId) {
-    return Response.json({ error: "reportId requis." }, { status: 400 });
-  }
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const openaiKey = process.env.OPENAI_API_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey || !openaiKey) {
+  const parsed = await parseRequestJson(req, tpiExtractSchema);
+  if (!parsed.success) {
     return Response.json(
-      { error: "Configuration serveur incomplete." },
-      { status: 500 }
+      { error: "Payload invalide.", details: formatZodError(parsed.error) },
+      { status: 422 }
     );
   }
+  const { reportId } = parsed.data;
 
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    global: {
-      headers: { Authorization: req.headers.get("authorization") ?? "" },
-    },
-  });
-  const admin = createClient(supabaseUrl, serviceRoleKey);
+  const supabase = createSupabaseServerClientFromRequest(req);
+  const admin = createSupabaseAdminClient();
+  const openaiKey = env.OPENAI_API_KEY;
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
   const userId = userData.user?.id;
@@ -193,19 +195,13 @@ export async function POST(req: Request) {
     .download(report.file_url);
 
   if (fileError || !fileData) {
-    await admin
-      .from("tpi_reports")
-      .update({ status: "error" })
-      .eq("id", reportId);
+    await admin.from("tpi_reports").update({ status: "error" }).eq("id", reportId);
     return Response.json({ error: "Fichier TPI introuvable." }, { status: 500 });
   }
 
   const buffer = Buffer.from(await fileData.arrayBuffer());
   if (report.file_type !== "pdf") {
-    await admin
-      .from("tpi_reports")
-      .update({ status: "error" })
-      .eq("id", reportId);
+    await admin.from("tpi_reports").update({ status: "error" }).eq("id", reportId);
     return Response.json(
       { error: "Importe uniquement le PDF TPI Pro recu par email." },
       { status: 400 }
@@ -218,18 +214,25 @@ export async function POST(req: Request) {
 
   let extractedTests: ExtractedTest[] = [];
   let pdfFileId: string | null = null;
-  let usage: { input_tokens?: number; output_tokens?: number; total_tokens?: number } | null = null;
+  let usage: {
+    input_tokens?: number;
+    output_tokens?: number;
+    total_tokens?: number;
+  } | null = null;
 
   const recordUsage = async (
     action: string,
-    usagePayload: { input_tokens?: number; output_tokens?: number; total_tokens?: number } | null,
+    usagePayload: {
+      input_tokens?: number;
+      output_tokens?: number;
+      total_tokens?: number;
+    } | null,
     durationMs: number
   ) => {
     if (!usagePayload) return;
     const inputTokens = usagePayload.input_tokens ?? 0;
     const outputTokens = usagePayload.output_tokens ?? 0;
-    const totalTokens =
-      usagePayload.total_tokens ?? (inputTokens + outputTokens);
+    const totalTokens = usagePayload.total_tokens ?? inputTokens + outputTokens;
 
     try {
       await admin.from("ai_usage").insert([
@@ -265,10 +268,7 @@ export async function POST(req: Request) {
     });
     pdfFileId = uploaded.id;
   } catch (error) {
-    await admin
-      .from("tpi_reports")
-      .update({ status: "error" })
-      .eq("id", reportId);
+    await admin.from("tpi_reports").update({ status: "error" }).eq("id", reportId);
     console.error("TPI PDF upload error:", error);
     return Response.json(
       { error: "Upload PDF impossible. Reessaie avec le PDF TPI Pro." },
@@ -294,10 +294,9 @@ export async function POST(req: Request) {
             content: [
               {
                 type: "input_text",
-                text: applyTemplate(
-                  await loadPromptSection("tpi_verify_user"),
-                  { tpiKnownTests: tpiKnownTests.join(", ") }
-                ),
+                text: applyTemplate(await loadPromptSection("tpi_verify_user"), {
+                  tpiKnownTests: tpiKnownTests.join(", "),
+                }),
               },
               {
                 type: "input_file",
@@ -329,17 +328,10 @@ export async function POST(req: Request) {
         reason: string;
       };
 
-      await recordUsage(
-        "tpi_verify",
-        verifyUsage,
-        Date.now() - verifyStartedAt
-      );
+      await recordUsage("tpi_verify", verifyUsage, Date.now() - verifyStartedAt);
 
       if (!verifyParsed.is_tpi) {
-        await admin
-          .from("tpi_reports")
-          .update({ status: "error" })
-          .eq("id", reportId);
+        await admin.from("tpi_reports").update({ status: "error" }).eq("id", reportId);
         await cleanupOpenAiFile();
         return Response.json(
           {
@@ -351,10 +343,7 @@ export async function POST(req: Request) {
         );
       }
     } catch (error) {
-      await admin
-        .from("tpi_reports")
-        .update({ status: "error" })
-        .eq("id", reportId);
+      await admin.from("tpi_reports").update({ status: "error" }).eq("id", reportId);
       console.error("TPI PDF verify error:", error);
       await cleanupOpenAiFile();
       return Response.json(
@@ -434,8 +423,7 @@ export async function POST(req: Request) {
       }));
       console.error("TPI empty response", {
         status: (response as { status?: string }).status,
-        incomplete: (response as { incomplete_details?: unknown })
-          .incomplete_details,
+        incomplete: (response as { incomplete_details?: unknown }).incomplete_details,
         error: (response as { error?: unknown }).error,
         outputCount: response.output?.length ?? 0,
         outputDebug,
@@ -475,22 +463,22 @@ export async function POST(req: Request) {
         mini_summary: cleanedSummary || fallbackSummary,
         details: test.details ?? "",
         details_translated: test.details_translated?.trim() ?? "",
-        position:
-          typeof test.position === "number" ? test.position : index + 1,
+        position: typeof test.position === "number" ? test.position : index + 1,
       };
     });
-    await recordUsage(
-      "tpi_extract",
-      usage,
-      Date.now() - startedAt
-    );
+
+    const seenTests = new Set<string>();
+    extractedTests = extractedTests.filter((test) => {
+      const key = `${normalizeTestKey(test.test_name)}|${test.position}`;
+      if (seenTests.has(key)) return false;
+      seenTests.add(key);
+      return true;
+    });
+    await recordUsage("tpi_extract", usage, Date.now() - startedAt);
     await cleanupOpenAiFile();
   } catch (error) {
     await cleanupOpenAiFile();
-    await admin
-      .from("tpi_reports")
-      .update({ status: "error" })
-      .eq("id", reportId);
+    await admin.from("tpi_reports").update({ status: "error" }).eq("id", reportId);
     return Response.json(
       { error: (error as Error).message ?? "Erreur TPI." },
       { status: 500 }
@@ -516,6 +504,27 @@ export async function POST(req: Request) {
       position: test.position,
     }));
     await admin.from("tpi_tests").insert(payload);
+  }
+
+  const { data: storedTests } = await admin
+    .from("tpi_tests")
+    .select("id, test_name, position")
+    .eq("report_id", reportId);
+
+  if (storedTests && storedTests.length > 0) {
+    const seen = new Set<string>();
+    const duplicates: string[] = [];
+    storedTests.forEach((test) => {
+      const key = `${normalizeTestKey(test.test_name ?? "")}|${test.position ?? 0}`;
+      if (seen.has(key)) {
+        duplicates.push(String(test.id));
+      } else {
+        seen.add(key);
+      }
+    });
+    if (duplicates.length > 0) {
+      await admin.from("tpi_tests").delete().in("id", duplicates);
+    }
   }
 
   await admin

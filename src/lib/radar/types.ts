@@ -22,12 +22,7 @@ export type RadarConfig = {
     aiSelectionSummary?: string | null;
     aiSessionSummary?: string | null;
     aiPreset?: "ultra" | "synthetic" | "standard" | "pousse" | "complet";
-    aiSyntax?:
-      | "exp-tech"
-      | "exp-comp"
-      | "exp-tech-solution"
-      | "exp-solution"
-      | "global";
+    aiSyntax?: "exp-tech" | "exp-comp" | "exp-tech-solution" | "exp-solution" | "global";
     aiAnswers?: Record<string, string | string[]>;
     aiContext?: string;
   };

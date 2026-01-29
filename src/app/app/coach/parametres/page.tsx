@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../_components/role-guard";
 import { useProfile } from "../../_components/profile-context";
 import PageBack from "../../_components/page-back";
@@ -60,8 +60,7 @@ const normalizeSections = (value: string) => {
 export default function CoachSettingsPage() {
   const { refresh } = useProfile();
   const [profile, setProfile] = useState<ProfileSettings | null>(null);
-  const [organization, setOrganization] =
-    useState<OrganizationSettings | null>(null);
+  const [organization, setOrganization] = useState<OrganizationSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -170,10 +169,7 @@ export default function CoachSettingsPage() {
     loadSettings();
   }, []);
 
-  const uploadAsset = async (
-    file: File,
-    kind: "avatar" | "logo"
-  ) => {
+  const uploadAsset = async (file: File, kind: "avatar" | "logo") => {
     if (!profile || !organization) return;
     if (!file.type.startsWith("image/")) {
       setError("Selectionne un fichier image.");
@@ -208,9 +204,7 @@ export default function CoachSettingsPage() {
       return;
     }
 
-    const { data } = supabase.storage
-      .from(STORAGE_BUCKET)
-      .getPublicUrl(filePath);
+    const { data } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
     if (kind === "avatar") {
       setAvatarUrl(data.publicUrl);
       setUploadingAvatar(false);
@@ -222,10 +216,7 @@ export default function CoachSettingsPage() {
     setSuccess("Image chargee. Pense a sauvegarder.");
   };
 
-  const handleFileInput = (
-    files: FileList | null,
-    kind: "avatar" | "logo"
-  ) => {
+  const handleFileInput = (files: FileList | null, kind: "avatar" | "logo") => {
     const file = files?.[0];
     if (!file) return;
     uploadAsset(file, kind);
@@ -368,9 +359,7 @@ export default function CoachSettingsPage() {
 
           <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">
             <div className="panel rounded-2xl p-6">
-              <h3 className="text-lg font-semibold text-[var(--text)]">
-                Profil coach
-              </h3>
+              <h3 className="text-lg font-semibold text-[var(--text)]">Profil coach</h3>
               <div className="mt-4 space-y-4">
                 <div>
                   <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
@@ -420,9 +409,7 @@ export default function CoachSettingsPage() {
                         >
                           Parcourir
                         </button>
-                        <p className="text-[0.65rem]">
-                          PNG ou JPG, 2 Mo max.
-                        </p>
+                        <p className="text-[0.65rem]">PNG ou JPG, 2 Mo max.</p>
                       </div>
                     </div>
                     <input
@@ -437,9 +424,7 @@ export default function CoachSettingsPage() {
                     />
                   </div>
                   {uploadingAvatar ? (
-                    <p className="mt-2 text-xs text-[var(--muted)]">
-                      Upload en cours...
-                    </p>
+                    <p className="mt-2 text-xs text-[var(--muted)]">Upload en cours...</p>
                   ) : null}
                 </div>
                 <div>
@@ -458,9 +443,7 @@ export default function CoachSettingsPage() {
             </div>
 
             <div className="panel rounded-2xl p-6">
-              <h3 className="text-lg font-semibold text-[var(--text)]">
-                Organisation
-              </h3>
+              <h3 className="text-lg font-semibold text-[var(--text)]">Organisation</h3>
               <div className="mt-4 space-y-4">
                 <div>
                   <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
@@ -510,9 +493,7 @@ export default function CoachSettingsPage() {
                         >
                           Parcourir
                         </button>
-                        <p className="text-[0.65rem]">
-                          PNG ou JPG, 2 Mo max.
-                        </p>
+                        <p className="text-[0.65rem]">PNG ou JPG, 2 Mo max.</p>
                       </div>
                     </div>
                     <input
@@ -527,9 +508,7 @@ export default function CoachSettingsPage() {
                     />
                   </div>
                   {uploadingLogo ? (
-                    <p className="mt-2 text-xs text-[var(--muted)]">
-                      Upload en cours...
-                    </p>
+                    <p className="mt-2 text-xs text-[var(--muted)]">Upload en cours...</p>
                   ) : null}
                 </div>
                 <div className="flex items-center gap-3">
@@ -559,9 +538,7 @@ export default function CoachSettingsPage() {
 
           <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">
             <div className="panel rounded-2xl p-6">
-              <h3 className="text-lg font-semibold text-[var(--text)]">
-                Emails
-              </h3>
+              <h3 className="text-lg font-semibold text-[var(--text)]">Emails</h3>
               <div className="mt-4 space-y-4">
                 <div>
                   <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
@@ -630,9 +607,7 @@ export default function CoachSettingsPage() {
 
           <section className="panel rounded-2xl p-6">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-lg font-semibold text-[var(--text)]">
-                Assistant IA
-              </h3>
+              <h3 className="text-lg font-semibold text-[var(--text)]">Assistant IA</h3>
               {aiLocked ? (
                 <button
                   type="button"
@@ -657,8 +632,8 @@ export default function CoachSettingsPage() {
               ) : null}
             </div>
             <p className="mt-2 text-xs text-[var(--muted)]">
-              Parametres par defaut utilises par l IA. Les actions IA sont
-              reservees aux comptes premium.
+              Parametres par defaut utilises par l IA. Les actions IA sont reservees aux
+              comptes premium.
             </p>
             <div className="relative mt-4">
               {aiLocked ? (
@@ -685,9 +660,7 @@ export default function CoachSettingsPage() {
                         </svg>
                       </span>
                       <div>
-                        <p className="text-xs uppercase tracking-[0.2em]">
-                          Assistant IA
-                        </p>
+                        <p className="text-xs uppercase tracking-[0.2em]">Assistant IA</p>
                         <p className="text-sm text-amber-100/80">
                           Debloque le mode Premium
                         </p>
@@ -704,119 +677,117 @@ export default function CoachSettingsPage() {
                   aiLocked ? "pointer-events-none opacity-60" : ""
                 }`}
               >
-              <div>
-                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                  IA active
-                </label>
-                <select
-                  value={aiEnabled ? "on" : "off"}
-                  onChange={(event) =>
-                    setAiEnabled(event.target.value === "on")
-                  }
-                  className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
-                >
-                  <option value="off">Desactive</option>
-                  <option value="on">Premium actif</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                  Modele IA
-                </label>
-                <select
-                  value={aiModel}
-                  onChange={(event) => setAiModel(event.target.value)}
-                  className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
-                >
-                  <option value="gpt-5-mini">gpt-5-mini</option>
-                  <option value="gpt-5">gpt-5</option>
-                  <option value="gpt-5.2">gpt-5.2</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                  Ton
-                </label>
-                <select
-                  value={aiTone}
-                  onChange={(event) => setAiTone(event.target.value)}
-                  className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
-                >
-                  <option value="bienveillant">Bienveillant</option>
-                  <option value="direct">Direct</option>
-                  <option value="motivant">Motivant</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                  Technicite
-                </label>
-                <select
-                  value={aiTechLevel}
-                  onChange={(event) => setAiTechLevel(event.target.value)}
-                  className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
-                >
-                  <option value="debutant">Debutant</option>
-                  <option value="intermediaire">Intermediaire</option>
-                  <option value="avance">Avance</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                  Style
-                </label>
-                <select
-                  value={aiStyle}
-                  onChange={(event) => setAiStyle(event.target.value)}
-                  className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
-                >
-                  <option value="redactionnel">Redactionnel</option>
-                  <option value="structure">Structure</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                  Longueur
-                </label>
-                <select
-                  value={aiLength}
-                  onChange={(event) => setAiLength(event.target.value)}
-                  className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
-                >
-                  <option value="court">Court</option>
-                  <option value="normal">Normal</option>
-                  <option value="long">Long</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                  Metaphores
-                </label>
-                <select
-                  value={aiImagery}
-                  onChange={(event) => setAiImagery(event.target.value)}
-                  className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
-                >
-                  <option value="faible">Faible</option>
-                  <option value="equilibre">Equilibre</option>
-                  <option value="fort">Fort</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                  Focus
-                </label>
-                <select
-                  value={aiFocus}
-                  onChange={(event) => setAiFocus(event.target.value)}
-                  className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
-                >
-                  <option value="mix">Mix</option>
-                  <option value="technique">Technique</option>
-                  <option value="mental">Mental</option>
-                  <option value="strategie">Strategie</option>
-                </select>
-              </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    IA active
+                  </label>
+                  <select
+                    value={aiEnabled ? "on" : "off"}
+                    onChange={(event) => setAiEnabled(event.target.value === "on")}
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                  >
+                    <option value="off">Desactive</option>
+                    <option value="on">Premium actif</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Modele IA
+                  </label>
+                  <select
+                    value={aiModel}
+                    onChange={(event) => setAiModel(event.target.value)}
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                  >
+                    <option value="gpt-5-mini">gpt-5-mini</option>
+                    <option value="gpt-5">gpt-5</option>
+                    <option value="gpt-5.2">gpt-5.2</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Ton
+                  </label>
+                  <select
+                    value={aiTone}
+                    onChange={(event) => setAiTone(event.target.value)}
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                  >
+                    <option value="bienveillant">Bienveillant</option>
+                    <option value="direct">Direct</option>
+                    <option value="motivant">Motivant</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Technicite
+                  </label>
+                  <select
+                    value={aiTechLevel}
+                    onChange={(event) => setAiTechLevel(event.target.value)}
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                  >
+                    <option value="debutant">Debutant</option>
+                    <option value="intermediaire">Intermediaire</option>
+                    <option value="avance">Avance</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Style
+                  </label>
+                  <select
+                    value={aiStyle}
+                    onChange={(event) => setAiStyle(event.target.value)}
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                  >
+                    <option value="redactionnel">Redactionnel</option>
+                    <option value="structure">Structure</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Longueur
+                  </label>
+                  <select
+                    value={aiLength}
+                    onChange={(event) => setAiLength(event.target.value)}
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                  >
+                    <option value="court">Court</option>
+                    <option value="normal">Normal</option>
+                    <option value="long">Long</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Metaphores
+                  </label>
+                  <select
+                    value={aiImagery}
+                    onChange={(event) => setAiImagery(event.target.value)}
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                  >
+                    <option value="faible">Faible</option>
+                    <option value="equilibre">Equilibre</option>
+                    <option value="fort">Fort</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Focus
+                  </label>
+                  <select
+                    value={aiFocus}
+                    onChange={(event) => setAiFocus(event.target.value)}
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                  >
+                    <option value="mix">Mix</option>
+                    <option value="technique">Technique</option>
+                    <option value="mental">Mental</option>
+                    <option value="strategie">Strategie</option>
+                  </select>
+                </div>
               </div>
             </div>
           </section>
@@ -834,9 +805,7 @@ export default function CoachSettingsPage() {
                   <input
                     type="text"
                     value={reportTitleTemplate}
-                    onChange={(event) =>
-                      setReportTitleTemplate(event.target.value)
-                    }
+                    onChange={(event) => setReportTitleTemplate(event.target.value)}
                     placeholder="Bilan - {eleve} - {date}"
                     className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
                   />
@@ -860,9 +829,7 @@ export default function CoachSettingsPage() {
                   <textarea
                     rows={6}
                     value={reportDefaultSections}
-                    onChange={(event) =>
-                      setReportDefaultSections(event.target.value)
-                    }
+                    onChange={(event) => setReportDefaultSections(event.target.value)}
                     placeholder="Resume de la seance"
                     className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
                   />
@@ -874,9 +841,7 @@ export default function CoachSettingsPage() {
                 </p>
                 <div className="mt-3 space-y-2 text-sm text-[var(--text)]">
                   {previewSections.length === 0 ? (
-                    <p className="text-[var(--muted)]">
-                      Aucune section definie.
-                    </p>
+                    <p className="text-[var(--muted)]">Aucune section definie.</p>
                   ) : (
                     previewSections.map((section) => (
                       <div
@@ -893,9 +858,7 @@ export default function CoachSettingsPage() {
           </section>
 
           <section className="panel rounded-2xl p-6">
-            <h3 className="text-lg font-semibold text-[var(--text)]">
-              Mot de passe
-            </h3>
+            <h3 className="text-lg font-semibold text-[var(--text)]">Mot de passe</h3>
             <p className="mt-2 text-xs text-[var(--muted)]">
               Cree ou modifie ton mot de passe pour te connecter.
             </p>
@@ -937,9 +900,7 @@ export default function CoachSettingsPage() {
               <p className="mt-3 text-sm text-red-400">{passwordError}</p>
             ) : null}
             {passwordSuccess ? (
-              <p className="mt-3 text-sm text-emerald-200">
-                {passwordSuccess}
-              </p>
+              <p className="mt-3 text-sm text-emerald-200">{passwordSuccess}</p>
             ) : null}
           </section>
 
@@ -959,10 +920,7 @@ export default function CoachSettingsPage() {
               {error ? <span className="text-sm text-red-400">{error}</span> : null}
             </div>
           </section>
-          <PremiumOfferModal
-            open={premiumModalOpen}
-            onClose={closePremiumModal}
-          />
+          <PremiumOfferModal open={premiumModalOpen} onClose={closePremiumModal} />
         </div>
       )}
     </RoleGuard>

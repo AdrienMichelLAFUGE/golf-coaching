@@ -1,27 +1,14 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { isAdminEmail } from "@/lib/admin";
+import {
+  createSupabaseAdminClient,
+  createSupabaseServerClientFromRequest,
+} from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
 const requireAdmin = async (request: Request) => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
-    return {
-      error: NextResponse.json(
-        { error: "Missing Supabase env vars." },
-        { status: 500 }
-      ),
-    };
-  }
-
-  const authHeader = request.headers.get("authorization") ?? "";
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    global: { headers: { Authorization: authHeader } },
-  });
+  const supabase = createSupabaseServerClientFromRequest(request);
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
   const email = userData.user?.email ?? "";
@@ -32,7 +19,7 @@ const requireAdmin = async (request: Request) => {
   }
 
   return {
-    admin: createClient(supabaseUrl, serviceRoleKey),
+    admin: createSupabaseAdminClient(),
   };
 };
 
@@ -52,10 +39,13 @@ export async function GET(request: Request) {
       count: "exact",
       head: true,
     }),
-    auth.admin.from("profiles").select("id", {
-      count: "exact",
-      head: true,
-    }).neq("role", "student"),
+    auth.admin
+      .from("profiles")
+      .select("id", {
+        count: "exact",
+        head: true,
+      })
+      .neq("role", "student"),
     auth.admin.from("students").select("id", {
       count: "exact",
       head: true,

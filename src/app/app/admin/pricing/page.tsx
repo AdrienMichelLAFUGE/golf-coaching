@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabase/client";
 import AdminGuard from "../../_components/admin-guard";
 import PageBack from "../../_components/page-back";
 
@@ -66,18 +66,14 @@ export default function AdminPricingPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [intervalFilter, setIntervalFilter] = useState<
-    "all" | "month" | "year"
-  >("all");
+  const [intervalFilter, setIntervalFilter] = useState<"all" | "month" | "year">("all");
   const [typeFilter, setTypeFilter] = useState<
     "all" | "base" | "addon" | "pack" | "other"
   >("all");
-  const [activeFilter, setActiveFilter] = useState<
-    "all" | "active" | "inactive"
-  >("all");
-  const [priceSort, setPriceSort] = useState<
-    "order" | "price-asc" | "price-desc"
-  >("order");
+  const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("all");
+  const [priceSort, setPriceSort] = useState<"order" | "price-asc" | "price-desc">(
+    "order"
+  );
   const hasDirtyPlans = plans.some((plan) => plan.is_dirty);
   const filteredPlans = plans
     .filter((plan) => {
@@ -186,9 +182,7 @@ export default function AdminPricingPage() {
 
     const priceValue = Number(plan.price);
     const priceCents =
-      Number.isFinite(priceValue) && priceValue >= 0
-        ? Math.round(priceValue * 100)
-        : 0;
+      Number.isFinite(priceValue) && priceValue >= 0 ? Math.round(priceValue * 100) : 0;
 
     const response = await fetch("/api/admin/pricing", {
       method: "POST",
@@ -248,9 +242,7 @@ export default function AdminPricingPage() {
     for (const plan of dirtyPlans) {
       const priceValue = Number(plan.price);
       const priceCents =
-        Number.isFinite(priceValue) && priceValue >= 0
-          ? Math.round(priceValue * 100)
-          : 0;
+        Number.isFinite(priceValue) && priceValue >= 0 ? Math.round(priceValue * 100) : 0;
 
       const response = await fetch("/api/admin/pricing", {
         method: "POST",
@@ -295,9 +287,7 @@ export default function AdminPricingPage() {
 
   const handleDelete = async (plan: EditablePlan) => {
     if (!plan.id) return;
-    const confirmed = window.confirm(
-      `Supprimer le plan "${plan.label || plan.slug}" ?`
-    );
+    const confirmed = window.confirm(`Supprimer le plan "${plan.label || plan.slug}" ?`);
     if (!confirmed) return;
 
     setDeletingId(plan.id);
@@ -403,9 +393,7 @@ export default function AdminPricingPage() {
               <select
                 value={intervalFilter}
                 onChange={(event) =>
-                  setIntervalFilter(
-                    event.target.value as "all" | "month" | "year"
-                  )
+                  setIntervalFilter(event.target.value as "all" | "month" | "year")
                 }
                 className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
               >
@@ -422,12 +410,7 @@ export default function AdminPricingPage() {
                 value={typeFilter}
                 onChange={(event) =>
                   setTypeFilter(
-                    event.target.value as
-                      | "all"
-                      | "base"
-                      | "addon"
-                      | "pack"
-                      | "other"
+                    event.target.value as "all" | "base" | "addon" | "pack" | "other"
                   )
                 }
                 className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
@@ -446,9 +429,7 @@ export default function AdminPricingPage() {
               <select
                 value={activeFilter}
                 onChange={(event) =>
-                  setActiveFilter(
-                    event.target.value as "all" | "active" | "inactive"
-                  )
+                  setActiveFilter(event.target.value as "all" | "active" | "inactive")
                 }
                 className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
               >
@@ -464,12 +445,7 @@ export default function AdminPricingPage() {
               <select
                 value={priceSort}
                 onChange={(event) =>
-                  setPriceSort(
-                    event.target.value as
-                      | "order"
-                      | "price-asc"
-                      | "price-desc"
-                  )
+                  setPriceSort(event.target.value as "order" | "price-asc" | "price-desc")
                 }
                 className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
               >
@@ -479,19 +455,13 @@ export default function AdminPricingPage() {
               </select>
             </div>
           </div>
-          {error ? (
-            <p className="mt-3 text-sm text-red-400">{error}</p>
-          ) : null}
-          {message ? (
-            <p className="mt-3 text-sm text-emerald-200">{message}</p>
-          ) : null}
+          {error ? <p className="mt-3 text-sm text-red-400">{error}</p> : null}
+          {message ? <p className="mt-3 text-sm text-emerald-200">{message}</p> : null}
         </section>
 
         {loading ? (
           <section className="panel rounded-2xl p-6">
-            <p className="text-sm text-[var(--muted)]">
-              Chargement des plans...
-            </p>
+            <p className="text-sm text-[var(--muted)]">Chargement des plans...</p>
           </section>
         ) : plans.length === 0 ? (
           <section className="panel rounded-2xl p-6">
@@ -507,10 +477,7 @@ export default function AdminPricingPage() {
           </section>
         ) : (
           filteredPlans.map((plan, index) => (
-            <section
-              key={plan.id ?? `new-${index}`}
-              className="panel rounded-2xl p-6"
-            >
+            <section key={plan.id ?? `new-${index}`} className="panel rounded-2xl p-6">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <h3 className="text-lg font-semibold text-[var(--text)]">
@@ -540,9 +507,7 @@ export default function AdminPricingPage() {
                     }
                     className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
                   >
-                    {savingId === (plan.id ?? "new")
-                      ? "Sauvegarde..."
-                      : "Sauvegarder"}
+                    {savingId === (plan.id ?? "new") ? "Sauvegarde..." : "Sauvegarder"}
                   </button>
                 </div>
               </div>

@@ -27,9 +27,7 @@ const byMetric = (
   shots
     .map((shot) => {
       const value = shot[key];
-      return typeof value === "number" && Number.isFinite(value)
-        ? { shot, value }
-        : null;
+      return typeof value === "number" && Number.isFinite(value) ? { shot, value } : null;
     })
     .filter((entry): entry is { shot: ShotRecord; value: number } => !!entry);
 
@@ -80,12 +78,10 @@ export const computeOutliers = (
     return sorted.slice(0, count).map((entry) => entry.index);
   };
 
-  const distanceEntries = byMetric(shots, "distance_from_target").map(
-    (entry) => ({
-      index: Number(entry.shot.shot_index ?? 0),
-      metric: Math.abs(entry.value),
-    })
-  );
+  const distanceEntries = byMetric(shots, "distance_from_target").map((entry) => ({
+    index: Number(entry.shot.shot_index ?? 0),
+    metric: Math.abs(entry.value),
+  }));
   const dispersionEntries = byMetric(shots, "radial_miss").map((entry) => ({
     index: Number(entry.shot.shot_index ?? 0),
     metric: Math.abs(entry.value),
@@ -104,4 +100,3 @@ export const computeOutliers = (
     top20_strikes: top20(strikeEntries),
   };
 };
-

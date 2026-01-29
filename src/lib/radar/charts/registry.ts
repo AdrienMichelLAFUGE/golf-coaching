@@ -75,11 +75,7 @@ const formatNumber = (value: number | null, digits = 1) => {
   return Number(value.toFixed(digits));
 };
 
-const formatValue = (
-  value: number | null,
-  unit?: string | null,
-  digits = 1
-) => {
+const formatValue = (value: number | null, unit?: string | null, digits = 1) => {
   const rounded = formatNumber(value, digits);
   if (rounded === null) return null;
   return unit ? `${rounded} ${unit}` : `${rounded}`;
@@ -115,23 +111,27 @@ const buildInsight = (payload: RadarChartPayload) => {
     const r = correlation(points);
     const meanX = mean(points.map((point) => point.x));
     const meanY = mean(points.map((point) => point.y));
-    const stdX = std(points.map((point) => point.x), meanX);
-    const stdY = std(points.map((point) => point.y), meanY);
+    const stdX = std(
+      points.map((point) => point.x),
+      meanX
+    );
+    const stdY = std(
+      points.map((point) => point.y),
+      meanY
+    );
     const strength =
       r === null
         ? null
         : Math.abs(r) < 0.2
-        ? "faible"
-        : Math.abs(r) < 0.5
-        ? "moderee"
-        : Math.abs(r) < 0.7
-        ? "marquee"
-        : "forte";
+          ? "faible"
+          : Math.abs(r) < 0.5
+            ? "moderee"
+            : Math.abs(r) < 0.7
+              ? "marquee"
+              : "forte";
     const direction = r === null ? null : r >= 0 ? "positive" : "negative";
     const relation =
-      r === null
-        ? null
-        : `Relation ${strength} ${direction} (r=${r.toFixed(2)}).`;
+      r === null ? null : `Relation ${strength} ${direction} (r=${r.toFixed(2)}).`;
     const stats = [
       meanX !== null
         ? `${payload.xLabel} moy. ${formatValue(meanX, payload.xUnit)}`
@@ -158,8 +158,8 @@ const buildInsight = (payload: RadarChartPayload) => {
       Math.abs(delta) < Math.max(range * 0.15, 0.01)
         ? "stable"
         : delta > 0
-        ? "en hausse"
-        : "en baisse";
+          ? "en hausse"
+          : "en baisse";
     return `Amplitude ${formatValue(range, payload.yUnit)} · Tendance ${trend} (Δ ${formatValue(
       delta,
       payload.yUnit
@@ -168,9 +168,7 @@ const buildInsight = (payload: RadarChartPayload) => {
   if (payload.type === "hist") {
     const total = payload.bins.reduce((acc, bin) => acc + bin.count, 0);
     if (!total) return null;
-    const top = payload.bins.reduce((best, bin) =>
-      bin.count > best.count ? bin : best
-    );
+    const top = payload.bins.reduce((best, bin) => (bin.count > best.count ? bin : best));
     const share = Math.round((top.count / total) * 100);
     return `Zone dominante ${top.label}${payload.xUnit ? ` ${payload.xUnit}` : ""} (${share}% des coups).`;
   }
@@ -182,16 +180,22 @@ const buildInsight = (payload: RadarChartPayload) => {
       payload.columns.find((column) => column.toLowerCase().includes("mean")) ??
       payload.columns.find((column) => column.toLowerCase().includes("max"));
     if (!metric) return null;
-    const best = rows.reduce((current, row) => {
-      const value = Number(row[metric]);
-      if (!Number.isFinite(value)) return current;
-      if (!current) return row;
-      const currentValue = Number(current[metric]);
-      return value > currentValue ? row : current;
-    }, null as Record<string, string | number | null> | null);
+    const best = rows.reduce(
+      (current, row) => {
+        const value = Number(row[metric]);
+        if (!Number.isFinite(value)) return current;
+        if (!current) return row;
+        const currentValue = Number(current[metric]);
+        return value > currentValue ? row : current;
+      },
+      null as Record<string, string | number | null> | null
+    );
     if (!best) return null;
-    const label =
-      (best.Groupe ?? best.GROUP ?? best.Group ?? best.key ?? "Groupe") as string;
+    const label = (best.Groupe ??
+      best.GROUP ??
+      best.Group ??
+      best.key ??
+      "Groupe") as string;
     return `${label}: ${metric} ${best[metric]}.`;
   }
   if (payload.type === "matrix") {
@@ -269,10 +273,7 @@ const buildHistogram = (
   const step = range / bins;
   const buckets = Array.from({ length: bins }, () => 0);
   values.forEach((value) => {
-    const idx = Math.min(
-      bins - 1,
-      Math.max(0, Math.floor((value - min) / step))
-    );
+    const idx = Math.min(bins - 1, Math.max(0, Math.floor((value - min) / step)));
     buckets[idx] += 1;
   });
   return buckets.map((count, index) => {
@@ -936,9 +937,7 @@ const RAW_CHART_DEFINITIONS: ChartDefinition[] = [
       title: "Matrice de correlation",
       variables: analytics.correlations?.variables ?? [],
       matrix: analytics.correlations?.matrix ?? [],
-      notes: analytics.correlations?.variables?.length
-        ? null
-        : "Données insuffisantes.",
+      notes: analytics.correlations?.variables?.length ? null : "Données insuffisantes.",
     }),
   },
   {
@@ -949,15 +948,14 @@ const RAW_CHART_DEFINITIONS: ChartDefinition[] = [
     build: ({ analytics }) => ({
       type: "model",
       title: "Modele distance",
-      model:
-        analytics.models?.regressionDistance ?? {
-          name: "Distance",
-          coefficients: {},
-          intercept: 0,
-          r2: 0,
-          n: 0,
-          features: [],
-        },
+      model: analytics.models?.regressionDistance ?? {
+        name: "Distance",
+        coefficients: {},
+        intercept: 0,
+        r2: 0,
+        n: 0,
+        features: [],
+      },
       notes: analytics.models?.regressionDistance ? null : "Modele indisponible.",
     }),
   },
@@ -969,33 +967,30 @@ const RAW_CHART_DEFINITIONS: ChartDefinition[] = [
     build: ({ analytics }) => ({
       type: "model",
       title: "Modele lateral",
-      model:
-        analytics.models?.regressionLateral ?? {
-          name: "Lateral",
-          coefficients: {},
-          intercept: 0,
-          r2: 0,
-          n: 0,
-          features: [],
-        },
+      model: analytics.models?.regressionLateral ?? {
+        name: "Lateral",
+        coefficients: {},
+        intercept: 0,
+        r2: 0,
+        n: 0,
+        features: [],
+      },
       notes: analytics.models?.regressionLateral ? null : "Modele indisponible.",
     }),
   },
 ];
 
-export const RADAR_CHART_DEFINITIONS: ChartDefinition[] =
-  RAW_CHART_DEFINITIONS.map((definition) => ({
+export const RADAR_CHART_DEFINITIONS: ChartDefinition[] = RAW_CHART_DEFINITIONS.map(
+  (definition) => ({
     ...definition,
     description: definition.description ?? autoDescription(definition.title),
-  }));
+  })
+);
 
 export const buildChartsData = (context: ChartContext) => {
-  const map: Record<string, { available: boolean; payload?: RadarChartPayload }> =
-    {};
+  const map: Record<string, { available: boolean; payload?: RadarChartPayload }> = {};
   RADAR_CHART_DEFINITIONS.forEach((definition) => {
-    const requiredMissing = definition.required.filter(
-      (key) => !(key in context.units)
-    );
+    const requiredMissing = definition.required.filter((key) => !(key in context.units));
     if (requiredMissing.length > 0) {
       map[definition.key] = { available: false };
       return;
@@ -1011,16 +1006,16 @@ export const buildChartsData = (context: ChartContext) => {
       payload.type === "matrix"
         ? payload.variables.length > 0
         : payload.type === "model"
-        ? payload.model.n > 0
-        : "points" in payload
-        ? payload.points.length > 0
-        : "bins" in payload
-        ? payload.bins.length > 0
-        : "series" in payload
-        ? payload.series.some((series) => series.values.length > 0)
-        : "rows" in payload
-        ? payload.rows.length > 0
-        : true;
+          ? payload.model.n > 0
+          : "points" in payload
+            ? payload.points.length > 0
+            : "bins" in payload
+              ? payload.bins.length > 0
+              : "series" in payload
+                ? payload.series.some((series) => series.values.length > 0)
+                : "rows" in payload
+                  ? payload.rows.length > 0
+                  : true;
     map[definition.key] = { available, payload };
   });
   return map;

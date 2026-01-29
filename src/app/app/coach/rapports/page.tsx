@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../_components/role-guard";
 import { useProfile } from "../../_components/profile-context";
 import PageBack from "../../_components/page-back";
@@ -42,9 +42,7 @@ export default function CoachReportsPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [sortKey, setSortKey] = useState<"title" | "student">("title");
-  const [sortDirection, setSortDirection] = useState<
-    "asc" | "desc" | "none"
-  >("none");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc" | "none">("none");
   const locale = organization?.locale ?? "fr-FR";
   const timezone = organization?.timezone ?? "Europe/Paris";
 
@@ -61,7 +59,9 @@ export default function CoachReportsPage() {
 
     const { data, error: fetchError } = await supabase
       .from("reports")
-      .select("id, title, report_date, created_at, sent_at, students(id, first_name, last_name)")
+      .select(
+        "id, title, report_date, created_at, sent_at, students(id, first_name, last_name)"
+      )
       .order("created_at", { ascending: false });
 
     if (fetchError) {
@@ -75,7 +75,7 @@ export default function CoachReportsPage() {
   const getStudent = (report: ReportRow) => {
     return Array.isArray(report.students)
       ? report.students[0]
-      : report.students ?? null;
+      : (report.students ?? null);
   };
 
   const studentOptions = useMemo(() => {
@@ -165,11 +165,7 @@ export default function CoachReportsPage() {
 
   const applyDatePreset = (preset: string) => {
     const today = new Date();
-    const end = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate()
-    );
+    const end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
     if (preset === "all") {
       setDateFrom("");
@@ -457,8 +453,8 @@ export default function CoachReportsPage() {
                           {sortKey === "title" && sortDirection === "asc"
                             ? "A-Z ▲"
                             : sortKey === "title" && sortDirection === "desc"
-                            ? "Z-A ▼"
-                            : "↕"}
+                              ? "Z-A ▼"
+                              : "↕"}
                         </span>
                       </button>
                     </div>
@@ -481,8 +477,8 @@ export default function CoachReportsPage() {
                           {sortKey === "student" && sortDirection === "asc"
                             ? "A-Z ▲"
                             : sortKey === "student" && sortDirection === "desc"
-                            ? "Z-A ▼"
-                            : "↕"}
+                              ? "Z-A ▼"
+                              : "↕"}
                         </span>
                       </button>
                     </div>
@@ -552,9 +548,7 @@ export default function CoachReportsPage() {
                           disabled={deletingId === report.id}
                           className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:text-red-200 disabled:opacity-60"
                         >
-                          {deletingId === report.id
-                            ? "Suppression..."
-                            : "Supprimer"}
+                          {deletingId === report.id ? "Suppression..." : "Supprimer"}
                         </button>
                       </div>
                     </div>

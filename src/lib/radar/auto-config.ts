@@ -1,8 +1,7 @@
 import type { RadarAnalytics, RadarChartPayload, RadarConfig } from "./types";
 import { DEFAULT_RADAR_CONFIG } from "./config";
 
-const clamp = (value: number, min = 0, max = 1) =>
-  Math.min(max, Math.max(min, value));
+const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, value));
 
 const mean = (values: number[]) =>
   values.length ? values.reduce((acc, value) => acc + value, 0) / values.length : null;
@@ -46,9 +45,7 @@ const scoreLine = (payload: Extract<RadarChartPayload, { type: "line" }>) => {
 const scoreHist = (payload: Extract<RadarChartPayload, { type: "hist" }>) => {
   const total = payload.bins.reduce((acc, bin) => acc + bin.count, 0);
   if (!total) return 0.2;
-  const top = payload.bins.reduce((best, bin) =>
-    bin.count > best.count ? bin : best
-  );
+  const top = payload.bins.reduce((best, bin) => (bin.count > best.count ? bin : best));
   const topShare = top.count / total;
   return clamp(1 - topShare);
 };
@@ -126,9 +123,7 @@ const applyFocusBoost = (key: string, focus?: string) => {
   const normalized = focus.toLowerCase();
   const entry =
     focusBoosts[normalized] ??
-    Object.entries(focusBoosts).find(([label]) =>
-      normalized.includes(label)
-    )?.[1];
+    Object.entries(focusBoosts).find(([label]) => normalized.includes(label))?.[1];
   if (!entry) return 0;
   return entry.some((token) => key.includes(token)) ? 0.2 : 0;
 };

@@ -1,23 +1,12 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import {
+  createSupabaseAdminClient,
+  createSupabaseServerClientFromRequest,
+} from "@/lib/supabase/server";
 import { defaultSectionTemplates } from "@/lib/default-section-templates";
 
 export async function POST(request: Request) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
-    return NextResponse.json(
-      { error: "Missing Supabase env vars." },
-      { status: 500 }
-    );
-  }
-
-  const authHeader = request.headers.get("authorization") ?? "";
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    global: { headers: { Authorization: authHeader } },
-  });
+  const supabase = createSupabaseServerClientFromRequest(request);
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData.user) {
@@ -30,9 +19,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Email introuvable." }, { status: 400 });
   }
 
-  const admin = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false },
-  });
+  const admin = createSupabaseAdminClient();
 
   const { data: profile } = await admin
     .from("profiles")
@@ -116,22 +103,17 @@ export async function POST(request: Request) {
     .upsert(templatesPayload, { onConflict: "org_id,title" });
 
   if (templatesError) {
-    const { error: fallbackError } = await admin
-      .from("section_templates")
-      .upsert(
-        defaultSectionTemplates.map((template) => ({
-          org_id: org.id,
-          title: template.title,
-          type: template.type,
-        })),
-        { onConflict: "org_id,title" }
-      );
+    const { error: fallbackError } = await admin.from("section_templates").upsert(
+      defaultSectionTemplates.map((template) => ({
+        org_id: org.id,
+        title: template.title,
+        type: template.type,
+      })),
+      { onConflict: "org_id,title" }
+    );
 
     if (fallbackError) {
-      return NextResponse.json(
-        { error: fallbackError.message },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: fallbackError.message }, { status: 400 });
     }
   }
 
