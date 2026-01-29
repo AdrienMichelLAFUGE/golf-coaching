@@ -25,6 +25,13 @@ import RadarCharts, {
   type RadarStats,
 } from "../../../_components/radar-charts";
 import { RADAR_CHART_DEFINITIONS, RADAR_CHART_GROUPS } from "@/lib/radar/charts/registry";
+import {
+  RADAR_TECH_OPTIONS,
+  type RadarTech,
+  buildRadarFileDisplayName,
+  getRadarTechMeta,
+  isRadarTech,
+} from "@/lib/radar/file-naming";
 import type { RadarAnalytics } from "@/lib/radar/types";
 
 type SectionType = "text" | "image" | "radar";
@@ -469,12 +476,14 @@ export default function CoachReportBuilderPage() {
   const [radarFiles, setRadarFiles] = useState<RadarFile[]>([]);
   const [radarLoading, setRadarLoading] = useState(false);
   const [radarError, setRadarError] = useState("");
+  const [radarTech, setRadarTech] = useState<RadarTech>("flightscope");
   const [radarUploading, setRadarUploading] = useState(false);
   const [radarUploadProgress, setRadarUploadProgress] = useState(0);
   const [radarUploadBatch, setRadarUploadBatch] = useState<{
     current: number;
     total: number;
   } | null>(null);
+  const [radarShowAllFiles, setRadarShowAllFiles] = useState(false);
   const radarUploadTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const radarInputRef = useRef<HTMLInputElement | null>(null);
   const [radarSessionFileIds, setRadarSessionFileIds] = useState<string[]>([]);
@@ -693,6 +702,14 @@ export default function CoachReportBuilderPage() {
     return map;
   }, [radarFiles]);
 
+  const studentById = useMemo(() => {
+    const map = new Map<string, StudentOption>();
+    students.forEach((student) => {
+      map.set(student.id, student);
+    });
+    return map;
+  }, [students]);
+
   const radarActiveFileIds = useMemo(() => {
     const ids = new Set(radarSessionFileIds);
     reportSections.forEach((section) => {
@@ -703,10 +720,10 @@ export default function CoachReportBuilderPage() {
     return ids;
   }, [radarSessionFileIds, reportSections]);
 
-  const radarVisibleFiles = useMemo(
-    () => radarFiles.filter((file) => radarActiveFileIds.has(file.id)),
-    [radarFiles, radarActiveFileIds]
-  );
+  const radarVisibleFiles = useMemo(() => {
+    if (radarShowAllFiles) return radarFiles;
+    return radarFiles.filter((file) => radarActiveFileIds.has(file.id));
+  }, [radarFiles, radarActiveFileIds, radarShowAllFiles]);
 
   const selectedLayout = useMemo(
     () => layouts.find((layout) => layout.id === selectedLayoutId) ?? null,
@@ -1657,8 +1674,9 @@ export default function CoachReportBuilderPage() {
       setRadarError("Choisis un eleve avant d importer un fichier datas.");
       return false;
     }
+    const techMeta = getRadarTechMeta(radarTech);
     if (!isRadarImageFile(file)) {
-      setRadarError("Importe une image Flightscope (jpg, png, heic...).");
+      setRadarError(`Importe une image ${techMeta.label} (jpg, png, heic...).`);
       return false;
     }
 
@@ -1666,7 +1684,21 @@ export default function CoachReportBuilderPage() {
     setRadarUploadProgress(8);
     runRadarUploadProgress(45, 1.5, 350);
 
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+    const selectedStudent = studentId ? studentById.get(studentId) : null;
+    const studentLabel = [selectedStudent?.first_name, selectedStudent?.last_name]
+      .map((value) => value?.trim())
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    const displayName = buildRadarFileDisplayName({
+      tech: radarTech,
+      studentName: studentLabel,
+      reportDate,
+      club: workingClub,
+      originalName: file.name,
+      fallbackDate: new Date(),
+    });
+    const safeName = displayName.replace(/[^a-zA-Z0-9._-]/g, "-");
     const path = `${organization.id}/students/${studentId}/radars/${Date.now()}-${safeName}`;
 
     const { error: uploadError } = await supabase.storage
@@ -1686,9 +1718,9 @@ export default function CoachReportBuilderPage() {
         {
           org_id: organization.id,
           student_id: studentId,
-          source: "flightscope",
+          source: techMeta.id,
           status: "processing",
-          original_name: file.name,
+          original_name: displayName,
           file_url: path,
           file_mime: file.type,
         },
@@ -6641,28 +6673,51 @@ export default function CoachReportBuilderPage() {
                                     </option>
                                     {radarVisibleFiles.map((file) => (
                                       <option key={file.id} value={file.id}>
-                                        {file.original_name || "Export Flightscope"}{" "}
+                                        {file.original_name || "Export datas"}{" "}
                                         {file.status === "ready" ? "" : "(analyse)"}
                                       </option>
                                     ))}
                                   </select>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      if (radarLocked) {
-                                        openRadarAddonModal();
-                                        return;
-                                      }
-                                      radarInputRef.current?.click();
-                                    }}
-                                    disabled={radarUploading}
-                                    className={`rounded-full border border-white/10 bg-white/10 px-3 py-2 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20 ${
-                                      radarLocked ? "cursor-not-allowed opacity-60" : ""
-                                    } disabled:opacity-60`}
-                                    aria-disabled={radarLocked}
-                                  >
-                                    Importer
-                                  </button>
+                                  <div className="flex flex-wrap items-center gap-2 rounded-full border border-white/10 bg-white/5 px-2 py-1">
+                                    <select
+                                      value={radarTech}
+                                      onChange={(event) => {
+                                        const next = event.target.value;
+                                        if (!isRadarTech(next)) {
+                                          setRadarError("Technologie datas invalide.");
+                                          return;
+                                        }
+                                        setRadarError("");
+                                        setRadarTech(next);
+                                      }}
+                                      disabled={radarLocked}
+                                      className="min-w-[160px] rounded-full border border-white/10 bg-[var(--bg-elevated)] px-3 py-1.5 text-sm text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-60"
+                                      aria-label="Technologie radar"
+                                    >
+                                      {RADAR_TECH_OPTIONS.map((option) => (
+                                        <option key={option.id} value={option.id}>
+                                          {option.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (radarLocked) {
+                                          openRadarAddonModal();
+                                          return;
+                                        }
+                                        radarInputRef.current?.click();
+                                      }}
+                                      disabled={radarUploading}
+                                      className={`rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20 ${
+                                        radarLocked ? "cursor-not-allowed opacity-60" : ""
+                                      } disabled:opacity-60`}
+                                      aria-disabled={radarLocked}
+                                    >
+                                      Importer
+                                    </button>
+                                  </div>
                                   <button
                                     type="button"
                                     onClick={() =>
@@ -6691,11 +6746,27 @@ export default function CoachReportBuilderPage() {
                                     }}
                                   />
                                 </div>
-                                <p className="text-xs text-[var(--muted)]">
-                                  Seuls les fichiers importes dans ce rapport sont listes.
-                                  Tu peux en importer plusieurs, ils seront ajoutes a la
-                                  liste.
-                                </p>
+                                <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-[var(--muted)]">
+                                  <label className="flex items-center gap-2">
+                                    <input
+                                      type="checkbox"
+                                      checked={radarShowAllFiles}
+                                      onChange={(event) =>
+                                        setRadarShowAllFiles(event.target.checked)
+                                      }
+                                      className="h-4 w-4 rounded border border-white/10 bg-[var(--bg-elevated)]"
+                                    />
+                                    <span>
+                                      Afficher l historique des fichiers datas de l eleve
+                                      ({radarFiles.length})
+                                    </span>
+                                  </label>
+                                  <span>
+                                    {radarShowAllFiles
+                                      ? "Tous les fichiers sont visibles."
+                                      : "Uniquement les fichiers lies au rapport."}
+                                  </span>
+                                </div>
                                 {radarUploading ? (
                                   <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
                                     <div className="flex items-center justify-between text-xs text-[var(--muted)]">

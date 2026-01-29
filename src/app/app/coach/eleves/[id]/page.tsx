@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../../_components/role-guard";
@@ -16,6 +16,14 @@ import RadarCharts, {
   type RadarStats,
 } from "../../../_components/radar-charts";
 import { RADAR_CHART_DEFINITIONS, RADAR_CHART_GROUPS } from "@/lib/radar/charts/registry";
+import {
+  RADAR_TECH_OPTIONS,
+  type RadarTech,
+  buildRadarFileDisplayName,
+  getRadarTechLabel,
+  getRadarTechMeta,
+  isRadarTech,
+} from "@/lib/radar/file-naming";
 import type { RadarAnalytics } from "@/lib/radar/types";
 
 type Student = {
@@ -60,7 +68,7 @@ type TpiTest = {
 type RadarFile = {
   id: string;
   status: "processing" | "ready" | "error";
-  source: "flightscope" | "trackman" | "unknown";
+  source: "flightscope" | "trackman" | "smart2move" | "unknown";
   original_name: string | null;
   file_url: string;
   file_mime: string | null;
@@ -109,6 +117,21 @@ const formatDate = (
   return new Date(value).toLocaleDateString(locale ?? "fr-FR", options);
 };
 
+const formatRadarSourceFallback = (source: RadarFile["source"]) =>
+  `Export ${getRadarTechLabel(source)}`;
+
+type RadarFilter = "all" | RadarTech;
+
+const isRadarFilter = (value: string): value is RadarFilter =>
+  value === "all" || isRadarTech(value);
+
+const radarTechTone = {
+  flightscope: "border-sky-300/30 bg-sky-400/10 text-sky-100",
+  trackman: "border-emerald-300/30 bg-emerald-400/10 text-emerald-100",
+  smart2move: "border-amber-300/30 bg-amber-400/10 text-amber-100",
+  unknown: "border-white/10 bg-white/5 text-[var(--muted)]",
+} as const;
+
 const LoadingDots = () => (
   <span className="ml-1 inline-flex items-center gap-0.5">
     {[0, 1, 2].map((index) => (
@@ -145,6 +168,8 @@ export default function CoachStudentDetailPage() {
   const [radarFiles, setRadarFiles] = useState<RadarFile[]>([]);
   const [radarLoading, setRadarLoading] = useState(false);
   const [radarError, setRadarError] = useState("");
+  const [radarTech, setRadarTech] = useState<RadarTech>("flightscope");
+  const [radarFilter, setRadarFilter] = useState<RadarFilter>("all");
   const [radarUploading, setRadarUploading] = useState(false);
   const [radarProgress, setRadarProgress] = useState(0);
   const [radarPhase, setRadarPhase] = useState<"upload" | "analyse">("upload");
@@ -177,6 +202,26 @@ export default function CoachStudentDetailPage() {
   const radarAddonEnabled = isAdmin || organization?.radar_enabled;
   const tpiLocked = !tpiAddonEnabled;
   const radarLocked = !radarAddonEnabled;
+  const radarTechMeta = getRadarTechMeta(radarTech);
+  const radarVisibleFiles = useMemo(() => {
+    if (radarFilter === "all") return radarFiles;
+    return radarFiles.filter((file) => file.source === radarFilter);
+  }, [radarFiles, radarFilter]);
+  const radarFilterOptions = useMemo(
+    () => [
+      {
+        id: "all" as const,
+        label: "Toutes",
+        tone: "border-white/10 bg-white/5 text-[var(--muted)]",
+      },
+      ...RADAR_TECH_OPTIONS.map((option) => ({
+        id: option.id,
+        label: option.label,
+        tone: radarTechTone[option.id],
+      })),
+    ],
+    []
+  );
   const [premiumModalOpen, setPremiumModalOpen] = useState(false);
   const [premiumNotice, setPremiumNotice] = useState<{
     title: string;
@@ -199,6 +244,15 @@ export default function CoachStudentDetailPage() {
     },
     []
   );
+
+  const handleRadarFilterChange = (next: string) => {
+    if (!isRadarFilter(next)) {
+      setRadarError("Filtre datas invalide.");
+      return;
+    }
+    setRadarError("");
+    setRadarFilter(next);
+  };
 
   const closePremiumModal = useCallback(() => {
     setPremiumModalOpen(false);
@@ -539,6 +593,7 @@ export default function CoachStudentDetailPage() {
       setRadarError("Choisis un eleve avant d importer un fichier datas.");
       return;
     }
+    const techMeta = getRadarTechMeta(radarTech);
     const isRadarImageFile = () => {
       if (file.type.startsWith("image/")) return true;
       const name = file.name.toLowerCase();
@@ -547,7 +602,7 @@ export default function CoachStudentDetailPage() {
       );
     };
     if (!isRadarImageFile()) {
-      setRadarError("Importe une image issue de Flightscope (jpg, png, heic...).");
+      setRadarError(`Importe une image ${techMeta.label} (jpg, png, heic...).`);
       return;
     }
 
@@ -557,7 +612,20 @@ export default function CoachStudentDetailPage() {
     setRadarPhase("upload");
     runRadarProgress(45, 1.5, 350);
 
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+    const studentLabel = [student?.first_name, student?.last_name]
+      .map((value) => value?.trim())
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    const displayName = buildRadarFileDisplayName({
+      tech: radarTech,
+      studentName: studentLabel,
+      reportDate: null,
+      club: null,
+      originalName: file.name,
+      fallbackDate: new Date(),
+    });
+    const safeName = displayName.replace(/[^a-zA-Z0-9._-]/g, "-");
     const path = `${organization.id}/students/${studentId}/radars/${Date.now()}-${safeName}`;
 
     const { error: uploadError } = await supabase.storage
@@ -578,9 +646,9 @@ export default function CoachStudentDetailPage() {
         {
           org_id: organization.id,
           student_id: studentId,
-          source: "flightscope",
+          source: techMeta.id,
           status: "processing",
-          original_name: file.name,
+          original_name: displayName,
           file_url: path,
           file_mime: file.type,
         },
@@ -731,7 +799,7 @@ export default function CoachStudentDetailPage() {
   };
 
   const handleDeleteRadarFile = async (file: RadarFile) => {
-    const name = file.original_name || "Export Flightscope";
+    const name = file.original_name || formatRadarSourceFallback(file.source);
     const confirmed = window.confirm(`Supprimer le fichier datas "${name}" ?`);
     if (!confirmed) return;
 
@@ -1434,26 +1502,50 @@ export default function CoachStudentDetailPage() {
                     Fichiers datas
                   </h3>
                   <p className="mt-1 text-sm text-[var(--muted)]">
-                    Importe un export Flightscope pour generer graphes, stats et resume.
+                    Importe un export {radarTechMeta.label} pour generer graphes, stats et
+                    resume.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  disabled={radarUploading}
-                  onClick={() => {
-                    if (radarLocked) {
-                      openRadarAddonModal();
-                      return;
-                    }
-                    radarInputRef.current?.click();
-                  }}
-                  className={`rounded-full border border-white/10 bg-white/10 px-4 py-2 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20 ${
-                    radarLocked ? "cursor-not-allowed opacity-60" : ""
-                  } disabled:opacity-60`}
-                  aria-disabled={radarLocked}
-                >
-                  Importer un fichier
-                </button>
+                <div className="flex flex-wrap items-center gap-2 rounded-full border border-white/10 bg-white/5 px-2 py-1">
+                  <select
+                    value={radarTech}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      if (!isRadarTech(next)) {
+                        setRadarError("Technologie datas invalide.");
+                        return;
+                      }
+                      setRadarError("");
+                      setRadarTech(next);
+                    }}
+                    disabled={radarLocked}
+                    className="rounded-full border border-white/10 bg-[var(--bg-elevated)] px-3 py-1.5 text-xs text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-60"
+                    aria-label="Technologie radar"
+                  >
+                    {RADAR_TECH_OPTIONS.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    disabled={radarUploading}
+                    onClick={() => {
+                      if (radarLocked) {
+                        openRadarAddonModal();
+                        return;
+                      }
+                      radarInputRef.current?.click();
+                    }}
+                    className={`rounded-full border border-white/10 bg-white/10 px-4 py-1.5 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20 ${
+                      radarLocked ? "cursor-not-allowed opacity-60" : ""
+                    } disabled:opacity-60`}
+                    aria-disabled={radarLocked}
+                  >
+                    Importer un fichier
+                  </button>
+                </div>
               </div>
               <div
                 className={`mt-4 rounded-xl border border-dashed px-4 py-4 text-sm text-[var(--muted)] transition ${
@@ -1479,7 +1571,7 @@ export default function CoachStudentDetailPage() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-sm text-[var(--text)]">
-                      Glisse une image d export Flightscope.
+                      Glisse une image d export {radarTechMeta.label}.
                     </p>
                     <p className="mt-1 text-xs text-[var(--muted)]">
                       OCR et detection de tableau automatiquement.
@@ -1539,13 +1631,35 @@ export default function CoachStudentDetailPage() {
                 <p className="mt-3 text-xs text-red-300">{radarError}</p>
               ) : null}
 
+              <div className="mt-4 flex flex-wrap items-center gap-2 text-[0.6rem] uppercase tracking-wide">
+                {radarFilterOptions.map((option) => {
+                  const active = radarFilter === option.id;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => handleRadarFilterChange(option.id)}
+                      className={`rounded-full border px-3 py-1 transition ${
+                        active
+                          ? option.tone
+                          : "border-white/5 bg-white/5 text-[var(--muted)] hover:bg-white/10"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+
               <div className="mt-4 space-y-3">
-                {radarFiles.length === 0 ? (
+                {radarVisibleFiles.length === 0 ? (
                   <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
-                    Aucun fichier datas pour cet eleve.
+                    {radarFilter === "all"
+                      ? "Aucun fichier datas pour cet eleve."
+                      : "Aucun fichier datas pour cette technologie."}
                   </div>
                 ) : (
-                  radarFiles.map((file) => {
+                  radarVisibleFiles.map((file) => {
                     const shotCount = file.shots?.length ?? 0;
                     const isReady = file.status === "ready";
                     const badgeTone =
@@ -1562,8 +1676,18 @@ export default function CoachStudentDetailPage() {
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
                             <p className="font-medium">
-                              {file.original_name || "Export Flightscope"}
+                              {file.original_name ||
+                                formatRadarSourceFallback(file.source)}
                             </p>
+                            <span
+                              className={`rounded-full border px-2 py-0.5 text-[0.6rem] uppercase tracking-wide ${
+                                radarTechTone[file.source] ?? radarTechTone.unknown
+                              }`}
+                            >
+                              {isRadarTech(file.source)
+                                ? getRadarTechMeta(file.source).prefix
+                                : "UNK"}
+                            </span>
                             <span
                               className={`rounded-full border px-2 py-0.5 text-[0.6rem] uppercase tracking-wide ${badgeTone}`}
                             >
@@ -1690,7 +1814,8 @@ export default function CoachStudentDetailPage() {
                         Datas
                       </p>
                       <h4 className="mt-2 text-lg font-semibold text-[var(--text)]">
-                        {radarPreview.original_name || "Export Flightscope"}
+                        {radarPreview.original_name ||
+                          formatRadarSourceFallback(radarPreview.source)}
                       </h4>
                     </div>
                     <button

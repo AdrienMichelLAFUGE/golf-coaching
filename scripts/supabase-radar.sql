@@ -1,11 +1,11 @@
--- Radar files (Flightscope/Trackman) extraction storage
+-- Radar files (Flightscope/Trackman/Smart2move) extraction storage
 create table if not exists public.radar_files (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.organizations(id) on delete cascade,
   student_id uuid not null references public.students(id) on delete cascade,
   report_id uuid references public.reports(id) on delete set null,
   source text not null default 'flightscope'
-    check (source in ('flightscope', 'trackman', 'unknown')),
+    check (source in ('flightscope', 'trackman', 'smart2move', 'unknown')),
   status text not null default 'processing'
     check (status in ('processing', 'ready', 'error')),
   original_name text,
