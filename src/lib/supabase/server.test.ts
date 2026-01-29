@@ -1,4 +1,14 @@
-﻿const createClient = jest.fn(() => ({
+﻿type CreateClientOptions = {
+  global?: {
+    headers?: {
+      Authorization?: string;
+    };
+  };
+};
+
+type CreateClientArgs = [string, string, CreateClientOptions?];
+
+const createClient = jest.fn<unknown, CreateClientArgs>(() => ({
   auth: { getUser: jest.fn() },
   from: jest.fn(),
 }));
@@ -6,7 +16,7 @@
 jest.mock("server-only", () => ({}));
 
 jest.mock("@supabase/supabase-js", () => ({
-  createClient: (...args: unknown[]) => createClient(...args),
+  createClient: (...args: CreateClientArgs) => createClient(...args),
 }));
 
 describe("supabase server helpers", () => {
@@ -15,6 +25,7 @@ describe("supabase server helpers", () => {
   });
 
   it("creates a server client with the request auth header", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { createSupabaseServerClient } = require("./server");
 
     createSupabaseServerClient("Bearer token");
@@ -23,10 +34,11 @@ describe("supabase server helpers", () => {
     const [url, key, options] = createClient.mock.calls[0];
     expect(url).toBe("http://localhost:54321");
     expect(key).toBe("test-anon-key");
-    expect(options.global.headers.Authorization).toBe("Bearer token");
+    expect(options?.global?.headers?.Authorization).toBe("Bearer token");
   });
 
   it("creates an admin client with the service role key", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { createSupabaseAdminClient } = require("./server");
 
     createSupabaseAdminClient();
@@ -38,6 +50,7 @@ describe("supabase server helpers", () => {
   });
 
   it("creates a server client from request headers", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { createSupabaseServerClientFromRequest } = require("./server");
     const req = {
       headers: {
@@ -49,6 +62,6 @@ describe("supabase server helpers", () => {
     createSupabaseServerClientFromRequest(req);
 
     const [, , options] = createClient.mock.calls[0];
-    expect(options.global.headers.Authorization).toBe("Bearer req-token");
+    expect(options?.global?.headers?.Authorization).toBe("Bearer req-token");
   });
 });

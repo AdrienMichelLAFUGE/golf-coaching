@@ -11,7 +11,10 @@ describe("env", () => {
   });
 
   it("returns test defaults when NODE_ENV=test and vars missing", () => {
-    process.env.NODE_ENV = "test";
+    process.env = {
+      ...originalEnv,
+      NODE_ENV: "test",
+    };
     delete process.env.NEXT_PUBLIC_SUPABASE_URL;
     delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     delete process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -21,6 +24,7 @@ describe("env", () => {
     delete process.env.BREVO_SENDER_NAME;
 
     jest.isolateModules(() => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { env } = require("./env");
       expect(env.NEXT_PUBLIC_SUPABASE_URL).toBe("http://localhost:54321");
       expect(env.OPENAI_API_KEY).toBe("test-openai-key");
@@ -28,7 +32,10 @@ describe("env", () => {
   });
 
   it("throws when NODE_ENV=production and vars are missing", () => {
-    process.env.NODE_ENV = "production";
+    process.env = {
+      ...originalEnv,
+      NODE_ENV: "production",
+    };
     delete process.env.NEXT_PUBLIC_SUPABASE_URL;
     delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     delete process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -39,8 +46,11 @@ describe("env", () => {
 
     expect(() => {
       jest.isolateModules(() => {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
         require("./env");
       });
     }).toThrow(/Invalid server env vars/);
   });
 });
+
+export {};

@@ -11,11 +11,15 @@ describe("envClient", () => {
   });
 
   it("returns test defaults when NODE_ENV=test and vars missing", () => {
-    process.env.NODE_ENV = "test";
+    process.env = {
+      ...originalEnv,
+      NODE_ENV: "test",
+    };
     delete process.env.NEXT_PUBLIC_SUPABASE_URL;
     delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
     jest.isolateModules(() => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { envClient } = require("./env.client");
       expect(envClient.NEXT_PUBLIC_SUPABASE_URL).toBe("http://localhost:54321");
       expect(envClient.NEXT_PUBLIC_SUPABASE_ANON_KEY).toBe("test-anon-key");
@@ -23,14 +27,20 @@ describe("envClient", () => {
   });
 
   it("throws when NODE_ENV=production and vars are missing", () => {
-    process.env.NODE_ENV = "production";
+    process.env = {
+      ...originalEnv,
+      NODE_ENV: "production",
+    };
     delete process.env.NEXT_PUBLIC_SUPABASE_URL;
     delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
     expect(() => {
       jest.isolateModules(() => {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
         require("./env.client");
       });
     }).toThrow(/Invalid public env vars/);
   });
 });
+
+export {};
