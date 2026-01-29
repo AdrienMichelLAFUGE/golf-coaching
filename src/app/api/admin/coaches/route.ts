@@ -25,11 +25,16 @@ const coachUpdateSchema = z.object({
   ai_model: z.string().nullable().optional(),
 });
 
+const coachDeleteSchema = z.object({
+  coachId: z.string().min(1),
+});
+
 const requireAdmin = async (request: Request) => {
   const supabase = createSupabaseServerClientFromRequest(request);
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
   const email = userData.user?.email ?? "";
+  const userId = userData.user?.id ?? null;
   if (userError || !isAdminEmail(email)) {
     return {
       error: NextResponse.json({ error: "Unauthorized." }, { status: 403 }),
@@ -38,6 +43,7 @@ const requireAdmin = async (request: Request) => {
 
   return {
     admin: createSupabaseAdminClient(),
+    userId,
   };
 };
 
@@ -62,12 +68,28 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: ownerError.message }, { status: 500 });
   }
 
-  const ownerByOrg = new Map(
-    (owners ?? []).map((owner) => [
-      owner.org_id,
-      { id: owner.id, full_name: owner.full_name ?? null },
-    ])
+  const ownerEntries = await Promise.all(
+    (owners ?? [])
+      .filter((owner) => owner.org_id)
+      .map(async (owner) => {
+        let email: string | null = null;
+        const { data: authData, error: authError } =
+          await auth.admin.auth.admin.getUserById(owner.id);
+        if (!authError) {
+          email = authData.user?.email ?? null;
+        }
+        return [
+          owner.org_id,
+          {
+            id: owner.id,
+            full_name: owner.full_name ?? null,
+            email,
+          },
+        ] as const;
+      })
   );
+
+  const ownerByOrg = new Map(ownerEntries);
 
   const payload = (organizations ?? []).map((org) => ({
     id: org.id,
@@ -122,6 +144,43 @@ export async function PATCH(request: Request) {
 
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true });
+}
+
+export async function DELETE(request: Request) {
+  const auth = await requireAdmin(request);
+  if ("error" in auth) return auth.error;
+
+  const parsed = await parseRequestJson(request, coachDeleteSchema);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Payload invalide.", details: formatZodError(parsed.error) },
+      { status: 422 }
+    );
+  }
+
+  const coachId = parsed.data.coachId.trim();
+  if (auth.userId && coachId === auth.userId) {
+    return NextResponse.json(
+      { error: "Impossible de supprimer votre compte." },
+      { status: 400 }
+    );
+  }
+
+  const { error: deleteError } = await auth.admin.auth.admin.deleteUser(coachId);
+  if (deleteError) {
+    return NextResponse.json({ error: deleteError.message }, { status: 400 });
+  }
+
+  const { error: profileError } = await auth.admin
+    .from("profiles")
+    .delete()
+    .eq("id", coachId);
+
+  if (profileError) {
+    return NextResponse.json({ error: profileError.message }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });

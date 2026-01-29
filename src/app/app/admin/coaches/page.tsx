@@ -12,7 +12,7 @@ type OrganizationRow = {
   tpi_enabled: boolean;
   radar_enabled: boolean;
   ai_model: string;
-  owner: { id: string; full_name: string | null } | null;
+  owner: { id: string; full_name: string | null; email: string | null } | null;
 };
 
 const MODEL_OPTIONS = ["gpt-5-mini", "gpt-5", "gpt-5.2"];
@@ -21,6 +21,7 @@ export default function AdminCoachesPage() {
   const [organizations, setOrganizations] = useState<OrganizationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
@@ -73,11 +74,57 @@ export default function AdminCoachesPage() {
     if (!search) return organizations;
     return organizations.filter((org) => {
       const owner = org.owner?.full_name ?? "";
+      const ownerEmail = org.owner?.email ?? "";
       return (
-        org.name.toLowerCase().includes(search) || owner.toLowerCase().includes(search)
+        org.name.toLowerCase().includes(search) ||
+        owner.toLowerCase().includes(search) ||
+        ownerEmail.toLowerCase().includes(search)
       );
     });
   }, [organizations, query]);
+
+  const handleDeleteCoach = async (coachId: string, orgId: string) => {
+    if (!coachId) return;
+    const confirmed = window.confirm(
+      "Supprimer ce compte coach ? Cette action est irreversible."
+    );
+    if (!confirmed) return;
+
+    setDeletingId(coachId);
+    setError("");
+    setMessage("");
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+
+    if (!token) {
+      setError("Session invalide. Reconnecte toi.");
+      setDeletingId(null);
+      return;
+    }
+
+    const response = await fetch("/api/admin/coaches", {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ coachId }),
+    });
+
+    const payload = (await response.json()) as { error?: string };
+    if (!response.ok) {
+      setError(payload.error ?? "Suppression impossible.");
+      setDeletingId(null);
+      return;
+    }
+
+    setOrganizations((prev) =>
+      prev.map((org) => (org.id === orgId ? { ...org, owner: null } : org))
+    );
+    setMessage("Coach supprime.");
+    setDeletingId(null);
+  };
 
   const handleUpdate = async (orgId: string, patch: Partial<OrganizationRow>) => {
     setSavingId(orgId);
@@ -169,11 +216,12 @@ export default function AdminCoachesPage() {
 
         <section className="panel rounded-2xl p-6">
           <div className="grid gap-3 text-sm text-[var(--muted)]">
-            <div className="hidden gap-3 uppercase tracking-wide text-[0.7rem] text-[var(--muted)] md:grid md:grid-cols-[1.3fr_1fr_1fr_1fr]">
+            <div className="hidden gap-3 uppercase tracking-wide text-[0.7rem] text-[var(--muted)] md:grid md:grid-cols-[1.3fr_1fr_1fr_1fr_0.6fr]">
               <span>Organisation</span>
-              <span>Owner</span>
+              <span>Coach</span>
               <span>Plan</span>
               <span>Modele</span>
+              <span>Actions</span>
             </div>
             {loading ? (
               <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
@@ -187,14 +235,16 @@ export default function AdminCoachesPage() {
               filtered.map((org) => (
                 <div
                   key={org.id}
-                  className="grid gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-[var(--text)] md:grid-cols-[1.3fr_1fr_1fr_1fr]"
+                  className="grid gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-[var(--text)] md:grid-cols-[1.3fr_1fr_1fr_1fr_0.6fr]"
                 >
                   <div>
                     <p className="font-medium">{org.name || "Organisation"}</p>
-                    <p className="mt-1 text-xs text-[var(--muted)]">{org.id}</p>
                   </div>
                   <div className="text-sm text-[var(--muted)]">
-                    {org.owner?.full_name ?? "Owner"}
+                    <p>{org.owner?.full_name ?? "Coach"}</p>
+                    <p className="mt-1 text-xs text-[var(--muted)]">
+                      {org.owner?.email ?? "Email indisponible"}
+                    </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <button
@@ -263,6 +313,16 @@ export default function AdminCoachesPage() {
                         </option>
                       ))}
                     </select>
+                  </div>
+                  <div className="flex items-center">
+                    <button
+                      type="button"
+                      disabled={!org.owner?.id || deletingId === org.owner?.id}
+                      onClick={() => handleDeleteCoach(org.owner?.id ?? "", org.id)}
+                      className="rounded-full border border-rose-300/30 bg-rose-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-rose-200 transition hover:bg-rose-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {deletingId === org.owner?.id ? "Suppression..." : "Supprimer"}
+                    </button>
                   </div>
                 </div>
               ))
