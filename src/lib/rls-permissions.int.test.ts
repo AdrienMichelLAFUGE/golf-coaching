@@ -2,7 +2,7 @@
  * @jest-environment node
  */
 
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 
 type Database = {
   public: {
@@ -102,153 +102,173 @@ describeIf("RLS integration: student shares", () => {
   const ownerEmail = `owner+${stamp}@example.com`;
   const viewerEmail = `viewer+${stamp}@example.com`;
 
-  let admin: SupabaseClient<Database>;
-  let viewerClient: SupabaseClient<Database>;
-
-  let orgId = "";
-  let viewerOrgId = "";
-  let ownerId = "";
-  let viewerId = "";
-  let studentId = "";
-
-  beforeAll(async () => {
-    admin = createClient<Database>(testEnv.url!, testEnv.serviceKey!, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-    viewerClient = createClient<Database>(testEnv.url!, testEnv.anonKey!, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-
-    const { data: org, error: orgError } = await admin
-      .from("organizations")
-      .insert({ name: orgName })
-      .select("id")
-      .single();
-    if (orgError || !org) throw orgError ?? new Error("Org creation failed.");
-    orgId = org.id as string;
-
-    const { data: viewerOrg, error: viewerOrgError } = await admin
-      .from("organizations")
-      .insert({ name: viewerOrgName })
-      .select("id")
-      .single();
-    if (viewerOrgError || !viewerOrg) {
-      throw viewerOrgError ?? new Error("Viewer org creation failed.");
-    }
-    viewerOrgId = viewerOrg.id as string;
-
-    const { data: ownerUser, error: ownerError } = await admin.auth.admin.createUser(
-      { email: ownerEmail, password, email_confirm: true }
-    );
-    if (ownerError || !ownerUser?.user) {
-      throw ownerError ?? new Error("Owner user creation failed.");
-    }
-    ownerId = ownerUser.user.id;
-
-    const { data: viewerUser, error: viewerError } = await admin.auth.admin.createUser(
-      { email: viewerEmail, password, email_confirm: true }
-    );
-    if (viewerError || !viewerUser?.user) {
-      throw viewerError ?? new Error("Viewer user creation failed.");
-    }
-    viewerId = viewerUser.user.id;
-
-    const { error: profilesError } = await admin.from("profiles").upsert(
-      [
-        {
-          id: ownerId,
-          org_id: orgId,
-          role: "owner",
-          full_name: "Owner Test",
-        },
-        {
-          id: viewerId,
-          org_id: viewerOrgId,
-          role: "coach",
-          full_name: "Viewer Test",
-        },
-      ],
-      { onConflict: "id" }
-    );
-    if (profilesError) throw profilesError;
-
-    const { data: student, error: studentError } = await admin
-      .from("students")
-      .insert({
-        org_id: orgId,
-        first_name: "Test",
-        last_name: "Student",
-        email: `student+${stamp}@example.com`,
-      })
-      .select("id, email")
-      .single();
-
-    if (studentError || !student) {
-      throw studentError ?? new Error("Student creation failed.");
-    }
-    studentId = student.id as string;
-
-    const studentEmail = student.email ?? "";
-    const { error: shareError } = await admin.from("student_shares").insert({
-      student_id: studentId,
-      owner_id: ownerId,
-      viewer_id: viewerId,
-      viewer_email: viewerEmail,
-      student_email: studentEmail,
-      status: "pending_student",
-    });
-    if (shareError) throw shareError;
-
-    const { error: signInError } = await viewerClient.auth.signInWithPassword({
-      email: viewerEmail,
-      password,
-    });
-    if (signInError) throw signInError;
-  });
-
-  afterAll(async () => {
-    if (!studentId) return;
-    await admin.from("student_shares").delete().eq("student_id", studentId);
-    await admin.from("students").delete().eq("id", studentId);
-    await admin.from("profiles").delete().in("id", [ownerId, viewerId]);
-    await admin.from("organizations").delete().eq("id", orgId);
-    await admin.from("organizations").delete().eq("id", viewerOrgId);
-    await admin.auth.admin.deleteUser(ownerId);
-    await admin.auth.admin.deleteUser(viewerId);
-  });
-
   it("blocks read before active and blocks write after active", async () => {
-    const { data: beforeData, error: beforeError } = await viewerClient
-      .from("students")
-      .select("id")
-      .eq("id", studentId);
+    const admin = createClient<Database>(testEnv.url!, testEnv.serviceKey!, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const viewerClient = createClient<Database>(testEnv.url!, testEnv.anonKey!, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
 
-    expect(beforeError).toBeNull();
-    expect(beforeData ?? []).toHaveLength(0);
+    let orgId = "";
+    let viewerOrgId = "";
+    let ownerId = "";
+    let viewerId = "";
+    let studentId = "";
 
-    const { error: activateError } = await admin
-      .from("student_shares")
-      .update({ status: "active" })
-      .eq("student_id", studentId)
-      .eq("viewer_email", viewerEmail);
+    const cleanup = async () => {
+      if (studentId) {
+        try {
+          await admin.from("student_shares").delete().eq("student_id", studentId);
+        } catch {}
+        try {
+          await admin.from("students").delete().eq("id", studentId);
+        } catch {}
+      }
+      if (ownerId || viewerId) {
+        try {
+          await admin.from("profiles").delete().in("id", [ownerId, viewerId]);
+        } catch {}
+        try {
+          if (ownerId) await admin.auth.admin.deleteUser(ownerId);
+        } catch {}
+        try {
+          if (viewerId) await admin.auth.admin.deleteUser(viewerId);
+        } catch {}
+      }
+      if (orgId) {
+        try {
+          await admin.from("organizations").delete().eq("id", orgId);
+        } catch {}
+      }
+      if (viewerOrgId) {
+        try {
+          await admin.from("organizations").delete().eq("id", viewerOrgId);
+        } catch {}
+      }
+    };
 
-    expect(activateError).toBeNull();
+    try {
+      const { data: org, error: orgError } = await admin
+        .from("organizations")
+        .insert({ name: orgName })
+        .select("id")
+        .single();
+      if (orgError || !org) throw orgError ?? new Error("Org creation failed.");
+      orgId = org.id as string;
 
-    const { data: afterData, error: afterError } = await viewerClient
-      .from("students")
-      .select("id")
-      .eq("id", studentId);
+      const { data: viewerOrg, error: viewerOrgError } = await admin
+        .from("organizations")
+        .insert({ name: viewerOrgName })
+        .select("id")
+        .single();
+      if (viewerOrgError || !viewerOrg) {
+        throw viewerOrgError ?? new Error("Viewer org creation failed.");
+      }
+      viewerOrgId = viewerOrg.id as string;
 
-    expect(afterError).toBeNull();
-    expect(afterData ?? []).toHaveLength(1);
+      const { data: ownerUser, error: ownerError } = await admin.auth.admin.createUser(
+        { email: ownerEmail, password, email_confirm: true }
+      );
+      if (ownerError || !ownerUser?.user) {
+        throw ownerError ?? new Error("Owner user creation failed.");
+      }
+      ownerId = ownerUser.user.id;
 
-    const { data: updateData, error: updateError } = await viewerClient
-      .from("students")
-      .update({ first_name: "Hack" })
-      .eq("id", studentId)
-      .select("id");
+      const { data: viewerUser, error: viewerError } = await admin.auth.admin.createUser(
+        { email: viewerEmail, password, email_confirm: true }
+      );
+      if (viewerError || !viewerUser?.user) {
+        throw viewerError ?? new Error("Viewer user creation failed.");
+      }
+      viewerId = viewerUser.user.id;
 
-    expect(updateError).toBeNull();
-    expect(updateData ?? []).toHaveLength(0);
+      const { error: profilesError } = await admin.from("profiles").upsert(
+        [
+          {
+            id: ownerId,
+            org_id: orgId,
+            role: "owner",
+            full_name: "Owner Test",
+          },
+          {
+            id: viewerId,
+            org_id: viewerOrgId,
+            role: "coach",
+            full_name: "Viewer Test",
+          },
+        ],
+        { onConflict: "id" }
+      );
+      if (profilesError) throw profilesError;
+
+      const { data: student, error: studentError } = await admin
+        .from("students")
+        .insert({
+          org_id: orgId,
+          first_name: "Test",
+          last_name: "Student",
+          email: `student+${stamp}@example.com`,
+        })
+        .select("id, email")
+        .single();
+
+      if (studentError || !student) {
+        throw studentError ?? new Error("Student creation failed.");
+      }
+      studentId = student.id as string;
+
+      const studentEmail = student.email ?? "";
+      const { error: shareError } = await admin.from("student_shares").insert({
+        student_id: studentId,
+        owner_id: ownerId,
+        viewer_id: viewerId,
+        viewer_email: viewerEmail,
+        student_email: studentEmail,
+        status: "pending_student",
+      });
+      if (shareError) throw shareError;
+
+      const { error: signInError } = await viewerClient.auth.signInWithPassword({
+        email: viewerEmail,
+        password,
+      });
+      if (signInError) throw signInError;
+
+      const { data: beforeData, error: beforeError } = await viewerClient
+        .from("students")
+        .select("id")
+        .eq("id", studentId);
+
+      expect(beforeError).toBeNull();
+      expect(beforeData ?? []).toHaveLength(0);
+
+      const { error: activateError } = await admin
+        .from("student_shares")
+        .update({ status: "active" })
+        .eq("student_id", studentId)
+        .eq("viewer_email", viewerEmail);
+
+      expect(activateError).toBeNull();
+
+      const { data: afterData, error: afterError } = await viewerClient
+        .from("students")
+        .select("id")
+        .eq("id", studentId);
+
+      expect(afterError).toBeNull();
+      expect(afterData ?? []).toHaveLength(1);
+
+      const { data: updateData, error: updateError } = await viewerClient
+        .from("students")
+        .update({ first_name: "Hack" })
+        .eq("id", studentId)
+        .select("id");
+
+      expect(updateError).toBeNull();
+      expect(updateData ?? []).toHaveLength(0);
+    } finally {
+      await cleanup();
+    }
   });
 });
