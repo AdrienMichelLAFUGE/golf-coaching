@@ -4,6 +4,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../../_components/role-guard";
@@ -30,6 +31,8 @@ type ReportSection = {
   id: string;
   title: string;
   content: string | null;
+  content_formatted?: string | null;
+  content_format_hash?: string | null;
   position: number;
   type: string | null;
   media_urls: string[] | null;
@@ -108,6 +111,131 @@ const formatDate = (
   return new Date(value).toLocaleDateString(locale ?? "fr-FR", options);
 };
 
+type InlineMatch = {
+  index: number;
+  length: number;
+  type: "strong" | "em" | "underline";
+  content: string;
+};
+
+const findInlineMatch = (value: string): InlineMatch | null => {
+  const patterns: Array<{
+    type: InlineMatch["type"];
+    regex: RegExp;
+  }> = [
+    { type: "strong", regex: /\*\*([\s\S]+?)\*\*/ },
+    { type: "underline", regex: /__([\s\S]+?)__/ },
+    { type: "em", regex: /_([\s\S]+?)_/ },
+    { type: "em", regex: /\*([\s\S]+?)\*/ },
+  ];
+
+  let best: InlineMatch | null = null;
+  patterns.forEach((pattern) => {
+    const match = pattern.regex.exec(value);
+    if (!match) return;
+    const candidate = {
+      index: match.index,
+      length: match[0].length,
+      type: pattern.type,
+      content: match[1],
+    };
+    if (!best || candidate.index < best.index) {
+      best = candidate;
+    }
+  });
+  return best;
+};
+
+const renderInlineText = (value: string, keyPrefix: string): ReactNode[] => {
+  const nodes: ReactNode[] = [];
+  let remaining = value;
+  let guard = 0;
+  while (remaining && guard < 200) {
+    guard += 1;
+    const match = findInlineMatch(remaining);
+    if (!match) {
+      nodes.push(remaining);
+      break;
+    }
+    if (match.index > 0) {
+      nodes.push(remaining.slice(0, match.index));
+    }
+    const inner = renderInlineText(
+      match.content,
+      `${keyPrefix}-${nodes.length}-${guard}`
+    );
+    const key = `${keyPrefix}-${nodes.length}-${guard}`;
+    if (match.type === "strong") {
+      nodes.push(
+        <strong key={key} className="font-semibold text-[var(--text)]">
+          {inner}
+        </strong>
+      );
+    } else if (match.type === "underline") {
+      nodes.push(
+        <span key={key} className="underline underline-offset-2">
+          {inner}
+        </span>
+      );
+    } else {
+      nodes.push(
+        <em key={key} className="italic text-[var(--text)]">
+          {inner}
+        </em>
+      );
+    }
+    remaining = remaining.slice(match.index + match.length);
+  }
+  return nodes;
+};
+
+const renderFormattedText = (value: string) => {
+  const paragraphs = value.split(/\n\s*\n/);
+  return paragraphs
+    .map((paragraph, index) => {
+      const trimmed = paragraph.trim();
+      if (!trimmed) return null;
+      const lines = trimmed.split(/\n/).filter((line) => line.trim());
+      const isList =
+        lines.length > 1 && lines.every((line) => /^[-*•]\s+/.test(line.trim()));
+
+      if (isList) {
+        return (
+          <ul
+            key={`list-${index}`}
+            className="list-disc space-y-2 pl-5 text-sm text-justify"
+          >
+            {lines.map((line, itemIndex) => {
+              const clean = line.replace(/^[-*•]\s+/, "");
+              return (
+                <li key={`li-${index}-${itemIndex}`} className="text-[var(--text)]">
+                  {renderInlineText(clean, `list-${index}-${itemIndex}`)}
+                </li>
+              );
+            })}
+          </ul>
+        );
+      }
+
+      const content = lines.flatMap((line, lineIndex) => {
+        const lineNodes = renderInlineText(line, `line-${index}-${lineIndex}`);
+        if (lineIndex === lines.length - 1) {
+          return lineNodes;
+        }
+        return [...lineNodes, <br key={`br-${index}-${lineIndex}`} />];
+      });
+      return (
+        <p
+          key={`para-${index}`}
+          className="text-sm leading-relaxed text-justify text-[var(--text)]"
+        >
+          {content}
+        </p>
+      );
+    })
+    .filter(Boolean);
+};
+
 export default function CoachReportDetailPage() {
   const { organization } = useProfile();
   const params = useParams();
@@ -122,6 +250,81 @@ export default function CoachReportDetailPage() {
   const [publishing, setPublishing] = useState(false);
   const locale = organization?.locale ?? "fr-FR";
   const timezone = organization?.timezone ?? "Europe/Paris";
+
+  const renderSectionHeader = (section: ReportSection) => {
+    const featureKey = getSectionFeatureKey(section);
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="text-lg font-semibold text-[var(--text)]">{section.title}</h3>
+        {renderFeatureBadge(featureKey)}
+      </div>
+    );
+  };
+
+  const renderSectionContent = (section: ReportSection) => {
+    if (section.type === "image") {
+      if (section.media_urls && section.media_urls.length > 0) {
+        return (
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {section.media_urls.map((url, index) => (
+              <div
+                key={url}
+                className="overflow-hidden rounded-xl border border-white/10 bg-black/30"
+              >
+                <div className="relative w-full" style={{ aspectRatio: "3 / 4" }}>
+                  <img
+                    src={url}
+                    alt={section.title}
+                    className="absolute inset-0 h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                </div>
+                {section.media_captions?.[index] ? (
+                  <div className="border-t border-white/10 bg-black/60 px-3 py-2 text-xs text-white/80">
+                    {section.media_captions[index]}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        );
+      }
+      return (
+        <p className="mt-3 text-sm text-[var(--muted)]">
+          Aucune image pour cette section.
+        </p>
+      );
+    }
+
+    if (section.type === "radar") {
+      const radarFile = section.radar_file_id ? radarFiles[section.radar_file_id] : null;
+      return radarFile ? (
+        <div className="mt-3">
+          <RadarCharts
+            columns={radarFile.columns ?? []}
+            shots={radarFile.shots ?? []}
+            stats={radarFile.stats}
+            summary={radarFile.summary}
+            config={section.radar_config ?? radarFile.config}
+            analytics={radarFile.analytics}
+          />
+        </div>
+      ) : (
+        <p className="mt-3 text-sm text-[var(--muted)]">Donnees datas indisponibles.</p>
+      );
+    }
+
+    const content = (section.content_formatted ?? section.content)?.trim();
+    if (!content) {
+      return (
+        <p className="mt-3 text-sm text-[var(--muted)]">
+          Aucun contenu pour cette section.
+        </p>
+      );
+    }
+
+    return <div className="mt-3 space-y-3">{renderFormattedText(content)}</div>;
+  };
 
   useEffect(() => {
     if (!reportId) return;
@@ -147,7 +350,7 @@ export default function CoachReportDetailPage() {
       const { data: sectionsData, error: sectionsError } = await supabase
         .from("report_sections")
         .select(
-          "id, title, content, position, type, media_urls, media_captions, radar_file_id, radar_config"
+          "id, title, content, content_formatted, content_format_hash, position, type, media_urls, media_captions, radar_file_id, radar_config"
         )
         .eq("report_id", reportId)
         .order("position", { ascending: true });
@@ -226,19 +429,32 @@ export default function CoachReportDetailPage() {
 
     setPublishing(true);
     setError("");
-    const now = new Date().toISOString();
-    const { error: updateError } = await supabase
-      .from("reports")
-      .update({ sent_at: now })
-      .eq("id", report.id);
-
-    if (updateError) {
-      setError(updateError.message);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setError("Session invalide.");
       setPublishing(false);
       return;
     }
 
-    setReport((prev) => (prev ? { ...prev, sent_at: now } : prev));
+    const response = await fetch("/api/reports/publish", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ reportId: report.id }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setError(payload.error ?? "Erreur de publication.");
+      setPublishing(false);
+      return;
+    }
+
+    const sentAt = payload.sentAt ?? new Date().toISOString();
+    setReport((prev) => (prev ? { ...prev, sent_at: sentAt } : prev));
     setPublishing(false);
   };
 
@@ -310,6 +526,9 @@ export default function CoachReportDetailPage() {
                   {deleting ? "Suppression..." : "Supprimer"}
                 </button>
               </div>
+              {publishing ? (
+                <p className="text-xs text-[var(--muted)]">Reformatage IA en cours...</p>
+              ) : null}
             </div>
           </section>
 
@@ -319,86 +538,45 @@ export default function CoachReportDetailPage() {
                 Aucune section pour ce rapport.
               </p>
             ) : (
-              <div className="space-y-6">
-                {sections.map((section) => {
-                  const featureKey = getSectionFeatureKey(section);
-                  const tone = featureKey ? featureTones[featureKey] : null;
-                  return (
-                    <div
+              <>
+                {publishing ? (
+                  <p className="mb-4 text-xs text-[var(--muted)]">
+                    Reformatage IA en cours...
+                  </p>
+                ) : null}
+                <div className="space-y-4 lg:hidden">
+                  {sections.map((section, index) => (
+                    <details
                       key={section.id}
-                      className={`relative rounded-2xl border p-4 ${
-                        tone ? tone.panel : "border-white/10 bg-white/5"
-                      }`}
+                      open={index === 0}
+                      className="border-b border-white/10 pb-4"
                     >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-lg font-semibold text-[var(--text)]">
+                      <summary className="flex cursor-pointer items-center justify-between gap-3 text-sm font-semibold text-[var(--text)]">
+                        <span className="flex flex-wrap items-center gap-2">
                           {section.title}
-                        </h3>
-                        {renderFeatureBadge(featureKey)}
-                      </div>
-                      {section.type === "image" ? (
-                        section.media_urls && section.media_urls.length > 0 ? (
-                          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                            {section.media_urls.map((url, index) => (
-                              <div
-                                key={url}
-                                className="overflow-hidden rounded-xl border border-white/10 bg-black/30"
-                              >
-                                <div
-                                  className="relative w-full"
-                                  style={{ aspectRatio: "3 / 4" }}
-                                >
-                                  <img
-                                    src={url}
-                                    alt={section.title}
-                                    className="absolute inset-0 h-full w-full object-cover"
-                                    loading="lazy"
-                                  />
-                                </div>
-                                {section.media_captions?.[index] ? (
-                                  <div className="border-t border-white/10 bg-black/60 px-3 py-2 text-xs text-white/80">
-                                    {section.media_captions[index]}
-                                  </div>
-                                ) : null}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="mt-3 text-sm text-[var(--muted)]">
-                            Aucune image pour cette section.
-                          </p>
-                        )
-                      ) : section.type === "radar" ? (
-                        (() => {
-                          const radarFile = section.radar_file_id
-                            ? radarFiles[section.radar_file_id]
-                            : null;
-                          return radarFile ? (
-                            <div className="mt-3">
-                              <RadarCharts
-                                columns={radarFile.columns ?? []}
-                                shots={radarFile.shots ?? []}
-                                stats={radarFile.stats}
-                                summary={radarFile.summary}
-                                config={section.radar_config ?? radarFile.config}
-                                analytics={radarFile.analytics}
-                              />
-                            </div>
-                          ) : (
-                            <p className="mt-3 text-sm text-[var(--muted)]">
-                              Donnees datas indisponibles.
-                            </p>
-                          );
-                        })()
-                      ) : (
-                        <p className="mt-3 text-sm text-justify text-[var(--muted)] whitespace-pre-wrap">
-                          {section.content || "Aucun contenu pour cette section."}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                          {renderFeatureBadge(getSectionFeatureKey(section))}
+                        </span>
+                        <span className="text-xs text-[var(--muted)]">+</span>
+                      </summary>
+                      <div className="mt-3">{renderSectionContent(section)}</div>
+                    </details>
+                  ))}
+                </div>
+                <div className="hidden gap-10 lg:grid lg:grid-cols-2">
+                  {sections.map((section) => {
+                    const isWide = section.type === "image" || section.type === "radar";
+                    return (
+                      <article
+                        key={section.id}
+                        className={`space-y-3 ${isWide ? "lg:col-span-2" : ""}`}
+                      >
+                        {renderSectionHeader(section)}
+                        {renderSectionContent(section)}
+                      </article>
+                    );
+                  })}
+                </div>
+              </>
             )}
           </section>
         </div>

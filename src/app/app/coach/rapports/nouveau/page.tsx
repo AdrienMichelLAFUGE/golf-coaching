@@ -61,6 +61,8 @@ type ReportSection = {
   title: string;
   type: SectionType;
   content: string;
+  contentFormatted?: string | null;
+  contentFormatHash?: string | null;
   mediaUrls: string[];
   mediaCaptions: string[];
   radarFileId?: string | null;
@@ -213,6 +215,8 @@ const createSection = (template: SectionTemplate): ReportSection => ({
   title: template.title,
   type: template.type,
   content: "",
+  contentFormatted: null,
+  contentFormatHash: null,
   mediaUrls: [],
   mediaCaptions: [],
   radarFileId: null,
@@ -1397,7 +1401,14 @@ export default function CoachReportBuilderPage() {
     target.style.height = `${target.scrollHeight}px`;
     setReportSections((prev) =>
       prev.map((section) =>
-        section.id === id ? { ...section, content: value } : section
+        section.id === id
+          ? {
+              ...section,
+              content: value,
+              contentFormatted: null,
+              contentFormatHash: null,
+            }
+          : section
       )
     );
     if (aiPreviews[id]) {
@@ -2498,7 +2509,7 @@ export default function CoachReportBuilderPage() {
     const { data: sectionsData, error: sectionsError } = await supabase
       .from("report_sections")
       .select(
-        "id, title, content, position, type, media_urls, media_captions, radar_file_id, radar_config"
+        "id, title, content, content_formatted, content_format_hash, position, type, media_urls, media_captions, radar_file_id, radar_config"
       )
       .eq("report_id", reportId)
       .order("position", { ascending: true });
@@ -2520,6 +2531,9 @@ export default function CoachReportBuilderPage() {
           title: section.title,
           type,
           content: type === "text" ? (section.content ?? "") : "",
+          contentFormatted: type === "text" ? (section.content_formatted ?? null) : null,
+          contentFormatHash:
+            type === "text" ? (section.content_format_hash ?? null) : null,
           mediaUrls,
           mediaCaptions: mediaUrls.map((url: string, index: number) =>
             (captions[index] ?? "").slice(0, CAPTION_LIMIT)
@@ -2594,6 +2608,8 @@ export default function CoachReportBuilderPage() {
       prev.map((section) => ({
         ...section,
         content: "",
+        contentFormatted: null,
+        contentFormatHash: null,
         mediaUrls: [],
         mediaCaptions: [],
         radarFileId: section.type === "radar" ? null : section.radarFileId,
@@ -2989,6 +3005,11 @@ export default function CoachReportBuilderPage() {
       setStatusType("error");
       return;
     }
+    if (!organization?.id) {
+      setStatusMessage("Organisation introuvable.");
+      setStatusType("error");
+      return;
+    }
 
     if (!title.trim()) {
       setStatusMessage("Ajoute un titre au rapport.");
@@ -3015,7 +3036,7 @@ export default function CoachReportBuilderPage() {
     let reportId = editingReportId;
 
     if (isEditing && reportId) {
-      const nextSentAt = send ? new Date().toISOString() : sentAt;
+      const nextSentAt = sentAt;
       const updatePayload: {
         student_id: string;
         title: string;
@@ -3032,10 +3053,6 @@ export default function CoachReportBuilderPage() {
         coach_work: workingNotes.trim() || null,
         coach_club: workingClub.trim() || null,
       };
-
-      if (send) {
-        updatePayload.sent_at = nextSentAt ?? new Date().toISOString();
-      }
 
       const { error: updateError } = await supabase
         .from("reports")
@@ -3061,9 +3078,10 @@ export default function CoachReportBuilderPage() {
         return;
       }
 
-      setSentAt(nextSentAt ?? null);
+      if (!send) {
+        setSentAt(nextSentAt ?? null);
+      }
     } else {
-      const createdSentAt = send ? new Date().toISOString() : null;
       const { data: report, error: reportError } = await supabase
         .from("reports")
         .insert([
@@ -3074,7 +3092,7 @@ export default function CoachReportBuilderPage() {
             coach_observations: workingObservations.trim() || null,
             coach_work: workingNotes.trim() || null,
             coach_club: workingClub.trim() || null,
-            sent_at: createdSentAt,
+            sent_at: null,
           },
         ])
         .select("id")
@@ -3091,7 +3109,7 @@ export default function CoachReportBuilderPage() {
       setEditingReportId(reportId);
       skipResetRef.current = true;
       router.replace(`/app/coach/rapports/nouveau?reportId=${reportId}`);
-      setSentAt(createdSentAt);
+      setSentAt(null);
     }
 
     if (!reportId) {
@@ -3102,10 +3120,15 @@ export default function CoachReportBuilderPage() {
     }
 
     const sectionsPayload = reportSections.map((section, index) => ({
+      org_id: organization.id,
       report_id: reportId,
       title: section.title,
       type: section.type,
       content: section.type === "text" ? section.content || null : null,
+      content_formatted:
+        section.type === "text" ? (section.contentFormatted ?? null) : null,
+      content_format_hash:
+        section.type === "text" ? (section.contentFormatHash ?? null) : null,
       media_urls: section.type === "image" ? section.mediaUrls : null,
       media_captions: section.type === "image" ? section.mediaCaptions : null,
       radar_file_id: section.type === "radar" ? (section.radarFileId ?? null) : null,
@@ -3122,6 +3145,20 @@ export default function CoachReportBuilderPage() {
       setStatusType("error");
       setSaving(false);
       return;
+    }
+
+    if (send || (isEditing && sentAt)) {
+      setStatusMessage("Reformatage IA en cours...");
+      setStatusType("idle");
+      const publishResult = await publishReport(reportId);
+      if (publishResult.error) {
+        setStatusMessage(publishResult.error);
+        setStatusType("error");
+        setSaving(false);
+        return;
+      }
+      const publishedAt = publishResult.sentAt ?? new Date().toISOString();
+      setSentAt(publishedAt);
     }
 
     setStatusMessage(
@@ -3149,6 +3186,30 @@ export default function CoachReportBuilderPage() {
     imagery: organization?.ai_imagery ?? "equilibre",
     focus: organization?.ai_focus ?? "mix",
   });
+
+  const publishReport = async (id: string) => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      return { error: "Session invalide." };
+    }
+
+    const response = await fetch("/api/reports/publish", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ reportId: id }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return { error: payload.error ?? "Erreur de publication." };
+    }
+
+    return { sentAt: payload.sentAt as string | undefined };
+  };
 
   const resetAiSettings = () => {
     const defaults = getAiDefaults();
@@ -3486,7 +3547,16 @@ export default function CoachReportBuilderPage() {
         return next;
       });
       setReportSections((prev) =>
-        prev.map((item) => (item.id === section.id ? { ...item, content: text } : item))
+        prev.map((item) =>
+          item.id === section.id
+            ? {
+                ...item,
+                content: text,
+                contentFormatted: null,
+                contentFormatHash: null,
+              }
+            : item
+        )
       );
     }
     setAiBusyId(null);
@@ -3594,7 +3664,12 @@ export default function CoachReportBuilderPage() {
         if (!content) return section;
         const base = section.content.trim();
         const combined = base ? `${base}\n\n${content}` : content;
-        return { ...section, content: combined };
+        return {
+          ...section,
+          content: combined,
+          contentFormatted: null,
+          contentFormatHash: null,
+        };
       })
     );
   };
@@ -3941,7 +4016,12 @@ export default function CoachReportBuilderPage() {
     setReportSections((prev) =>
       prev.map((item) =>
         item.id === id && item.content.trim() === preview.original.trim()
-          ? { ...item, content: preview.suggestion }
+          ? {
+              ...item,
+              content: preview.suggestion,
+              contentFormatted: null,
+              contentFormatHash: null,
+            }
           : item
       )
     );
