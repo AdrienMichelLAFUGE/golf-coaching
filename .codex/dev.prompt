@@ -1,0 +1,9 @@
+En tenant compte du contexte global, fais X.
+
+Contraintes :
+- reste minimal
+- ajoute les validations nécessaires
+- ajoute les tests pertinents si la logique est critique
+- explique brièvement les choix
+
+Commence par dire ce que tu vas modifier.

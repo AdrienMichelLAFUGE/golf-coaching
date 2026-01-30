@@ -1,0 +1,22 @@
+Fais un état des lieux clair du repo.
+
+Objectif :
+- Me dire où en est le projet en termes de qualité, robustesse et readiness prod.
+
+Analyse attendue (courte, factuelle) :
+1) Qualité actuelle
+- tests (présence, type, zones couvertes / manquantes)
+- validation runtime (env, routes, forms)
+- séparation client/server
+- scripts npm utiles
+
+2) Risques principaux (max 5)
+- ce qui pourrait casser en prod
+- ce qui manque encore pour être serein
+
+3) Prochaines actions recommandées
+- 3 actions maximum
+- classées par priorité
+- actionnables immédiatement
+
+Pas de code, pas de refacto. Diagnostic uniquement.
