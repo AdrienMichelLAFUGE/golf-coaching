@@ -35,6 +35,12 @@ type TpiTest = {
   position: number;
 };
 
+type ActiveShare = {
+  id: string;
+  viewer_email: string;
+  created_at: string;
+};
+
 const tpiColorRank: Record<TpiTest["result_color"], number> = {
   red: 0,
   orange: 1,
@@ -57,6 +63,9 @@ export default function StudentDashboardPage() {
   const [reports, setReports] = useState<Report[]>([]);
   const [tpiReport, setTpiReport] = useState<TpiReport | null>(null);
   const [tpiTests, setTpiTests] = useState<TpiTest[]>([]);
+  const [activeShares, setActiveShares] = useState<ActiveShare[]>([]);
+  const [shareError, setShareError] = useState("");
+  const [shareRevokingId, setShareRevokingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [noStudent, setNoStudent] = useState(false);
@@ -73,6 +82,7 @@ export default function StudentDashboardPage() {
     const loadDashboard = async () => {
       setLoading(true);
       setError("");
+      setShareError("");
 
       const { data: userData, error: userError } = await supabase.auth.getUser();
 
@@ -102,6 +112,13 @@ export default function StudentDashboardPage() {
       }
 
       setStudent(studentData);
+
+      const { data: shareData } = await supabase
+        .from("student_shares")
+        .select("id, viewer_email, created_at")
+        .eq("status", "active")
+        .order("created_at", { ascending: false });
+      setActiveShares((shareData ?? []) as ActiveShare[]);
 
       let reportData: TpiReport | null = null;
 
@@ -177,6 +194,37 @@ export default function StudentDashboardPage() {
     loadDashboard();
   }, []);
 
+  const handleRevokeShare = async (shareId: string) => {
+    setShareError("");
+    setShareRevokingId(shareId);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setShareError("Session invalide.");
+      setShareRevokingId(null);
+      return;
+    }
+
+    const response = await fetch("/api/student-shares/revoke", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ shareId }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setShareError(payload.error ?? "Revoquer impossible.");
+      setShareRevokingId(null);
+      return;
+    }
+
+    setActiveShares((prev) => prev.filter((share) => share.id !== shareId));
+    setShareRevokingId(null);
+  };
+
   return (
     <RoleGuard
       allowedRoles={["student"]}
@@ -251,6 +299,48 @@ export default function StudentDashboardPage() {
               </div>
             ))}
           </section>
+
+          {activeShares.length > 0 ? (
+            <section className="panel-soft rounded-2xl p-6">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-[var(--text)]">
+                    Partages actifs
+                  </h3>
+                  <p className="mt-1 text-sm text-[var(--muted)]">
+                    Ces coachs ont un acces lecture seule. Tu peux revoquer a tout moment.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 space-y-3">
+                {activeShares.map((share) => (
+                  <div
+                    key={share.id}
+                    className="flex flex-col gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--text)] md:flex-row md:items-center md:justify-between"
+                  >
+                    <div>
+                      <p className="font-medium">{share.viewer_email}</p>
+                      <p className="mt-1 text-xs text-[var(--muted)]">
+                        Partage actif depuis{" "}
+                        {formatDate(share.created_at, locale, timezone)}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRevokeShare(share.id)}
+                      disabled={shareRevokingId === share.id}
+                      className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-red-300 transition hover:text-red-200 disabled:opacity-60"
+                    >
+                      {shareRevokingId === share.id ? "Revocation..." : "Revoquer"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+              {shareError ? (
+                <p className="mt-3 text-sm text-red-400">{shareError}</p>
+              ) : null}
+            </section>
+          ) : null}
 
           <section className="panel rounded-2xl p-6">
             <div className="flex items-center justify-between">

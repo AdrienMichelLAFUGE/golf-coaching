@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../_components/role-guard";
 import PageBack from "../../_components/page-back";
+import { useProfile } from "../../_components/profile-context";
 
 type Student = {
   id: string;
@@ -26,6 +27,7 @@ type StudentForm = {
 };
 
 export default function CoachStudentsPage() {
+  const { userEmail } = useProfile();
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -52,6 +54,9 @@ export default function CoachStudentsPage() {
   });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
+  const [sharedStudentIds, setSharedStudentIds] = useState<string[]>([]);
+
+  const sharedStudentSet = useMemo(() => new Set(sharedStudentIds), [sharedStudentIds]);
 
   const filteredStudents = useMemo(() => {
     const search = query.trim().toLowerCase();
@@ -109,6 +114,36 @@ export default function CoachStudentsPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.resolve().then(async () => {
+      if (cancelled) return;
+      if (!userEmail) {
+        setSharedStudentIds([]);
+        return;
+      }
+      const { data, error: sharedError } = await supabase
+        .from("student_shares")
+        .select("student_id")
+        .eq("status", "active")
+        .ilike("viewer_email", userEmail);
+      if (cancelled) return;
+
+      if (sharedError) {
+        setSharedStudentIds([]);
+        return;
+      }
+
+      const ids = (data ?? [])
+        .map((row) => (row as { student_id?: string }).student_id)
+        .filter((id): id is string => Boolean(id));
+      setSharedStudentIds(ids);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [userEmail]);
 
   useEffect(() => {
     if (!menuOpenId) return;
@@ -442,6 +477,7 @@ export default function CoachStudentsPage() {
             ) : (
               filteredStudents.map((student) => {
                 const inviteDisabled = Boolean(student.activated_at);
+                const isShared = sharedStudentSet.has(student.id);
                 const inviteLabel = inviteDisabled
                   ? "Inviter"
                   : invitingId === student.id
@@ -497,6 +533,11 @@ export default function CoachStudentsPage() {
                       )}
                     </div>
                     <div className="flex items-start justify-between gap-3">
+                      {sharedStudentSet.has(student.id) ? (
+                        <span className="inline-flex self-start rounded-full border border-sky-300/30 bg-sky-400/10 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-sky-100">
+                          Partage
+                        </span>
+                      ) : null}
                       {student.tpi_report_id ? (
                         <span className="inline-flex self-start rounded-full border border-rose-300/30 bg-rose-400/10 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-rose-200">
                           TPI actif
@@ -538,8 +579,16 @@ export default function CoachStudentsPage() {
                           >
                             <Link
                               href={`/app/coach/rapports/nouveau?studentId=${student.id}`}
-                              onClick={() => setMenuOpenId(null)}
-                              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10"
+                              onClick={(event) => {
+                                if (isShared) event.preventDefault();
+                                setMenuOpenId(null);
+                              }}
+                              aria-disabled={isShared}
+                              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide transition ${
+                                isShared
+                                  ? "cursor-not-allowed text-[var(--muted)]"
+                                  : "text-[var(--text)] hover:bg-white/10"
+                              }`}
                             >
                               Nouveau rapport
                             </Link>
@@ -547,7 +596,12 @@ export default function CoachStudentsPage() {
                               type="button"
                               role="menuitem"
                               onClick={() => handleMenuEdit(student)}
-                              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10"
+                              disabled={isShared}
+                              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide transition ${
+                                isShared
+                                  ? "cursor-not-allowed text-[var(--muted)]"
+                                  : "text-[var(--text)] hover:bg-white/10"
+                              }`}
                             >
                               Editer
                             </button>
@@ -562,9 +616,11 @@ export default function CoachStudentsPage() {
                               type="button"
                               role="menuitem"
                               onClick={() => handleMenuInvite(student)}
-                              disabled={inviteDisabled || invitingId === student.id}
+                              disabled={
+                                isShared || inviteDisabled || invitingId === student.id
+                              }
                               className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide transition ${
-                                inviteDisabled
+                                inviteDisabled || isShared
                                   ? "cursor-not-allowed text-[var(--muted)]"
                                   : "text-[var(--text)] hover:bg-white/10"
                               }`}
@@ -575,7 +631,7 @@ export default function CoachStudentsPage() {
                               type="button"
                               role="menuitem"
                               onClick={() => handleMenuDelete(student)}
-                              disabled={deletingId === student.id}
+                              disabled={isShared || deletingId === student.id}
                               className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:bg-white/10 hover:text-red-200 disabled:opacity-60"
                             >
                               {deletingId === student.id ? "Suppression..." : "Supprimer"}

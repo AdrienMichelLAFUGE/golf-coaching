@@ -1,0 +1,30 @@
+Je veux discuter d’une future feature. Ne code RIEN.
+
+Objectif:
+- Valider la faisabilité
+- Identifier les risques (sécurité, données, UX)
+- Choisir une approche simple et robuste
+
+Description de la feature:
+<DESCRIPTION LIBRE>
+
+Contexte technique:
+- Next.js App Router + TypeScript strict
+- Supabase (auth + RLS)
+- Déploiement Vercel
+
+Analyse attendue:
+1) Reformule la feature en 3–5 points (pour valider la compréhension)
+2) Propose 1–2 approches possibles (pas plus)
+3) Pour chaque approche:
+   - avantages
+   - risques
+   - complexité (faible/moyenne/élevée)
+4) Donne ton recommandation par défaut et pourquoi
+5) Liste les décisions à figer AVANT de coder
+
+Règles:
+- Pas de code
+- Pas de refacto
+- Pas de buzzwords
+- Orienté prod-ready

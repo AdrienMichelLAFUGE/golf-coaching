@@ -8,6 +8,7 @@ import RoleGuard from "../../../_components/role-guard";
 import { useProfile } from "../../../_components/profile-context";
 import PageBack from "../../../_components/page-back";
 import PremiumOfferModal from "../../../_components/premium-offer-modal";
+import ShareStudentModal from "../../../_components/share-student-modal";
 import RadarCharts, {
   defaultRadarConfig,
   type RadarConfig,
@@ -25,6 +26,7 @@ import {
   isRadarTech,
 } from "@/lib/radar/file-naming";
 import type { RadarAnalytics } from "@/lib/radar/types";
+import { getViewerShareAccess, type ShareStatus } from "@/lib/student-share";
 
 type Student = {
   id: string;
@@ -81,6 +83,12 @@ type RadarFile = {
   created_at: string;
   extracted_at: string | null;
   error: string | null;
+};
+
+type ShareEntry = {
+  id: string;
+  viewer_email: string;
+  created_at: string;
 };
 
 type StudentEditForm = {
@@ -145,7 +153,7 @@ const LoadingDots = () => (
 );
 
 export default function CoachStudentDetailPage() {
-  const { organization, userEmail } = useProfile();
+  const { organization, userEmail, profile } = useProfile();
   const params = useParams();
   const studentId = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const [student, setStudent] = useState<Student | null>(null);
@@ -194,6 +202,14 @@ export default function CoachStudentDetailPage() {
   });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [shareMessage, setShareMessage] = useState("");
+  const [shareStatus, setShareStatus] = useState<ShareStatus | null>(null);
+  const [ownerShares, setOwnerShares] = useState<ShareEntry[]>([]);
+  const [ownerShareError, setOwnerShareError] = useState("");
+  const [ownerShareRevokingId, setOwnerShareRevokingId] = useState<string | null>(
+    null
+  );
   const locale = organization?.locale ?? "fr-FR";
   const timezone = organization?.timezone ?? "Europe/Paris";
   const aiEnabled = organization?.ai_enabled ?? false;
@@ -202,6 +218,9 @@ export default function CoachStudentDetailPage() {
   const radarAddonEnabled = isAdmin || organization?.radar_enabled;
   const tpiLocked = !tpiAddonEnabled;
   const radarLocked = !radarAddonEnabled;
+  const isOwner = profile?.role === "owner";
+  const shareAccess = getViewerShareAccess(shareStatus);
+  const isReadOnly = shareAccess.canRead;
   const radarTechMeta = getRadarTechMeta(radarTech);
   const radarVisibleFiles = useMemo(() => {
     if (radarFilter === "all") return radarFiles;
@@ -288,6 +307,37 @@ export default function CoachStudentDetailPage() {
       ],
     });
   }, [aiEnabled, openPremiumModal, tpiAddonEnabled]);
+
+  const handleShareStudent = async (email: string) => {
+    if (!studentId) {
+      return { error: "Eleve introuvable." };
+    }
+
+    setShareMessage("");
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      return { error: "Session invalide." };
+    }
+
+    const response = await fetch("/api/student-shares/invite", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ studentId, coachEmail: email }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return { error: payload.error ?? "Invitation impossible." };
+    }
+
+    setShareMessage("Invitation envoyee.");
+    return {};
+  };
 
   const loadTpi = useCallback(
     async (reportId?: string | null) => {
@@ -475,6 +525,10 @@ export default function CoachStudentDetailPage() {
   };
 
   const handleTpiFile = async (file: File) => {
+    if (isReadOnly) {
+      setTpiError("Lecture seule: modification des fichiers impossible.");
+      return;
+    }
     if (tpiLocked) {
       setTpiError("Add-on TPI requis pour importer un rapport.");
       openTpiAddonModal();
@@ -584,6 +638,10 @@ export default function CoachStudentDetailPage() {
   };
 
   const handleRadarFile = async (file: File) => {
+    if (isReadOnly) {
+      setRadarError("Lecture seule: modification des fichiers impossible.");
+      return;
+    }
     if (radarLocked) {
       setRadarError("Add-on Datas requis pour importer un fichier.");
       openRadarAddonModal();
@@ -729,6 +787,43 @@ export default function CoachStudentDetailPage() {
       setStudent(studentData);
       await loadTpi(studentData.tpi_report_id);
 
+      if (userEmail) {
+        const { data: shareData, error: shareError } = await supabase
+          .from("student_shares")
+          .select("id, status")
+          .eq("student_id", studentId)
+          .ilike("viewer_email", userEmail)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (shareError) {
+          setShareStatus(null);
+        } else {
+          setShareStatus((shareData?.status as ShareStatus) ?? null);
+        }
+      } else {
+        setShareStatus(null);
+      }
+
+      if (isOwner) {
+        const { data: sharesData, error: sharesError } = await supabase
+          .from("student_shares")
+          .select("id, viewer_email, created_at")
+          .eq("student_id", studentId)
+          .eq("status", "active")
+          .order("created_at", { ascending: false });
+        if (sharesError) {
+          setOwnerShareError(sharesError.message);
+          setOwnerShares([]);
+        } else {
+          setOwnerShareError("");
+          setOwnerShares((sharesData ?? []) as ShareEntry[]);
+        }
+      } else {
+        setOwnerShareError("");
+        setOwnerShares([]);
+      }
+
       const { data: reportData, error: reportError } = await supabase
         .from("reports")
         .select("id, title, report_date, created_at, sent_at")
@@ -746,7 +841,38 @@ export default function CoachStudentDetailPage() {
     };
 
     loadStudent();
-  }, [studentId, loadTpi]);
+  }, [studentId, loadTpi, userEmail, isOwner]);
+
+  const handleOwnerRevokeShare = async (shareId: string) => {
+    setOwnerShareError("");
+    setOwnerShareRevokingId(shareId);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setOwnerShareError("Session invalide.");
+      setOwnerShareRevokingId(null);
+      return;
+    }
+
+    const response = await fetch("/api/student-shares/revoke", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ shareId }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setOwnerShareError(payload.error ?? "Revoquer impossible.");
+      setOwnerShareRevokingId(null);
+      return;
+    }
+
+    setOwnerShares((prev) => prev.filter((share) => share.id !== shareId));
+    setOwnerShareRevokingId(null);
+  };
 
   useEffect(() => {
     if (!studentId) return;
@@ -779,6 +905,7 @@ export default function CoachStudentDetailPage() {
   }, [headerMenuOpen]);
 
   const handleDeleteReport = async (report: Report) => {
+    if (isReadOnly) return;
     const confirmed = window.confirm(`Supprimer le rapport "${report.title}" ?`);
     if (!confirmed) return;
 
@@ -799,6 +926,7 @@ export default function CoachStudentDetailPage() {
   };
 
   const handleDeleteRadarFile = async (file: RadarFile) => {
+    if (isReadOnly) return;
     const name = file.original_name || formatRadarSourceFallback(file.source);
     const confirmed = window.confirm(`Supprimer le fichier datas "${name}" ?`);
     if (!confirmed) return;
@@ -843,6 +971,7 @@ export default function CoachStudentDetailPage() {
   };
 
   const handleOpenEdit = () => {
+    if (isReadOnly) return;
     if (!student) return;
     setHeaderMenuOpen(false);
     setEditError("");
@@ -862,6 +991,7 @@ export default function CoachStudentDetailPage() {
   };
 
   const handleUpdateStudent = async () => {
+    if (isReadOnly) return;
     if (!student) return;
     const firstName = editForm.first_name.trim();
     const lastName = editForm.last_name.trim();
@@ -937,6 +1067,7 @@ export default function CoachStudentDetailPage() {
   };
 
   const handleSaveRadarConfig = async () => {
+    if (isReadOnly) return;
     if (!radarConfigFile) return;
     setRadarConfigSaving(true);
     setRadarConfigError("");
@@ -1004,38 +1135,66 @@ export default function CoachStudentDetailPage() {
                   Eleve
                 </p>
               </div>
-              <div className="relative" data-student-header-menu>
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setHeaderMenuOpen((prev) => !prev);
-                  }}
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
-                  aria-label="Actions eleve"
-                  aria-expanded={headerMenuOpen}
-                  aria-haspopup="menu"
-                >
-                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
-                    <circle cx="12" cy="5" r="2" />
-                    <circle cx="12" cy="12" r="2" />
-                    <circle cx="12" cy="19" r="2" />
-                  </svg>
-                </button>
-                {headerMenuOpen ? (
-                  <div
-                    role="menu"
-                    onClick={(event) => event.stopPropagation()}
-                    className="absolute right-0 z-50 mt-2 w-40 rounded-xl border border-white/10 bg-[var(--bg-elevated)] p-1 text-xs shadow-[0_12px_30px_rgba(0,0,0,0.35)]"
+              <div className="flex items-center gap-2">
+                {isOwner ? (
+                  <button
+                    type="button"
+                    onClick={() => setShareModalOpen(true)}
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                    aria-label="Partager l eleve"
                   >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <circle cx="18" cy="5" r="3" />
+                      <circle cx="6" cy="12" r="3" />
+                      <circle cx="18" cy="19" r="3" />
+                      <path d="M8.6 13.5l6.8 3.9" />
+                      <path d="M15.4 6.6L8.6 10.5" />
+                    </svg>
+                  </button>
+                ) : null}
+                {!isReadOnly ? (
+                  <div className="relative" data-student-header-menu>
                     <button
                       type="button"
-                      role="menuitem"
-                      onClick={handleOpenEdit}
-                      className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setHeaderMenuOpen((prev) => !prev);
+                      }}
+                      className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                      aria-label="Actions eleve"
+                      aria-expanded={headerMenuOpen}
+                      aria-haspopup="menu"
                     >
-                      Editer
+                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                        <circle cx="12" cy="5" r="2" />
+                        <circle cx="12" cy="12" r="2" />
+                        <circle cx="12" cy="19" r="2" />
+                      </svg>
                     </button>
+                    {headerMenuOpen ? (
+                      <div
+                        role="menu"
+                        onClick={(event) => event.stopPropagation()}
+                        className="absolute right-0 z-50 mt-2 w-40 rounded-xl border border-white/10 bg-[var(--bg-elevated)] p-1 text-xs shadow-[0_12px_30px_rgba(0,0,0,0.35)]"
+                      >
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={handleOpenEdit}
+                          className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10"
+                        >
+                          Editer
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -1063,18 +1222,76 @@ export default function CoachStudentDetailPage() {
               Invite le {formatDate(student.invited_at, locale, timezone)} - Cree le{" "}
               {formatDate(student.created_at, locale, timezone)}
             </p>
+            {shareMessage ? (
+              <p className="mt-3 text-xs text-emerald-200">{shareMessage}</p>
+            ) : null}
+            {isReadOnly ? (
+              <div className="mt-4 rounded-xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-xs uppercase tracking-wide text-amber-100">
+                Lecture seule active (eleve partage)
+              </div>
+            ) : null}
           </section>
+
+          {isOwner && ownerShares.length > 0 ? (
+            <section className="panel-soft rounded-2xl p-6">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-[var(--text)]">
+                    Partages actifs
+                  </h3>
+                  <p className="mt-1 text-sm text-[var(--muted)]">
+                    Revoque un acces lecture seule si necessaire.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 space-y-3">
+                {ownerShares.map((share) => (
+                  <div
+                    key={share.id}
+                    className="flex flex-col gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--text)] md:flex-row md:items-center md:justify-between"
+                  >
+                    <div>
+                      <p className="font-medium">{share.viewer_email}</p>
+                      <p className="mt-1 text-xs text-[var(--muted)]">
+                        Partage actif depuis{" "}
+                        {formatDate(share.created_at, locale, timezone)}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleOwnerRevokeShare(share.id)}
+                      disabled={ownerShareRevokingId === share.id}
+                      className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-red-300 transition hover:text-red-200 disabled:opacity-60"
+                    >
+                      {ownerShareRevokingId === share.id
+                        ? "Revocation..."
+                        : "Revoquer"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+              {ownerShareError ? (
+                <p className="mt-3 text-sm text-red-400">{ownerShareError}</p>
+              ) : null}
+            </section>
+          ) : null}
 
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
             <section className="panel rounded-2xl p-6">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-[var(--text)]">Rapports</h3>
-                <Link
-                  href={`/app/coach/rapports/nouveau?studentId=${student.id}`}
-                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)]"
-                >
-                  Nouveau rapport
-                </Link>
+                {isReadOnly ? (
+                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)]">
+                    Lecture seule
+                  </span>
+                ) : (
+                  <Link
+                    href={`/app/coach/rapports/nouveau?studentId=${student.id}`}
+                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)]"
+                  >
+                    Nouveau rapport
+                  </Link>
+                )}
               </div>
               {reports.length === 0 ? (
                 <div className="mt-4 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
@@ -1113,15 +1330,23 @@ export default function CoachStudentDetailPage() {
                         </Link>
                         <Link
                           href={`/app/coach/rapports/nouveau?reportId=${report.id}`}
-                          className="w-28 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-center text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                          onClick={(event) => {
+                            if (isReadOnly) event.preventDefault();
+                          }}
+                          aria-disabled={isReadOnly}
+                          className={`w-28 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-center text-[0.65rem] uppercase tracking-wide transition ${
+                            isReadOnly
+                              ? "cursor-not-allowed text-[var(--muted)] opacity-60"
+                              : "text-[var(--muted)] hover:text-[var(--text)]"
+                          }`}
                         >
                           Modifier
                         </Link>
                         <button
                           type="button"
                           onClick={() => handleDeleteReport(report)}
-                          disabled={deletingId === report.id}
-                          className="w-28 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-center text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:text-red-200 disabled:opacity-60"
+                          disabled={isReadOnly || deletingId === report.id}
+                          className="w-28 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-center text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {deletingId === report.id ? "Suppression..." : "Supprimer"}
                         </button>
@@ -1289,18 +1514,19 @@ export default function CoachStudentDetailPage() {
                     </span>
                     <button
                       type="button"
-                      disabled={tpiUploading}
+                      disabled={tpiUploading || isReadOnly}
                       onClick={() => {
                         if (tpiLocked) {
                           openTpiAddonModal();
                           return;
                         }
+                        if (isReadOnly) return;
                         tpiInputRef.current?.click();
                       }}
                       className={`rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20 ${
-                        tpiLocked ? "cursor-not-allowed opacity-60" : ""
+                        tpiLocked || isReadOnly ? "cursor-not-allowed opacity-60" : ""
                       } disabled:opacity-60`}
-                      aria-disabled={tpiLocked}
+                      aria-disabled={tpiLocked || isReadOnly}
                     >
                       Parcourir
                     </button>
@@ -1311,7 +1537,7 @@ export default function CoachStudentDetailPage() {
                   type="file"
                   accept="application/pdf"
                   className="hidden"
-                  disabled={tpiLocked}
+                  disabled={tpiLocked || isReadOnly}
                   onChange={(event) => {
                     const file = event.target.files?.[0];
                     if (file) void handleTpiFile(file);
@@ -1530,18 +1756,19 @@ export default function CoachStudentDetailPage() {
                   </select>
                   <button
                     type="button"
-                    disabled={radarUploading}
+                    disabled={radarUploading || isReadOnly}
                     onClick={() => {
                       if (radarLocked) {
                         openRadarAddonModal();
                         return;
                       }
+                      if (isReadOnly) return;
                       radarInputRef.current?.click();
                     }}
                     className={`rounded-full border border-white/10 bg-white/10 px-4 py-1.5 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20 ${
-                      radarLocked ? "cursor-not-allowed opacity-60" : ""
+                      radarLocked || isReadOnly ? "cursor-not-allowed opacity-60" : ""
                     } disabled:opacity-60`}
-                    aria-disabled={radarLocked}
+                    aria-disabled={radarLocked || isReadOnly}
                   >
                     Importer un fichier
                   </button>
@@ -1554,10 +1781,11 @@ export default function CoachStudentDetailPage() {
                     : "border-white/10 bg-white/5"
                 }`}
                 onDragOver={(event) => {
-                  if (radarLocked) return;
+                  if (radarLocked || isReadOnly) return;
                   event.preventDefault();
                 }}
                 onDrop={(event) => {
+                  if (isReadOnly) return;
                   if (radarLocked) {
                     setRadarError("Add-on Datas requis pour importer un fichier.");
                     openRadarAddonModal();
@@ -1586,7 +1814,7 @@ export default function CoachStudentDetailPage() {
                   type="file"
                   accept="image/*"
                   className="hidden"
-                  disabled={radarLocked}
+                  disabled={radarLocked || isReadOnly}
                   onChange={(event) => {
                     const file = event.target.files?.[0];
                     if (file) void handleRadarFile(file);
@@ -2406,6 +2634,12 @@ export default function CoachStudentDetailPage() {
                 </div>
               </div>
             </div>
+          ) : null}
+          {shareModalOpen ? (
+            <ShareStudentModal
+              onClose={() => setShareModalOpen(false)}
+              onShare={handleShareStudent}
+            />
           ) : null}
           <PremiumOfferModal
             open={premiumModalOpen}
