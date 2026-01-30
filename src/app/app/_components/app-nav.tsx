@@ -44,6 +44,7 @@ export default function AppNav() {
         items: [
           { label: "Dashboard eleve", href: "/app/eleve" },
           { label: "Rapports", href: "/app/eleve/rapports" },
+          { label: "Parametres", href: "/app/eleve/parametres" },
         ],
       });
     } else {
@@ -164,6 +165,14 @@ export default function AppNav() {
           <path d="M14 3v5h5" />
           <path d="M8 13h8" />
           <path d="M8 17h5" />
+        </svg>
+      );
+    }
+    if (href === "/app/eleve/parametres") {
+      return (
+        <svg viewBox="0 0 24 24" {...sharedProps}>
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a7.8 7.8 0 0 0 .1-6l2-1-2-3-2 1a8 8 0 0 0-5-2l-.5-2h-4l-.5 2a8 8 0 0 0-5 2l-2-1-2 3 2 1a7.8 7.8 0 0 0 .1 6l-2 1 2 3 2-1a8 8 0 0 0 5 2l.5 2h4l.5-2a8 8 0 0 0 5-2l2 1 2-3-2-1z" />
         </svg>
       );
     }

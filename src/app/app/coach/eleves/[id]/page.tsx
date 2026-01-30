@@ -33,6 +33,7 @@ type Student = {
   first_name: string;
   last_name: string | null;
   email: string | null;
+  avatar_url: string | null;
   invited_at: string | null;
   activated_at: string | null;
   created_at: string;
@@ -773,7 +774,7 @@ export default function CoachStudentDetailPage() {
       const { data: studentData, error: studentError } = await supabase
         .from("students")
         .select(
-          "id, first_name, last_name, email, invited_at, activated_at, created_at, tpi_report_id, playing_hand"
+          "id, first_name, last_name, email, avatar_url, invited_at, activated_at, created_at, tpi_report_id, playing_hand"
         )
         .eq("id", studentId)
         .single();
@@ -1199,10 +1200,28 @@ export default function CoachStudentDetailPage() {
                 ) : null}
               </div>
             </div>
-            <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
-              {student.first_name} {student.last_name ?? ""}
-            </h2>
-            <p className="mt-2 text-sm text-[var(--muted)]">{student.email || "-"}</p>
+            <div className="mt-3 flex items-center gap-3">
+              {student.avatar_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={student.avatar_url}
+                  alt={`Photo de ${student.first_name}`}
+                  className="h-12 w-12 rounded-full border border-white/10 object-cover"
+                />
+              ) : (
+                <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/10 text-sm font-semibold text-[var(--muted)]">
+                  {(student.first_name || "E").charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div>
+                <h2 className="text-2xl font-semibold text-[var(--text)]">
+                  {student.first_name} {student.last_name ?? ""}
+                </h2>
+                <p className="mt-1 text-sm text-[var(--muted)]">
+                  {student.email || "-"}
+                </p>
+              </div>
+            </div>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs uppercase tracking-wide">
               {student.activated_at ? (
                 <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-emerald-200">

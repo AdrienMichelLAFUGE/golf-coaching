@@ -1,0 +1,6 @@
+Rappel de contexte:
+- Next App Router + TypeScript strict + Supabase + Vercel
+- Objectif: robuste, sécurisé, prod-ready
+- Changements minimaux uniquement
+- Validation runtime + permissions serveur obligatoires
+- Pas de refacto cosmétique
