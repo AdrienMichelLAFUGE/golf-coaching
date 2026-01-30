@@ -103,7 +103,7 @@ describe("GET /api/admin/analytics", () => {
     serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
 
     const response = await GET(
-      buildRequest("http://localhost/api/admin/analytics?days=7")
+      buildRequest("http://localhost/api/admin/analytics?period=week")
     );
     if (!response) {
       throw new Error("Missing response");

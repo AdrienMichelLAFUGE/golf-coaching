@@ -57,6 +57,8 @@ type RadarAutoResponse = {
   sections: RadarAutoSection[];
 };
 
+type ErrorType = "timeout" | "exception";
+
 const radarAiRequestSchema = z.object({
   mode: z.enum(["questions", "auto"]),
   context: z.string().optional(),
@@ -431,7 +433,7 @@ export async function POST(req: Request) {
     focusHint,
   });
 
-  const startedAt = Date.now();
+  const endpoint = "radar_ai";
   let usage: {
     input_tokens?: number;
     output_tokens?: number;
@@ -441,12 +443,15 @@ export async function POST(req: Request) {
   const recordUsage = async (
     action: string,
     usagePayload: typeof usage,
-    durationMs: number
+    durationMs: number,
+    statusCode = 200,
+    errorType?: ErrorType
   ) => {
-    if (!usagePayload) return;
-    const inputTokens = usagePayload.input_tokens ?? 0;
-    const outputTokens = usagePayload.output_tokens ?? 0;
-    const totalTokens = usagePayload.total_tokens ?? inputTokens + outputTokens;
+    const shouldRecord = Boolean(usagePayload) || statusCode >= 400;
+    if (!shouldRecord) return;
+    const inputTokens = usagePayload?.input_tokens ?? 0;
+    const outputTokens = usagePayload?.output_tokens ?? 0;
+    const totalTokens = usagePayload?.total_tokens ?? inputTokens + outputTokens;
     await admin.from("ai_usage").insert([
       {
         user_id: userId,
@@ -457,6 +462,9 @@ export async function POST(req: Request) {
         output_tokens: outputTokens,
         total_tokens: totalTokens,
         duration_ms: durationMs,
+        endpoint,
+        status_code: statusCode,
+        error_type: errorType ?? null,
       },
     ]);
   };
@@ -476,6 +484,7 @@ export async function POST(req: Request) {
       sections: contextBlock || "-",
     });
 
+    const callStartedAt = Date.now();
     const response = await openai.responses.create({
       model,
       input: [
@@ -529,13 +538,19 @@ export async function POST(req: Request) {
     });
 
     usage = response.usage ?? null;
-    await recordUsage("radar_questions", usage, Date.now() - startedAt);
-
     const text = response.output_text?.trim() ?? "";
     try {
       const parsed = JSON.parse(text) as { questions: RadarQuestion[] };
+      await recordUsage("radar_questions", usage, Date.now() - callStartedAt, 200);
       return Response.json(parsed);
     } catch {
+      await recordUsage(
+        "radar_questions",
+        usage,
+        Date.now() - callStartedAt,
+        500,
+        "exception"
+      );
       return Response.json({ error: "Reponse IA invalide.", raw: text }, { status: 500 });
     }
   }
@@ -713,21 +728,31 @@ export async function POST(req: Request) {
     return JSON.parse(text) as RadarAutoResponse;
   };
 
+  let callStartedAt = Date.now();
   let response = await callAuto();
   usage = response.usage ?? null;
-  await recordUsage("radar_auto", usage, Date.now() - startedAt);
+  let action = "radar_auto";
 
   let text = response.output_text?.trim() ?? "";
   try {
     let parsed = parseAutoResponse(text);
     if (!isValidSelection(parsed)) {
+      await recordUsage("radar_auto", usage, Date.now() - callStartedAt, 500, "exception");
+      callStartedAt = Date.now();
       response = await callAuto(retryHint);
       usage = response.usage ?? null;
-      await recordUsage("radar_auto_retry", usage, Date.now() - startedAt);
       text = response.output_text?.trim() ?? "";
       parsed = parseAutoResponse(text);
+      action = "radar_auto_retry";
     }
     if (!isValidSelection(parsed)) {
+      await recordUsage(
+        "radar_auto_retry",
+        usage,
+        Date.now() - callStartedAt,
+        500,
+        "exception"
+      );
       return Response.json(
         {
           error: "Reponse IA invalide (selection vide ou section manquante).",
@@ -736,8 +761,10 @@ export async function POST(req: Request) {
         { status: 500 }
       );
     }
+    await recordUsage(action, usage, Date.now() - callStartedAt, 200);
     return Response.json(parsed);
   } catch {
+    await recordUsage(action, usage, Date.now() - callStartedAt, 500, "exception");
     return Response.json({ error: "Reponse IA invalide.", raw: text }, { status: 500 });
   }
 }

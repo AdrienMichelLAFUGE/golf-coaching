@@ -219,7 +219,13 @@ export async function POST(req: Request) {
     output_tokens?: number;
     total_tokens?: number;
   } | null = null;
+  let verifyUsage: {
+    input_tokens?: number;
+    output_tokens?: number;
+    total_tokens?: number;
+  } | null = null;
 
+  const endpoint = "tpi_extract";
   const recordUsage = async (
     action: string,
     usagePayload: {
@@ -227,12 +233,15 @@ export async function POST(req: Request) {
       output_tokens?: number;
       total_tokens?: number;
     } | null,
-    durationMs: number
+    durationMs: number,
+    statusCode = 200,
+    errorType?: "timeout" | "exception"
   ) => {
-    if (!usagePayload) return;
-    const inputTokens = usagePayload.input_tokens ?? 0;
-    const outputTokens = usagePayload.output_tokens ?? 0;
-    const totalTokens = usagePayload.total_tokens ?? inputTokens + outputTokens;
+    const shouldRecord = Boolean(usagePayload) || statusCode >= 400;
+    if (!shouldRecord) return;
+    const inputTokens = usagePayload?.input_tokens ?? 0;
+    const outputTokens = usagePayload?.output_tokens ?? 0;
+    const totalTokens = usagePayload?.total_tokens ?? inputTokens + outputTokens;
 
     try {
       await admin.from("ai_usage").insert([
@@ -245,6 +254,9 @@ export async function POST(req: Request) {
           output_tokens: outputTokens,
           total_tokens: totalTokens,
           duration_ms: durationMs,
+          endpoint,
+          status_code: statusCode,
+          error_type: errorType ?? null,
         },
       ]);
     } catch (error) {
@@ -277,8 +289,9 @@ export async function POST(req: Request) {
   }
 
   if (!hasTpiInName) {
+    let verifyStartedAt = Date.now();
     try {
-      const verifyStartedAt = Date.now();
+      verifyStartedAt = Date.now();
       const verifyTemplate = await loadPromptSection("tpi_verify_system");
       const verifyPrompt = applyTemplate(verifyTemplate, {});
 
@@ -317,7 +330,7 @@ export async function POST(req: Request) {
         },
       });
 
-      const verifyUsage = verifyResponse.usage ?? null;
+      verifyUsage = verifyResponse.usage ?? null;
       const verifyText = extractOutputText(verifyResponse);
       if (!verifyText) {
         throw new Error("Verification TPI vide.");
@@ -328,7 +341,7 @@ export async function POST(req: Request) {
         reason: string;
       };
 
-      await recordUsage("tpi_verify", verifyUsage, Date.now() - verifyStartedAt);
+      await recordUsage("tpi_verify", verifyUsage, Date.now() - verifyStartedAt, 200);
 
       if (!verifyParsed.is_tpi) {
         await admin.from("tpi_reports").update({ status: "error" }).eq("id", reportId);
@@ -346,6 +359,7 @@ export async function POST(req: Request) {
       await admin.from("tpi_reports").update({ status: "error" }).eq("id", reportId);
       console.error("TPI PDF verify error:", error);
       await cleanupOpenAiFile();
+      await recordUsage("tpi_verify", verifyUsage, Date.now() - verifyStartedAt, 500, "exception");
       return Response.json(
         { error: "Verification TPI impossible. Reessaie avec le PDF TPI Pro." },
         { status: 500 }
@@ -474,11 +488,12 @@ export async function POST(req: Request) {
       seenTests.add(key);
       return true;
     });
-    await recordUsage("tpi_extract", usage, Date.now() - startedAt);
+    await recordUsage("tpi_extract", usage, Date.now() - startedAt, 200);
     await cleanupOpenAiFile();
   } catch (error) {
     await cleanupOpenAiFile();
     await admin.from("tpi_reports").update({ status: "error" }).eq("id", reportId);
+    await recordUsage("tpi_extract", usage, Date.now() - startedAt, 500, "exception");
     return Response.json(
       { error: (error as Error).message ?? "Erreur TPI." },
       { status: 500 }

@@ -471,6 +471,7 @@ export async function POST(req: Request) {
   const language = locale.toLowerCase().startsWith("fr") ? "francais" : "anglais";
 
   const startedAt = Date.now();
+  const endpoint = "radar_extract";
   let usage: {
     input_tokens?: number;
     output_tokens?: number;
@@ -485,12 +486,15 @@ export async function POST(req: Request) {
   const recordUsage = async (
     action: string,
     usagePayload: typeof usage,
-    durationMs: number
+    durationMs: number,
+    statusCode = 200,
+    errorType?: "timeout" | "exception"
   ) => {
-    if (!usagePayload) return;
-    const inputTokens = usagePayload.input_tokens ?? 0;
-    const outputTokens = usagePayload.output_tokens ?? 0;
-    const totalTokens = usagePayload.total_tokens ?? inputTokens + outputTokens;
+    const shouldRecord = Boolean(usagePayload) || statusCode >= 400;
+    if (!shouldRecord) return;
+    const inputTokens = usagePayload?.input_tokens ?? 0;
+    const outputTokens = usagePayload?.output_tokens ?? 0;
+    const totalTokens = usagePayload?.total_tokens ?? inputTokens + outputTokens;
     await admin.from("ai_usage").insert([
       {
         user_id: userId,
@@ -501,6 +505,9 @@ export async function POST(req: Request) {
         output_tokens: outputTokens,
         total_tokens: totalTokens,
         duration_ms: durationMs,
+        endpoint,
+        status_code: statusCode,
+        error_type: errorType ?? null,
       },
     ]);
   };
@@ -562,14 +569,14 @@ export async function POST(req: Request) {
       .from("radar_files")
       .update({ status: "error", error: (error as Error).message ?? "OCR error." })
       .eq("id", radarFileId);
-    await recordUsage("radar_extract", usage, Date.now() - startedAt);
+    await recordUsage("radar_extract", usage, Date.now() - startedAt, 500, "exception");
     return Response.json(
       { error: (error as Error).message ?? "Extraction datas impossible." },
       { status: 500 }
     );
   }
 
-  await recordUsage("radar_extract", usage, Date.now() - startedAt);
+  await recordUsage("radar_extract", usage, Date.now() - startedAt, 200);
 
   try {
     const verifyPrompt = await loadPromptSection("radar_extract_verify_system");
@@ -642,11 +649,21 @@ export async function POST(req: Request) {
       verificationWarning = message;
     }
 
-    await recordUsage("radar_extract_verify", verifyUsage, Date.now() - verifyStartedAt);
+    await recordUsage(
+      "radar_extract_verify",
+      verifyUsage,
+      Date.now() - verifyStartedAt,
+      200
+    );
   } catch (error) {
     verificationWarning =
       (error as Error).message ?? "Verification extraction impossible.";
-    await recordUsage("radar_extract_verify", verifyUsage, Date.now() - verifyStartedAt);
+    await recordUsage(
+      "radar_extract_verify",
+      verifyUsage,
+      Date.now() - verifyStartedAt,
+      200
+    );
   }
 
   const rawColumns = (extracted.columns ?? []).map((column) => ({

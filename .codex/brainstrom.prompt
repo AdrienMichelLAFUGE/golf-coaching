@@ -1,0 +1,24 @@
+Je veux brainstormer sur la suite du projet. Ne code RIEN.
+
+Contexte
+- Projet existant en production (ou proche)
+- Stack: Next.js + TypeScript + Supabase + Vercel
+- Objectif: valeur utilisateur + robustesse long terme
+
+Analyse attendue
+1) Résume l’état actuel du projet (en 5 lignes max)
+2) Identifie 3–5 axes naturels d’évolution
+   (fonctionnel, qualité, sécurité, UX, perf)
+3) Pour chaque axe:
+   - 1–2 idées concrètes (pas plus)
+   - valeur utilisateur
+   - coût technique (faible/moyen/élevé)
+   - risque principal
+4) Propose un ordre de priorité raisonnable (6–8 semaines)
+5) Liste les décisions à prendre AVANT d’implémenter quoi que ce soit
+
+Règles
+- Pas de code
+- Pas de refacto cosmétique
+- Pas de “nice to have” sans justification
+- Orienté prod-ready

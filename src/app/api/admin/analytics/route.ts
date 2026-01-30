@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { isAdminEmail } from "@/lib/admin";
 import {
   createSupabaseAdminClient,
@@ -11,11 +12,14 @@ type UsageRow = {
   user_id: string;
   org_id: string;
   action: string | null;
+  endpoint: string | null;
   model: string | null;
   input_tokens: number | string | null;
   output_tokens: number | string | null;
   total_tokens: number | string | null;
   duration_ms: number | null;
+  status_code: number | null;
+  error_type: string | null;
   created_at: string;
 };
 
@@ -23,24 +27,14 @@ const PRICING_PER_M_TOKENS_USD = {
   "gpt-5.2": { input: 1.75, output: 14 },
 };
 
-const reportActions = new Set([
-  "improve",
-  "write",
-  "summary",
-  "propagate",
-  "plan",
-  "clarify",
-  "axes",
-]);
+const periodSchema = z.enum(["day", "week", "month"]);
 
-const toFeatureCategory = (action: string) => {
-  const normalized = action.toLowerCase();
-  if (normalized.includes("tpi")) return "TPI";
-  if (normalized.includes("radar") || normalized.includes("flightscope")) {
-    return "Datas";
-  }
-  if (reportActions.has(normalized)) return "Rapport";
-  return "Autres";
+type Period = z.infer<typeof periodSchema>;
+
+const PERIOD_WINDOWS: Record<Period, number> = {
+  day: 1,
+  week: 7,
+  month: 30,
 };
 
 const getPricing = (model: string) =>
@@ -52,12 +46,53 @@ const toNumber = (value: number | string | null) => {
   return Number.isFinite(numeric) ? numeric : 0;
 };
 
+const resolveTokens = (row: UsageRow) => {
+  const totalTokens = toNumber(row.total_tokens);
+  const inputTokensRaw = toNumber(row.input_tokens);
+  const outputTokensRaw = toNumber(row.output_tokens);
+  const hasSplit = inputTokensRaw > 0 || outputTokensRaw > 0;
+  const inputTokens = hasSplit ? inputTokensRaw : Math.floor(totalTokens / 2);
+  const outputTokens = hasSplit
+    ? outputTokensRaw
+    : Math.max(0, totalTokens - inputTokens);
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens: inputTokens + outputTokens,
+  };
+};
+
 const computeCostUsd = (inputTokens: number, outputTokens: number, model: string) => {
   const pricing = getPricing(model);
   return (
     (inputTokens / 1_000_000) * pricing.input +
     (outputTokens / 1_000_000) * pricing.output
   );
+};
+
+const percentile = (values: number[], p: number) => {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.ceil(p * sorted.length) - 1;
+  const safeIndex = Math.min(sorted.length - 1, Math.max(0, index));
+  return sorted[safeIndex];
+};
+
+const isErrorRow = (row: UsageRow) => {
+  if (typeof row.status_code === "number" && row.status_code >= 500) return true;
+  const errorType = row.error_type ?? "";
+  return errorType === "timeout" || errorType === "exception";
+};
+
+const roundUsd = (value: number) => Number(value.toFixed(6));
+
+const formatBucketLabel = (date: Date, period: Period) => {
+  if (period === "day") {
+    const day = date.toISOString().slice(0, 10);
+    const hour = String(date.getUTCHours()).padStart(2, "0");
+    return `${day} ${hour}h`;
+  }
+  return date.toISOString().slice(0, 10);
 };
 
 const requireAdmin = async (request: Request) => {
@@ -81,82 +116,179 @@ export async function GET(request: Request) {
   if ("error" in auth) return auth.error;
 
   const url = new URL(request.url);
-  const windowDays = Math.min(
-    90,
-    Math.max(1, Number(url.searchParams.get("days") ?? 30))
-  );
-  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
+  const periodParam = url.searchParams.get("period") ?? "month";
+  const periodParsed = periodSchema.safeParse(periodParam);
+  const period = periodParsed.success ? periodParsed.data : "month";
+  const windowDays = PERIOD_WINDOWS[period];
+  const now = Date.now();
+  const currentStartMs = now - windowDays * 24 * 60 * 60 * 1000;
+  const previousStartMs = now - windowDays * 2 * 24 * 60 * 60 * 1000;
+  const previousSince = new Date(previousStartMs).toISOString();
 
   const { data: usage, error: usageError } = await auth.admin
     .from("ai_usage")
     .select(
-      "user_id, org_id, action, model, input_tokens, output_tokens, total_tokens, duration_ms, created_at"
+      "user_id, org_id, action, endpoint, model, input_tokens, output_tokens, total_tokens, duration_ms, status_code, error_type, created_at"
     )
-    .gte("created_at", since)
+    .gte("created_at", previousSince)
     .order("created_at", { ascending: false })
-    .limit(2000);
+    .limit(5000);
 
   if (usageError) {
     return NextResponse.json({ error: usageError.message }, { status: 500 });
   }
 
-  const [
-    { data: profiles, error: profilesError },
-    { data: organizations, error: organizationsError },
-    { count: totalStudentsCount, error: totalStudentsError },
-    { count: activeStudentsCount, error: activeStudentsError },
-    { count: tpiStudentsCount, error: tpiStudentsError },
-    { count: reportsCount, error: reportsError },
-    { count: tpiReportsCount, error: tpiReportsError },
-    { count: tpiReportsReadyCount, error: tpiReportsReadyError },
-  ] = await Promise.all([
-    auth.admin.from("profiles").select("id, full_name, org_id, role"),
-    auth.admin.from("organizations").select("id, name"),
-    auth.admin.from("students").select("id", { count: "exact", head: true }),
-    auth.admin
-      .from("students")
-      .select("id", { count: "exact", head: true })
-      .not("activated_at", "is", null),
-    auth.admin
-      .from("students")
-      .select("id", { count: "exact", head: true })
-      .not("tpi_report_id", "is", null),
-    auth.admin
-      .from("reports")
-      .select("id", { count: "exact", head: true })
-      .gte("created_at", since),
-    auth.admin
-      .from("tpi_reports")
-      .select("id", { count: "exact", head: true })
-      .gte("created_at", since),
-    auth.admin
-      .from("tpi_reports")
-      .select("id", { count: "exact", head: true })
-      .gte("created_at", since)
-      .eq("status", "ready"),
+  const rows = (usage ?? []) as UsageRow[];
+
+  const endpointMap = new Map<
+    string,
+    {
+      endpoint: string;
+      requests: number;
+      inputTokens: number;
+      outputTokens: number;
+      costUsd: number;
+      durations: number[];
+      errorCount: number;
+    }
+  >();
+  const coachMap = new Map<
+    string,
+    {
+      user_id: string;
+      org_id: string;
+      requests: number;
+      inputTokens: number;
+      outputTokens: number;
+      costUsd: number;
+    }
+  >();
+  const orgMap = new Map<
+    string,
+    {
+      org_id: string;
+      requests: number;
+      inputTokens: number;
+      outputTokens: number;
+      costUsd: number;
+    }
+  >();
+  const costSeriesMap = new Map<
+    string,
+    { label: string; costUsd: number; requests: number }
+  >();
+  const durations: number[] = [];
+  let totalRequests = 0;
+  let totalCostCurrent = 0;
+  let totalCostPrevious = 0;
+  let errorCount = 0;
+
+  rows.forEach((row) => {
+    const createdAtMs = Date.parse(row.created_at);
+    if (!Number.isFinite(createdAtMs)) return;
+
+    const isCurrent = createdAtMs >= currentStartMs;
+    const isPrevious = createdAtMs >= previousStartMs && createdAtMs < currentStartMs;
+    const { inputTokens, outputTokens } = resolveTokens(row);
+    const modelKey = row.model ?? "gpt-5.2";
+    const rowCostUsd = computeCostUsd(inputTokens, outputTokens, modelKey);
+
+    if (isPrevious) {
+      totalCostPrevious += rowCostUsd;
+    }
+
+    if (!isCurrent) return;
+
+    totalRequests += 1;
+    totalCostCurrent += rowCostUsd;
+
+    if (isErrorRow(row)) errorCount += 1;
+    if (typeof row.duration_ms === "number" && row.duration_ms > 0) {
+      durations.push(row.duration_ms);
+    }
+
+    const endpointKey = row.endpoint ?? row.action ?? "unknown";
+    const endpointEntry = endpointMap.get(endpointKey) ?? {
+      endpoint: endpointKey,
+      requests: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      costUsd: 0,
+      durations: [],
+      errorCount: 0,
+    };
+    endpointEntry.requests += 1;
+    endpointEntry.inputTokens += inputTokens;
+    endpointEntry.outputTokens += outputTokens;
+    endpointEntry.costUsd += rowCostUsd;
+    if (typeof row.duration_ms === "number" && row.duration_ms > 0) {
+      endpointEntry.durations.push(row.duration_ms);
+    }
+    if (isErrorRow(row)) endpointEntry.errorCount += 1;
+    endpointMap.set(endpointKey, endpointEntry);
+
+    const coachEntry = coachMap.get(row.user_id) ?? {
+      user_id: row.user_id,
+      org_id: row.org_id,
+      requests: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      costUsd: 0,
+    };
+    coachEntry.requests += 1;
+    coachEntry.inputTokens += inputTokens;
+    coachEntry.outputTokens += outputTokens;
+    coachEntry.costUsd += rowCostUsd;
+    coachMap.set(row.user_id, coachEntry);
+
+    const orgEntry = orgMap.get(row.org_id) ?? {
+      org_id: row.org_id,
+      requests: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      costUsd: 0,
+    };
+    orgEntry.requests += 1;
+    orgEntry.inputTokens += inputTokens;
+    orgEntry.outputTokens += outputTokens;
+    orgEntry.costUsd += rowCostUsd;
+    orgMap.set(row.org_id, orgEntry);
+
+    const bucketLabel = formatBucketLabel(new Date(createdAtMs), period);
+    const seriesEntry = costSeriesMap.get(bucketLabel) ?? {
+      label: bucketLabel,
+      costUsd: 0,
+      requests: 0,
+    };
+    seriesEntry.costUsd += rowCostUsd;
+    seriesEntry.requests += 1;
+    costSeriesMap.set(bucketLabel, seriesEntry);
+  });
+
+  const coachIds = Array.from(coachMap.keys());
+  const orgIds = Array.from(orgMap.keys());
+
+  const [profilesResult, orgsResult] = await Promise.all([
+    coachIds.length
+      ? auth.admin.from("profiles").select("id, full_name, org_id").in("id", coachIds)
+      : Promise.resolve({
+          data: [] as Array<{ id: string; full_name: string | null; org_id: string }>,
+          error: null,
+        }),
+    orgIds.length
+      ? auth.admin.from("organizations").select("id, name").in("id", orgIds)
+      : Promise.resolve({
+          data: [] as Array<{ id: string; name: string | null }>,
+          error: null,
+        }),
   ]);
 
-  if (
-    profilesError ||
-    organizationsError ||
-    totalStudentsError ||
-    activeStudentsError ||
-    tpiStudentsError ||
-    reportsError ||
-    tpiReportsError ||
-    tpiReportsReadyError
-  ) {
+  if (profilesResult.error || orgsResult.error) {
     return NextResponse.json(
       {
         error:
-          profilesError?.message ||
-          organizationsError?.message ||
-          totalStudentsError?.message ||
-          activeStudentsError?.message ||
-          tpiStudentsError?.message ||
-          reportsError?.message ||
-          tpiReportsError?.message ||
-          tpiReportsReadyError?.message ||
+          profilesResult.error?.message ||
+          orgsResult.error?.message ||
           "Erreur inconnue.",
       },
       { status: 500 }
@@ -164,190 +296,102 @@ export async function GET(request: Request) {
   }
 
   const profileById = new Map(
-    (profiles ?? []).map((profile) => [
+    (profilesResult.data ?? []).map((profile) => [
       profile.id,
-      {
-        full_name: profile.full_name ?? null,
-        org_id: profile.org_id,
-        role: profile.role ?? null,
-      },
+      { full_name: profile.full_name ?? null, org_id: profile.org_id },
     ])
   );
-  const orgById = new Map((organizations ?? []).map((org) => [org.id, org.name ?? ""]));
+  const orgById = new Map(
+    (orgsResult.data ?? []).map((org) => [org.id, org.name ?? ""])
+  );
 
-  const rows = (usage ?? []) as UsageRow[];
-  let totalTokens = 0;
-  let totalRequests = 0;
-  let totalCostUsd = 0;
-  let reportCostUsd = 0;
-  let tpiCostUsd = 0;
-  let radarImportRequests = 0;
-  let radarImportCostUsd = 0;
-  let totalDurationMs = 0;
-  let durationCount = 0;
-  const coachMap = new Map<
-    string,
-    {
-      user_id: string;
-      org_id: string;
-      requests: number;
-      tokens: number;
-      costUsd: number;
-    }
-  >();
-  const featureMap = new Map<
-    string,
-    { feature: string; requests: number; tokens: number; costUsd: number }
-  >();
-  const dailyMap = new Map<string, { date: string; requests: number; tokens: number }>();
+  const costSeries = Array.from(costSeriesMap.values()).sort((a, b) =>
+    a.label.localeCompare(b.label)
+  );
 
-  rows.forEach((row) => {
-    const tokens = toNumber(row.total_tokens);
-    const inputTokensRaw = toNumber(row.input_tokens);
-    const outputTokensRaw = toNumber(row.output_tokens);
-    const hasSplit = inputTokensRaw > 0 || outputTokensRaw > 0;
-    const inputTokens = hasSplit ? inputTokensRaw : Math.floor(tokens / 2);
-    const outputTokens = hasSplit ? outputTokensRaw : Math.max(0, tokens - inputTokens);
-    totalTokens += tokens;
-    totalRequests += 1;
-    const modelKey = row.model ?? "gpt-5.2";
-    const rowCostUsd = computeCostUsd(inputTokens, outputTokens, modelKey);
-    totalCostUsd += rowCostUsd;
-    if (typeof row.duration_ms === "number" && row.duration_ms > 0) {
-      totalDurationMs += row.duration_ms;
-      durationCount += 1;
-    }
+  const costBreakdownEndpoints = Array.from(endpointMap.values())
+    .map((entry) => ({
+      key: entry.endpoint,
+      label: entry.endpoint,
+      requests: entry.requests,
+      inputTokens: entry.inputTokens,
+      outputTokens: entry.outputTokens,
+      costUsd: roundUsd(entry.costUsd),
+      costPerRequestUsd: roundUsd(entry.requests ? entry.costUsd / entry.requests : 0),
+    }))
+    .sort((a, b) => b.costUsd - a.costUsd);
 
-    const coachEntry = coachMap.get(row.user_id) ?? {
-      user_id: row.user_id,
-      org_id: row.org_id,
-      requests: 0,
-      tokens: 0,
-      costUsd: 0,
-    };
-    coachEntry.requests += 1;
-    coachEntry.tokens += tokens;
-    coachEntry.costUsd += rowCostUsd;
-    coachMap.set(row.user_id, coachEntry);
-
-    const actionKey = row.action ?? "unknown";
-    const normalizedAction = actionKey.toLowerCase();
-    const featureKey = toFeatureCategory(actionKey);
-    if (reportActions.has(actionKey)) reportCostUsd += rowCostUsd;
-    if (normalizedAction.includes("tpi")) tpiCostUsd += rowCostUsd;
-    if (normalizedAction === "radar_extract") {
-      radarImportRequests += 1;
-      radarImportCostUsd += rowCostUsd;
-    }
-    const featureEntry = featureMap.get(featureKey) ?? {
-      feature: featureKey,
-      requests: 0,
-      tokens: 0,
-      costUsd: 0,
-    };
-    featureEntry.requests += 1;
-    featureEntry.tokens += tokens;
-    featureEntry.costUsd += rowCostUsd;
-    featureMap.set(featureKey, featureEntry);
-
-    const dateKey = row.created_at.slice(0, 10);
-    const dailyEntry = dailyMap.get(dateKey) ?? { date: dateKey, requests: 0, tokens: 0 };
-    dailyEntry.requests += 1;
-    dailyEntry.tokens += tokens;
-    dailyMap.set(dateKey, dailyEntry);
-  });
-
-  const topCoaches = Array.from(coachMap.values())
+  const costBreakdownCoaches = Array.from(coachMap.values())
     .map((entry) => {
       const profile = profileById.get(entry.user_id);
-      const orgId = profile?.org_id ?? entry.org_id;
+      const orgName = orgById.get(profile?.org_id ?? entry.org_id) ?? "";
       return {
-        user_id: entry.user_id,
-        full_name: profile?.full_name ?? "Coach",
-        org_name: orgById.get(orgId) ?? "",
+        key: entry.user_id,
+        label: profile?.full_name ?? "Coach",
+        orgName,
         requests: entry.requests,
-        tokens: entry.tokens,
-        costUsd: Number(entry.costUsd.toFixed(6)),
+        inputTokens: entry.inputTokens,
+        outputTokens: entry.outputTokens,
+        costUsd: roundUsd(entry.costUsd),
+        costPerRequestUsd: roundUsd(entry.requests ? entry.costUsd / entry.requests : 0),
       };
     })
-    .sort((a, b) => b.tokens - a.tokens)
-    .slice(0, 12);
+    .sort((a, b) => b.costUsd - a.costUsd);
 
-  const features = Array.from(featureMap.values()).sort((a, b) => b.tokens - a.tokens);
+  const costBreakdownOrgs = Array.from(orgMap.values())
+    .map((entry) => ({
+      key: entry.org_id,
+      label: orgById.get(entry.org_id) ?? "Organisation",
+      requests: entry.requests,
+      inputTokens: entry.inputTokens,
+      outputTokens: entry.outputTokens,
+      costUsd: roundUsd(entry.costUsd),
+      costPerRequestUsd: roundUsd(entry.requests ? entry.costUsd / entry.requests : 0),
+    }))
+    .sort((a, b) => b.costUsd - a.costUsd);
 
-  const daily = Array.from(dailyMap.values())
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(-14);
+  const performanceEndpoints = Array.from(endpointMap.values())
+    .map((entry) => {
+      const p50 = percentile(entry.durations, 0.5);
+      const p95 = percentile(entry.durations, 0.95);
+      const errorRatePct = entry.requests
+        ? (entry.errorCount / entry.requests) * 100
+        : 0;
+      return {
+        endpoint: entry.endpoint,
+        requests: entry.requests,
+        p50DurationMs: Math.round(p50),
+        p95DurationMs: Math.round(p95),
+        errorCount: entry.errorCount,
+        errorRatePct: Number(errorRatePct.toFixed(2)),
+      };
+    })
+    .sort((a, b) => b.p95DurationMs - a.p95DurationMs);
 
-  const totalCoaches = (profiles ?? []).filter(
-    (profile) => profile.role !== "student"
-  ).length;
-  const activeCoaches = coachMap.size;
-  const totalStudents = totalStudentsCount ?? 0;
-  const activeStudents = activeStudentsCount ?? 0;
-  const studentsWithTpi = tpiStudentsCount ?? 0;
-  const tpiReportsTotal = tpiReportsCount ?? 0;
-  const tpiReportsReady = tpiReportsReadyCount ?? 0;
-  const reportsTotal = reportsCount ?? 0;
-  const avgTokensPerRequest = totalRequests ? totalTokens / totalRequests : 0;
-  const avgTokensPerDay = windowDays ? totalTokens / windowDays : 0;
-  const avgTokensPerCoach = activeCoaches ? totalTokens / activeCoaches : 0;
-  const avgRequestsPerDay = windowDays ? totalRequests / windowDays : 0;
-  const avgRequestsPerCoach = activeCoaches ? totalRequests / activeCoaches : 0;
-  const avgDurationMs = durationCount ? totalDurationMs / durationCount : 0;
-  const avgRadarImportsPerDay = windowDays ? radarImportRequests / windowDays : 0;
-  const costPerRequestUsd = totalRequests ? totalCostUsd / totalRequests : 0;
-  const costPerDayUsd = windowDays ? totalCostUsd / windowDays : 0;
-  const costPerCoachUsd = activeCoaches ? totalCostUsd / activeCoaches : 0;
-  const costPerStudentUsd = activeStudents ? totalCostUsd / activeStudents : 0;
-  const costPerReportUsd = reportsTotal ? reportCostUsd / reportsTotal : 0;
-  const costPerTpiUsd = tpiReportsReady ? tpiCostUsd / tpiReportsReady : 0;
-  const costPerRadarUsd = radarImportRequests
-    ? radarImportCostUsd / radarImportRequests
-    : 0;
-  const adoptionCoachRate = totalCoaches ? (activeCoaches / totalCoaches) * 100 : 0;
-  const tpiCoverageRate = totalStudents ? (studentsWithTpi / totalStudents) * 100 : 0;
-  const tpiSuccessRate = tpiReportsTotal ? (tpiReportsReady / tpiReportsTotal) * 100 : 0;
+  const totalErrorRate = totalRequests ? (errorCount / totalRequests) * 100 : 0;
+  const costDeltaPct = totalCostPrevious
+    ? ((totalCostCurrent - totalCostPrevious) / totalCostPrevious) * 100
+    : null;
 
   return NextResponse.json({
+    period,
     windowDays,
     totals: {
+      costUsd: roundUsd(totalCostCurrent),
+      costDeltaPct: costDeltaPct === null ? null : Number(costDeltaPct.toFixed(2)),
       requests: totalRequests,
-      tokens: totalTokens,
-      avgTokens: avgTokensPerRequest,
-      activeCoaches,
-      totalCoaches,
-      totalStudents,
-      activeStudents,
-      studentsWithTpi,
-      reportsTotal,
-      tpiReportsTotal,
-      tpiReportsReady,
-      radarImportsTotal: radarImportRequests,
-      radarCostUsd: Number(radarImportCostUsd.toFixed(6)),
-      costUsd: Number(totalCostUsd.toFixed(6)),
-      reportCostUsd: Number(reportCostUsd.toFixed(6)),
-      tpiCostUsd: Number(tpiCostUsd.toFixed(6)),
-      avgTokensPerRequest,
-      avgTokensPerDay,
-      avgTokensPerCoach,
-      avgRequestsPerDay,
-      avgRequestsPerCoach,
-      avgRadarImportsPerDay,
-      avgDurationMs,
-      adoptionCoachRate,
-      tpiCoverageRate,
-      tpiSuccessRate,
-      costPerRequestUsd: Number(costPerRequestUsd.toFixed(6)),
-      costPerDayUsd: Number(costPerDayUsd.toFixed(6)),
-      costPerCoachUsd: Number(costPerCoachUsd.toFixed(6)),
-      costPerStudentUsd: Number(costPerStudentUsd.toFixed(6)),
-      costPerReportUsd: Number(costPerReportUsd.toFixed(6)),
-      costPerTpiUsd: Number(costPerTpiUsd.toFixed(6)),
-      costPerRadarUsd: Number(costPerRadarUsd.toFixed(6)),
+      p95DurationMs: Math.round(percentile(durations, 0.95)),
+      errorRatePct: Number(totalErrorRate.toFixed(2)),
     },
-    daily,
-    topCoaches,
-    features,
+    costSeries,
+    costBreakdown: {
+      endpoints: costBreakdownEndpoints,
+      coaches: costBreakdownCoaches,
+      orgs: costBreakdownOrgs,
+    },
+    performance: {
+      endpoints: performanceEndpoints,
+    },
   });
 }
+

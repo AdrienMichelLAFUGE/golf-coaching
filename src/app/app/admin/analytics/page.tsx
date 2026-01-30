@@ -1,155 +1,130 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import AdminGuard from "../../_components/admin-guard";
 import PageBack from "../../_components/page-back";
 
+type Period = "day" | "week" | "month";
+
+type CostSeriesPoint = {
+  label: string;
+  costUsd: number;
+  requests: number;
+};
+
+type CostRow = {
+  key: string;
+  label: string;
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  costPerRequestUsd: number;
+};
+
+type CoachCostRow = CostRow & {
+  orgName: string;
+};
+
+type PerformanceRow = {
+  endpoint: string;
+  requests: number;
+  p50DurationMs: number;
+  p95DurationMs: number;
+  errorCount: number;
+  errorRatePct: number;
+};
+
 type AnalyticsPayload = {
+  period: Period;
   windowDays: number;
   totals: {
-    requests: number;
-    tokens: number;
-    avgTokens: number;
-    activeCoaches: number;
-    totalCoaches: number;
-    totalStudents: number;
-    activeStudents: number;
-    studentsWithTpi: number;
-    reportsTotal: number;
-    tpiReportsTotal: number;
-    tpiReportsReady: number;
-    radarImportsTotal: number;
     costUsd: number;
-    reportCostUsd: number;
-    tpiCostUsd: number;
-    radarCostUsd: number;
-    avgTokensPerRequest: number;
-    avgTokensPerDay: number;
-    avgTokensPerCoach: number;
-    avgRequestsPerDay: number;
-    avgRequestsPerCoach: number;
-    avgRadarImportsPerDay: number;
-    avgDurationMs: number;
-    adoptionCoachRate: number;
-    tpiCoverageRate: number;
-    tpiSuccessRate: number;
-    costPerRequestUsd: number;
-    costPerDayUsd: number;
-    costPerCoachUsd: number;
-    costPerStudentUsd: number;
-    costPerReportUsd: number;
-    costPerTpiUsd: number;
-    costPerRadarUsd: number;
+    costDeltaPct: number | null;
+    requests: number;
+    p95DurationMs: number;
+    errorRatePct: number;
   };
-  daily: Array<{ date: string; requests: number; tokens: number }>;
-  topCoaches: Array<{
-    user_id: string;
-    full_name: string;
-    org_name: string;
-    requests: number;
-    tokens: number;
-    costUsd: number;
-  }>;
-  features: Array<{
-    feature: string;
-    requests: number;
-    tokens: number;
-    costUsd: number;
-  }>;
+  costSeries: CostSeriesPoint[];
+  costBreakdown: {
+    endpoints: CostRow[];
+    coaches: CoachCostRow[];
+    orgs: CostRow[];
+  };
+  performance: {
+    endpoints: PerformanceRow[];
+  };
 };
 
-type CoachAnalyticsPayload = {
-  windowDays: number;
-  user: {
-    id: string;
-    full_name: string;
-    org_name: string;
-  };
-  totals: {
-    requests: number;
-    tokens: number;
-    avgTokens: number;
-    costUsd: number;
-  };
-  actions: Array<{ action: string; requests: number; tokens: number; costUsd: number }>;
-  models: Array<{ model: string; requests: number; tokens: number; costUsd: number }>;
-  features: Array<{
-    feature: string;
-    requests: number;
-    tokens: number;
-    costUsd: number;
-  }>;
-  daily: Array<{ date: string; requests: number; tokens: number }>;
+const periodLabels: Record<Period, string> = {
+  day: "Jour",
+  week: "Semaine",
+  month: "Mois",
 };
 
-type FeatureKey = "ai" | "image" | "radar" | "tpi";
+const endpointLabels: Record<string, string> = {
+  ai: "Rapports",
+  radar_ai: "IA Radar",
+  radar_extract: "Import Datas",
+  radar_extract_verify: "Verif Datas",
+  tpi_extract: "Import TPI",
+  tpi_verify: "Verif TPI",
+  radar_questions: "Radar Questions",
+  radar_auto: "Radar Auto",
+  radar_auto_retry: "Radar Auto (retry)",
+};
 
-const featureTones = {
-  ai: { dot: "bg-emerald-300", badge: "text-emerald-100" },
-  image: { dot: "bg-sky-300", badge: "text-sky-100" },
-  radar: { dot: "bg-violet-300", badge: "text-violet-100" },
-  tpi: { dot: "bg-rose-300", badge: "text-rose-100" },
-} as const;
+const formatUsd = (value: number | string | null | undefined) => {
+  const numeric = typeof value === "number" ? value : Number(value ?? 0);
+  const safeValue = Number.isFinite(numeric) ? numeric : 0;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  }).format(safeValue);
+};
 
-const getFeatureKeyFromLabel = (label: string): FeatureKey | null => {
-  const lowered = label.toLowerCase();
-  if (lowered.includes("tpi")) return "tpi";
-  if (
-    lowered.includes("radar") ||
-    lowered.includes("datas") ||
-    lowered.includes("data")
-  ) {
-    return "radar";
+const formatNumber = (value: number | string | null | undefined, decimals = 0) => {
+  const numeric = typeof value === "number" ? value : Number(value ?? 0);
+  const safeValue = Number.isFinite(numeric) ? numeric : 0;
+  return new Intl.NumberFormat("fr-FR", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).format(safeValue);
+};
+
+const formatPercent = (value: number | string | null | undefined, decimals = 1) =>
+  `${formatNumber(value, decimals)}%`;
+
+const formatDuration = (value: number | null | undefined) => {
+  const numeric = typeof value === "number" ? value : Number(value ?? 0);
+  if (!Number.isFinite(numeric)) return "0 ms";
+  if (numeric >= 1000) {
+    return `${formatNumber(numeric / 1000, 1)} s`;
   }
-  if (lowered.includes("image")) return "image";
-  if (lowered.includes("ia") || lowered.includes("ai")) return "ai";
-  return null;
+  return `${formatNumber(numeric, 0)} ms`;
 };
 
-const renderFeatureDot = (label: string) => {
-  const key = getFeatureKeyFromLabel(label);
-  if (!key) return null;
-  const tone = featureTones[key];
-  return (
-    <span className="inline-flex items-center gap-2">
-      <span className={`h-2 w-2 rounded-full ${tone.dot}`} />
-      <span className={tone.badge}>{label}</span>
-    </span>
+const resolveEndpointLabel = (value: string) => endpointLabels[value] ?? value;
+
+const sortByCost = <T extends { costUsd: number }>(
+  rows: T[],
+  direction: "asc" | "desc"
+) =>
+  [...rows].sort((a, b) =>
+    direction === "asc" ? a.costUsd - b.costUsd : b.costUsd - a.costUsd
   );
-};
 
 export default function AdminAnalyticsPage() {
+  const [period, setPeriod] = useState<Period>("month");
   const [analytics, setAnalytics] = useState<AnalyticsPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [selectedCoachId, setSelectedCoachId] = useState<string | null>(null);
-  const [coachDetail, setCoachDetail] = useState<CoachAnalyticsPayload | null>(null);
-  const [coachLoading, setCoachLoading] = useState(false);
-  const [coachError, setCoachError] = useState("");
-
-  const formatUsd = (value: number | string | null | undefined) => {
-    const numeric = typeof value === "number" ? value : Number(value ?? 0);
-    const safeValue = Number.isFinite(numeric) ? numeric : 0;
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 4,
-    }).format(safeValue);
-  };
-
-  const formatNumber = (value: number | string | null | undefined, decimals = 0) => {
-    const numeric = typeof value === "number" ? value : Number(value ?? 0);
-    const safeValue = Number.isFinite(numeric) ? numeric : 0;
-    return new Intl.NumberFormat("fr-FR", {
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
-    }).format(safeValue);
-  };
-
-  const formatPercent = (value: number | string | null | undefined, decimals = 1) =>
-    `${formatNumber(value, decimals)}%`;
+  const [endpointSort, setEndpointSort] = useState<"asc" | "desc">("desc");
+  const [coachSort, setCoachSort] = useState<"asc" | "desc">("desc");
+  const [orgSort, setOrgSort] = useState<"asc" | "desc">("desc");
 
   useEffect(() => {
     const loadAnalytics = async () => {
@@ -165,12 +140,10 @@ export default function AdminAnalyticsPage() {
         return;
       }
 
-      const response = await fetch("/api/admin/analytics?days=30", {
+      const response = await fetch(`/api/admin/analytics?period=${period}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const payload = (await response.json()) as AnalyticsPayload & {
-        error?: string;
-      };
+      const payload = (await response.json()) as AnalyticsPayload & { error?: string };
 
       if (!response.ok) {
         setError(payload.error ?? "Chargement impossible.");
@@ -183,70 +156,75 @@ export default function AdminAnalyticsPage() {
     };
 
     loadAnalytics();
-  }, []);
+  }, [period]);
 
-  const maxTokens = analytics?.daily?.length
-    ? Math.max(...analytics.daily.map((day) => day.tokens))
+  const costSeries = analytics?.costSeries ?? [];
+  const performanceRows = useMemo(
+    () => analytics?.performance.endpoints ?? [],
+    [analytics]
+  );
+
+  const maxCost = costSeries.length
+    ? Math.max(...costSeries.map((entry) => entry.costUsd))
+    : 0;
+  const maxLatency = performanceRows.length
+    ? Math.max(...performanceRows.map((entry) => entry.p95DurationMs))
+    : 0;
+  const maxErrorRate = performanceRows.length
+    ? Math.max(...performanceRows.map((entry) => entry.errorRatePct))
     : 0;
 
-  const coachMaxTokens = coachDetail?.daily?.length
-    ? Math.max(...coachDetail.daily.map((day) => day.tokens))
-    : 0;
+  const sortedEndpoints = useMemo(
+    () => sortByCost(analytics?.costBreakdown.endpoints ?? [], endpointSort),
+    [analytics, endpointSort]
+  );
+  const sortedCoaches = useMemo(
+    () => sortByCost(analytics?.costBreakdown.coaches ?? [], coachSort),
+    [analytics, coachSort]
+  );
+  const sortedOrgs = useMemo(
+    () => sortByCost(analytics?.costBreakdown.orgs ?? [], orgSort),
+    [analytics, orgSort]
+  );
 
-  const loadCoachDetail = async (userId: string) => {
-    setSelectedCoachId(userId);
-    setCoachLoading(true);
-    setCoachError("");
-
-    const { data: sessionData } = await supabase.auth.getSession();
-    const token = sessionData.session?.access_token;
-
-    if (!token) {
-      setCoachError("Session invalide. Reconnecte toi.");
-      setCoachLoading(false);
-      return;
-    }
-
-    const response = await fetch(
-      `/api/admin/analytics/coach?userId=${encodeURIComponent(userId)}&days=30`,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-      }
-    );
-    const payload = (await response.json()) as CoachAnalyticsPayload & {
-      error?: string;
-    };
-
-    if (!response.ok) {
-      setCoachError(payload.error ?? "Chargement impossible.");
-      setCoachLoading(false);
-      return;
-    }
-
-    setCoachDetail(payload);
-    setCoachLoading(false);
-  };
-
-  const closeCoachDetail = () => {
-    setSelectedCoachId(null);
-    setCoachDetail(null);
-    setCoachError("");
-    setCoachLoading(false);
-  };
+  const errorSorted = useMemo(
+    () => [...performanceRows].sort((a, b) => b.errorRatePct - a.errorRatePct),
+    [performanceRows]
+  );
 
   return (
     <AdminGuard>
       <div className="space-y-6">
         <section className="panel rounded-2xl p-6">
-          <div className="flex items-center gap-2">
-            <PageBack fallbackHref="/app/admin" />
-            <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-              Analytics
-            </p>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <PageBack fallbackHref="/app/admin" />
+              <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                Analytics
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {(Object.keys(periodLabels) as Period[]).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setPeriod(value)}
+                  className={`rounded-full border px-4 py-1 text-xs uppercase tracking-wide transition ${
+                    period === value
+                      ? "border-emerald-400/60 bg-emerald-400/15 text-emerald-100"
+                      : "border-white/10 bg-white/5 text-[var(--muted)] hover:border-white/30"
+                  }`}
+                >
+                  {periodLabels[value]}
+                </button>
+              ))}
+            </div>
           </div>
-          <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">Suivi IA</h2>
+          <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
+            Analytics IA & performance
+          </h2>
           <p className="mt-2 text-sm text-[var(--muted)]">
-            Usage des appels IA sur les 30 derniers jours.
+            Vue synthese + detail par endpoint, coach et organisation.
           </p>
         </section>
 
@@ -260,536 +238,433 @@ export default function AdminAnalyticsPage() {
           </section>
         ) : analytics ? (
           <>
-            <section className="space-y-6">
+            <section className="grid gap-4 md:grid-cols-4">
               {(() => {
-                const windowLabel = `Fenetre ${analytics.windowDays} jours`;
-                const overviewStats = [
+                const delta = analytics.totals.costDeltaPct;
+                const deltaLabel =
+                  delta === null
+                    ? "—"
+                    : `${delta > 0 ? "+" : ""}${formatNumber(delta, 1)}%`;
+                const deltaTone =
+                  delta === null
+                    ? "text-[var(--muted)]"
+                    : delta > 0
+                      ? "text-emerald-200"
+                      : "text-orange-200";
+                const summary = [
                   {
-                    id: "overview-requests",
-                    label: "Requetes",
-                    value: formatNumber(analytics.totals.requests),
-                    helper: windowLabel,
-                    cost: formatUsd(analytics.totals.costUsd),
-                  },
-                  {
-                    id: "overview-tokens",
-                    label: "Tokens",
-                    value: formatNumber(analytics.totals.tokens),
-                    helper: windowLabel,
-                    cost: formatUsd(analytics.totals.costUsd),
-                  },
-                  {
-                    id: "overview-cost",
-                    label: "Cout total",
+                    label: "Cout IA total",
                     value: formatUsd(analytics.totals.costUsd),
-                    helper: windowLabel,
-                    cost: formatUsd(analytics.totals.costUsd),
+                    helper: `Variation ${deltaLabel}`,
+                    helperTone: deltaTone,
                   },
                   {
-                    id: "overview-coaches-active",
-                    label: "Coachs actifs",
-                    value: formatNumber(analytics.totals.activeCoaches),
-                    helper: `Sur ${formatNumber(analytics.totals.totalCoaches)} coachs`,
-                    cost: formatUsd(analytics.totals.costPerCoachUsd),
+                    label: "Appels IA",
+                    value: formatNumber(analytics.totals.requests),
+                    helper: `Periode ${periodLabels[analytics.period]}`,
+                    helperTone: "text-[var(--muted)]",
                   },
                   {
-                    id: "overview-students-active",
-                    label: "Eleves actifs",
-                    value: formatNumber(analytics.totals.activeStudents),
-                    helper: `Sur ${formatNumber(analytics.totals.totalStudents)} eleves`,
-                    cost: formatUsd(analytics.totals.costPerStudentUsd),
+                    label: "Latence p95",
+                    value: formatDuration(analytics.totals.p95DurationMs),
+                    helper: "Tous endpoints",
+                    helperTone: "text-[var(--muted)]",
                   },
                   {
-                    id: "overview-reports",
-                    label: "Rapports generes",
-                    value: formatNumber(analytics.totals.reportsTotal),
-                    helper: windowLabel,
-                    cost: formatUsd(analytics.totals.reportCostUsd),
-                  },
-                  {
-                    id: "overview-tpi",
-                    label: "TPI importes",
-                    value: formatNumber(analytics.totals.tpiReportsReady),
-                    helper: windowLabel,
-                    cost: formatUsd(analytics.totals.tpiCostUsd),
+                    label: "Erreurs systeme",
+                    value: formatPercent(analytics.totals.errorRatePct, 2),
+                    helper: "5xx + timeouts + exceptions IA",
+                    helperTone: "text-[var(--muted)]",
                   },
                 ];
-                const adoptionStats = [
-                  {
-                    id: "adoption-coaches",
-                    label: "Adoption IA",
-                    value: formatPercent(analytics.totals.adoptionCoachRate, 1),
-                    helper: `${formatNumber(
-                      analytics.totals.activeCoaches
-                    )} / ${formatNumber(analytics.totals.totalCoaches)} coachs`,
-                    cost: formatUsd(analytics.totals.costPerCoachUsd),
-                  },
-                  {
-                    id: "adoption-tpi-coverage",
-                    label: "Couverture TPI",
-                    value: formatPercent(analytics.totals.tpiCoverageRate, 1),
-                    helper: `${formatNumber(
-                      analytics.totals.studentsWithTpi
-                    )} / ${formatNumber(analytics.totals.totalStudents)} eleves`,
-                    cost: formatUsd(analytics.totals.costPerTpiUsd),
-                  },
-                  {
-                    id: "adoption-tpi-success",
-                    label: "Succes TPI",
-                    value: formatPercent(analytics.totals.tpiSuccessRate, 1),
-                    helper: `${formatNumber(
-                      analytics.totals.tpiReportsReady
-                    )} / ${formatNumber(analytics.totals.tpiReportsTotal)} imports`,
-                    cost: formatUsd(analytics.totals.costPerTpiUsd),
-                  },
-                ];
-                const usageStats = [
-                  {
-                    id: "usage-tokens-request",
-                    label: "Tokens",
-                    value: formatNumber(analytics.totals.avgTokensPerRequest),
-                    helper: "Par requete",
-                    cost: formatUsd(analytics.totals.costPerRequestUsd),
-                  },
-                  {
-                    id: "usage-tokens-day",
-                    label: "Tokens",
-                    value: formatNumber(analytics.totals.avgTokensPerDay),
-                    helper: "Par jour",
-                    cost: formatUsd(analytics.totals.costPerDayUsd),
-                  },
-                  {
-                    id: "usage-tokens-coach",
-                    label: "Tokens",
-                    value: formatNumber(analytics.totals.avgTokensPerCoach),
-                    helper: "Par coach",
-                    cost: formatUsd(analytics.totals.costPerCoachUsd),
-                  },
-                  {
-                    id: "usage-requests-day",
-                    label: "Requetes",
-                    value: formatNumber(analytics.totals.avgRequestsPerDay, 2),
-                    helper: "Par jour",
-                    cost: formatUsd(analytics.totals.costPerDayUsd),
-                  },
-                  {
-                    id: "usage-radar-imports",
-                    label: "Import Datas",
-                    value: formatNumber(analytics.totals.avgRadarImportsPerDay, 2),
-                    helper: "Par jour",
-                    cost: formatUsd(analytics.totals.costPerRadarUsd),
-                  },
-                  {
-                    id: "usage-requests-coach",
-                    label: "Requetes",
-                    value: formatNumber(analytics.totals.avgRequestsPerCoach, 2),
-                    helper: "Par coach",
-                    cost: formatUsd(analytics.totals.costPerCoachUsd),
-                  },
-                  {
-                    id: "usage-duration",
-                    label: "Temps moyen IA",
-                    value: `${formatNumber(analytics.totals.avgDurationMs / 1000, 1)} s`,
-                    helper: "Par requete",
-                    cost: formatUsd(analytics.totals.costPerRequestUsd),
-                  },
-                ];
-                const costStats = [
-                  {
-                    id: "cost-request",
-                    label: "Cout / requete",
-                    value: formatUsd(analytics.totals.costPerRequestUsd),
-                    helper: "Par requete",
-                    cost: formatUsd(analytics.totals.costPerRequestUsd),
-                  },
-                  {
-                    id: "cost-day",
-                    label: "Cout / jour",
-                    value: formatUsd(analytics.totals.costPerDayUsd),
-                    helper: "Par jour",
-                    cost: formatUsd(analytics.totals.costPerDayUsd),
-                  },
-                  {
-                    id: "cost-coach",
-                    label: "Cout / coach actif",
-                    value: formatUsd(analytics.totals.costPerCoachUsd),
-                    helper: "Par coach",
-                    cost: formatUsd(analytics.totals.costPerCoachUsd),
-                  },
-                  {
-                    id: "cost-student",
-                    label: "Cout / eleve actif",
-                    value: formatUsd(analytics.totals.costPerStudentUsd),
-                    helper: "Par eleve",
-                    cost: formatUsd(analytics.totals.costPerStudentUsd),
-                  },
-                  {
-                    id: "cost-report",
-                    label: "Cout / rapport",
-                    value: formatUsd(analytics.totals.costPerReportUsd),
-                    helper: `${formatNumber(analytics.totals.reportsTotal)} rapports`,
-                    cost: formatUsd(analytics.totals.costPerReportUsd),
-                  },
-                  {
-                    id: "cost-tpi",
-                    label: "Cout / TPI",
-                    value: formatUsd(analytics.totals.costPerTpiUsd),
-                    helper: `${formatNumber(analytics.totals.tpiReportsReady)} imports`,
-                    cost: formatUsd(analytics.totals.costPerTpiUsd),
-                  },
-                  {
-                    id: "cost-radar",
-                    label: "Cout / Datas",
-                    value: formatUsd(analytics.totals.costPerRadarUsd),
-                    helper: `${formatNumber(analytics.totals.radarImportsTotal)} imports`,
-                    cost: formatUsd(analytics.totals.costPerRadarUsd),
-                  },
-                ];
-
-                const renderCards = (
-                  items: Array<{
-                    id: string;
-                    label: string;
-                    value: string;
-                    helper?: string;
-                    cost?: string;
-                  }>
-                ) =>
-                  items.map((item) => (
-                    <div
-                      key={item.id}
-                      className="panel-soft relative rounded-2xl p-4 pb-10"
-                    >
-                      <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                        {item.label}
-                      </p>
-                      <p className="mt-3 text-2xl font-semibold text-[var(--text)]">
-                        {item.value}
-                      </p>
-                      {item.helper ? (
-                        <p className="mt-2 text-xs text-[var(--muted)]">{item.helper}</p>
-                      ) : null}
-                      {item.cost ? (
-                        <p className="absolute bottom-3 right-4 text-xs text-[var(--muted)]">
-                          Cout {item.cost}
-                        </p>
-                      ) : null}
-                    </div>
-                  ));
-
-                const renderSection = (
-                  title: string,
-                  subtitle: string,
-                  items: Array<{
-                    id: string;
-                    label: string;
-                    value: string;
-                    helper?: string;
-                    cost?: string;
-                  }>
-                ) => (
-                  <div>
-                    <div className="flex items-center justify-between text-xs uppercase tracking-wide text-[var(--muted)]">
-                      <span>{title}</span>
-                      <span>{subtitle}</span>
-                    </div>
-                    <div className="mt-3 grid gap-4 md:grid-cols-4">
-                      {renderCards(items)}
-                    </div>
+                return summary.map((item) => (
+                  <div key={item.label} className="panel-soft rounded-2xl p-4">
+                    <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      {item.label}
+                    </p>
+                    <p className="mt-3 text-2xl font-semibold text-[var(--text)]">
+                      {item.value}
+                    </p>
+                    <p className={`mt-2 text-xs ${item.helperTone}`}>{item.helper}</p>
                   </div>
-                );
-
-                return (
-                  <>
-                    {renderSection("Vue d'ensemble", windowLabel, overviewStats)}
-                    {renderSection("Adoption & couverture", windowLabel, adoptionStats)}
-                    {renderSection("Usage moyen", windowLabel, usageStats)}
-                    {renderSection("Couts unitaires", windowLabel, costStats)}
-                  </>
-                );
+                ));
               })()}
             </section>
 
-            <section className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
+            <section className="space-y-6">
               <div className="panel rounded-2xl p-6">
-                <h3 className="text-lg font-semibold text-[var(--text)]">
-                  Activite recente
-                </h3>
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-lg font-semibold text-[var(--text)]">Couts IA</h3>
+                  <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                    {periodLabels[analytics.period]}
+                  </p>
+                </div>
                 <div className="mt-4 space-y-3 text-xs text-[var(--muted)]">
-                  {analytics.daily.length === 0 ? (
+                  {costSeries.length === 0 ? (
                     <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
-                      Aucune activite recente.
+                      Aucune donnee sur la periode.
                     </div>
                   ) : (
-                    analytics.daily.map((day) => (
-                      <div key={day.date} className="flex items-center gap-3">
-                        <span className="w-24">{day.date}</span>
+                    costSeries.map((point) => (
+                      <div key={point.label} className="flex items-center gap-3">
+                        <span className="w-28">{point.label}</span>
                         <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
                           <div
                             className="h-full rounded-full bg-emerald-300/70"
                             style={{
-                              width: maxTokens
-                                ? `${Math.max(5, (day.tokens / maxTokens) * 100)}%`
+                              width: maxCost
+                                ? `${Math.max(4, (point.costUsd / maxCost) * 100)}%`
                                 : "0%",
                             }}
                           />
                         </div>
-                        <span className="w-28 text-right">{day.tokens} tokens</span>
+                        <span className="w-28 text-right">
+                          {formatUsd(point.costUsd)}
+                        </span>
                       </div>
                     ))
                   )}
                 </div>
               </div>
 
-              <div className="space-y-6">
-                <div className="panel rounded-2xl p-6">
-                  <h3 className="text-lg font-semibold text-[var(--text)]">Top coachs</h3>
-                  <div className="mt-4 space-y-3 text-sm text-[var(--muted)]">
-                    {analytics.topCoaches.length === 0 ? (
-                      <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
-                        Aucun usage detecte.
-                      </div>
-                    ) : (
-                      analytics.topCoaches.map((coach) => (
-                        <button
-                          key={coach.user_id}
-                          type="button"
-                          onClick={() => loadCoachDetail(coach.user_id)}
-                          className={`w-full rounded-xl border px-4 py-3 text-left transition ${
-                            selectedCoachId === coach.user_id
-                              ? "border-emerald-300/40 bg-emerald-400/10"
-                              : "border-white/5 bg-white/5 hover:border-white/20"
-                          }`}
-                        >
-                          <p className="font-medium text-[var(--text)]">
-                            {coach.full_name}
-                          </p>
-                          <p className="mt-1 text-xs text-[var(--muted)]">
-                            {coach.org_name || "Organisation"} - {coach.requests} req
-                          </p>
-                          <p className="mt-2 text-xs text-emerald-200">
-                            {coach.tokens} tokens • {formatUsd(coach.costUsd)}
-                          </p>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                </div>
+              <div className="panel rounded-2xl p-6">
+                <h3 className="text-lg font-semibold text-[var(--text)]">
+                  Detail des couts
+                </h3>
+                <p className="mt-2 text-sm text-[var(--muted)]">
+                  Triable par cout total.
+                </p>
 
-                <div className="panel rounded-2xl p-6">
-                  <h3 className="text-lg font-semibold text-[var(--text)]">
-                    Top features
-                  </h3>
-                  <div className="mt-4 space-y-3 text-sm text-[var(--muted)]">
-                    {analytics.features.length === 0 ? (
-                      <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
-                        Aucune consommation detectee.
-                      </div>
-                    ) : (
-                      analytics.features.map((feature) => (
-                        <div
-                          key={feature.feature}
-                          className="flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-4 py-2"
-                        >
-                          <div className="text-[var(--text)]">
-                            {renderFeatureDot(feature.feature) ?? feature.feature}
-                          </div>
-                          <span>
-                            {feature.requests} req - {feature.tokens} tokens •{" "}
-                            {formatUsd(feature.costUsd)}
-                          </span>
-                        </div>
-                      ))
-                    )}
+                <div className="mt-6 space-y-6">
+                  <div>
+                    <div className="flex items-center justify-between text-xs uppercase tracking-wide text-[var(--muted)]">
+                      <span>Endpoints</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setEndpointSort(endpointSort === "asc" ? "desc" : "asc")
+                        }
+                        className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-[var(--muted)] transition hover:border-white/40"
+                      >
+                        Tri {endpointSort === "asc" ? "asc" : "desc"}
+                      </button>
+                    </div>
+                    <div className="mt-3 overflow-x-auto">
+                      <table className="w-full text-left text-xs text-[var(--muted)]">
+                        <thead>
+                          <tr className="border-b border-white/5">
+                            <th className="py-2">Endpoint</th>
+                            <th className="py-2">Cout total</th>
+                            <th className="py-2">Cout / appel</th>
+                            <th className="py-2">Tokens in</th>
+                            <th className="py-2">Tokens out</th>
+                            <th className="py-2 text-right">Appels</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sortedEndpoints.length === 0 ? (
+                            <tr>
+                              <td colSpan={6} className="py-3 text-sm text-[var(--muted)]">
+                                Aucun endpoint.
+                              </td>
+                            </tr>
+                          ) : (
+                            sortedEndpoints.map((row) => (
+                              <tr key={row.key} className="border-b border-white/5">
+                                <td className="py-2 text-[var(--text)]">
+                                  {resolveEndpointLabel(row.label)}
+                                </td>
+                                <td className="py-2">{formatUsd(row.costUsd)}</td>
+                                <td className="py-2">
+                                  {formatUsd(row.costPerRequestUsd)}
+                                </td>
+                                <td className="py-2">{formatNumber(row.inputTokens)}</td>
+                                <td className="py-2">{formatNumber(row.outputTokens)}</td>
+                                <td className="py-2 text-right">
+                                  {formatNumber(row.requests)}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between text-xs uppercase tracking-wide text-[var(--muted)]">
+                      <span>Coachs</span>
+                      <button
+                        type="button"
+                        onClick={() => setCoachSort(coachSort === "asc" ? "desc" : "asc")}
+                        className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-[var(--muted)] transition hover:border-white/40"
+                      >
+                        Tri {coachSort === "asc" ? "asc" : "desc"}
+                      </button>
+                    </div>
+                    <div className="mt-3 overflow-x-auto">
+                      <table className="w-full text-left text-xs text-[var(--muted)]">
+                        <thead>
+                          <tr className="border-b border-white/5">
+                            <th className="py-2">Coach</th>
+                            <th className="py-2">Organisation</th>
+                            <th className="py-2">Cout total</th>
+                            <th className="py-2">Cout / appel</th>
+                            <th className="py-2 text-right">Appels</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sortedCoaches.length === 0 ? (
+                            <tr>
+                              <td colSpan={5} className="py-3 text-sm text-[var(--muted)]">
+                                Aucun coach.
+                              </td>
+                            </tr>
+                          ) : (
+                            sortedCoaches.map((row) => (
+                              <tr key={row.key} className="border-b border-white/5">
+                                <td className="py-2 text-[var(--text)]">{row.label}</td>
+                                <td className="py-2">{row.orgName || "-"}</td>
+                                <td className="py-2">{formatUsd(row.costUsd)}</td>
+                                <td className="py-2">
+                                  {formatUsd(row.costPerRequestUsd)}
+                                </td>
+                                <td className="py-2 text-right">
+                                  {formatNumber(row.requests)}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between text-xs uppercase tracking-wide text-[var(--muted)]">
+                      <span>Organisations</span>
+                      <button
+                        type="button"
+                        onClick={() => setOrgSort(orgSort === "asc" ? "desc" : "asc")}
+                        className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-[var(--muted)] transition hover:border-white/40"
+                      >
+                        Tri {orgSort === "asc" ? "asc" : "desc"}
+                      </button>
+                    </div>
+                    <div className="mt-3 overflow-x-auto">
+                      <table className="w-full text-left text-xs text-[var(--muted)]">
+                        <thead>
+                          <tr className="border-b border-white/5">
+                            <th className="py-2">Organisation</th>
+                            <th className="py-2">Cout total</th>
+                            <th className="py-2">Cout / appel</th>
+                            <th className="py-2 text-right">Appels</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sortedOrgs.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="py-3 text-sm text-[var(--muted)]">
+                                Aucune organisation.
+                              </td>
+                            </tr>
+                          ) : (
+                            sortedOrgs.map((row) => (
+                              <tr key={row.key} className="border-b border-white/5">
+                                <td className="py-2 text-[var(--text)]">{row.label}</td>
+                                <td className="py-2">{formatUsd(row.costUsd)}</td>
+                                <td className="py-2">
+                                  {formatUsd(row.costPerRequestUsd)}
+                                </td>
+                                <td className="py-2 text-right">
+                                  {formatNumber(row.requests)}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               </div>
             </section>
-            {selectedCoachId ? (
-              <section className="panel rounded-2xl p-6">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h3 className="text-lg font-semibold text-[var(--text)]">
-                      Details coach
-                    </h3>
-                    <p className="mt-2 text-sm text-[var(--muted)]">
-                      Repartition par action et activite recente.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={closeCoachDetail}
-                    className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
-                    aria-label="Fermer"
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="h-4 w-4"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M18 6L6 18" />
-                      <path d="M6 6l12 12" />
-                    </svg>
-                  </button>
+
+            <section className="space-y-6">
+              <div className="panel rounded-2xl p-6">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-lg font-semibold text-[var(--text)]">Performance</h3>
+                  <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                    Par endpoint
+                  </p>
                 </div>
-                {coachLoading ? (
-                  <div className="mt-4 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
-                    Chargement du detail...
-                  </div>
-                ) : coachError ? (
-                  <div className="mt-4 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-red-300">
-                    {coachError}
-                  </div>
-                ) : coachDetail ? (
-                  <div className="mt-4 space-y-6">
-                    <div className="grid gap-4 md:grid-cols-3">
-                      {[
-                        {
-                          label: "Requetes",
-                          value: coachDetail.totals.requests,
-                        },
-                        { label: "Tokens", value: coachDetail.totals.tokens },
-                        {
-                          label: "Moyenne tokens",
-                          value: coachDetail.totals.avgTokens,
-                        },
-                      ].map((item) => (
-                        <div key={item.label} className="panel-soft rounded-2xl p-4">
-                          <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                            {item.label}
-                          </p>
-                          <p className="mt-3 text-2xl font-semibold text-[var(--text)]">
-                            {item.value}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
 
-                    <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                          Actions
-                        </p>
-                        <div className="mt-3 space-y-2 text-sm text-[var(--muted)]">
-                          {coachDetail.actions.length === 0 ? (
-                            <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
-                              Aucune action.
+                <div className="mt-4 grid gap-6 lg:grid-cols-[1.2fr_1fr]">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                      Latence p50 / p95
+                    </p>
+                    <div className="mt-3 space-y-3 text-xs text-[var(--muted)]">
+                      {performanceRows.length === 0 ? (
+                        <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
+                          Aucune donnee de latence.
+                        </div>
+                      ) : (
+                        performanceRows.map((row) => (
+                          <div key={row.endpoint} className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[var(--text)]">
+                                {resolveEndpointLabel(row.endpoint)}
+                              </span>
+                              <span>
+                                {formatDuration(row.p50DurationMs)} /{" "}
+                                {formatDuration(row.p95DurationMs)}
+                              </span>
                             </div>
-                          ) : (
-                            coachDetail.actions.map((action) => (
+                            <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
                               <div
-                                key={action.action}
-                                className="flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-4 py-2"
-                              >
-                                <span className="text-[var(--text)]">
-                                  {action.action}
-                                </span>
-                                <span>
-                                  {action.requests} req - {action.tokens} tokens -{" "}
-                                  {formatUsd(action.costUsd)}
-                                </span>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                          Modeles
-                        </p>
-                        <div className="mt-3 space-y-2 text-sm text-[var(--muted)]">
-                          {coachDetail.models.length === 0 ? (
-                            <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
-                              Aucun modele.
+                                className="h-full rounded-full bg-sky-300/70"
+                                style={{
+                                  width: maxLatency
+                                    ? `${Math.max(
+                                        4,
+                                        (row.p95DurationMs / maxLatency) * 100
+                                      )}%`
+                                    : "0%",
+                                }}
+                              />
                             </div>
-                          ) : (
-                            coachDetail.models.map((model) => (
-                              <div
-                                key={model.model}
-                                className="flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-4 py-2"
-                              >
-                                <span className="text-[var(--text)]">{model.model}</span>
-                                <span>
-                                  {model.requests} req - {model.tokens} tokens -{" "}
-                                  {formatUsd(model.costUsd)}
-                                </span>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                        <div className="mt-6">
-                          <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                            Par categorie de features
-                          </p>
-                          <div className="mt-3 space-y-2 text-sm text-[var(--muted)]">
-                            {coachDetail.features.length === 0 ? (
-                              <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
-                                Aucune categorie.
-                              </div>
-                            ) : (
-                              coachDetail.features.map((feature) => (
-                                <div
-                                  key={feature.feature}
-                                  className="flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-4 py-2"
-                                >
-                                  <div className="text-[var(--text)]">
-                                    {renderFeatureDot(feature.feature) ?? feature.feature}
-                                  </div>
-                                  <span>
-                                    {feature.requests} req - {feature.tokens} tokens -{" "}
-                                    {formatUsd(feature.costUsd)}
-                                  </span>
-                                </div>
-                              ))
-                            )}
                           </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                        Activite recente
-                      </p>
-                      <div className="mt-3 space-y-3 text-xs text-[var(--muted)]">
-                        {coachDetail.daily.length === 0 ? (
-                          <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
-                            Aucune activite recente.
-                          </div>
-                        ) : (
-                          coachDetail.daily.map((day) => (
-                            <div key={day.date} className="flex items-center gap-3">
-                              <span className="w-24">{day.date}</span>
-                              <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
-                                <div
-                                  className="h-full rounded-full bg-emerald-300/70"
-                                  style={{
-                                    width: coachMaxTokens
-                                      ? `${Math.max(
-                                          5,
-                                          (day.tokens / coachMaxTokens) * 100
-                                        )}%`
-                                      : "0%",
-                                  }}
-                                />
-                              </div>
-                              <span className="w-28 text-right">{day.tokens} tokens</span>
-                            </div>
-                          ))
-                        )}
-                      </div>
+                        ))
+                      )}
                     </div>
                   </div>
-                ) : null}
-              </section>
-            ) : null}
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                      Erreurs systeme
+                    </p>
+                    <div className="mt-3 space-y-3 text-xs text-[var(--muted)]">
+                      {performanceRows.length === 0 ? (
+                        <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
+                          Aucune donnee d erreur.
+                        </div>
+                      ) : (
+                        performanceRows.map((row) => (
+                          <div key={`${row.endpoint}-errors`} className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[var(--text)]">
+                                {resolveEndpointLabel(row.endpoint)}
+                              </span>
+                              <span>{formatPercent(row.errorRatePct, 2)}</span>
+                            </div>
+                            <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+                              <div
+                                className="h-full rounded-full bg-rose-300/70"
+                                style={{
+                                  width: maxErrorRate
+                                    ? `${Math.max(
+                                        4,
+                                        (row.errorRatePct / maxErrorRate) * 100
+                                      )}%`
+                                    : "0%",
+                                }}
+                              />
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="panel rounded-2xl p-6">
+                <h3 className="text-lg font-semibold text-[var(--text)]">
+                  Endpoints les plus lents
+                </h3>
+                <div className="mt-4 overflow-x-auto">
+                  <table className="w-full text-left text-xs text-[var(--muted)]">
+                    <thead>
+                      <tr className="border-b border-white/5">
+                        <th className="py-2">Endpoint</th>
+                        <th className="py-2">p50</th>
+                        <th className="py-2">p95</th>
+                        <th className="py-2">Erreurs</th>
+                        <th className="py-2 text-right">Appels</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {performanceRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="py-3 text-sm text-[var(--muted)]">
+                            Aucun endpoint.
+                          </td>
+                        </tr>
+                      ) : (
+                        performanceRows.map((row) => (
+                          <tr key={`${row.endpoint}-slow`} className="border-b border-white/5">
+                            <td className="py-2 text-[var(--text)]">
+                              {resolveEndpointLabel(row.endpoint)}
+                            </td>
+                            <td className="py-2">{formatDuration(row.p50DurationMs)}</td>
+                            <td className="py-2">{formatDuration(row.p95DurationMs)}</td>
+                            <td className="py-2">{formatPercent(row.errorRatePct, 2)}</td>
+                            <td className="py-2 text-right">
+                              {formatNumber(row.requests)}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="panel rounded-2xl p-6">
+                <h3 className="text-lg font-semibold text-[var(--text)]">
+                  Endpoints avec erreurs elevees
+                </h3>
+                <div className="mt-4 overflow-x-auto">
+                  <table className="w-full text-left text-xs text-[var(--muted)]">
+                    <thead>
+                      <tr className="border-b border-white/5">
+                        <th className="py-2">Endpoint</th>
+                        <th className="py-2">Erreurs</th>
+                        <th className="py-2">p95</th>
+                        <th className="py-2 text-right">Appels</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {errorSorted.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="py-3 text-sm text-[var(--muted)]">
+                            Aucun endpoint.
+                          </td>
+                        </tr>
+                      ) : (
+                        errorSorted.map((row) => (
+                          <tr key={`${row.endpoint}-error`} className="border-b border-white/5">
+                            <td className="py-2 text-[var(--text)]">
+                              {resolveEndpointLabel(row.endpoint)}
+                            </td>
+                            <td className="py-2">{formatPercent(row.errorRatePct, 2)}</td>
+                            <td className="py-2">{formatDuration(row.p95DurationMs)}</td>
+                            <td className="py-2 text-right">
+                              {formatNumber(row.requests)}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
           </>
         ) : null}
       </div>
     </AdminGuard>
   );
 }
+
+

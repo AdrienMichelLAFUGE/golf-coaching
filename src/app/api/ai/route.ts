@@ -288,6 +288,13 @@ const normalizeJsonText = (raw: string) => {
   return output.trim();
 };
 
+type ErrorType = "timeout" | "exception";
+
+const resolveErrorType = (error: unknown): ErrorType => {
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  return message.includes("timeout") ? "timeout" : "exception";
+};
+
 const parseJsonPayload = (raw: string) => {
   const cleaned = raw
     .trim()
@@ -493,6 +500,8 @@ const extractAxes = (response: {
 };
 
 export async function POST(request: Request) {
+  let recordFailure: ((statusCode: number, errorType: ErrorType) => Promise<void>) | null =
+    null;
   try {
     const supabase = createSupabaseServerClientFromRequest(request);
     const admin = createSupabaseAdminClient();
@@ -576,6 +585,7 @@ export async function POST(request: Request) {
     }
 
     const startedAt = Date.now();
+    const endpoint = "ai";
     const userId = userData.user.id;
     const orgId = profile.org_id;
     const recordUsage = async (
@@ -583,9 +593,12 @@ export async function POST(request: Request) {
         input_tokens?: number;
         output_tokens?: number;
         total_tokens?: number;
-      } | null
+      } | null,
+      statusCode = 200,
+      errorType?: ErrorType
     ) => {
-      if (!admin) return;
+      const shouldRecord = Boolean(usage) || statusCode >= 400;
+      if (!admin || !shouldRecord) return;
       const inputTokens = usage?.input_tokens ?? 0;
       const outputTokens = usage?.output_tokens ?? 0;
       const totalTokens = usage?.total_tokens ?? inputTokens + outputTokens;
@@ -600,9 +613,14 @@ export async function POST(request: Request) {
           output_tokens: outputTokens,
           total_tokens: totalTokens,
           duration_ms: Date.now() - startedAt,
+          endpoint,
+          status_code: statusCode,
+          error_type: errorType ?? null,
         },
       ]);
     };
+    recordFailure = (statusCode: number, errorType: ErrorType) =>
+      recordUsage(null, statusCode, errorType);
 
     if (payload.action === "propagate") {
       if (!payload.sectionTitle || !payload.sectionContent?.trim()) {
@@ -875,20 +893,20 @@ export async function POST(request: Request) {
         const confidence = Number.isFinite(clarified.confidence)
           ? Math.min(1, Math.max(0, clarified.confidence))
           : 0.5;
-        await recordUsage(usage);
+        await recordUsage(usage, 200);
         return NextResponse.json({
           confidence,
           questions: clarified.questions ?? [],
         });
       }
-
+      await recordUsage(usage, 502, "exception");
       return NextResponse.json({ error: "JSON invalide." }, { status: 502 });
     }
 
     if (payload.action === "axes") {
       const axes = extractAxes(response);
       if (axes) {
-        await recordUsage(usage);
+        await recordUsage(usage, 200);
         return NextResponse.json({ axes: axes.axes ?? [] });
       }
 
@@ -919,7 +937,7 @@ export async function POST(request: Request) {
       const retryAxes = extractAxes(retry);
       if (retryAxes) {
         usage = retry.usage ?? usage;
-        await recordUsage(usage);
+        await recordUsage(usage, 200);
         return NextResponse.json({ axes: retryAxes.axes ?? [] });
       }
 
@@ -933,13 +951,14 @@ export async function POST(request: Request) {
         outputDebug,
       });
 
+      await recordUsage(usage, 502, "exception");
       return NextResponse.json({ error: "JSON invalide." }, { status: 502 });
     }
 
     if (payload.action === "propagate") {
       const suggestions = extractSuggestions(response);
       if (suggestions) {
-        await recordUsage(usage);
+        await recordUsage(usage, 200);
         return NextResponse.json({ suggestions });
       }
 
@@ -962,7 +981,7 @@ export async function POST(request: Request) {
       const retrySuggestions = extractSuggestions(retry);
       if (retrySuggestions) {
         usage = retry.usage ?? usage;
-        await recordUsage(usage);
+        await recordUsage(usage, 200);
         return NextResponse.json({ suggestions: retrySuggestions });
       }
 
@@ -977,6 +996,7 @@ export async function POST(request: Request) {
         outputDebug,
       });
 
+      await recordUsage(usage, 502, "exception");
       return NextResponse.json({ error: "JSON invalide." }, { status: 502 });
     }
 
@@ -1110,6 +1130,7 @@ export async function POST(request: Request) {
     }
 
     if (!text) {
+      await recordUsage(usage, 502, "exception");
       return NextResponse.json({ error: "Empty response." }, { status: 502 });
     }
 
@@ -1117,12 +1138,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: text }, { status: 403 });
     }
 
-    await recordUsage(usage);
+    await recordUsage(usage, 200);
     return NextResponse.json({
       text: stripLeadingTitle(text, payload.sectionTitle),
     });
   } catch (error) {
     console.error("AI route error:", error);
+    if (recordFailure) {
+      await recordFailure(500, resolveErrorType(error));
+    }
     return NextResponse.json({ error: "Erreur IA." }, { status: 500 });
   }
 }
