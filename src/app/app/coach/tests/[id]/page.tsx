@@ -386,9 +386,19 @@ export default function CoachTestDetailPage() {
                       {distanceLabelByKey[subtest.key] ?? subtest.distanceLabel}
                     </p>
                   </div>
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                    {subtest.sequence.length} tentatives
-                  </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDiagramSubtest(subtest.key)}
+                      className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[0.6rem] font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
+                      aria-label={`Ouvrir schema ${subtest.label}`}
+                    >
+                      Schema
+                    </button>
+                    <span className="rounded-full border border-white/5 bg-white/5 px-2 py-1 text-[0.55rem] uppercase tracking-wide text-[var(--muted)] opacity-70">
+                      {subtest.sequence.length} tentatives
+                    </span>
+                  </div>
                 </div>
 
                 <div className="mt-4 grid gap-3 md:grid-cols-2">

@@ -64,7 +64,7 @@ export default function PelzDiagramModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="flex w-full max-w-[90vw] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[var(--bg-elevated)] shadow-[0_24px_60px_rgba(0,0,0,0.45)] md:w-auto md:max-w-[80vw]"
+        className="flex w-full max-w-[92vw] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[var(--bg-elevated)] shadow-[0_24px_60px_rgba(0,0,0,0.45)] md:w-[86vw] md:max-w-[86vw]"
       >
         <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 md:px-6 md:py-4">
           <h3
@@ -108,7 +108,7 @@ export default function PelzDiagramModal({
             <img
               src={diagramUrl}
               alt={alt}
-              className={`mx-auto h-auto max-h-[70vh] w-full max-w-[80vw] rounded-2xl object-contain ${
+              className={`mx-auto h-auto max-h-[80vh] w-full max-w-[86vw] rounded-2xl object-contain ${
                 isLoading ? "opacity-0" : "opacity-100"
               }`}
               onLoad={() => {
