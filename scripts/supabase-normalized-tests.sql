@@ -29,11 +29,14 @@ alter table public.normalized_test_assignments enable row level security;
 alter table public.normalized_test_assignments
   add column if not exists index_or_flag_label text;
 
+alter table public.normalized_test_assignments
+  add column if not exists clubs_used text;
+
 create table if not exists public.normalized_test_attempts (
   id uuid primary key default gen_random_uuid(),
   assignment_id uuid not null references public.normalized_test_assignments(id) on delete cascade,
   subtest_key text not null,
-  attempt_index integer not null check (attempt_index between 1 and 10),
+  attempt_index integer not null check (attempt_index between 1 and 18),
   result_value text not null,
   points integer not null default 0,
   created_at timestamp with time zone not null default now(),
@@ -46,6 +49,13 @@ create index if not exists normalized_test_attempts_assignment_idx
   on public.normalized_test_attempts (assignment_id);
 
 alter table public.normalized_test_attempts enable row level security;
+
+alter table public.normalized_test_attempts
+  drop constraint if exists normalized_test_attempts_attempt_index_check;
+
+alter table public.normalized_test_attempts
+  add constraint normalized_test_attempts_attempt_index_check
+  check (attempt_index between 1 and 18);
 
 -- Read access: org members, students, shared coaches
 do $$

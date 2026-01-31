@@ -15,6 +15,14 @@ import {
   PELZ_APPROCHES_TEST,
   PELZ_APPROCHES_SLUG,
 } from "@/lib/normalized-tests/pelz-approches";
+import {
+  WEDGING_DRAPEAU_LONG_TEST,
+  WEDGING_DRAPEAU_LONG_SLUG,
+} from "@/lib/normalized-tests/wedging-drapeau-long";
+import {
+  WEDGING_DRAPEAU_COURT_TEST,
+  WEDGING_DRAPEAU_COURT_SLUG,
+} from "@/lib/normalized-tests/wedging-drapeau-court";
 
 type StudentRow = {
   id: string;
@@ -29,7 +37,11 @@ type StudentOption = StudentRow & {
 
 type AssignmentRow = {
   id: string;
-  test_slug: typeof PELZ_PUTTING_SLUG | typeof PELZ_APPROCHES_SLUG;
+  test_slug:
+    | typeof PELZ_PUTTING_SLUG
+    | typeof PELZ_APPROCHES_SLUG
+    | typeof WEDGING_DRAPEAU_LONG_SLUG
+    | typeof WEDGING_DRAPEAU_COURT_SLUG;
   status: "assigned" | "in_progress" | "finalized";
   assigned_at: string;
   updated_at: string;
@@ -65,7 +77,10 @@ export default function CoachTestsPage() {
   const [assignmentError, setAssignmentError] = useState("");
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [assignTestSlug, setAssignTestSlug] = useState<
-    typeof PELZ_PUTTING_SLUG | typeof PELZ_APPROCHES_SLUG
+    | typeof PELZ_PUTTING_SLUG
+    | typeof PELZ_APPROCHES_SLUG
+    | typeof WEDGING_DRAPEAU_LONG_SLUG
+    | typeof WEDGING_DRAPEAU_COURT_SLUG
   >(PELZ_PUTTING_SLUG);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [studentSearch, setStudentSearch] = useState("");
@@ -74,7 +89,11 @@ export default function CoachTestsPage() {
     "assigned_desc"
   );
   const [assignmentFilter, setAssignmentFilter] = useState<
-    "all" | typeof PELZ_PUTTING_SLUG | typeof PELZ_APPROCHES_SLUG
+    | "all"
+    | typeof PELZ_PUTTING_SLUG
+    | typeof PELZ_APPROCHES_SLUG
+    | typeof WEDGING_DRAPEAU_LONG_SLUG
+    | typeof WEDGING_DRAPEAU_COURT_SLUG
   >("all");
   const [assignmentStatusFilter, setAssignmentStatusFilter] = useState<
     "all" | AssignmentRow["status"]
@@ -83,11 +102,21 @@ export default function CoachTestsPage() {
   const [premiumModalOpen, setPremiumModalOpen] = useState(false);
   const isAdmin = isAdminEmail(userEmail);
   const addonEnabled = isAdmin || organization?.coaching_dynamic_enabled;
-  const tests = useMemo(() => [PELZ_PUTTING_TEST, PELZ_APPROCHES_TEST], []);
+  const tests = useMemo(
+    () => [
+      PELZ_PUTTING_TEST,
+      PELZ_APPROCHES_TEST,
+      WEDGING_DRAPEAU_LONG_TEST,
+      WEDGING_DRAPEAU_COURT_TEST,
+    ],
+    []
+  );
   const testBySlug = useMemo(
     () => ({
       [PELZ_PUTTING_SLUG]: PELZ_PUTTING_TEST,
       [PELZ_APPROCHES_SLUG]: PELZ_APPROCHES_TEST,
+      [WEDGING_DRAPEAU_LONG_SLUG]: WEDGING_DRAPEAU_LONG_TEST,
+      [WEDGING_DRAPEAU_COURT_SLUG]: WEDGING_DRAPEAU_COURT_TEST,
     }),
     []
   );
@@ -191,7 +220,12 @@ export default function CoachTestsPage() {
       .select(
         "id, test_slug, status, assigned_at, updated_at, students(first_name, last_name, email)"
       )
-      .in("test_slug", [PELZ_PUTTING_SLUG, PELZ_APPROCHES_SLUG])
+      .in("test_slug", [
+        PELZ_PUTTING_SLUG,
+        PELZ_APPROCHES_SLUG,
+        WEDGING_DRAPEAU_LONG_SLUG,
+        WEDGING_DRAPEAU_COURT_SLUG,
+      ])
       .order("created_at", { ascending: false })
       .limit(20);
 
@@ -230,7 +264,11 @@ export default function CoachTestsPage() {
   };
 
   const openAssignModal = (
-    slug: typeof PELZ_PUTTING_SLUG | typeof PELZ_APPROCHES_SLUG
+    slug:
+      | typeof PELZ_PUTTING_SLUG
+      | typeof PELZ_APPROCHES_SLUG
+      | typeof WEDGING_DRAPEAU_LONG_SLUG
+      | typeof WEDGING_DRAPEAU_COURT_SLUG
   ) => {
     setAssignError("");
     setSelectedIds([]);
@@ -412,23 +450,32 @@ export default function CoachTestsPage() {
                       <span>-</span>
                       <span>{test.attemptsPerSubtest} tentatives</span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!addonEnabled) {
-                          setPremiumModalOpen(true);
-                          return;
-                        }
-                        openAssignModal(test.slug);
-                      }}
-                      className={`mt-5 rounded-full border px-4 py-2 text-xs uppercase tracking-wide transition ${
-                        addonEnabled
-                          ? "border-white/10 bg-white/10 text-[var(--text)] hover:bg-white/20"
-                          : "border-white/10 bg-white/5 text-[var(--muted)] opacity-70"
-                      }`}
-                    >
-                      Assigner a des eleves
-                    </button>
+                    <div className="mt-5 flex flex-wrap items-center gap-2">
+                      <Link
+                        href={`/app/coach/tests-preview/${test.slug}`}
+                        className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)] transition hover:bg-white/15"
+                        aria-label={`Voir le test ${test.title}`}
+                      >
+                        Voir
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!addonEnabled) {
+                            setPremiumModalOpen(true);
+                            return;
+                          }
+                          openAssignModal(test.slug);
+                        }}
+                        className={`rounded-full border px-4 py-2 text-xs uppercase tracking-wide transition ${
+                          addonEnabled
+                            ? "border-white/10 bg-white/10 text-[var(--text)] hover:bg-white/20"
+                            : "border-white/10 bg-white/5 text-[var(--muted)] opacity-70"
+                        }`}
+                      >
+                        Assigner a des eleves
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -469,6 +516,8 @@ export default function CoachTestsPage() {
                         | "all"
                         | typeof PELZ_PUTTING_SLUG
                         | typeof PELZ_APPROCHES_SLUG
+                        | typeof WEDGING_DRAPEAU_LONG_SLUG
+                        | typeof WEDGING_DRAPEAU_COURT_SLUG
                     )
                   }
                   className="rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs uppercase tracking-wide text-[var(--muted)]"
@@ -476,6 +525,12 @@ export default function CoachTestsPage() {
                   <option value="all">Tous les tests</option>
                   <option value={PELZ_PUTTING_SLUG}>Pelz - Putting</option>
                   <option value={PELZ_APPROCHES_SLUG}>Pelz - Approches</option>
+                  <option value={WEDGING_DRAPEAU_LONG_SLUG}>
+                    Wedging - Drapeau long
+                  </option>
+                  <option value={WEDGING_DRAPEAU_COURT_SLUG}>
+                    Wedging - Drapeau court
+                  </option>
                 </select>
                 <select
                   value={assignmentStatusFilter}
@@ -506,7 +561,11 @@ export default function CoachTestsPage() {
                     const href =
                       assignment.test_slug === PELZ_PUTTING_SLUG
                         ? `/app/coach/tests/${assignment.id}`
-                        : `/app/coach/tests-approches/${assignment.id}`;
+                        : assignment.test_slug === PELZ_APPROCHES_SLUG
+                          ? `/app/coach/tests-approches/${assignment.id}`
+                          : assignment.test_slug === WEDGING_DRAPEAU_COURT_SLUG
+                            ? `/app/coach/tests-wedging-drapeau-court/${assignment.id}`
+                          : `/app/coach/tests-wedging-drapeau-long/${assignment.id}`;
                     return (
                       <div
                         key={assignment.id}

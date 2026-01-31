@@ -7,12 +7,19 @@ import {
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { PELZ_PUTTING_SLUG } from "@/lib/normalized-tests/pelz-putting";
 import { PELZ_APPROCHES_SLUG } from "@/lib/normalized-tests/pelz-approches";
+import { WEDGING_DRAPEAU_LONG_SLUG } from "@/lib/normalized-tests/wedging-drapeau-long";
+import { WEDGING_DRAPEAU_COURT_SLUG } from "@/lib/normalized-tests/wedging-drapeau-court";
 import { isAdminEmail } from "@/lib/admin";
 
 export const runtime = "nodejs";
 
 const assignSchema = z.object({
-  testSlug: z.enum([PELZ_PUTTING_SLUG, PELZ_APPROCHES_SLUG]),
+  testSlug: z.enum([
+    PELZ_PUTTING_SLUG,
+    PELZ_APPROCHES_SLUG,
+    WEDGING_DRAPEAU_LONG_SLUG,
+    WEDGING_DRAPEAU_COURT_SLUG,
+  ]),
   studentIds: z.array(z.string().uuid()).min(1).max(50),
 });
 

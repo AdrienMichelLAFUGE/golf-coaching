@@ -19,6 +19,30 @@ import {
   getPelzApprochesResultPoints,
   isPelzApprochesResultValue,
 } from "@/lib/normalized-tests/pelz-approches";
+import {
+  WEDGING_DRAPEAU_LONG_SLUG,
+  WEDGING_DRAPEAU_LONG_SUBTEST_KEY,
+  type WedgingDrapeauLongResultValue,
+  type WedgingDrapeauLongSubtestKey,
+  getWedgingDrapeauLongResultPoints,
+  isWedgingDrapeauLongResultValue,
+} from "@/lib/normalized-tests/wedging-drapeau-long";
+import {
+  wedgingAttemptsSchema,
+  wedgingIndexLabelSchema,
+} from "@/lib/normalized-tests/wedging-drapeau-long.validation";
+import {
+  WEDGING_DRAPEAU_COURT_SLUG,
+  WEDGING_DRAPEAU_COURT_SUBTEST_KEY,
+  type WedgingDrapeauCourtResultValue,
+  type WedgingDrapeauCourtSubtestKey,
+  getWedgingDrapeauCourtResultPoints,
+  isWedgingDrapeauCourtResultValue,
+} from "@/lib/normalized-tests/wedging-drapeau-court";
+import {
+  wedgingCourtAttemptsSchema,
+  wedgingCourtIndexLabelSchema,
+} from "@/lib/normalized-tests/wedging-drapeau-court.validation";
 
 export const runtime = "nodejs";
 
@@ -43,22 +67,36 @@ const approchesSubtestKeys = [
   "approche_rough",
 ] as const;
 
-const allSubtestKeys = [...puttingSubtestKeys, ...approchesSubtestKeys] as [
+const wedgingSubtestKeys = [WEDGING_DRAPEAU_LONG_SUBTEST_KEY] as const;
+const wedgingCourtSubtestKeys = [WEDGING_DRAPEAU_COURT_SUBTEST_KEY] as const;
+
+const allSubtestKeys = [
+  ...puttingSubtestKeys,
+  ...approchesSubtestKeys,
+  ...wedgingSubtestKeys,
+  ...wedgingCourtSubtestKeys,
+] as [
   string,
   ...string[],
 ];
 
-type AllSubtestKey = PelzSubtestKey | PelzApprochesSubtestKey;
+type AllSubtestKey =
+  | PelzSubtestKey
+  | PelzApprochesSubtestKey
+  | WedgingDrapeauLongSubtestKey
+  | WedgingDrapeauCourtSubtestKey;
 
 const attemptSchema = z.object({
-  index: z.number().int().min(1).max(10),
+  index: z.number().int().min(1).max(18),
   result: z.string().min(1),
+  situation: z.string().min(1).optional(),
 });
 
 const submitSchema = z.object({
   assignmentId: z.string().uuid(),
   finalize: z.boolean().optional(),
   indexLabel: z.string().trim().max(80).optional(),
+  clubsUsed: z.string().trim().max(120).optional(),
   subtests: z
     .array(
       z.object({
@@ -128,6 +166,7 @@ export async function POST(request: Request) {
 
   type TestConfig = {
     subtestKeys: readonly AllSubtestKey[];
+    attemptsPerSubtest: number;
     isResultValue: (key: AllSubtestKey, value: string) => boolean;
     getPoints: (key: AllSubtestKey, value: string) => number;
   };
@@ -135,12 +174,14 @@ export async function POST(request: Request) {
   const testConfigBySlug: Record<string, TestConfig> = {
     [PELZ_PUTTING_SLUG]: {
       subtestKeys: puttingSubtestKeys,
+      attemptsPerSubtest: 10,
       isResultValue: (key, value) => isPelzResultValue(key as PelzSubtestKey, value),
       getPoints: (key, value) =>
         getPelzResultPoints(key as PelzSubtestKey, value as PelzResultValue),
     },
     [PELZ_APPROCHES_SLUG]: {
       subtestKeys: approchesSubtestKeys,
+      attemptsPerSubtest: 10,
       isResultValue: (key, value) =>
         isPelzApprochesResultValue(key as PelzApprochesSubtestKey, value),
       getPoints: (key, value) =>
@@ -148,6 +189,20 @@ export async function POST(request: Request) {
           key as PelzApprochesSubtestKey,
           value as PelzApprochesResultValue
         ),
+    },
+    [WEDGING_DRAPEAU_LONG_SLUG]: {
+      subtestKeys: wedgingSubtestKeys,
+      attemptsPerSubtest: 18,
+      isResultValue: (_key, value) => isWedgingDrapeauLongResultValue(value),
+      getPoints: (_key, value) =>
+        getWedgingDrapeauLongResultPoints(value as WedgingDrapeauLongResultValue),
+    },
+    [WEDGING_DRAPEAU_COURT_SLUG]: {
+      subtestKeys: wedgingCourtSubtestKeys,
+      attemptsPerSubtest: 18,
+      isResultValue: (_key, value) => isWedgingDrapeauCourtResultValue(value),
+      getPoints: (_key, value) =>
+        getWedgingDrapeauCourtResultPoints(value as WedgingDrapeauCourtResultValue),
     },
   };
 
@@ -179,6 +234,12 @@ export async function POST(request: Request) {
           { status: 422 }
         );
       }
+      if (attempt.index < 1 || attempt.index > testConfig.attemptsPerSubtest) {
+        return NextResponse.json(
+          { error: `Index de tentative invalide pour ${key}.` },
+          { status: 422 }
+        );
+      }
       if (!testConfig.isResultValue(key, attempt.result)) {
         return NextResponse.json(
           { error: `Resultat invalide pour ${key}.` },
@@ -188,6 +249,38 @@ export async function POST(request: Request) {
       seen.add(attempt.index);
     }
     subtestsByKey.set(key, subtest.attempts);
+  }
+
+  if (assignment.test_slug === WEDGING_DRAPEAU_LONG_SLUG) {
+    const wedgingSubtest = subtestsByKey.get(WEDGING_DRAPEAU_LONG_SUBTEST_KEY) ?? [];
+    const wedgingAttempts = wedgingSubtest.map((attempt) => ({
+      index: attempt.index,
+      situation: attempt.situation,
+      result: attempt.result,
+    }));
+    const wedgingValidation = wedgingAttemptsSchema.safeParse(wedgingAttempts);
+    if (!wedgingValidation.success) {
+      return NextResponse.json(
+        { error: "Tentatives invalides.", details: formatZodError(wedgingValidation.error) },
+        { status: 422 }
+      );
+    }
+  }
+
+  if (assignment.test_slug === WEDGING_DRAPEAU_COURT_SLUG) {
+    const wedgingSubtest = subtestsByKey.get(WEDGING_DRAPEAU_COURT_SUBTEST_KEY) ?? [];
+    const wedgingAttempts = wedgingSubtest.map((attempt) => ({
+      index: attempt.index,
+      situation: attempt.situation,
+      result: attempt.result,
+    }));
+    const wedgingValidation = wedgingCourtAttemptsSchema.safeParse(wedgingAttempts);
+    if (!wedgingValidation.success) {
+      return NextResponse.json(
+        { error: "Tentatives invalides.", details: formatZodError(wedgingValidation.error) },
+        { status: 422 }
+      );
+    }
   }
 
   if (finalize) {
@@ -202,9 +295,11 @@ export async function POST(request: Request) {
     }
     for (const key of testConfig.subtestKeys) {
       const attempts = subtestsByKey.get(key as AllSubtestKey) ?? [];
-      if (attempts.length !== 10) {
+      if (attempts.length !== testConfig.attemptsPerSubtest) {
         return NextResponse.json(
-          { error: "Chaque sous-test doit contenir 10 tentatives." },
+          {
+            error: `Chaque sous-test doit contenir ${testConfig.attemptsPerSubtest} tentatives.`,
+          },
           { status: 422 }
         );
       }
@@ -249,6 +344,30 @@ export async function POST(request: Request) {
 
   if (typeof parsed.data.indexLabel === "string") {
     updates.index_or_flag_label = parsed.data.indexLabel.trim() || null;
+  }
+
+  if (assignment.test_slug === WEDGING_DRAPEAU_LONG_SLUG) {
+    const labelValidation = wedgingIndexLabelSchema.safeParse(parsed.data.indexLabel);
+    if (!labelValidation.success) {
+      return NextResponse.json(
+        { error: "Index ou drapeau invalide.", details: formatZodError(labelValidation.error) },
+        { status: 422 }
+      );
+    }
+  }
+
+  if (assignment.test_slug === WEDGING_DRAPEAU_COURT_SLUG) {
+    const labelValidation = wedgingCourtIndexLabelSchema.safeParse(parsed.data.indexLabel);
+    if (!labelValidation.success) {
+      return NextResponse.json(
+        { error: "Index ou drapeau invalide.", details: formatZodError(labelValidation.error) },
+        { status: 422 }
+      );
+    }
+  }
+
+  if (typeof parsed.data.clubsUsed === "string") {
+    updates.clubs_used = parsed.data.clubsUsed.trim() || null;
   }
 
   if (finalize) {

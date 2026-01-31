@@ -10,6 +10,14 @@ import {
   PELZ_PUTTING_SLUG,
 } from "@/lib/normalized-tests/pelz-putting";
 import { PELZ_APPROCHES_TEST } from "@/lib/normalized-tests/pelz-approches";
+import {
+  WEDGING_DRAPEAU_LONG_TEST,
+  WEDGING_DRAPEAU_LONG_SLUG,
+} from "@/lib/normalized-tests/wedging-drapeau-long";
+import {
+  WEDGING_DRAPEAU_COURT_TEST,
+  WEDGING_DRAPEAU_COURT_SLUG,
+} from "@/lib/normalized-tests/wedging-drapeau-court";
 
 type AssignmentRow = {
   id: string;
@@ -55,7 +63,12 @@ export default function StudentTestsPage() {
     loadAssignments();
   }, []);
 
-  const tests = [PELZ_PUTTING_TEST, PELZ_APPROCHES_TEST];
+  const tests = [
+    PELZ_PUTTING_TEST,
+    PELZ_APPROCHES_TEST,
+    WEDGING_DRAPEAU_LONG_TEST,
+    WEDGING_DRAPEAU_COURT_TEST,
+  ];
   const assignmentsBySlug = useMemo(() => {
     const grouped = new Map<string, AssignmentRow[]>();
     assignments.forEach((assignment) => {
@@ -113,7 +126,11 @@ export default function StudentTestsPage() {
                       const href =
                         assignment.test_slug === PELZ_PUTTING_SLUG
                           ? `/app/eleve/tests/${assignment.id}`
-                          : `/app/eleve/tests-approches/${assignment.id}`;
+                          : assignment.test_slug === WEDGING_DRAPEAU_LONG_SLUG
+                            ? `/app/eleve/tests-wedging-drapeau-long/${assignment.id}`
+                            : assignment.test_slug === WEDGING_DRAPEAU_COURT_SLUG
+                              ? `/app/eleve/tests-wedging-drapeau-court/${assignment.id}`
+                              : `/app/eleve/tests-approches/${assignment.id}`;
                       return (
                         <Link
                           key={assignment.id}
