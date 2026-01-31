@@ -39,6 +39,7 @@ export default function StudentSettingsPage() {
 
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordError, setPasswordError] = useState("");
   const [passwordSuccess, setPasswordSuccess] = useState("");
@@ -367,7 +368,7 @@ export default function StudentSettingsPage() {
                     Nouveau mot de passe
                   </label>
                   <input
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     placeholder="********"
@@ -379,7 +380,7 @@ export default function StudentSettingsPage() {
                     Confirmation
                   </label>
                   <input
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     value={passwordConfirm}
                     onChange={(event) => setPasswordConfirm(event.target.value)}
                     placeholder="********"
@@ -394,6 +395,15 @@ export default function StudentSettingsPage() {
                 >
                   {passwordSaving ? "Mise a jour..." : "Mettre a jour"}
                 </button>
+                <label className="flex items-center gap-2 text-xs text-[var(--muted)] md:col-span-3">
+                  <input
+                    type="checkbox"
+                    checked={showPassword}
+                    onChange={(event) => setShowPassword(event.target.checked)}
+                    className="h-4 w-4 rounded border-white/10 bg-[var(--bg-elevated)]"
+                  />
+                  Afficher le mot de passe
+                </label>
               </div>
               {passwordError ? (
                 <p className="mt-3 text-sm text-red-400">{passwordError}</p>

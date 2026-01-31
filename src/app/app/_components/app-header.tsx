@@ -84,6 +84,9 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem("gc.rememberMe");
+    }
     router.replace("/");
   };
 

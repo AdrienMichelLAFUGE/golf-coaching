@@ -37,12 +37,7 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
     window.localStorage.setItem("gc.navCollapsed", String(collapsed));
   }, [collapsed]);
 
-  const sections: NavSection[] = [
-    {
-      title: "General",
-      items: [{ label: "Accueil", href: "/app" }],
-    },
-  ];
+  const sections: NavSection[] = [];
 
   if (!loading) {
     if (profile?.role === "student") {
@@ -56,6 +51,10 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
         ],
       });
     } else {
+      sections.push({
+        title: "General",
+        items: [{ label: "Accueil", href: "/app" }],
+      });
       sections.push({
         title: "Coach",
         items: [

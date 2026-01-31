@@ -11,6 +11,7 @@ function ResetPasswordContent() {
   const searchParams = useSearchParams();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [status, setStatus] = useState<"idle" | "saving" | "error" | "success">("idle");
   const [message, setMessage] = useState("");
   const [ready, setReady] = useState(false);
@@ -101,7 +102,7 @@ function ResetPasswordContent() {
               Mot de passe
             </label>
             <input
-              type="password"
+              type={showPassword ? "text" : "password"}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
@@ -112,12 +113,21 @@ function ResetPasswordContent() {
               Confirmer
             </label>
             <input
-              type="password"
+              type={showPassword ? "text" : "password"}
               value={confirm}
               onChange={(event) => setConfirm(event.target.value)}
               className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
             />
           </div>
+          <label className="flex items-center gap-2 text-xs text-[var(--muted)]">
+            <input
+              type="checkbox"
+              checked={showPassword}
+              onChange={(event) => setShowPassword(event.target.checked)}
+              className="h-4 w-4 rounded border-white/10 bg-[var(--bg-elevated)]"
+            />
+            Afficher le mot de passe
+          </label>
           <button
             type="submit"
             disabled={status === "saving"}

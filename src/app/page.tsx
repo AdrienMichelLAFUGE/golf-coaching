@@ -12,6 +12,10 @@ export default function Home() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.sessionStorage.getItem("gc.rememberMe") !== "false";
+  });
   const [accountType, setAccountType] = useState<AccountType>("coach");
   const [coachFlow, setCoachFlow] = useState<CoachFlow>("signin");
   const [status, setStatus] = useState<Status>("idle");
@@ -44,6 +48,15 @@ export default function Home() {
     if (nextType === "student") {
       setCoachFlow("signin");
     }
+  };
+
+  const applyRememberPreference = (value: boolean) => {
+    if (typeof window === "undefined") return;
+    if (value) {
+      window.sessionStorage.removeItem("gc.rememberMe");
+      return;
+    }
+    window.sessionStorage.setItem("gc.rememberMe", "false");
   };
 
   const ensureProfile = async () => {
@@ -130,6 +143,8 @@ export default function Home() {
       setMessage("Ajoute un email.");
       return;
     }
+
+    applyRememberPreference(rememberMe);
 
     if (accountType === "coach" && coachFlow === "signup") {
       const trimmedPassword = password.trim();
@@ -278,6 +293,15 @@ export default function Home() {
               onChange={(event) => setPassword(event.target.value)}
               className="mt-1 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-3 text-sm text-[var(--text)] placeholder:text-zinc-500 focus:border-[var(--accent)] focus:outline-none"
             />
+            <label className="mt-3 flex items-center gap-2 text-xs text-[var(--muted)]">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(event) => setRememberMe(event.target.checked)}
+                className="h-4 w-4 rounded border-white/10 bg-[var(--bg-elevated)]"
+              />
+              Se souvenir de moi
+            </label>
             <button
               type="submit"
               disabled={status === "sending"}

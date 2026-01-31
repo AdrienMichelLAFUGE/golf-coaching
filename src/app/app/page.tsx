@@ -1,12 +1,29 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useProfile } from "./_components/profile-context";
 
 export default function AppPage() {
   const { profile, loading } = useProfile();
+  const router = useRouter();
   const isStudent = profile?.role === "student";
   const isCoach = profile && profile.role !== "student";
+
+  useEffect(() => {
+    if (!loading && profile?.role === "student") {
+      router.replace("/app/eleve");
+    }
+  }, [loading, profile?.role, router]);
+
+  if (!loading && isStudent) {
+    return (
+      <section className="panel rounded-2xl p-6">
+        <p className="text-sm text-[var(--muted)]">Redirection vers ton dashboard...</p>
+      </section>
+    );
+  }
 
   return (
     <div className="space-y-6">

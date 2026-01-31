@@ -263,7 +263,7 @@ export default function StudentDashboardPage() {
             </p>
           </section>
 
-          <section className="grid gap-4 md:grid-cols-3">
+          <section className="grid grid-cols-2 gap-4 md:grid-cols-3">
             {[
               {
                 label: "Dernier rapport",
@@ -285,8 +285,13 @@ export default function StudentDashboardPage() {
                   timezone
                 ),
               },
-            ].map((item) => (
-              <div key={item.label} className="panel-soft rounded-2xl p-4">
+            ].map((item, index) => (
+              <div
+                key={item.label}
+                className={`panel-soft rounded-2xl p-4 ${
+                  index === 2 ? "col-span-2 md:col-span-1" : ""
+                }`}
+              >
                 <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
                   {item.label}
                 </p>
@@ -415,7 +420,7 @@ export default function StudentDashboardPage() {
             </div>
 
             {tpiReport?.status === "ready" ? (
-              <div className="mt-4 grid gap-3">
+              <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-1">
                 {tpiTests.length === 0 ? (
                   <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
                     Aucun test TPI disponible.
