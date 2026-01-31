@@ -32,6 +32,9 @@ alter table public.normalized_test_assignments
 alter table public.normalized_test_assignments
   add column if not exists clubs_used text;
 
+alter table public.normalized_test_assignments
+  add column if not exists archived_at timestamp with time zone;
+
 create table if not exists public.normalized_test_attempts (
   id uuid primary key default gen_random_uuid(),
   assignment_id uuid not null references public.normalized_test_assignments(id) on delete cascade,

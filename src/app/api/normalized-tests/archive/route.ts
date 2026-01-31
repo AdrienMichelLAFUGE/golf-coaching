@@ -9,13 +9,13 @@ import { isAdminEmail } from "@/lib/admin";
 
 export const runtime = "nodejs";
 
-const unassignSchema = z.object({
+const archiveSchema = z.object({
   assignmentId: z.string().uuid(),
-  confirmText: z.string().trim().optional(),
+  archived: z.boolean().optional(),
 });
 
 export async function POST(request: Request) {
-  const parsed = await parseRequestJson(request, unassignSchema);
+  const parsed = await parseRequestJson(request, archiveSchema);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Payload invalide.", details: formatZodError(parsed.error) },
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
 
   const { data: assignment, error: assignmentError } = await admin
     .from("normalized_test_assignments")
-    .select("id, org_id, status")
+    .select("id, org_id")
     .eq("id", parsed.data.assignmentId)
     .maybeSingle();
 
@@ -80,23 +80,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
-  if (assignment.status === "finalized") {
-    const confirmText = parsed.data.confirmText?.toUpperCase() ?? "";
-    if (confirmText !== "SUPPRIMER") {
-      return NextResponse.json(
-        { error: "Assignation finalisee: confirmation requise." },
-        { status: 409 }
-      );
-    }
-  }
-
-  const { error: deleteError } = await admin
+  const shouldArchive = parsed.data.archived !== false;
+  const { error: updateError } = await admin
     .from("normalized_test_assignments")
-    .delete()
+    .update({ archived_at: shouldArchive ? new Date().toISOString() : null })
     .eq("id", parsed.data.assignmentId);
 
-  if (deleteError) {
-    return NextResponse.json({ error: deleteError.message }, { status: 500 });
+  if (updateError) {
+    return NextResponse.json({ error: updateError.message }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });

@@ -45,6 +45,7 @@ type AssignmentRow = {
   status: "assigned" | "in_progress" | "finalized";
   assigned_at: string;
   updated_at: string;
+  archived_at?: string | null;
   students: StudentRow | StudentRow[] | null;
 };
 
@@ -98,7 +99,9 @@ export default function CoachTestsPage() {
   const [assignmentStatusFilter, setAssignmentStatusFilter] = useState<
     "all" | AssignmentRow["status"]
   >("all");
+  const [showArchived, setShowArchived] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [archivingId, setArchivingId] = useState<string | null>(null);
   const [premiumModalOpen, setPremiumModalOpen] = useState(false);
   const isAdmin = isAdminEmail(userEmail);
   const addonEnabled = isAdmin || organization?.coaching_dynamic_enabled;
@@ -151,7 +154,11 @@ export default function CoachTestsPage() {
         })
       : byStatus;
 
-    const sorted = [...searched].sort((a, b) => {
+    const byArchive = showArchived
+      ? searched
+      : searched.filter((assignment) => !assignment.archived_at);
+
+    const sorted = [...byArchive].sort((a, b) => {
       const aTime = new Date(a.assigned_at).getTime();
       const bTime = new Date(b.assigned_at).getTime();
       return assignmentSort === "assigned_desc" ? bTime - aTime : aTime - bTime;
@@ -164,6 +171,7 @@ export default function CoachTestsPage() {
     assignmentSort,
     assignmentStatusFilter,
     assignments,
+    showArchived,
     testBySlug,
   ]);
 
@@ -218,7 +226,7 @@ export default function CoachTestsPage() {
     const { data, error: loadError } = await supabase
       .from("normalized_test_assignments")
       .select(
-        "id, test_slug, status, assigned_at, updated_at, students(first_name, last_name, email)"
+        "id, test_slug, status, assigned_at, updated_at, archived_at, students(first_name, last_name, email)"
       )
       .in("test_slug", [
         PELZ_PUTTING_SLUG,
@@ -285,10 +293,22 @@ export default function CoachTestsPage() {
 
   const handleRemoveAssignment = async (assignmentId: string) => {
     setAssignmentError("");
-    const confirmRemove = window.confirm(
-      "Supprimer cette assignation ? Les resultats lies seront aussi supprimes."
-    );
-    if (!confirmRemove) return;
+    const assignment = assignments.find((item) => item.id === assignmentId);
+    if (!assignment) return;
+
+    let confirmText: string | undefined;
+    if (assignment.status === "finalized") {
+      const promptText = window.prompt(
+        "Ce test est finalise. Tape SUPPRIMER pour confirmer la suppression."
+      );
+      if (!promptText) return;
+      confirmText = promptText;
+    } else {
+      const confirmRemove = window.confirm(
+        "Supprimer cette assignation ? Les resultats lies seront aussi supprimes."
+      );
+      if (!confirmRemove) return;
+    }
 
     setRemovingId(assignmentId);
     const { data: sessionData } = await supabase.auth.getSession();
@@ -305,7 +325,7 @@ export default function CoachTestsPage() {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ assignmentId }),
+      body: JSON.stringify({ assignmentId, confirmText }),
     });
 
     const payload = await response.json().catch(() => ({}));
@@ -318,6 +338,37 @@ export default function CoachTestsPage() {
 
     await loadAssignments();
     setRemovingId(null);
+  };
+
+  const handleArchiveAssignment = async (assignmentId: string, archived: boolean) => {
+    setAssignmentError("");
+    setArchivingId(assignmentId);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setAssignmentError("Session invalide.");
+      setArchivingId(null);
+      return;
+    }
+
+    const response = await fetch("/api/normalized-tests/archive", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ assignmentId, archived }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setAssignmentError(payload.error ?? "Archivage impossible.");
+      setArchivingId(null);
+      return;
+    }
+
+    await loadAssignments();
+    setArchivingId(null);
   };
 
   const handleAssign = async () => {
@@ -490,7 +541,7 @@ export default function CoachTestsPage() {
                   {filteredAssignments.length} assignation(s)
                 </span>
               </div>
-              <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
+              <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto_auto_auto]">
                 <input
                   type="text"
                   value={assignmentSearch}
@@ -546,6 +597,15 @@ export default function CoachTestsPage() {
                   <option value="in_progress">En cours</option>
                   <option value="finalized">Finalise</option>
                 </select>
+                <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs uppercase tracking-wide text-[var(--muted)]">
+                  <input
+                    type="checkbox"
+                    checked={showArchived}
+                    onChange={(event) => setShowArchived(event.target.checked)}
+                    className="h-4 w-4 rounded border border-white/10 bg-[var(--bg-elevated)]"
+                  />
+                  Afficher archives
+                </label>
               </div>
               {assignmentError ? (
                 <p className="mt-3 text-sm text-red-400">{assignmentError}</p>
@@ -558,6 +618,8 @@ export default function CoachTestsPage() {
                 ) : (
                   filteredAssignments.map((assignment) => {
                     const test = testBySlug[assignment.test_slug] ?? PELZ_PUTTING_TEST;
+                    const isArchived = Boolean(assignment.archived_at);
+                    const isFinalized = assignment.status === "finalized";
                     const href =
                       assignment.test_slug === PELZ_PUTTING_SLUG
                         ? `/app/coach/tests/${assignment.id}`
@@ -565,7 +627,7 @@ export default function CoachTestsPage() {
                           ? `/app/coach/tests-approches/${assignment.id}`
                           : assignment.test_slug === WEDGING_DRAPEAU_COURT_SLUG
                             ? `/app/coach/tests-wedging-drapeau-court/${assignment.id}`
-                          : `/app/coach/tests-wedging-drapeau-long/${assignment.id}`;
+                            : `/app/coach/tests-wedging-drapeau-long/${assignment.id}`;
                     return (
                       <div
                         key={assignment.id}
@@ -588,23 +650,45 @@ export default function CoachTestsPage() {
                           <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
                             {statusLabel[assignment.status]}
                           </span>
+                          {isArchived ? (
+                            <span className="rounded-full border border-amber-300/30 bg-amber-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-amber-200">
+                              Archive
+                            </span>
+                          ) : null}
+                          {isArchived ? (
+                            <button
+                              type="button"
+                              onClick={() => handleArchiveAssignment(assignment.id, false)}
+                              disabled={archivingId === assignment.id}
+                              className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-60"
+                            >
+                              {archivingId === assignment.id ? "Restauration..." : "Restaurer"}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleArchiveAssignment(assignment.id, true)}
+                              disabled={archivingId === assignment.id}
+                              className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-60"
+                            >
+                              {archivingId === assignment.id ? "Archivage..." : "Archiver"}
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => handleRemoveAssignment(assignment.id)}
-                            disabled={
-                              removingId === assignment.id || assignment.status === "finalized"
-                            }
+                            disabled={removingId === assignment.id || archivingId === assignment.id}
                             title={
-                              assignment.status === "finalized"
-                                ? "Suppression interdite pour un test finalise"
+                              isFinalized
+                                ? "Suppression requiert une confirmation"
                                 : "Retirer l assignation"
                             }
                             className="rounded-full border border-red-300/30 bg-red-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-red-200 transition hover:bg-red-400/20 disabled:opacity-60"
                           >
                             {removingId === assignment.id
                               ? "Suppression..."
-                              : assignment.status === "finalized"
-                                ? "Finalise"
+                              : isFinalized
+                                ? "Supprimer"
                                 : "Retirer"}
                           </button>
                         </div>

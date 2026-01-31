@@ -59,7 +59,7 @@ describe("POST /api/normalized-tests/unassign", () => {
     expect(body.error).toBe("Payload invalide.");
   });
 
-  it("blocks deletion when assignment is finalized", async () => {
+  it("blocks deletion when assignment is finalized without confirmation", async () => {
     const supabase = {
       auth: {
         getUser: async () => ({
@@ -108,7 +108,62 @@ describe("POST /api/normalized-tests/unassign", () => {
 
     expect(response.status).toBe(409);
     const body = await response.json();
-    expect(body.error).toBe("Assignation finalisee: suppression interdite.");
+    expect(body.error).toBe("Assignation finalisee: confirmation requise.");
+  });
+
+  it("allows deletion when confirmation is provided for finalized assignment", async () => {
+    const supabase = {
+      auth: {
+        getUser: async () => ({
+          data: { user: { id: "coach-1", email: "adrien.lafuge@outlook.fr" } },
+          error: null,
+        }),
+      },
+      from: (table: string) => {
+        if (table === "profiles") {
+          return buildSelectSingle({
+            data: { id: "coach-1", org_id: "org-1", role: "coach" },
+            error: null,
+          });
+        }
+        return buildSelectSingle({ data: null, error: null });
+      },
+    };
+
+    const admin = {
+      from: (table: string) => {
+        if (table === "organizations") {
+          return buildSelectSingle({
+            data: { coaching_dynamic_enabled: true },
+            error: null,
+          });
+        }
+        if (table === "normalized_test_assignments") {
+          return {
+            ...buildSelectMaybeSingle({
+              data: { id: "assign-1", org_id: "org-1", status: "finalized" },
+              error: null,
+            }),
+            ...buildDelete({ error: null }),
+          };
+        }
+        return buildSelectSingle({ data: null, error: null });
+      },
+    };
+
+    serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
+    serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
+
+    const response = await POST(
+      buildRequest({
+        assignmentId: "11111111-1111-1111-1111-111111111111",
+        confirmText: "SUPPRIMER",
+      })
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.ok).toBe(true);
   });
 
   it("deletes assignment when allowed", async () => {

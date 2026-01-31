@@ -25,6 +25,7 @@ type AssignmentRow = {
   status: "assigned" | "in_progress" | "finalized";
   assigned_at: string;
   updated_at: string;
+  archived_at?: string | null;
 };
 
 const statusLabel: Record<AssignmentRow["status"], string> = {
@@ -47,7 +48,7 @@ export default function StudentTestsPage() {
 
       const { data, error: loadError } = await supabase
         .from("normalized_test_assignments")
-        .select("id, test_slug, status, assigned_at, updated_at")
+        .select("id, test_slug, status, assigned_at, updated_at, archived_at")
         .order("assigned_at", { ascending: false });
 
       if (loadError) {
@@ -56,7 +57,8 @@ export default function StudentTestsPage() {
         return;
       }
 
-      setAssignments((data ?? []) as AssignmentRow[]);
+      const visible = (data ?? []).filter((assignment) => !assignment.archived_at);
+      setAssignments(visible as AssignmentRow[]);
       setLoading(false);
     };
 
