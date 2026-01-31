@@ -15,10 +15,12 @@ type PelzDiagramModalProps = {
   title: string;
   alt: string;
   diagramKey: string | null;
+  bucket?: string;
+  extension?: string;
 };
 
-const buildDiagramPath = (diagramKey: string) =>
-  `${diagramKey}.${PELZ_DIAGRAM_EXTENSION}`;
+const buildDiagramPath = (diagramKey: string, extension: string) =>
+  `${diagramKey}.${extension}`;
 
 export default function PelzDiagramModal({
   open,
@@ -26,20 +28,24 @@ export default function PelzDiagramModal({
   title,
   alt,
   diagramKey,
+  bucket,
+  extension,
 }: PelzDiagramModalProps) {
   const titleId = useId();
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [failedKey, setFailedKey] = useState<string | null>(null);
+  const storageBucket = bucket ?? PELZ_DIAGRAM_BUCKET;
+  const storageExtension = extension ?? PELZ_DIAGRAM_EXTENSION;
   const { diagramUrl, urlError } = useMemo(() => {
     if (!open || !diagramKey) return { diagramUrl: null, urlError: "" };
     const { data } = supabase.storage
-      .from(PELZ_DIAGRAM_BUCKET)
-      .getPublicUrl(buildDiagramPath(diagramKey));
+      .from(storageBucket)
+      .getPublicUrl(buildDiagramPath(diagramKey, storageExtension));
     return {
       diagramUrl: data.publicUrl ?? null,
       urlError: "",
     };
-  }, [diagramKey, open]);
+  }, [diagramKey, open, storageBucket, storageExtension]);
 
   useEffect(() => {
     if (!open) return;

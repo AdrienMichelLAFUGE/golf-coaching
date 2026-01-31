@@ -12,10 +12,17 @@ import {
   getPelzResultPoints,
   isPelzResultValue,
 } from "@/lib/normalized-tests/pelz-putting";
+import {
+  PELZ_APPROCHES_SLUG,
+  type PelzApprochesResultValue,
+  type PelzApprochesSubtestKey,
+  getPelzApprochesResultPoints,
+  isPelzApprochesResultValue,
+} from "@/lib/normalized-tests/pelz-approches";
 
 export const runtime = "nodejs";
 
-const subtestKeys = [
+const puttingSubtestKeys = [
   "putt_long",
   "putt_moyen",
   "putt_pente",
@@ -23,6 +30,25 @@ const subtestKeys = [
   "putt_court_1m",
   "putt_court_2m",
 ] as const;
+
+const approchesSubtestKeys = [
+  "approche_levee",
+  "chip_long",
+  "chip_court",
+  "wedging_50m",
+  "bunker_court",
+  "wedging_30m",
+  "bunker_long",
+  "approche_mi_distance",
+  "approche_rough",
+] as const;
+
+const allSubtestKeys = [...puttingSubtestKeys, ...approchesSubtestKeys] as [
+  string,
+  ...string[],
+];
+
+type AllSubtestKey = PelzSubtestKey | PelzApprochesSubtestKey;
 
 const attemptSchema = z.object({
   index: z.number().int().min(1).max(10),
@@ -36,7 +62,7 @@ const submitSchema = z.object({
   subtests: z
     .array(
       z.object({
-        key: z.enum(subtestKeys),
+        key: z.enum(allSubtestKeys),
         attempts: z.array(attemptSchema),
       })
     )
@@ -100,7 +126,35 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
-  if (assignment.test_slug !== PELZ_PUTTING_SLUG) {
+  type TestConfig = {
+    subtestKeys: readonly AllSubtestKey[];
+    isResultValue: (key: AllSubtestKey, value: string) => boolean;
+    getPoints: (key: AllSubtestKey, value: string) => number;
+  };
+
+  const testConfigBySlug: Record<string, TestConfig> = {
+    [PELZ_PUTTING_SLUG]: {
+      subtestKeys: puttingSubtestKeys,
+      isResultValue: (key, value) => isPelzResultValue(key as PelzSubtestKey, value),
+      getPoints: (key, value) =>
+        getPelzResultPoints(key as PelzSubtestKey, value as PelzResultValue),
+    },
+    [PELZ_APPROCHES_SLUG]: {
+      subtestKeys: approchesSubtestKeys,
+      isResultValue: (key, value) =>
+        isPelzApprochesResultValue(key as PelzApprochesSubtestKey, value),
+      getPoints: (key, value) =>
+        getPelzApprochesResultPoints(
+          key as PelzApprochesSubtestKey,
+          value as PelzApprochesResultValue
+        ),
+    },
+  };
+
+  const testConfig =
+    testConfigBySlug[assignment.test_slug as keyof typeof testConfigBySlug];
+
+  if (!testConfig) {
     return NextResponse.json({ error: "Test non supporte." }, { status: 400 });
   }
 
@@ -109,10 +163,14 @@ export async function POST(request: Request) {
   }
 
   const finalize = parsed.data.finalize ?? false;
-  const subtestsByKey = new Map<PelzSubtestKey, z.infer<typeof attemptSchema>[]>();
+  const allowedKeys = new Set<AllSubtestKey>(testConfig.subtestKeys);
+  const subtestsByKey = new Map<AllSubtestKey, z.infer<typeof attemptSchema>[]>();
 
   for (const subtest of parsed.data.subtests) {
-    const key = subtest.key as PelzSubtestKey;
+    const key = subtest.key as AllSubtestKey;
+    if (!allowedKeys.has(key)) {
+      return NextResponse.json({ error: `Sous-test invalide: ${key}.` }, { status: 422 });
+    }
     const seen = new Set<number>();
     for (const attempt of subtest.attempts) {
       if (seen.has(attempt.index)) {
@@ -121,7 +179,7 @@ export async function POST(request: Request) {
           { status: 422 }
         );
       }
-      if (!isPelzResultValue(key, attempt.result)) {
+      if (!testConfig.isResultValue(key, attempt.result)) {
         return NextResponse.json(
           { error: `Resultat invalide pour ${key}.` },
           { status: 422 }
@@ -133,15 +191,17 @@ export async function POST(request: Request) {
   }
 
   if (finalize) {
-    const missingSubtests = subtestKeys.filter((key) => !subtestsByKey.has(key));
+    const missingSubtests = testConfig.subtestKeys.filter(
+      (key) => !subtestsByKey.has(key)
+    );
     if (missingSubtests.length > 0) {
       return NextResponse.json(
         { error: "Tous les sous-tests doivent etre completes pour finaliser." },
         { status: 422 }
       );
     }
-    for (const key of subtestKeys) {
-      const attempts = subtestsByKey.get(key as PelzSubtestKey) ?? [];
+    for (const key of testConfig.subtestKeys) {
+      const attempts = subtestsByKey.get(key as AllSubtestKey) ?? [];
       if (attempts.length !== 10) {
         return NextResponse.json(
           { error: "Chaque sous-test doit contenir 10 tentatives." },
@@ -158,7 +218,7 @@ export async function POST(request: Request) {
       subtest_key: key,
       attempt_index: attempt.index,
       result_value: attempt.result,
-      points: getPelzResultPoints(key, attempt.result as PelzResultValue),
+      points: testConfig.getPoints(key, attempt.result),
       created_at: now,
       updated_at: now,
     }))

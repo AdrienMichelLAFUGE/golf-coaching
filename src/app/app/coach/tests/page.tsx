@@ -11,6 +11,10 @@ import {
   PELZ_PUTTING_TEST,
   PELZ_PUTTING_SLUG,
 } from "@/lib/normalized-tests/pelz-putting";
+import {
+  PELZ_APPROCHES_TEST,
+  PELZ_APPROCHES_SLUG,
+} from "@/lib/normalized-tests/pelz-approches";
 
 type StudentRow = {
   id: string;
@@ -25,6 +29,7 @@ type StudentOption = StudentRow & {
 
 type AssignmentRow = {
   id: string;
+  test_slug: typeof PELZ_PUTTING_SLUG | typeof PELZ_APPROCHES_SLUG;
   status: "assigned" | "in_progress" | "finalized";
   assigned_at: string;
   updated_at: string;
@@ -57,22 +62,81 @@ export default function CoachTestsPage() {
   const [assigning, setAssigning] = useState(false);
   const [error, setError] = useState("");
   const [assignError, setAssignError] = useState("");
+  const [assignmentError, setAssignmentError] = useState("");
   const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [assignTestSlug, setAssignTestSlug] = useState<
+    typeof PELZ_PUTTING_SLUG | typeof PELZ_APPROCHES_SLUG
+  >(PELZ_PUTTING_SLUG);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [search, setSearch] = useState("");
+  const [studentSearch, setStudentSearch] = useState("");
+  const [assignmentSearch, setAssignmentSearch] = useState("");
+  const [assignmentSort, setAssignmentSort] = useState<"assigned_desc" | "assigned_asc">(
+    "assigned_desc"
+  );
+  const [assignmentFilter, setAssignmentFilter] = useState<
+    "all" | typeof PELZ_PUTTING_SLUG | typeof PELZ_APPROCHES_SLUG
+  >("all");
+  const [assignmentStatusFilter, setAssignmentStatusFilter] = useState<
+    "all" | AssignmentRow["status"]
+  >("all");
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const [premiumModalOpen, setPremiumModalOpen] = useState(false);
   const isAdmin = isAdminEmail(userEmail);
   const addonEnabled = isAdmin || organization?.coaching_dynamic_enabled;
+  const tests = useMemo(() => [PELZ_PUTTING_TEST, PELZ_APPROCHES_TEST], []);
+  const testBySlug = useMemo(
+    () => ({
+      [PELZ_PUTTING_SLUG]: PELZ_PUTTING_TEST,
+      [PELZ_APPROCHES_SLUG]: PELZ_APPROCHES_TEST,
+    }),
+    []
+  );
 
   const filteredStudents = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const query = studentSearch.trim().toLowerCase();
     if (!query) return students;
     return students.filter((student) => {
       const name = formatStudentName(student).toLowerCase();
       const email = (student.email ?? "").toLowerCase();
       return name.includes(query) || email.includes(query);
     });
-  }, [search, students]);
+  }, [studentSearch, students]);
+
+  const filteredAssignments = useMemo(() => {
+    const query = assignmentSearch.trim().toLowerCase();
+    const byTest =
+      assignmentFilter === "all"
+        ? assignments
+        : assignments.filter((assignment) => assignment.test_slug === assignmentFilter);
+
+    const byStatus =
+      assignmentStatusFilter === "all"
+        ? byTest
+        : byTest.filter((assignment) => assignment.status === assignmentStatusFilter);
+
+    const searched = query
+      ? byStatus.filter((assignment) => {
+          const studentName = formatStudentName(assignment.students).toLowerCase();
+          const testTitle = (testBySlug[assignment.test_slug]?.title ?? "").toLowerCase();
+          return studentName.includes(query) || testTitle.includes(query);
+        })
+      : byStatus;
+
+    const sorted = [...searched].sort((a, b) => {
+      const aTime = new Date(a.assigned_at).getTime();
+      const bTime = new Date(b.assigned_at).getTime();
+      return assignmentSort === "assigned_desc" ? bTime - aTime : aTime - bTime;
+    });
+
+    return sorted;
+  }, [
+    assignmentFilter,
+    assignmentSearch,
+    assignmentSort,
+    assignmentStatusFilter,
+    assignments,
+    testBySlug,
+  ]);
 
   const loadStudents = useCallback(async () => {
     if (!userEmail) return;
@@ -124,8 +188,10 @@ export default function CoachTestsPage() {
   const loadAssignments = useCallback(async () => {
     const { data, error: loadError } = await supabase
       .from("normalized_test_assignments")
-      .select("id, status, assigned_at, updated_at, students(first_name, last_name)")
-      .eq("test_slug", PELZ_PUTTING_SLUG)
+      .select(
+        "id, test_slug, status, assigned_at, updated_at, students(first_name, last_name, email)"
+      )
+      .in("test_slug", [PELZ_PUTTING_SLUG, PELZ_APPROCHES_SLUG])
       .order("created_at", { ascending: false })
       .limit(20);
 
@@ -163,10 +229,13 @@ export default function CoachTestsPage() {
     );
   };
 
-  const openAssignModal = () => {
+  const openAssignModal = (
+    slug: typeof PELZ_PUTTING_SLUG | typeof PELZ_APPROCHES_SLUG
+  ) => {
     setAssignError("");
     setSelectedIds([]);
-    setSearch("");
+    setStudentSearch("");
+    setAssignTestSlug(slug);
     setAssignModalOpen(true);
   };
 
@@ -174,6 +243,43 @@ export default function CoachTestsPage() {
     setAssignModalOpen(false);
     setAssignError("");
     setSelectedIds([]);
+  };
+
+  const handleRemoveAssignment = async (assignmentId: string) => {
+    setAssignmentError("");
+    const confirmRemove = window.confirm(
+      "Supprimer cette assignation ? Les resultats lies seront aussi supprimes."
+    );
+    if (!confirmRemove) return;
+
+    setRemovingId(assignmentId);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setAssignmentError("Session invalide.");
+      setRemovingId(null);
+      return;
+    }
+
+    const response = await fetch("/api/normalized-tests/unassign", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ assignmentId }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setAssignmentError(payload.error ?? "Suppression impossible.");
+      setRemovingId(null);
+      return;
+    }
+
+    await loadAssignments();
+    setRemovingId(null);
   };
 
   const handleAssign = async () => {
@@ -200,7 +306,7 @@ export default function CoachTestsPage() {
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        testSlug: PELZ_PUTTING_SLUG,
+        testSlug: assignTestSlug,
         studentIds: selectedIds,
       }),
     });
@@ -282,46 +388,49 @@ export default function CoachTestsPage() {
               </div>
 
               <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                        Test
-                      </p>
-                      <h4 className="mt-2 text-lg font-semibold text-[var(--text)]">
-                        {PELZ_PUTTING_TEST.title}
-                      </h4>
-                    </div>
-                    <span className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-emerald-200">
-                      Normalise
-                    </span>
-                  </div>
-                  <p className="mt-3 text-sm text-[var(--muted)]">
-                    {PELZ_PUTTING_TEST.description}
-                  </p>
-                  <div className="mt-4 flex items-center gap-3 text-xs text-[var(--muted)]">
-                    <span>{PELZ_PUTTING_TEST.subtests.length} sous-tests</span>
-                    <span>•</span>
-                    <span>{PELZ_PUTTING_TEST.attemptsPerSubtest} tentatives</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!addonEnabled) {
-                        setPremiumModalOpen(true);
-                        return;
-                      }
-                      openAssignModal();
-                    }}
-                    className={`mt-5 rounded-full border px-4 py-2 text-xs uppercase tracking-wide transition ${
-                      addonEnabled
-                        ? "border-white/10 bg-white/10 text-[var(--text)] hover:bg-white/20"
-                        : "border-white/10 bg-white/5 text-[var(--muted)] opacity-70"
-                    }`}
+                {tests.map((test) => (
+                  <div
+                    key={test.slug}
+                    className="rounded-2xl border border-white/10 bg-white/5 p-5"
                   >
-                    Assigner a des eleves
-                  </button>
-                </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                          Test
+                        </p>
+                        <h4 className="mt-2 text-lg font-semibold text-[var(--text)]">
+                          {test.title}
+                        </h4>
+                      </div>
+                      <span className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-emerald-200">
+                        Normalise
+                      </span>
+                    </div>
+                    <p className="mt-3 text-sm text-[var(--muted)]">{test.description}</p>
+                    <div className="mt-4 flex items-center gap-3 text-xs text-[var(--muted)]">
+                      <span>{test.subtests.length} sous-tests</span>
+                      <span>-</span>
+                      <span>{test.attemptsPerSubtest} tentatives</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!addonEnabled) {
+                          setPremiumModalOpen(true);
+                          return;
+                        }
+                        openAssignModal(test.slug);
+                      }}
+                      className={`mt-5 rounded-full border px-4 py-2 text-xs uppercase tracking-wide transition ${
+                        addonEnabled
+                          ? "border-white/10 bg-white/10 text-[var(--text)] hover:bg-white/20"
+                          : "border-white/10 bg-white/5 text-[var(--muted)] opacity-70"
+                      }`}
+                    >
+                      Assigner a des eleves
+                    </button>
+                  </div>
+                ))}
               </div>
             </section>
 
@@ -331,35 +440,118 @@ export default function CoachTestsPage() {
                   Assignations recentes
                 </h3>
                 <span className="text-xs text-[var(--muted)]">
-                  {assignments.length} assignations
+                  {filteredAssignments.length} assignation(s)
                 </span>
               </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
+                <input
+                  type="text"
+                  value={assignmentSearch}
+                  onChange={(event) => setAssignmentSearch(event.target.value)}
+                  placeholder="Rechercher un eleve ou un test"
+                  className="w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-4 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                />
+                <select
+                  value={assignmentSort}
+                  onChange={(event) =>
+                    setAssignmentSort(event.target.value as "assigned_desc" | "assigned_asc")
+                  }
+                  className="rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs uppercase tracking-wide text-[var(--muted)]"
+                >
+                  <option value="assigned_desc">Date: recentes</option>
+                  <option value="assigned_asc">Date: anciennes</option>
+                </select>
+                <select
+                  value={assignmentFilter}
+                  onChange={(event) =>
+                    setAssignmentFilter(
+                      event.target.value as
+                        | "all"
+                        | typeof PELZ_PUTTING_SLUG
+                        | typeof PELZ_APPROCHES_SLUG
+                    )
+                  }
+                  className="rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs uppercase tracking-wide text-[var(--muted)]"
+                >
+                  <option value="all">Tous les tests</option>
+                  <option value={PELZ_PUTTING_SLUG}>Pelz - Putting</option>
+                  <option value={PELZ_APPROCHES_SLUG}>Pelz - Approches</option>
+                </select>
+                <select
+                  value={assignmentStatusFilter}
+                  onChange={(event) =>
+                    setAssignmentStatusFilter(
+                      event.target.value as "all" | AssignmentRow["status"]
+                    )
+                  }
+                  className="rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs uppercase tracking-wide text-[var(--muted)]"
+                >
+                  <option value="all">Tous les statuts</option>
+                  <option value="assigned">Assigne</option>
+                  <option value="in_progress">En cours</option>
+                  <option value="finalized">Finalise</option>
+                </select>
+              </div>
+              {assignmentError ? (
+                <p className="mt-3 text-sm text-red-400">{assignmentError}</p>
+              ) : null}
               <div className="mt-4 space-y-3">
-                {assignments.length === 0 ? (
+                {filteredAssignments.length === 0 ? (
                   <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
                     Aucune assignation pour le moment.
                   </div>
                 ) : (
-                  assignments.map((assignment) => (
-                    <Link
-                      key={assignment.id}
-                      href={`/app/coach/tests/${assignment.id}`}
-                      className="flex flex-col gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--text)] transition hover:border-white/20 md:flex-row md:items-center md:justify-between"
-                    >
-                      <div>
-                        <p className="font-medium">
-                          {formatStudentName(assignment.students)}
-                        </p>
-                        <p className="mt-1 text-xs text-[var(--muted)]">
-                          {PELZ_PUTTING_TEST.title} • Assigne le{" "}
-                          {formatDate(assignment.assigned_at)}
-                        </p>
+                  filteredAssignments.map((assignment) => {
+                    const test = testBySlug[assignment.test_slug] ?? PELZ_PUTTING_TEST;
+                    const href =
+                      assignment.test_slug === PELZ_PUTTING_SLUG
+                        ? `/app/coach/tests/${assignment.id}`
+                        : `/app/coach/tests-approches/${assignment.id}`;
+                    return (
+                      <div
+                        key={assignment.id}
+                        className="flex flex-col gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--text)] transition hover:border-white/20 md:flex-row md:items-center md:justify-between"
+                      >
+                        <Link href={href} className="flex-1">
+                          <div>
+                            <p className="font-medium">
+                              {formatStudentName(assignment.students)}
+                            </p>
+                            <p className="mt-1 text-xs text-[var(--muted)]">
+                              {test.title} - Assigne le {formatDate(assignment.assigned_at)}
+                            </p>
+                            <p className="mt-1 text-[0.65rem] uppercase tracking-[0.2em] text-[var(--muted)]">
+                              Derniere maj {formatDate(assignment.updated_at)}
+                            </p>
+                          </div>
+                        </Link>
+                        <div className="flex items-center gap-2">
+                          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                            {statusLabel[assignment.status]}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveAssignment(assignment.id)}
+                            disabled={
+                              removingId === assignment.id || assignment.status === "finalized"
+                            }
+                            title={
+                              assignment.status === "finalized"
+                                ? "Suppression interdite pour un test finalise"
+                                : "Retirer l assignation"
+                            }
+                            className="rounded-full border border-red-300/30 bg-red-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-red-200 transition hover:bg-red-400/20 disabled:opacity-60"
+                          >
+                            {removingId === assignment.id
+                              ? "Suppression..."
+                              : assignment.status === "finalized"
+                                ? "Finalise"
+                                : "Retirer"}
+                          </button>
+                        </div>
                       </div>
-                      <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                        {statusLabel[assignment.status]}
-                      </span>
-                    </Link>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </section>
@@ -376,7 +568,7 @@ export default function CoachTestsPage() {
                   Assigner le test
                 </p>
                 <h4 className="mt-2 text-lg font-semibold text-[var(--text)]">
-                  {PELZ_PUTTING_TEST.title}
+                  {testBySlug[assignTestSlug]?.title ?? PELZ_PUTTING_TEST.title}
                 </h4>
               </div>
               <button
@@ -403,8 +595,8 @@ export default function CoachTestsPage() {
             <div className="mt-4 space-y-3">
               <input
                 type="text"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                value={studentSearch}
+                onChange={(event) => setStudentSearch(event.target.value)}
                 placeholder="Rechercher un eleve"
                 className="w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-4 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
               />

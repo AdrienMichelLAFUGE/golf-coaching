@@ -77,6 +77,55 @@ type Database = {
         }>;
         Relationships: [];
       };
+      normalized_test_assignments: {
+        Row: {
+          id: string;
+          org_id: string;
+          student_id: string;
+          coach_id: string;
+          test_slug: string;
+          status: string;
+          assigned_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          org_id: string;
+          student_id: string;
+          coach_id: string;
+          test_slug: string;
+          status: string;
+          assigned_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Update: Partial<{
+          status: string;
+        }>;
+        Relationships: [];
+      };
+      normalized_test_attempts: {
+        Row: {
+          id: string;
+          assignment_id: string;
+          subtest_key: string;
+          attempt_index: number;
+          result_value: string;
+          points: number;
+        };
+        Insert: {
+          assignment_id: string;
+          subtest_key: string;
+          attempt_index: number;
+          result_value: string;
+          points: number;
+        };
+        Update: Partial<{
+          result_value: string;
+          points: number;
+        }>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -115,8 +164,20 @@ describeIf("RLS integration: student shares", () => {
     let ownerId = "";
     let viewerId = "";
     let studentId = "";
+    let assignmentId = "";
 
     const cleanup = async () => {
+      if (assignmentId) {
+        try {
+          await admin
+            .from("normalized_test_attempts")
+            .delete()
+            .eq("assignment_id", assignmentId);
+        } catch {}
+        try {
+          await admin.from("normalized_test_assignments").delete().eq("id", assignmentId);
+        } catch {}
+      }
       if (studentId) {
         try {
           await admin.from("student_shares").delete().eq("student_id", studentId);
@@ -271,6 +332,37 @@ describeIf("RLS integration: student shares", () => {
 
       expect(updateError).toBeNull();
       expect(updateData ?? []).toHaveLength(0);
+
+      const now = new Date().toISOString();
+      const { data: assignment, error: assignmentError } = await admin
+        .from("normalized_test_assignments")
+        .insert({
+          org_id: orgId,
+          student_id: studentId,
+          coach_id: ownerId,
+          test_slug: "pelz-approches",
+          status: "assigned",
+          assigned_at: now,
+          created_at: now,
+          updated_at: now,
+        })
+        .select("id")
+        .single();
+
+      expect(assignmentError).toBeNull();
+      assignmentId = assignment?.id ?? "";
+
+      const { error: attemptError } = await viewerClient
+        .from("normalized_test_attempts")
+        .insert({
+          assignment_id: assignmentId,
+          subtest_key: "approche_levee",
+          attempt_index: 1,
+          result_value: "holed",
+          points: 4,
+        });
+
+      expect(attemptError).not.toBeNull();
     } finally {
       await cleanup();
     }

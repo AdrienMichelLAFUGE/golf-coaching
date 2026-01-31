@@ -9,6 +9,7 @@ import {
   PELZ_PUTTING_TEST,
   PELZ_PUTTING_SLUG,
 } from "@/lib/normalized-tests/pelz-putting";
+import { PELZ_APPROCHES_TEST } from "@/lib/normalized-tests/pelz-approches";
 
 type AssignmentRow = {
   id: string;
@@ -54,10 +55,17 @@ export default function StudentTestsPage() {
     loadAssignments();
   }, []);
 
-  const visible = useMemo(
-    () => assignments.filter((assignment) => assignment.test_slug === PELZ_PUTTING_SLUG),
-    [assignments]
-  );
+  const tests = [PELZ_PUTTING_TEST, PELZ_APPROCHES_TEST];
+  const assignmentsBySlug = useMemo(() => {
+    const grouped = new Map<string, AssignmentRow[]>();
+    assignments.forEach((assignment) => {
+      if (!grouped.has(assignment.test_slug)) {
+        grouped.set(assignment.test_slug, []);
+      }
+      grouped.get(assignment.test_slug)?.push(assignment);
+    });
+    return grouped;
+  }, [assignments]);
 
   return (
     <RoleGuard allowedRoles={["student"]}>
@@ -83,42 +91,55 @@ export default function StudentTestsPage() {
             </p>
           </section>
 
-          <section className="panel rounded-2xl p-6">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-lg font-semibold text-[var(--text)]">
-                {PELZ_PUTTING_TEST.title}
-              </h3>
-              <span className="text-xs text-[var(--muted)]">
-                {visible.length} test(s)
-              </span>
-            </div>
-            <div className="mt-4 space-y-3">
-              {visible.length === 0 ? (
-                <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
-                  Aucun test pour le moment.
+          {tests.map((test) => {
+            const items = assignmentsBySlug.get(test.slug) ?? [];
+            return (
+              <section key={test.slug} className="panel rounded-2xl p-6">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-lg font-semibold text-[var(--text)]">
+                    {test.title}
+                  </h3>
+                  <span className="text-xs text-[var(--muted)]">
+                    {items.length} test(s)
+                  </span>
                 </div>
-              ) : (
-                visible.map((assignment) => (
-                  <Link
-                    key={assignment.id}
-                    href={`/app/eleve/tests/${assignment.id}`}
-                    className="flex flex-col gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--text)] transition hover:border-white/20 md:flex-row md:items-center md:justify-between"
-                  >
-                    <div>
-                      <p className="font-medium">{PELZ_PUTTING_TEST.title}</p>
-                      <p className="mt-1 text-xs text-[var(--muted)]">
-                        Assigne le{" "}
-                        {new Date(assignment.assigned_at).toLocaleDateString(locale)}
-                      </p>
+                <div className="mt-4 space-y-3">
+                  {items.length === 0 ? (
+                    <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
+                      Aucun test pour le moment.
                     </div>
-                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                      {statusLabel[assignment.status]}
-                    </span>
-                  </Link>
-                ))
-              )}
-            </div>
-          </section>
+                  ) : (
+                    items.map((assignment) => {
+                      const href =
+                        assignment.test_slug === PELZ_PUTTING_SLUG
+                          ? `/app/eleve/tests/${assignment.id}`
+                          : `/app/eleve/tests-approches/${assignment.id}`;
+                      return (
+                        <Link
+                          key={assignment.id}
+                          href={href}
+                          className="flex flex-col gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--text)] transition hover:border-white/20 md:flex-row md:items-center md:justify-between"
+                        >
+                          <div>
+                            <p className="font-medium">{test.title}</p>
+                            <p className="mt-1 text-xs text-[var(--muted)]">
+                              Assigne le{" "}
+                              {new Date(assignment.assigned_at).toLocaleDateString(
+                                locale
+                              )}
+                            </p>
+                          </div>
+                          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                            {statusLabel[assignment.status]}
+                          </span>
+                        </Link>
+                      );
+                    })
+                  )}
+                </div>
+              </section>
+            );
+          })}
         </div>
       )}
     </RoleGuard>
