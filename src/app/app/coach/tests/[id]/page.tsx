@@ -5,6 +5,11 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../../_components/role-guard";
 import PelzResponsiveAccordion from "../../../_components/pelz-responsive-accordion";
+import PelzDiagramModal from "../../../_components/pelz-diagram-modal";
+import {
+  PELZ_DIAGRAM_ALT_TEXT,
+  PELZ_DIAGRAM_BY_SUBTEST,
+} from "@/lib/normalized-tests/pelz-diagrams";
 import {
   PELZ_PUTTING_TEST,
   PELZ_PUTTING_SLUG,
@@ -77,6 +82,7 @@ export default function CoachTestDetailPage() {
   const [attempts, setAttempts] = useState<AttemptsBySubtest>(createEmptyAttempts);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [diagramSubtest, setDiagramSubtest] = useState<PelzSubtestKey | null>(null);
 
   useEffect(() => {
     const loadAssignment = async () => {
@@ -166,6 +172,17 @@ export default function CoachTestDetailPage() {
   const totalPoints = subtestScores.reduce((acc, score) => acc + score.totalPoints, 0);
   const isComplete = subtestScores.every((score) => score.indexValue !== null);
   const totalIndex = isComplete ? computePelzTotalIndex(totalPoints) : null;
+  const diagramMeta = useMemo(() => {
+    if (!diagramSubtest) return null;
+    const subtest = PELZ_PUTTING_TEST.subtests.find(
+      (item) => item.key === diagramSubtest
+    );
+    return {
+      title: subtest?.label ?? "Schema",
+      alt: PELZ_DIAGRAM_ALT_TEXT[diagramSubtest],
+      diagramKey: PELZ_DIAGRAM_BY_SUBTEST[diagramSubtest],
+    };
+  }, [diagramSubtest]);
 
   const summarySection = (
     <section className="panel-soft rounded-2xl p-6">
@@ -229,9 +246,19 @@ export default function CoachTestDetailPage() {
               Distances: {distanceLabelByKey[subtest.key] ?? subtest.distanceLabel}
             </p>
           </div>
-          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-            {subtest.sequence.length} tentatives
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setDiagramSubtest(subtest.key)}
+              className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[0.6rem] font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
+              aria-label={`Ouvrir schema ${subtest.label}`}
+            >
+              Schema
+            </button>
+            <span className="rounded-full border border-white/5 bg-white/5 px-2 py-1 text-[0.55rem] uppercase tracking-wide text-[var(--muted)] opacity-70">
+              {subtest.sequence.length} tentatives
+            </span>
+          </div>
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -402,6 +429,13 @@ export default function CoachTestDetailPage() {
           </section>
         </div>
       ) : null}
+      <PelzDiagramModal
+        open={diagramSubtest !== null}
+        onClose={() => setDiagramSubtest(null)}
+        title={diagramMeta?.title ?? "Schema"}
+        alt={diagramMeta?.alt ?? "Schema du sous-test"}
+        diagramKey={diagramMeta?.diagramKey ?? null}
+      />
     </RoleGuard>
   );
 }
