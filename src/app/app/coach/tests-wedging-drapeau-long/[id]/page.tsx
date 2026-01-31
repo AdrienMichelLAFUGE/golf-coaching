@@ -73,6 +73,10 @@ const wedgingDistanceItems = [
   { slot: "I", distance: "70m" },
 ];
 
+const wedgingDistanceBySlot = Object.fromEntries(
+  wedgingDistanceItems.map((item) => [item.slot, item.distance])
+) as Record<string, string>;
+
 const renderDistanceLabel = () => (
   <span>
     {wedgingDistanceItems.map((item, index) => (
@@ -87,12 +91,6 @@ const renderDistanceLabel = () => (
     ))}
   </span>
 );
-
-const WEDGING_DRAPEAU_LONG_SEQUENCE_GROUPS = [
-  WEDGING_DRAPEAU_LONG_SEQUENCE.slice(0, 6),
-  WEDGING_DRAPEAU_LONG_SEQUENCE.slice(6, 12),
-  WEDGING_DRAPEAU_LONG_SEQUENCE.slice(12, 18),
-];
 
 const formatDate = (value?: string | null) => {
   if (!value) return "-";
@@ -228,6 +226,13 @@ export default function CoachWedgingDrapeauLongPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
+                  onClick={() => router.push("/app/coach/tests")}
+                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                >
+                  Retour
+                </button>
+                <button
+                  type="button"
                   onClick={() => setDiagramOpen(true)}
                   className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[0.6rem] font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
                   aria-label="Ouvrir schema Wedging drapeau long"
@@ -313,70 +318,34 @@ export default function CoachWedgingDrapeauLongPage() {
                 </p>
               </div>
             </div>
-            <div className="mt-4 space-y-4">
-              {WEDGING_DRAPEAU_LONG_SEQUENCE_GROUPS.map((group, groupIndex) => {
-                const offset = groupIndex * group.length;
-                return (
-                  <div key={`group-${groupIndex}`} className="overflow-x-auto">
-                    <table className="min-w-[720px] w-full border-separate border-spacing-2">
-                      <thead>
-                        <tr>
-                          <th className="text-left text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                            Balle
-                          </th>
-                          {group.map((slot, index) => (
-                            <th
-                              key={`ball-${groupIndex}-${index}`}
-                              className="text-center text-xs uppercase tracking-[0.2em] text-[var(--muted)]"
-                            >
-                              <span className={`font-semibold ${getSlotColorClass(slot)}`}>
-                                {offset + index + 1}
-                              </span>
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr>
-                          <td className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                            Situation
-                          </td>
-                          {group.map((slot, index) => (
-                            <td
-                              key={`situation-${groupIndex}-${index}`}
-                              className="text-center text-sm font-semibold"
-                            >
-                              <span className={getSlotColorClass(slot)}>{slot}</span>
-                            </td>
-                          ))}
-                        </tr>
-                        <tr>
-                          <td className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                            Score
-                          </td>
-                          {group.map((slot, index) => {
-                            const attemptIndex = offset + index;
-                            return (
-                              <td
-                                key={`score-${groupIndex}-${slot}-${index}`}
-                                className="min-w-[120px]"
-                              >
-                                <span className="text-sm font-medium text-[var(--text)]">
-                                  {attempts[attemptIndex]
-                                    ? getWedgingDrapeauLongResultLabel(
-                                        attempts[attemptIndex] as WedgingDrapeauLongResultValue
-                                      )
-                                    : "-"}
-                                </span>
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                );
-              })}
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {WEDGING_DRAPEAU_LONG_SEQUENCE.map((slot, index) => (
+                <div
+                  key={`attempt-${slot}-${index}`}
+                  className="rounded-xl border border-white/10 bg-white/5 px-4 py-3"
+                >
+                  <span className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                    Tentative{" "}
+                    <span className={`font-semibold ${getSlotColorClass(slot)}`}>
+                      {index + 1}
+                    </span>{" "}
+                    -{" "}
+                    <span className={`font-semibold ${getSlotColorClass(slot)}`}>
+                      {slot}
+                    </span>{" "}
+                    <span className="text-[var(--muted)]">
+                      ({wedgingDistanceBySlot[slot] ?? "-"})
+                    </span>
+                  </span>
+                  <p className="mt-2 text-sm font-medium text-[var(--text)]">
+                    {attempts[index]
+                      ? getWedgingDrapeauLongResultLabel(
+                          attempts[index] as WedgingDrapeauLongResultValue
+                        )
+                      : "-"}
+                  </p>
+                </div>
+              ))}
             </div>
           </section>
 

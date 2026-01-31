@@ -16,7 +16,13 @@ type NavSection = {
   items: NavItem[];
 };
 
-export default function AppNav() {
+type AppNavProps = {
+  onNavigate?: () => void;
+  onCollapse?: () => void;
+  forceExpanded?: boolean;
+};
+
+export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNavProps) {
   const pathname = usePathname();
   const { profile, loading, userEmail } = useProfile();
   const isAdmin = isAdminEmail(userEmail);
@@ -24,6 +30,7 @@ export default function AppNav() {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem("gc.navCollapsed") === "true";
   });
+  const isCollapsed = forceExpanded ? false : collapsed;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -243,24 +250,36 @@ export default function AppNav() {
   return (
     <aside
       className={`panel-soft w-full rounded-2xl transition-[width,padding] duration-200 ${
-        collapsed ? "px-2 py-4 lg:w-16" : "px-4 py-5 lg:w-60"
+        isCollapsed ? "px-2 py-4 lg:w-16" : "px-4 py-5 lg:w-60"
       }`}
     >
       <div
         className={`flex items-center gap-2 ${
-          collapsed ? "justify-center" : "justify-between"
+          isCollapsed ? "justify-center" : "justify-between"
         }`}
       >
-        {!collapsed ? (
+        {!isCollapsed ? (
           <p className="text-[0.65rem] uppercase tracking-[0.25em] text-[var(--muted)]">
             Navigation
           </p>
         ) : null}
         <button
           type="button"
-          onClick={() => setCollapsed((prev) => !prev)}
+          onClick={() => {
+            if (onCollapse) {
+              onCollapse();
+              return;
+            }
+            setCollapsed((prev) => !prev);
+          }}
           className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
-          aria-label={collapsed ? "Etendre le menu" : "Reduire le menu"}
+          aria-label={
+            onCollapse
+              ? "Masquer la navigation"
+              : isCollapsed
+                ? "Etendre le menu"
+                : "Reduire le menu"
+          }
         >
           <svg
             viewBox="0 0 24 24"
@@ -271,7 +290,7 @@ export default function AppNav() {
             strokeLinecap="round"
             strokeLinejoin="round"
           >
-            <path d={collapsed ? "M15 18l-6-6 6-6" : "M9 18l6-6-6-6"} />
+            <path d={isCollapsed ? "M15 18l-6-6 6-6" : "M9 18l6-6-6-6"} />
           </svg>
         </button>
       </div>
@@ -283,13 +302,13 @@ export default function AppNav() {
         ) : null}
         {sections.map((section) => (
           <div key={section.title} className="space-y-3">
-            {!collapsed ? (
+            {!isCollapsed ? (
               <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
                 {section.title}
               </p>
             ) : null}
             <div
-              className={`space-y-2 ${collapsed ? "" : "border-l border-white/10 pl-3"}`}
+              className={`space-y-2 ${isCollapsed ? "" : "border-l border-white/10 pl-3"}`}
             >
               {section.items.map((item) => {
                 const active = isActive(item.href);
@@ -299,8 +318,9 @@ export default function AppNav() {
                     href={item.href}
                     title={item.label}
                     aria-label={item.label}
+                    onClick={onNavigate}
                     className={`group relative flex w-full items-center gap-3 transition ${
-                      collapsed
+                      isCollapsed
                         ? `justify-center rounded-xl border px-2 py-3 ${
                             active
                               ? "border-white/30 bg-white/10 text-[var(--text)] shadow-[0_12px_25px_rgba(0,0,0,0.35)]"
@@ -319,7 +339,7 @@ export default function AppNav() {
                     <span className="flex min-w-0 flex-1 items-center gap-3">
                       <span
                         className={`flex h-8 w-8 items-center justify-center text-[var(--muted)] transition ${
-                          collapsed
+                          isCollapsed
                             ? "rounded-lg border border-transparent bg-transparent group-hover:text-[var(--text)]"
                             : active
                               ? "text-[var(--text)]"
@@ -328,11 +348,11 @@ export default function AppNav() {
                       >
                         {iconForHref(item.href)}
                       </span>
-                      {!collapsed ? (
+                      {!isCollapsed ? (
                         <span className="whitespace-nowrap">{item.label}</span>
                       ) : null}
                     </span>
-                    {!collapsed ? (
+                    {!isCollapsed ? (
                       <span
                         className={`ml-auto flex h-5 w-5 items-center justify-center text-[var(--muted)] transition ${
                           active ? "text-[var(--text)]" : "group-hover:text-[var(--text)]"
@@ -360,13 +380,13 @@ export default function AppNav() {
         ))}
         {showReportSectionsToggle ? (
           <div className="space-y-3">
-            {!collapsed ? (
+            {!isCollapsed ? (
               <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
                 Rapport
               </p>
             ) : null}
             <div
-              className={`space-y-2 ${collapsed ? "" : "border-l border-white/10 pl-3"}`}
+              className={`space-y-2 ${isCollapsed ? "" : "border-l border-white/10 pl-3"}`}
             >
               <button
                 type="button"
@@ -375,7 +395,7 @@ export default function AppNav() {
                   window.dispatchEvent(new CustomEvent("gc:toggle-report-sections"));
                 }}
                 className={`group relative flex w-full items-center gap-3 transition ${
-                  collapsed
+                  isCollapsed
                     ? "justify-center rounded-xl border border-white/5 bg-white/5 px-2 py-3 text-[var(--muted)] hover:border-white/20 hover:bg-white/10 hover:text-[var(--text)]"
                     : "justify-between px-2 py-2 text-[var(--muted)] hover:text-[var(--text)]"
                 }`}
@@ -385,7 +405,7 @@ export default function AppNav() {
                 <span className="flex min-w-0 flex-1 items-center gap-3">
                   <span
                     className={`flex h-8 w-8 items-center justify-center text-[var(--muted)] transition ${
-                      collapsed
+                      isCollapsed
                         ? "rounded-lg border border-transparent bg-transparent group-hover:text-[var(--text)]"
                         : "group-hover:text-[var(--text)]"
                     }`}
@@ -403,11 +423,11 @@ export default function AppNav() {
                       <rect x="14" y="5" width="7" height="14" rx="1.5" />
                     </svg>
                   </span>
-                  {!collapsed ? (
+                  {!isCollapsed ? (
                     <span className="whitespace-nowrap">Sections</span>
                   ) : null}
                 </span>
-                {!collapsed ? (
+                {!isCollapsed ? (
                   <span
                     className="ml-auto flex h-5 w-5 items-center justify-center text-[var(--muted)] transition group-hover:text-[var(--text)]"
                     aria-hidden="true"

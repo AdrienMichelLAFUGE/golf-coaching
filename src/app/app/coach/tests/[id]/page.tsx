@@ -128,6 +128,9 @@ const renderDistanceLabel = (key: PelzSubtestKey) => {
   );
 };
 
+const getDistanceForSlot = (key: PelzSubtestKey, slot: string) =>
+  distanceItemsByKey[key]?.find((item) => item.slot === slot)?.distance ?? "";
+
 const formatDate = (value?: string | null) => {
   if (!value) return "-";
   return new Date(value).toLocaleDateString("fr-FR");
@@ -345,6 +348,10 @@ export default function CoachTestDetailPage() {
                 </span>{" "}
                 -{" "}
                 <span className={`font-semibold ${getSlotColorClass(slot)}`}>{slot}</span>
+                <span className="text-[var(--muted)]">
+                  {" "}
+                  ({getDistanceForSlot(subtest.key, slot)})
+                </span>
               </span>
               <p className="text-sm">
                 Resultat:{" "}
@@ -490,6 +497,9 @@ export default function CoachTestDetailPage() {
                         -{" "}
                         <span className={`font-semibold ${getSlotColorClass(slot)}`}>
                           {slot}
+                        </span>{" "}
+                        <span className="text-[var(--muted)]">
+                          ({getDistanceForSlot(subtest.key, slot)})
                         </span>
                       </span>
                       <p className="text-sm">
