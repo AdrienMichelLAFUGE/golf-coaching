@@ -1,6 +1,7 @@
 import {
   computeWedgingDrapeauCourtObjectivation,
   computeWedgingDrapeauCourtTotalScore,
+  getWedgingDrapeauCourtEquivalentIndexLabel,
   getWedgingDrapeauCourtResultPoints,
   parseWedgingCourtIndexOrFlagLabel,
 } from "./wedging-drapeau-court";
@@ -43,5 +44,10 @@ describe("wedging drapeau court", () => {
       { index: 2, situation: "A", result: "between_1m_3m" },
     ]);
     expect(result.success).toBe(false);
+  });
+
+  it("derives an equivalent index range from total score", () => {
+    const label = getWedgingDrapeauCourtEquivalentIndexLabel(12);
+    expect(label).toBe("Index 10 a 15");
   });
 });

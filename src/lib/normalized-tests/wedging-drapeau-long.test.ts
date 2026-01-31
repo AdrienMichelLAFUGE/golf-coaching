@@ -1,6 +1,7 @@
 import {
   computeWedgingDrapeauLongObjectivation,
   computeWedgingDrapeauLongTotalScore,
+  getWedgingDrapeauLongEquivalentIndexLabel,
   getWedgingDrapeauLongResultPoints,
   parseWedgingIndexOrFlagLabel,
 } from "./wedging-drapeau-long";
@@ -43,5 +44,10 @@ describe("wedging drapeau long", () => {
     expect(objectivation?.expectedAvgScore).toBe(43.8);
     expect(objectivation?.delta).toBeCloseTo(-3.8, 5);
     expect(objectivation?.verdict).toBe("meilleur");
+  });
+
+  it("derives an equivalent index range from total score", () => {
+    const label = getWedgingDrapeauLongEquivalentIndexLabel(6);
+    expect(label).toBe("Index 10 a 15");
   });
 });

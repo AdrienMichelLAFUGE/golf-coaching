@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../../_components/role-guard";
 import PelzDiagramModal from "../../../_components/pelz-diagram-modal";
+import TestResultModal from "../../../_components/test-result-modal";
 import {
   WEDGING_DRAPEAU_LONG_DIAGRAM_ALT_TEXT,
   WEDGING_DRAPEAU_LONG_DIAGRAM_BUCKET,
@@ -19,6 +20,7 @@ import {
   type WedgingDrapeauLongResultValue,
   type WedgingDrapeauLongSituation,
   computeWedgingDrapeauLongObjectivation,
+  getWedgingDrapeauLongEquivalentIndexLabel,
   computeWedgingDrapeauLongTotalScore,
   getWedgingDrapeauLongResultOptions,
   isWedgingDrapeauLongResultValue,
@@ -55,6 +57,39 @@ const slotColorClassByLetter: Record<string, string> = {
 const getSlotColorClass = (slot: string) =>
   slotColorClassByLetter[slot] ?? "text-[var(--muted)]";
 
+const wedgingDistanceItems = [
+  { slot: "A", distance: "30m" },
+  { slot: "B", distance: "35m" },
+  { slot: "C", distance: "40m" },
+  { slot: "D", distance: "45m" },
+  { slot: "E", distance: "50m" },
+  { slot: "F", distance: "55m" },
+  { slot: "G", distance: "60m" },
+  { slot: "H", distance: "65m" },
+  { slot: "I", distance: "70m" },
+];
+
+const renderDistanceLabel = () => (
+  <span>
+    {wedgingDistanceItems.map((item, index) => (
+      <span key={item.slot}>
+        <span className={`font-semibold ${getSlotColorClass(item.slot)}`}>
+          {item.slot}
+        </span>
+        <span className={getSlotColorClass(item.slot)}>=</span>
+        <span className={getSlotColorClass(item.slot)}>{item.distance}</span>
+        {index < wedgingDistanceItems.length - 1 ? ", " : ""}
+      </span>
+    ))}
+  </span>
+);
+
+const WEDGING_DRAPEAU_LONG_SEQUENCE_GROUPS = [
+  WEDGING_DRAPEAU_LONG_SEQUENCE.slice(0, 6),
+  WEDGING_DRAPEAU_LONG_SEQUENCE.slice(6, 12),
+  WEDGING_DRAPEAU_LONG_SEQUENCE.slice(12, 18),
+];
+
 const formatDate = (value?: string | null) => {
   if (!value) return "-";
   return new Date(value).toLocaleDateString("fr-FR");
@@ -76,6 +111,7 @@ export default function StudentWedgingDrapeauLongPage() {
   const [actionError, setActionError] = useState("");
   const [notice, setNotice] = useState("");
   const [diagramOpen, setDiagramOpen] = useState(false);
+  const [resultModalOpen, setResultModalOpen] = useState(false);
 
   const isFinalized = assignment?.status === "finalized";
 
@@ -243,8 +279,13 @@ export default function StudentWedgingDrapeauLongPage() {
     setNotice(finalize ? "Test finalise." : "Sauvegarde terminee.");
     setSaving(false);
     if (finalize) {
-      setTimeout(() => router.refresh(), 200);
+      setResultModalOpen(true);
     }
+  };
+
+  const handleResultModalClose = () => {
+    setResultModalOpen(false);
+    router.refresh();
   };
 
   return (
@@ -412,85 +453,99 @@ export default function StudentWedgingDrapeauLongPage() {
                   Saisie des 18 balles
                 </h3>
                 <p className="mt-1 text-sm text-[var(--muted)]">
-                  Situations: A=30m, B=35m, C=40m, D=45m, E=50m, F=55m, G=60m,
-                  H=65m, I=70m.
+                  Situations: {renderDistanceLabel()}.
                 </p>
               </div>
             </div>
-            <div className="mt-4 overflow-x-auto">
-              <table className="min-w-[1100px] w-full border-separate border-spacing-2">
-                <thead>
-                  <tr>
-                    <th className="text-left text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                      Balle
-                    </th>
-                    {WEDGING_DRAPEAU_LONG_SEQUENCE.map((slot, index) => (
-                      <th
-                        key={`ball-${index}`}
-                        className="text-center text-xs uppercase tracking-[0.2em] text-[var(--muted)]"
-                      >
-                        <span className={`font-semibold ${getSlotColorClass(slot)}`}>
-                          {index + 1}
-                        </span>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                      Situation
-                    </td>
-                    {WEDGING_DRAPEAU_LONG_SEQUENCE.map((slot, index) => (
-                      <td
-                        key={`situation-${index}`}
-                        className="text-center text-sm font-semibold"
-                      >
-                        <span className={getSlotColorClass(slot)}>{slot}</span>
-                      </td>
-                    ))}
-                  </tr>
-                  <tr>
-                    <td className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                      Score
-                    </td>
-                    {WEDGING_DRAPEAU_LONG_SEQUENCE.map((slot, index) => (
-                      <td key={`score-${index}`} className="min-w-[140px]">
-                        <div className="flex flex-col gap-2">
-                          {attempts[index] ? (
-                            <button
-                              type="button"
-                              onClick={() => handleClearAttempt(index)}
-                              disabled={isFinalized}
-                              className="text-[0.6rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-50"
+            <div className="mt-4 space-y-4">
+              {WEDGING_DRAPEAU_LONG_SEQUENCE_GROUPS.map((group, groupIndex) => {
+                const offset = groupIndex * group.length;
+                return (
+                  <div key={`group-${groupIndex}`} className="overflow-x-auto">
+                    <table className="min-w-[720px] w-full border-separate border-spacing-2">
+                      <thead>
+                        <tr>
+                          <th className="text-left text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                            Balle
+                          </th>
+                          {group.map((slot, index) => (
+                            <th
+                              key={`ball-${groupIndex}-${index}`}
+                              className="text-center text-xs uppercase tracking-[0.2em] text-[var(--muted)]"
                             >
-                              Effacer
-                            </button>
-                          ) : (
-                            <span className="text-[0.6rem] uppercase tracking-wide text-transparent">
-                              .
-                            </span>
-                          )}
-                          <select
-                            value={attempts[index] ?? ""}
-                            onChange={(event) => handleResultChange(index, event.target.value)}
-                            disabled={isFinalized}
-                            className="w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
-                          >
-                            <option value="">Choisir un resultat</option>
-                            {getWedgingDrapeauLongResultOptions().map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label} ({option.points > 0 ? "+" : ""}
-                                {option.points})
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </td>
-                    ))}
-                  </tr>
-                </tbody>
-              </table>
+                              <span className={`font-semibold ${getSlotColorClass(slot)}`}>
+                                {offset + index + 1}
+                              </span>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                            Situation
+                          </td>
+                          {group.map((slot, index) => (
+                            <td
+                              key={`situation-${groupIndex}-${index}`}
+                              className="text-center text-sm font-semibold"
+                            >
+                              <span className={getSlotColorClass(slot)}>{slot}</span>
+                            </td>
+                          ))}
+                        </tr>
+                        <tr>
+                          <td className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                            Score
+                          </td>
+                          {group.map((slot, index) => {
+                            const attemptIndex = offset + index;
+                            return (
+                              <td
+                                key={`score-${groupIndex}-${slot}-${index}`}
+                                className="min-w-[140px]"
+                              >
+                                <div className="flex flex-col gap-2">
+                                  {attempts[attemptIndex] ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleClearAttempt(attemptIndex)}
+                                      disabled={isFinalized}
+                                      className="text-[0.6rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-50"
+                                    >
+                                      Effacer
+                                    </button>
+                                  ) : (
+                                    <span className="text-[0.6rem] uppercase tracking-wide text-transparent">
+                                      .
+                                    </span>
+                                  )}
+                                  <select
+                                    value={attempts[attemptIndex] ?? ""}
+                                    onChange={(event) =>
+                                      handleResultChange(attemptIndex, event.target.value)
+                                    }
+                                    disabled={isFinalized}
+                                    className="w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                                  >
+                                    <option value="">Choisir un resultat</option>
+                                    {getWedgingDrapeauLongResultOptions().map((option) => (
+                                      <option key={option.value} value={option.value}>
+                                        {option.label} ({option.points > 0 ? "+" : ""}
+                                        {option.points})
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })}
             </div>
           </section>
 
@@ -542,6 +597,19 @@ export default function StudentWedgingDrapeauLongPage() {
         diagramKey={diagramOpen ? WEDGING_DRAPEAU_LONG_DIAGRAM_KEY : null}
         bucket={WEDGING_DRAPEAU_LONG_DIAGRAM_BUCKET}
         extension={WEDGING_DRAPEAU_LONG_DIAGRAM_EXTENSION}
+      />
+      <TestResultModal
+        open={resultModalOpen}
+        onClose={handleResultModalClose}
+        title="Resultat du test"
+        description="Voici l index equivalent estime a partir de ton total de points."
+        items={[
+          { label: "Total points", value: totalScore.toString() },
+          {
+            label: "Index equivalent",
+            value: getWedgingDrapeauLongEquivalentIndexLabel(totalScore),
+          },
+        ]}
       />
     </RoleGuard>
   );

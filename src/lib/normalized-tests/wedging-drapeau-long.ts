@@ -96,6 +96,21 @@ const FLAG_EXPECTATIONS: Record<string, number> = {
   rouge: 46.9,
 };
 
+const formatIndexRangeLabel = (min: number, max: number) => `Index ${min} a ${max}`;
+
+const getClosestIndexRange = (score: number) => {
+  let best = INDEX_EXPECTATIONS[0];
+  let bestDelta = Math.abs(score - best.expected);
+  for (const entry of INDEX_EXPECTATIONS.slice(1)) {
+    const delta = Math.abs(score - entry.expected);
+    if (delta < bestDelta || (delta === bestDelta && entry.min < best.min)) {
+      best = entry;
+      bestDelta = delta;
+    }
+  }
+  return best;
+};
+
 const WEDGING_DRAPEAU_LONG_SUBTEST: WedgingDrapeauLongSubtestDefinition = {
   key: WEDGING_DRAPEAU_LONG_SUBTEST_KEY,
   label: "Wedging drapeau long",
@@ -183,4 +198,9 @@ export const computeWedgingDrapeauLongObjectivation = (
     delta,
     verdict,
   };
+};
+
+export const getWedgingDrapeauLongEquivalentIndexLabel = (totalScore: number) => {
+  const range = getClosestIndexRange(totalScore);
+  return formatIndexRangeLabel(range.min, range.max);
 };

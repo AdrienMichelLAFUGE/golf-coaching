@@ -241,6 +241,45 @@ const wedgingSlotColorClassByLetter: Record<string, string> = {
 const getSlotColorClass = (slot: string, colors: Record<string, string>) =>
   colors[slot] ?? "text-[var(--muted)]";
 
+const wedgingDistanceItems = [
+  { slot: "A", distance: "30m" },
+  { slot: "B", distance: "35m" },
+  { slot: "C", distance: "40m" },
+  { slot: "D", distance: "45m" },
+  { slot: "E", distance: "50m" },
+  { slot: "F", distance: "55m" },
+  { slot: "G", distance: "60m" },
+  { slot: "H", distance: "65m" },
+  { slot: "I", distance: "70m" },
+];
+
+const renderWedgingDistanceLabel = () => (
+  <span>
+    {wedgingDistanceItems.map((item, index) => (
+      <span key={item.slot}>
+        <span className={`font-semibold ${getSlotColorClass(item.slot, wedgingSlotColorClassByLetter)}`}>
+          {item.slot}
+        </span>
+        <span className={getSlotColorClass(item.slot, wedgingSlotColorClassByLetter)}>=</span>
+        <span className={getSlotColorClass(item.slot, wedgingSlotColorClassByLetter)}>{item.distance}</span>
+        {index < wedgingDistanceItems.length - 1 ? ", " : ""}
+      </span>
+    ))}
+  </span>
+);
+
+const WEDGING_DRAPEAU_LONG_SEQUENCE_GROUPS = [
+  WEDGING_DRAPEAU_LONG_SEQUENCE.slice(0, 6),
+  WEDGING_DRAPEAU_LONG_SEQUENCE.slice(6, 12),
+  WEDGING_DRAPEAU_LONG_SEQUENCE.slice(12, 18),
+];
+
+const WEDGING_DRAPEAU_COURT_SEQUENCE_GROUPS = [
+  WEDGING_DRAPEAU_COURT_SEQUENCE.slice(0, 6),
+  WEDGING_DRAPEAU_COURT_SEQUENCE.slice(6, 12),
+  WEDGING_DRAPEAU_COURT_SEQUENCE.slice(12, 18),
+];
+
 const renderDistanceLabel = (
   key: string,
   itemsByKey: Record<string, { slot: string; distance: string }[]>,
@@ -901,69 +940,86 @@ function WedgingDrapeauLongPreview({ onBack }: PreviewProps) {
               Saisie des 18 balles
             </h3>
             <p className="mt-1 text-sm text-[var(--muted)]">
-              Situations: A=30m, B=35m, C=40m, D=45m, E=50m, F=55m, G=60m,
-              H=65m, I=70m.
+              Situations: {renderWedgingDistanceLabel()}.
             </p>
           </div>
         </div>
-        <div className="mt-4 overflow-x-auto">
-          <table className="min-w-[1100px] w-full border-separate border-spacing-2">
-            <thead>
-              <tr>
-                <th className="text-left text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Balle
-                </th>
-                {WEDGING_DRAPEAU_LONG_SEQUENCE.map((slot, index) => (
-                  <th
-                    key={`ball-${index}`}
-                    className="text-center text-xs uppercase tracking-[0.2em] text-[var(--muted)]"
-                  >
-                    <span
-                      className={`font-semibold ${getSlotColorClass(
-                        slot,
-                        wedgingSlotColorClassByLetter
-                      )}`}
-                    >
-                      {index + 1}
-                    </span>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Situation
-                </td>
-                {WEDGING_DRAPEAU_LONG_SEQUENCE.map((slot, index) => (
-                  <td
-                    key={`situation-${index}`}
-                    className="text-center text-sm font-semibold"
-                  >
-                    <span className={getSlotColorClass(slot, wedgingSlotColorClassByLetter)}>
-                      {slot}
-                    </span>
-                  </td>
-                ))}
-              </tr>
-              <tr>
-                <td className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Score
-                </td>
-                {WEDGING_DRAPEAU_LONG_SEQUENCE.map((slot, index) => (
-                  <td key={`score-${index}`} className="min-w-[120px]">
-                    <span className="text-sm font-medium text-[var(--text)]">
-                      {attempts[index]
-                        ? getWedgingDrapeauLongResultLabel(
-                            attempts[index] as WedgingDrapeauLongResultValue
-                          )
-                        : "-"}
-                    </span>
-                  </td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
+        <div className="mt-4 space-y-4">
+          {WEDGING_DRAPEAU_LONG_SEQUENCE_GROUPS.map((group, groupIndex) => {
+            const offset = groupIndex * group.length;
+            return (
+              <div key={`group-${groupIndex}`} className="overflow-x-auto">
+                <table className="min-w-[720px] w-full border-separate border-spacing-2">
+                  <thead>
+                    <tr>
+                      <th className="text-left text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                        Balle
+                      </th>
+                      {group.map((slot, index) => (
+                        <th
+                          key={`ball-${groupIndex}-${index}`}
+                          className="text-center text-xs uppercase tracking-[0.2em] text-[var(--muted)]"
+                        >
+                          <span
+                            className={`font-semibold ${getSlotColorClass(
+                              slot,
+                              wedgingSlotColorClassByLetter
+                            )}`}
+                          >
+                            {offset + index + 1}
+                          </span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                        Situation
+                      </td>
+                      {group.map((slot, index) => (
+                        <td
+                          key={`situation-${groupIndex}-${index}`}
+                          className="text-center text-sm font-semibold"
+                        >
+                          <span
+                            className={getSlotColorClass(
+                              slot,
+                              wedgingSlotColorClassByLetter
+                            )}
+                          >
+                            {slot}
+                          </span>
+                        </td>
+                      ))}
+                    </tr>
+                    <tr>
+                      <td className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                        Score
+                      </td>
+                      {group.map((slot, index) => {
+                        const attemptIndex = offset + index;
+                        return (
+                          <td
+                            key={`score-${groupIndex}-${slot}-${index}`}
+                            className="min-w-[120px]"
+                          >
+                            <span className="text-sm font-medium text-[var(--text)]">
+                              {attempts[attemptIndex]
+                                ? getWedgingDrapeauLongResultLabel(
+                                    attempts[attemptIndex] as WedgingDrapeauLongResultValue
+                                  )
+                                : "-"}
+                            </span>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -1088,69 +1144,86 @@ function WedgingDrapeauCourtPreview({ onBack }: PreviewProps) {
               Saisie des 18 balles
             </h3>
             <p className="mt-1 text-sm text-[var(--muted)]">
-              Situations: A=30m, B=35m, C=40m, D=45m, E=50m, F=55m, G=60m,
-              H=65m, I=70m.
+              Situations: {renderWedgingDistanceLabel()}.
             </p>
           </div>
         </div>
-        <div className="mt-4 overflow-x-auto">
-          <table className="min-w-[1100px] w-full border-separate border-spacing-2">
-            <thead>
-              <tr>
-                <th className="text-left text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Balle
-                </th>
-                {WEDGING_DRAPEAU_COURT_SEQUENCE.map((slot, index) => (
-                  <th
-                    key={`ball-${index}`}
-                    className="text-center text-xs uppercase tracking-[0.2em] text-[var(--muted)]"
-                  >
-                    <span
-                      className={`font-semibold ${getSlotColorClass(
-                        slot,
-                        wedgingSlotColorClassByLetter
-                      )}`}
-                    >
-                      {index + 1}
-                    </span>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Situation
-                </td>
-                {WEDGING_DRAPEAU_COURT_SEQUENCE.map((slot, index) => (
-                  <td
-                    key={`situation-${index}`}
-                    className="text-center text-sm font-semibold"
-                  >
-                    <span className={getSlotColorClass(slot, wedgingSlotColorClassByLetter)}>
-                      {slot}
-                    </span>
-                  </td>
-                ))}
-              </tr>
-              <tr>
-                <td className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Score
-                </td>
-                {WEDGING_DRAPEAU_COURT_SEQUENCE.map((slot, index) => (
-                  <td key={`score-${index}`} className="min-w-[120px]">
-                    <span className="text-sm font-medium text-[var(--text)]">
-                      {attempts[index]
-                        ? getWedgingDrapeauCourtResultLabel(
-                            attempts[index] as WedgingDrapeauCourtResultValue
-                          )
-                        : "-"}
-                    </span>
-                  </td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
+        <div className="mt-4 space-y-4">
+          {WEDGING_DRAPEAU_COURT_SEQUENCE_GROUPS.map((group, groupIndex) => {
+            const offset = groupIndex * group.length;
+            return (
+              <div key={`group-${groupIndex}`} className="overflow-x-auto">
+                <table className="min-w-[720px] w-full border-separate border-spacing-2">
+                  <thead>
+                    <tr>
+                      <th className="text-left text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                        Balle
+                      </th>
+                      {group.map((slot, index) => (
+                        <th
+                          key={`ball-${groupIndex}-${index}`}
+                          className="text-center text-xs uppercase tracking-[0.2em] text-[var(--muted)]"
+                        >
+                          <span
+                            className={`font-semibold ${getSlotColorClass(
+                              slot,
+                              wedgingSlotColorClassByLetter
+                            )}`}
+                          >
+                            {offset + index + 1}
+                          </span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                        Situation
+                      </td>
+                      {group.map((slot, index) => (
+                        <td
+                          key={`situation-${groupIndex}-${index}`}
+                          className="text-center text-sm font-semibold"
+                        >
+                          <span
+                            className={getSlotColorClass(
+                              slot,
+                              wedgingSlotColorClassByLetter
+                            )}
+                          >
+                            {slot}
+                          </span>
+                        </td>
+                      ))}
+                    </tr>
+                    <tr>
+                      <td className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                        Score
+                      </td>
+                      {group.map((slot, index) => {
+                        const attemptIndex = offset + index;
+                        return (
+                          <td
+                            key={`score-${groupIndex}-${slot}-${index}`}
+                            className="min-w-[120px]"
+                          >
+                            <span className="text-sm font-medium text-[var(--text)]">
+                              {attempts[attemptIndex]
+                                ? getWedgingDrapeauCourtResultLabel(
+                                    attempts[attemptIndex] as WedgingDrapeauCourtResultValue
+                                  )
+                                : "-"}
+                            </span>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
         </div>
       </section>
 

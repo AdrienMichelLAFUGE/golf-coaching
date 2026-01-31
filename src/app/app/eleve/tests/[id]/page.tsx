@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../../_components/role-guard";
 import PelzResponsiveAccordion from "../../../_components/pelz-responsive-accordion";
 import PelzDiagramModal from "../../../_components/pelz-diagram-modal";
+import TestResultModal from "../../../_components/test-result-modal";
 import {
   PELZ_DIAGRAM_ALT_TEXT,
   PELZ_DIAGRAM_BY_SUBTEST,
@@ -139,6 +140,7 @@ export default function StudentTestDetailPage() {
   const [actionError, setActionError] = useState("");
   const [notice, setNotice] = useState("");
   const [diagramSubtest, setDiagramSubtest] = useState<PelzSubtestKey | null>(null);
+  const [resultModalOpen, setResultModalOpen] = useState(false);
 
   const isFinalized = assignment?.status === "finalized";
 
@@ -457,8 +459,13 @@ export default function StudentTestDetailPage() {
     setNotice(finalize ? "Test finalise." : "Sauvegarde terminee.");
     setSaving(false);
     if (finalize) {
-      setTimeout(() => router.refresh(), 200);
+      setResultModalOpen(true);
     }
+  };
+
+  const handleResultModalClose = () => {
+    setResultModalOpen(false);
+    router.refresh();
   };
 
   return (
@@ -690,6 +697,16 @@ export default function StudentTestDetailPage() {
         title={diagramMeta?.title ?? "Schema"}
         alt={diagramMeta?.alt ?? "Schema du sous-test"}
         diagramKey={diagramMeta?.diagramKey ?? null}
+      />
+      <TestResultModal
+        open={resultModalOpen}
+        onClose={handleResultModalClose}
+        title="Resultat du test"
+        description="Bravo ! Voici ton index final base sur le total de points."
+        items={[
+          { label: "Total points", value: totalPoints.toString() },
+          { label: "Index final", value: totalIndex?.toString() ?? "-" },
+        ]}
       />
     </RoleGuard>
   );
