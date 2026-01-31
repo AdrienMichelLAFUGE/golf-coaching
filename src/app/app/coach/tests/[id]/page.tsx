@@ -56,6 +56,77 @@ const distanceLabelByKey: Record<PelzSubtestKey, string> = {
   putt_court_1m: "A=1m, B=1m, C=1m, D=1m, E=1m",
   putt_court_2m: "A=2m, B=2m, C=2m, D=2m, E=2m",
 };
+const distanceItemsByKey: Record<PelzSubtestKey, { slot: string; distance: string }[]> = {
+  putt_long: [
+    { slot: "A", distance: "13m" },
+    { slot: "B", distance: "19m" },
+    { slot: "C", distance: "25m" },
+  ],
+  putt_moyen: [
+    { slot: "A", distance: "7m" },
+    { slot: "B", distance: "9m" },
+    { slot: "C", distance: "11m" },
+  ],
+  putt_pente: [
+    { slot: "A", distance: "4m" },
+    { slot: "B", distance: "6m" },
+    { slot: "C", distance: "8m" },
+    { slot: "D", distance: "10m" },
+    { slot: "E", distance: "12m" },
+  ],
+  putt_offensif: [
+    { slot: "A", distance: "3m" },
+    { slot: "B", distance: "4m" },
+    { slot: "C", distance: "5m" },
+    { slot: "D", distance: "6m" },
+    { slot: "E", distance: "7m" },
+  ],
+  putt_court_1m: [
+    { slot: "A", distance: "1m" },
+    { slot: "B", distance: "1m" },
+    { slot: "C", distance: "1m" },
+    { slot: "D", distance: "1m" },
+    { slot: "E", distance: "1m" },
+  ],
+  putt_court_2m: [
+    { slot: "A", distance: "2m" },
+    { slot: "B", distance: "2m" },
+    { slot: "C", distance: "2m" },
+    { slot: "D", distance: "2m" },
+    { slot: "E", distance: "2m" },
+  ],
+};
+const slotColorClassByLetter: Record<string, string> = {
+  A: "text-sky-300",
+  B: "text-amber-300",
+  C: "text-emerald-300",
+  D: "text-violet-300",
+  E: "text-rose-300",
+};
+
+const getSlotColorClass = (slot: string) =>
+  slotColorClassByLetter[slot] ?? "text-[var(--muted)]";
+
+const renderDistanceLabel = (key: PelzSubtestKey) => {
+  const items = distanceItemsByKey[key];
+  if (!items?.length) {
+    return distanceLabelByKey[key] ?? "";
+  }
+  return (
+    <span>
+      {items.map((item, index) => (
+        <span key={`${key}-${item.slot}`}>
+          <span className={`font-semibold ${getSlotColorClass(item.slot)}`}>
+            {item.slot}
+          </span>
+          <span className={getSlotColorClass(item.slot)}>=</span>
+          <span className={getSlotColorClass(item.slot)}>{item.distance}</span>
+          {index < items.length - 1 ? ", " : ""}
+        </span>
+      ))}
+    </span>
+  );
+};
 
 const formatDate = (value?: string | null) => {
   if (!value) return "-";
@@ -243,7 +314,7 @@ export default function CoachTestDetailPage() {
           <div>
             <h3 className="text-lg font-semibold text-[var(--text)]">{subtest.label}</h3>
             <p className="mt-1 text-sm text-[var(--muted)]">
-              Distances: {distanceLabelByKey[subtest.key] ?? subtest.distanceLabel}
+              Distances: {renderDistanceLabel(subtest.key)}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -261,14 +332,19 @@ export default function CoachTestDetailPage() {
           </div>
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <div className="mt-4 grid gap-3 md:grid-flow-col md:grid-cols-2 md:grid-rows-5">
           {subtest.sequence.map((slot, index) => (
             <div
               key={`${subtest.key}-${index}`}
               className="flex flex-col gap-2 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--text)]"
             >
               <span className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                Tentative {index + 1} - {slot}
+                Tentative{" "}
+                <span className={`font-semibold ${getSlotColorClass(slot)}`}>
+                  {index + 1}
+                </span>{" "}
+                -{" "}
+                <span className={`font-semibold ${getSlotColorClass(slot)}`}>{slot}</span>
               </span>
               <p className="text-sm">
                 Resultat:{" "}
@@ -382,8 +458,7 @@ export default function CoachTestDetailPage() {
                       {subtest.label}
                     </h3>
                     <p className="mt-1 text-sm text-[var(--muted)]">
-                      Distances:{" "}
-                      {distanceLabelByKey[subtest.key] ?? subtest.distanceLabel}
+                      Distances: {renderDistanceLabel(subtest.key)}
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -401,14 +476,21 @@ export default function CoachTestDetailPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <div className="mt-4 grid gap-3 md:grid-flow-col md:grid-cols-2 md:grid-rows-5">
                   {subtest.sequence.map((slot, index) => (
                     <div
                       key={`${subtest.key}-${index}`}
                       className="flex flex-col gap-2 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--text)]"
                     >
                       <span className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                        Tentative {index + 1} • {slot}
+                        Tentative{" "}
+                        <span className={`font-semibold ${getSlotColorClass(slot)}`}>
+                          {index + 1}
+                        </span>{" "}
+                        -{" "}
+                        <span className={`font-semibold ${getSlotColorClass(slot)}`}>
+                          {slot}
+                        </span>
                       </span>
                       <p className="text-sm">
                         Resultat:{" "}
