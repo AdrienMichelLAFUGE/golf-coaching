@@ -294,45 +294,6 @@ describeIf("RLS integration: student shares", () => {
       });
       if (shareError) throw shareError;
 
-      const { error: signInError } = await viewerClient.auth.signInWithPassword({
-        email: viewerEmail,
-        password,
-      });
-      if (signInError) throw signInError;
-
-      const { data: beforeData, error: beforeError } = await viewerClient
-        .from("students")
-        .select("id")
-        .eq("id", studentId);
-
-      expect(beforeError).toBeNull();
-      expect(beforeData ?? []).toHaveLength(0);
-
-      const { error: activateError } = await admin
-        .from("student_shares")
-        .update({ status: "active" })
-        .eq("student_id", studentId)
-        .eq("viewer_email", viewerEmail);
-
-      expect(activateError).toBeNull();
-
-      const { data: afterData, error: afterError } = await viewerClient
-        .from("students")
-        .select("id")
-        .eq("id", studentId);
-
-      expect(afterError).toBeNull();
-      expect(afterData ?? []).toHaveLength(1);
-
-      const { data: updateData, error: updateError } = await viewerClient
-        .from("students")
-        .update({ first_name: "Hack" })
-        .eq("id", studentId)
-        .select("id");
-
-      expect(updateError).toBeNull();
-      expect(updateData ?? []).toHaveLength(0);
-
       const now = new Date().toISOString();
       const { data: assignment, error: assignmentError } = await admin
         .from("normalized_test_assignments")
@@ -351,6 +312,81 @@ describeIf("RLS integration: student shares", () => {
 
       expect(assignmentError).toBeNull();
       assignmentId = assignment?.id ?? "";
+
+      const { error: signInError } = await viewerClient.auth.signInWithPassword({
+        email: viewerEmail,
+        password,
+      });
+      if (signInError) throw signInError;
+
+      const { data: beforeData, error: beforeError } = await viewerClient
+        .from("students")
+        .select("id")
+        .eq("id", studentId);
+
+      expect(beforeError).toBeNull();
+      expect(beforeData ?? []).toHaveLength(0);
+
+      const { data: beforeAssignments, error: beforeAssignmentsError } = await viewerClient
+        .from("normalized_test_assignments")
+        .select("id")
+        .eq("id", assignmentId);
+
+      expect(beforeAssignmentsError).toBeNull();
+      expect(beforeAssignments ?? []).toHaveLength(0);
+
+      const { error: activateError } = await admin
+        .from("student_shares")
+        .update({ status: "active" })
+        .eq("student_id", studentId)
+        .eq("viewer_email", viewerEmail);
+
+      expect(activateError).toBeNull();
+
+      const { data: afterData, error: afterError } = await viewerClient
+        .from("students")
+        .select("id")
+        .eq("id", studentId);
+
+      expect(afterError).toBeNull();
+      expect(afterData ?? []).toHaveLength(1);
+
+      const { data: afterAssignments, error: afterAssignmentsError } = await viewerClient
+        .from("normalized_test_assignments")
+        .select("id")
+        .eq("id", assignmentId);
+
+      expect(afterAssignmentsError).toBeNull();
+      expect(afterAssignments ?? []).toHaveLength(1);
+
+      const { error: insertAttemptError } = await admin
+        .from("normalized_test_attempts")
+        .insert({
+          assignment_id: assignmentId,
+          subtest_key: "approche_levee",
+          attempt_index: 1,
+          result_value: "holed",
+          points: 4,
+        });
+
+      expect(insertAttemptError).toBeNull();
+
+      const { data: afterAttempts, error: afterAttemptsError } = await viewerClient
+        .from("normalized_test_attempts")
+        .select("id")
+        .eq("assignment_id", assignmentId);
+
+      expect(afterAttemptsError).toBeNull();
+      expect(afterAttempts ?? []).toHaveLength(1);
+
+      const { data: updateData, error: updateError } = await viewerClient
+        .from("students")
+        .update({ first_name: "Hack" })
+        .eq("id", studentId)
+        .select("id");
+
+      expect(updateError).toBeNull();
+      expect(updateData ?? []).toHaveLength(0);
 
       const { error: attemptError } = await viewerClient
         .from("normalized_test_attempts")

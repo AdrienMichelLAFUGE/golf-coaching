@@ -73,6 +73,59 @@ begin
   end if;
 end $$;
 
+-- Explicitly deny writes from authenticated clients (service role bypasses RLS)
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'normalized_test_assignments'
+      and policyname = 'normalized_test_assignments_no_insert'
+  ) then
+    create policy normalized_test_assignments_no_insert
+      on public.normalized_test_assignments
+      for insert
+      to authenticated
+      with check (false);
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'normalized_test_assignments'
+      and policyname = 'normalized_test_assignments_no_update'
+  ) then
+    create policy normalized_test_assignments_no_update
+      on public.normalized_test_assignments
+      for update
+      to authenticated
+      using (false)
+      with check (false);
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'normalized_test_assignments'
+      and policyname = 'normalized_test_assignments_no_delete'
+  ) then
+    create policy normalized_test_assignments_no_delete
+      on public.normalized_test_assignments
+      for delete
+      to authenticated
+      using (false);
+  end if;
+end $$;
+
 do $$
 begin
   if not exists (
@@ -97,6 +150,57 @@ begin
   end if;
 end $$;
 
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'normalized_test_attempts'
+      and policyname = 'normalized_test_attempts_no_insert'
+  ) then
+    create policy normalized_test_attempts_no_insert
+      on public.normalized_test_attempts
+      for insert
+      to authenticated
+      with check (false);
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'normalized_test_attempts'
+      and policyname = 'normalized_test_attempts_no_update'
+  ) then
+    create policy normalized_test_attempts_no_update
+      on public.normalized_test_attempts
+      for update
+      to authenticated
+      using (false)
+      with check (false);
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'normalized_test_attempts'
+      and policyname = 'normalized_test_attempts_no_delete'
+  ) then
+    create policy normalized_test_attempts_no_delete
+      on public.normalized_test_attempts
+      for delete
+      to authenticated
+      using (false);
+  end if;
+end $$;
 do $$
 begin
   if not exists (
