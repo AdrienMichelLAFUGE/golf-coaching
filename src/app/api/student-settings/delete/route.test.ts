@@ -14,7 +14,8 @@ const buildRequest = (payload: unknown) =>
   ({
     json: async () => payload,
     headers: {
-      get: (key: string) => (key.toLowerCase() === "authorization" ? "Bearer token" : null),
+      get: (key: string) =>
+        key.toLowerCase() === "authorization" ? "Bearer token" : null,
     },
   }) as unknown as Request;
 

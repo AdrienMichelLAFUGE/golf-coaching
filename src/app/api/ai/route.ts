@@ -500,8 +500,9 @@ const extractAxes = (response: {
 };
 
 export async function POST(request: Request) {
-  let recordFailure: ((statusCode: number, errorType: ErrorType) => Promise<void>) | null =
-    null;
+  let recordFailure:
+    | ((statusCode: number, errorType: ErrorType) => Promise<void>)
+    | null = null;
   try {
     const supabase = createSupabaseServerClientFromRequest(request);
     const admin = createSupabaseAdminClient();

@@ -14,6 +14,7 @@ type CoachUpdatePayload = {
   ai_enabled?: boolean;
   tpi_enabled?: boolean;
   radar_enabled?: boolean;
+  coaching_dynamic_enabled?: boolean;
   ai_model?: string | null;
 };
 
@@ -22,6 +23,7 @@ const coachUpdateSchema = z.object({
   ai_enabled: z.boolean().optional(),
   tpi_enabled: z.boolean().optional(),
   radar_enabled: z.boolean().optional(),
+  coaching_dynamic_enabled: z.boolean().optional(),
   ai_model: z.string().nullable().optional(),
 });
 
@@ -53,7 +55,9 @@ export async function GET(request: Request) {
 
   const { data: organizations, error: orgError } = await auth.admin
     .from("organizations")
-    .select("id, name, ai_enabled, tpi_enabled, radar_enabled, ai_model");
+    .select(
+      "id, name, ai_enabled, tpi_enabled, radar_enabled, coaching_dynamic_enabled, ai_model"
+    );
 
   if (orgError) {
     return NextResponse.json({ error: orgError.message }, { status: 500 });
@@ -97,6 +101,7 @@ export async function GET(request: Request) {
     ai_enabled: org.ai_enabled ?? false,
     tpi_enabled: org.tpi_enabled ?? false,
     radar_enabled: org.radar_enabled ?? false,
+    coaching_dynamic_enabled: org.coaching_dynamic_enabled ?? false,
     ai_model: org.ai_model ?? "gpt-5-mini",
     owner: ownerByOrg.get(org.id) ?? null,
   }));
@@ -128,6 +133,9 @@ export async function PATCH(request: Request) {
   }
   if (typeof payload.radar_enabled === "boolean") {
     updates.radar_enabled = payload.radar_enabled;
+  }
+  if (typeof payload.coaching_dynamic_enabled === "boolean") {
+    updates.coaching_dynamic_enabled = payload.coaching_dynamic_enabled;
   }
   if (typeof payload.ai_model === "string") {
     updates.ai_model = payload.ai_model.trim() || null;

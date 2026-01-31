@@ -359,7 +359,13 @@ export async function POST(req: Request) {
       await admin.from("tpi_reports").update({ status: "error" }).eq("id", reportId);
       console.error("TPI PDF verify error:", error);
       await cleanupOpenAiFile();
-      await recordUsage("tpi_verify", verifyUsage, Date.now() - verifyStartedAt, 500, "exception");
+      await recordUsage(
+        "tpi_verify",
+        verifyUsage,
+        Date.now() - verifyStartedAt,
+        500,
+        "exception"
+      );
       return Response.json(
         { error: "Verification TPI impossible. Reessaie avec le PDF TPI Pro." },
         { status: 500 }

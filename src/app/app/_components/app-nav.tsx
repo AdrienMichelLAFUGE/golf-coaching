@@ -43,6 +43,7 @@ export default function AppNav() {
         title: "Eleve",
         items: [
           { label: "Dashboard eleve", href: "/app/eleve" },
+          { label: "Tests", href: "/app/eleve/tests" },
           { label: "Rapports", href: "/app/eleve/rapports" },
           { label: "Parametres", href: "/app/eleve/parametres" },
         ],
@@ -53,6 +54,7 @@ export default function AppNav() {
         items: [
           { label: "Dashboard", href: "/app/coach" },
           { label: "Eleves", href: "/app/coach/eleves" },
+          { label: "Tests", href: "/app/coach/tests" },
           { label: "Rapports", href: "/app/coach/rapports" },
           { label: "Parametres", href: "/app/coach/parametres" },
         ],
@@ -134,6 +136,16 @@ export default function AppNav() {
         </svg>
       );
     }
+    if (href === "/app/coach/tests") {
+      return (
+        <svg viewBox="0 0 24 24" {...sharedProps}>
+          <path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+          <path d="M9 7h6" />
+          <path d="M9 11h6" />
+          <path d="M9 15h4" />
+        </svg>
+      );
+    }
     if (href === "/app/coach/rapports/nouveau") {
       return (
         <svg viewBox="0 0 24 24" {...sharedProps}>
@@ -165,6 +177,16 @@ export default function AppNav() {
           <path d="M14 3v5h5" />
           <path d="M8 13h8" />
           <path d="M8 17h5" />
+        </svg>
+      );
+    }
+    if (href === "/app/eleve/tests") {
+      return (
+        <svg viewBox="0 0 24 24" {...sharedProps}>
+          <path d="M5 4h10a3 3 0 0 1 3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
+          <path d="M9 4V2h6v2" />
+          <path d="M7 10h10" />
+          <path d="M7 14h7" />
         </svg>
       );
     }

@@ -737,7 +737,13 @@ export async function POST(req: Request) {
   try {
     let parsed = parseAutoResponse(text);
     if (!isValidSelection(parsed)) {
-      await recordUsage("radar_auto", usage, Date.now() - callStartedAt, 500, "exception");
+      await recordUsage(
+        "radar_auto",
+        usage,
+        Date.now() - callStartedAt,
+        500,
+        "exception"
+      );
       callStartedAt = Date.now();
       response = await callAuto(retryHint);
       usage = response.usage ?? null;

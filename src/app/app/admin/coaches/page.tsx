@@ -11,6 +11,7 @@ type OrganizationRow = {
   ai_enabled: boolean;
   tpi_enabled: boolean;
   radar_enabled: boolean;
+  coaching_dynamic_enabled: boolean;
   ai_model: string;
   owner: { id: string; full_name: string | null; email: string | null } | null;
 };
@@ -155,6 +156,7 @@ export default function AdminCoachesPage() {
         ai_enabled: patch.ai_enabled,
         tpi_enabled: patch.tpi_enabled,
         radar_enabled: patch.radar_enabled,
+        coaching_dynamic_enabled: patch.coaching_dynamic_enabled,
         ai_model: patch.ai_model,
       }),
     });
@@ -174,6 +176,8 @@ export default function AdminCoachesPage() {
               ai_enabled: patch.ai_enabled ?? org.ai_enabled,
               tpi_enabled: patch.tpi_enabled ?? org.tpi_enabled,
               radar_enabled: patch.radar_enabled ?? org.radar_enabled,
+              coaching_dynamic_enabled:
+                patch.coaching_dynamic_enabled ?? org.coaching_dynamic_enabled,
               ai_model: patch.ai_model ?? org.ai_model,
             }
           : org
@@ -307,6 +311,22 @@ export default function AdminCoachesPage() {
                       }`}
                     >
                       {org.radar_enabled ? "Datas on" : "Datas off"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={savingId === org.id}
+                      onClick={() =>
+                        handleUpdate(org.id, {
+                          coaching_dynamic_enabled: !org.coaching_dynamic_enabled,
+                        })
+                      }
+                      className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide transition ${
+                        org.coaching_dynamic_enabled
+                          ? "border-cyan-300/30 bg-cyan-400/10 text-cyan-200 hover:bg-cyan-400/20"
+                          : "border-white/10 bg-white/5 text-[var(--muted)] hover:bg-white/10"
+                      }`}
+                    >
+                      {org.coaching_dynamic_enabled ? "Coaching on" : "Coaching off"}
                     </button>
                   </div>
                   <div>

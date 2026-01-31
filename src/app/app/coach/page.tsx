@@ -163,6 +163,12 @@ export default function CoachDashboardPage() {
                 Gerer les eleves
               </Link>
               <Link
+                href="/app/coach/tests"
+                className="block rounded-xl border border-white/5 bg-white/5 px-4 py-3 transition hover:border-white/20"
+              >
+                Tests normalises
+              </Link>
+              <Link
                 href="/app/coach/rapports/nouveau"
                 className="block rounded-xl border border-white/5 bg-white/5 px-4 py-3 transition hover:border-white/20"
               >

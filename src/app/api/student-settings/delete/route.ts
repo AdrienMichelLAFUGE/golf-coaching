@@ -158,10 +158,9 @@ export async function POST(request: Request) {
   }
 
   const authHeader = request.headers.get("authorization");
-  const token =
-    authHeader?.toLowerCase().startsWith("bearer ")
-      ? authHeader.slice(7)
-      : authHeader;
+  const token = authHeader?.toLowerCase().startsWith("bearer ")
+    ? authHeader.slice(7)
+    : authHeader;
   if (token) {
     await admin.auth.admin.signOut(token, "global");
   }

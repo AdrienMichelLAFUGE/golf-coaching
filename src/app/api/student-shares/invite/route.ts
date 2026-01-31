@@ -62,10 +62,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
   if (!student.email) {
-    return NextResponse.json(
-      { error: "Email eleve manquant." },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Email eleve manquant." }, { status: 400 });
   }
 
   const now = new Date().toISOString();

@@ -364,7 +364,10 @@ export default function AdminAnalyticsPage() {
                         <tbody>
                           {sortedEndpoints.length === 0 ? (
                             <tr>
-                              <td colSpan={6} className="py-3 text-sm text-[var(--muted)]">
+                              <td
+                                colSpan={6}
+                                className="py-3 text-sm text-[var(--muted)]"
+                              >
                                 Aucun endpoint.
                               </td>
                             </tr>
@@ -416,7 +419,10 @@ export default function AdminAnalyticsPage() {
                         <tbody>
                           {sortedCoaches.length === 0 ? (
                             <tr>
-                              <td colSpan={5} className="py-3 text-sm text-[var(--muted)]">
+                              <td
+                                colSpan={5}
+                                className="py-3 text-sm text-[var(--muted)]"
+                              >
                                 Aucun coach.
                               </td>
                             </tr>
@@ -464,7 +470,10 @@ export default function AdminAnalyticsPage() {
                         <tbody>
                           {sortedOrgs.length === 0 ? (
                             <tr>
-                              <td colSpan={4} className="py-3 text-sm text-[var(--muted)]">
+                              <td
+                                colSpan={4}
+                                className="py-3 text-sm text-[var(--muted)]"
+                              >
                                 Aucune organisation.
                               </td>
                             </tr>
@@ -493,7 +502,9 @@ export default function AdminAnalyticsPage() {
             <section className="space-y-6">
               <div className="panel rounded-2xl p-6">
                 <div className="flex items-center justify-between gap-2">
-                  <h3 className="text-lg font-semibold text-[var(--text)]">Performance</h3>
+                  <h3 className="text-lg font-semibold text-[var(--text)]">
+                    Performance
+                  </h3>
                   <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
                     Par endpoint
                   </p>
@@ -602,7 +613,10 @@ export default function AdminAnalyticsPage() {
                         </tr>
                       ) : (
                         performanceRows.map((row) => (
-                          <tr key={`${row.endpoint}-slow`} className="border-b border-white/5">
+                          <tr
+                            key={`${row.endpoint}-slow`}
+                            className="border-b border-white/5"
+                          >
                             <td className="py-2 text-[var(--text)]">
                               {resolveEndpointLabel(row.endpoint)}
                             </td>
@@ -643,7 +657,10 @@ export default function AdminAnalyticsPage() {
                         </tr>
                       ) : (
                         errorSorted.map((row) => (
-                          <tr key={`${row.endpoint}-error`} className="border-b border-white/5">
+                          <tr
+                            key={`${row.endpoint}-error`}
+                            className="border-b border-white/5"
+                          >
                             <td className="py-2 text-[var(--text)]">
                               {resolveEndpointLabel(row.endpoint)}
                             </td>
@@ -666,5 +683,3 @@ export default function AdminAnalyticsPage() {
     </AdminGuard>
   );
 }
-
-

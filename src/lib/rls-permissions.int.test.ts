@@ -167,17 +167,21 @@ describeIf("RLS integration: student shares", () => {
       }
       viewerOrgId = viewerOrg.id as string;
 
-      const { data: ownerUser, error: ownerError } = await admin.auth.admin.createUser(
-        { email: ownerEmail, password, email_confirm: true }
-      );
+      const { data: ownerUser, error: ownerError } = await admin.auth.admin.createUser({
+        email: ownerEmail,
+        password,
+        email_confirm: true,
+      });
       if (ownerError || !ownerUser?.user) {
         throw ownerError ?? new Error("Owner user creation failed.");
       }
       ownerId = ownerUser.user.id;
 
-      const { data: viewerUser, error: viewerError } = await admin.auth.admin.createUser(
-        { email: viewerEmail, password, email_confirm: true }
-      );
+      const { data: viewerUser, error: viewerError } = await admin.auth.admin.createUser({
+        email: viewerEmail,
+        password,
+        email_confirm: true,
+      });
       if (viewerError || !viewerUser?.user) {
         throw viewerError ?? new Error("Viewer user creation failed.");
       }

@@ -301,9 +301,7 @@ export async function GET(request: Request) {
       { full_name: profile.full_name ?? null, org_id: profile.org_id },
     ])
   );
-  const orgById = new Map(
-    (orgsResult.data ?? []).map((org) => [org.id, org.name ?? ""])
-  );
+  const orgById = new Map((orgsResult.data ?? []).map((org) => [org.id, org.name ?? ""]));
 
   const costSeries = Array.from(costSeriesMap.values()).sort((a, b) =>
     a.label.localeCompare(b.label)
@@ -354,9 +352,7 @@ export async function GET(request: Request) {
     .map((entry) => {
       const p50 = percentile(entry.durations, 0.5);
       const p95 = percentile(entry.durations, 0.95);
-      const errorRatePct = entry.requests
-        ? (entry.errorCount / entry.requests) * 100
-        : 0;
+      const errorRatePct = entry.requests ? (entry.errorCount / entry.requests) * 100 : 0;
       return {
         endpoint: entry.endpoint,
         requests: entry.requests,
@@ -394,4 +390,3 @@ export async function GET(request: Request) {
     },
   });
 }
-

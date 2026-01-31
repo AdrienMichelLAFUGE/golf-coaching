@@ -208,9 +208,7 @@ export default function CoachStudentDetailPage() {
   const [shareStatus, setShareStatus] = useState<ShareStatus | null>(null);
   const [ownerShares, setOwnerShares] = useState<ShareEntry[]>([]);
   const [ownerShareError, setOwnerShareError] = useState("");
-  const [ownerShareRevokingId, setOwnerShareRevokingId] = useState<string | null>(
-    null
-  );
+  const [ownerShareRevokingId, setOwnerShareRevokingId] = useState<string | null>(null);
   const locale = organization?.locale ?? "fr-FR";
   const timezone = organization?.timezone ?? "Europe/Paris";
   const aiEnabled = organization?.ai_enabled ?? false;
@@ -1217,9 +1215,7 @@ export default function CoachStudentDetailPage() {
                 <h2 className="text-2xl font-semibold text-[var(--text)]">
                   {student.first_name} {student.last_name ?? ""}
                 </h2>
-                <p className="mt-1 text-sm text-[var(--muted)]">
-                  {student.email || "-"}
-                </p>
+                <p className="mt-1 text-sm text-[var(--muted)]">{student.email || "-"}</p>
               </div>
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs uppercase tracking-wide">
@@ -1282,9 +1278,7 @@ export default function CoachStudentDetailPage() {
                       disabled={ownerShareRevokingId === share.id}
                       className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-red-300 transition hover:text-red-200 disabled:opacity-60"
                     >
-                      {ownerShareRevokingId === share.id
-                        ? "Revocation..."
-                        : "Revoquer"}
+                      {ownerShareRevokingId === share.id ? "Revocation..." : "Revoquer"}
                     </button>
                   </div>
                 ))}

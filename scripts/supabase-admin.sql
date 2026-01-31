@@ -64,7 +64,8 @@ alter table public.ai_usage enable row level security;
 -- Feature access flags (add-ons)
 alter table public.organizations
   add column if not exists tpi_enabled boolean not null default false,
-  add column if not exists radar_enabled boolean not null default false;
+  add column if not exists radar_enabled boolean not null default false,
+  add column if not exists coaching_dynamic_enabled boolean not null default false;
 
 -- Students metadata
 alter table public.students

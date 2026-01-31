@@ -258,9 +258,7 @@ export default function StudentSettingsPage() {
         </section>
       ) : student?.deleted_at ? (
         <section className="panel rounded-2xl p-6">
-          <p className="text-sm text-[var(--muted)]">
-            Ton compte est deja anonymise.
-          </p>
+          <p className="text-sm text-[var(--muted)]">Ton compte est deja anonymise.</p>
         </section>
       ) : (
         <div className="space-y-6">
@@ -409,8 +407,8 @@ export default function StudentSettingsPage() {
           <section className="panel rounded-2xl border border-rose-300/30 bg-rose-400/10 p-6">
             <h3 className="text-lg font-semibold text-rose-100">Supprimer mon compte</h3>
             <p className="mt-2 text-sm text-rose-100/80">
-              Cette action est definitive. Ton compte sera anonymise immediatement.
-              Tes contenus restent accessibles a ton coach.
+              Cette action est definitive. Ton compte sera anonymise immediatement. Tes
+              contenus restent accessibles a ton coach.
             </p>
             <div className="mt-4 grid gap-4 md:grid-cols-[1fr_auto]">
               <div>
