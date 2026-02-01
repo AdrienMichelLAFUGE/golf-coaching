@@ -27,7 +27,7 @@ type StudentForm = {
 };
 
 export default function CoachStudentsPage() {
-  const { userEmail } = useProfile();
+  const { userEmail, organization, isWorkspacePremium, workspaceType } = useProfile();
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -55,6 +55,28 @@ export default function CoachStudentsPage() {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
   const [sharedStudentIds, setSharedStudentIds] = useState<string[]>([]);
+  const isOrgReadOnly = organization?.workspace_type === "org" && !isWorkspacePremium;
+  const currentWorkspaceType = workspaceType ?? "personal";
+  const workspaceName = organization?.name ?? "Organisation";
+  const modeLabel =
+    currentWorkspaceType === "org" ? `Organisation : ${workspaceName}` : "Espace personnel";
+  const modeBadgeTone =
+    currentWorkspaceType === "org"
+      ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
+      : "border-sky-300/30 bg-sky-400/10 text-sky-100";
+
+  const openWorkspaceSwitcher = () => {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(new CustomEvent("gc:open-workspace-switcher"));
+  };
+
+  const scrollToForm = () => {
+    if (typeof window === "undefined") return;
+    document.getElementById("student-create-form")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  };
 
   const sharedStudentSet = useMemo(() => new Set(sharedStudentIds), [sharedStudentIds]);
 
@@ -161,6 +183,12 @@ export default function CoachStudentsPage() {
     setCreating(true);
     setError("");
 
+    if (isOrgReadOnly) {
+      setError("Lecture seule: premium requis pour ajouter un eleve.");
+      setCreating(false);
+      return;
+    }
+
     const firstName = form.first_name.trim();
     const lastName = form.last_name.trim();
     const email = form.email.trim();
@@ -178,20 +206,49 @@ export default function CoachStudentsPage() {
       return;
     }
 
-    const { error: insertError } = await supabase.from("students").insert([
-      {
-        org_id: orgId,
-        first_name: firstName,
-        last_name: lastName || null,
-        email: email || null,
-        playing_hand: playingHand,
-      },
-    ]);
+    if (organization?.workspace_type === "org") {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        setError("Session invalide.");
+        setCreating(false);
+        return;
+      }
+      const response = await fetch("/api/orgs/students", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          first_name: firstName,
+          last_name: lastName || null,
+          email: email || null,
+          playing_hand: playingHand || null,
+        }),
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        setError(payload.error ?? "Creation impossible.");
+        setCreating(false);
+        return;
+      }
+    } else {
+      const { error: insertError } = await supabase.from("students").insert([
+        {
+          org_id: orgId,
+          first_name: firstName,
+          last_name: lastName || null,
+          email: email || null,
+          playing_hand: playingHand,
+        },
+      ]);
 
-    if (insertError) {
-      setError(insertError.message);
-      setCreating(false);
-      return;
+      if (insertError) {
+        setError(insertError.message);
+        setCreating(false);
+        return;
+      }
     }
 
     setForm({ first_name: "", last_name: "", email: "", playing_hand: "" });
@@ -200,6 +257,10 @@ export default function CoachStudentsPage() {
   };
 
   const handleInviteStudent = async (student: Student) => {
+    if (isOrgReadOnly) {
+      setInviteError("Lecture seule: premium requis pour inviter un eleve.");
+      return;
+    }
     if (!student.email) {
       setInviteError("Ajoute un email pour envoyer une invitation.");
       return;
@@ -241,6 +302,10 @@ export default function CoachStudentsPage() {
   };
 
   const handleDeleteStudent = async (student: Student) => {
+    if (isOrgReadOnly) {
+      setInviteError("Lecture seule: premium requis pour supprimer un eleve.");
+      return;
+    }
     const confirmed = window.confirm(
       `Supprimer ${student.first_name} ${student.last_name ?? ""} ?`
     );
@@ -296,6 +361,10 @@ export default function CoachStudentsPage() {
 
   const handleUpdateStudent = async () => {
     if (!editingStudent) return;
+    if (isOrgReadOnly) {
+      setEditError("Lecture seule: premium requis pour modifier un eleve.");
+      return;
+    }
     const firstName = editForm.first_name.trim();
     const lastName = editForm.last_name.trim();
     const email = editForm.email.trim();
@@ -348,12 +417,18 @@ export default function CoachStudentsPage() {
               <p className="mt-2 text-sm text-[var(--muted)]">
                 Recherche rapide, suivi et historique des rapports.
               </p>
+              <div
+                className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
+              >
+                Vous travaillez dans {modeLabel}
+              </div>
             </div>
           </div>
         </section>
 
         <section className="panel-soft rounded-2xl p-5">
           <form
+            id="student-create-form"
             className="grid gap-4 md:grid-cols-[1fr_1fr_1fr_0.8fr_auto]"
             onSubmit={handleCreateStudent}
           >
@@ -371,6 +446,7 @@ export default function CoachStudentsPage() {
                   }))
                 }
                 placeholder="Camille"
+                disabled={creating || isOrgReadOnly}
                 className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
               />
             </div>
@@ -388,6 +464,7 @@ export default function CoachStudentsPage() {
                   }))
                 }
                 placeholder="Dupont"
+                disabled={creating || isOrgReadOnly}
                 className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
               />
             </div>
@@ -402,6 +479,7 @@ export default function CoachStudentsPage() {
                   setForm((prev) => ({ ...prev, email: event.target.value }))
                 }
                 placeholder="camille@email.com"
+                disabled={creating || isOrgReadOnly}
                 className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
               />
             </div>
@@ -417,6 +495,7 @@ export default function CoachStudentsPage() {
                     playing_hand: event.target.value as "" | "left" | "right",
                   }))
                 }
+                disabled={creating || isOrgReadOnly}
                 className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
               >
                 <option value="">Non precise</option>
@@ -426,12 +505,21 @@ export default function CoachStudentsPage() {
             </div>
             <button
               type="submit"
-              disabled={creating}
+              disabled={creating || isOrgReadOnly}
               className="self-end rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
             >
               {creating ? "Ajout..." : "Ajouter"}
             </button>
           </form>
+          <p className="mt-3 text-xs text-[var(--muted)]">
+            Cet eleve sera cree dans :{" "}
+            <span className="text-[var(--text)]">{modeLabel}</span>
+          </p>
+          {isOrgReadOnly ? (
+            <p className="mt-3 text-sm text-amber-300">
+              Freemium: lecture seule en organisation.
+            </p>
+          ) : null}
           {error ? <p className="mt-3 text-sm text-red-400">{error}</p> : null}
           {inviteError ? (
             <p className="mt-3 text-sm text-red-400">{inviteError}</p>
@@ -471,13 +559,41 @@ export default function CoachStudentsPage() {
                 Chargement des eleves...
               </div>
             ) : filteredStudents.length === 0 ? (
-              <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
-                Aucun eleve pour le moment.
+              <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-4 text-sm">
+                <p className="text-[var(--text)]">
+                  {currentWorkspaceType === "org"
+                    ? "Aucun eleve dans cette organisation."
+                    : "Vous n avez aucun eleve personnel."}
+                </p>
+                <p className="mt-1 text-xs text-[var(--muted)]">
+                  Vous etes en {currentWorkspaceType === "org" ? "MODE ORGANISATION" : "MODE PERSO"}
+                  .
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={scrollToForm}
+                    disabled={isOrgReadOnly && currentWorkspaceType === "org"}
+                    className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20 disabled:opacity-60"
+                  >
+                    {currentWorkspaceType === "org"
+                      ? "Creer un eleve pour l ecole"
+                      : "Ajouter un eleve personnel"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openWorkspaceSwitcher}
+                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                  >
+                    Changer de mode
+                  </button>
+                </div>
               </div>
             ) : (
               filteredStudents.map((student) => {
                 const inviteDisabled = Boolean(student.activated_at);
                 const isShared = sharedStudentSet.has(student.id);
+                const isReadOnlyAction = isShared || isOrgReadOnly;
                 const inviteLabel = inviteDisabled
                   ? "Inviter"
                   : invitingId === student.id
@@ -580,12 +696,12 @@ export default function CoachStudentsPage() {
                             <Link
                               href={`/app/coach/rapports/nouveau?studentId=${student.id}`}
                               onClick={(event) => {
-                                if (isShared) event.preventDefault();
+                                if (isReadOnlyAction) event.preventDefault();
                                 setMenuOpenId(null);
                               }}
-                              aria-disabled={isShared}
+                              aria-disabled={isReadOnlyAction}
                               className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide transition ${
-                                isShared
+                                isReadOnlyAction
                                   ? "cursor-not-allowed text-[var(--muted)]"
                                   : "text-[var(--text)] hover:bg-white/10"
                               }`}
@@ -596,9 +712,9 @@ export default function CoachStudentsPage() {
                               type="button"
                               role="menuitem"
                               onClick={() => handleMenuEdit(student)}
-                              disabled={isShared}
+                              disabled={isReadOnlyAction}
                               className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide transition ${
-                                isShared
+                                isReadOnlyAction
                                   ? "cursor-not-allowed text-[var(--muted)]"
                                   : "text-[var(--text)] hover:bg-white/10"
                               }`}
@@ -617,10 +733,12 @@ export default function CoachStudentsPage() {
                               role="menuitem"
                               onClick={() => handleMenuInvite(student)}
                               disabled={
-                                isShared || inviteDisabled || invitingId === student.id
+                                isReadOnlyAction ||
+                                inviteDisabled ||
+                                invitingId === student.id
                               }
                               className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide transition ${
-                                inviteDisabled || isShared
+                                inviteDisabled || isReadOnlyAction
                                   ? "cursor-not-allowed text-[var(--muted)]"
                                   : "text-[var(--text)] hover:bg-white/10"
                               }`}
@@ -631,7 +749,7 @@ export default function CoachStudentsPage() {
                               type="button"
                               role="menuitem"
                               onClick={() => handleMenuDelete(student)}
-                              disabled={isShared || deletingId === student.id}
+                              disabled={isReadOnlyAction || deletingId === student.id}
                               className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:bg-white/10 hover:text-red-200 disabled:opacity-60"
                             >
                               {deletingId === student.id ? "Suppression..." : "Supprimer"}
@@ -692,6 +810,7 @@ export default function CoachStudentsPage() {
                         first_name: event.target.value,
                       }))
                     }
+                    disabled={editSaving || isOrgReadOnly}
                     className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
                   />
                 </div>
@@ -708,6 +827,7 @@ export default function CoachStudentsPage() {
                         last_name: event.target.value,
                       }))
                     }
+                    disabled={editSaving || isOrgReadOnly}
                     className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
                   />
                 </div>
@@ -724,6 +844,7 @@ export default function CoachStudentsPage() {
                         email: event.target.value,
                       }))
                     }
+                    disabled={editSaving || isOrgReadOnly}
                     className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
                   />
                 </div>
@@ -739,6 +860,7 @@ export default function CoachStudentsPage() {
                         playing_hand: event.target.value as "" | "left" | "right",
                       }))
                     }
+                    disabled={editSaving || isOrgReadOnly}
                     className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
                   >
                     <option value="">Non precise</option>
@@ -762,7 +884,7 @@ export default function CoachStudentsPage() {
                 <button
                   type="button"
                   onClick={handleUpdateStudent}
-                  disabled={editSaving}
+                  disabled={editSaving || isOrgReadOnly}
                   className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
                 >
                   {editSaving ? "Enregistrement..." : "Enregistrer"}

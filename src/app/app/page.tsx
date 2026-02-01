@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useProfile } from "./_components/profile-context";
+import WorkspaceSelector from "./_components/workspace-selector";
 
 export default function AppPage() {
   const { profile, loading } = useProfile();
@@ -27,6 +28,7 @@ export default function AppPage() {
 
   return (
     <div className="space-y-6">
+      <WorkspaceSelector />
       <section className="panel rounded-2xl p-6">
         <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">Accueil</p>
         <h2 className="mt-3 font-[var(--font-display)] text-3xl font-semibold">

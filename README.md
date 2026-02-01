@@ -34,3 +34,13 @@ Server-only :
 - `BREVO_API_KEY`
 - `BREVO_SENDER_EMAIL`
 - `BREVO_SENDER_NAME`
+
+## Workspaces & Org permissions
+
+- Chaque utilisateur a un workspace personal et peut rejoindre 0..n orgs.
+- Le workspace courant est stocke dans `profiles.org_id` et pilote l isolation des donnees.
+- Roles org : `admin` (unique, premium requis) et `coach`.
+- Freemium en org = lecture seule. Les ecritures sensibles sont revalidees cote serveur.
+- Assignations (`student_assignments`) definissent qui peut publier. Les non assignes peuvent proposer.
+- Les propositions (`org_proposals`) sont immuables apres soumission et l acceptation cree un nouveau contenu publie.
+- Script RLS/migrations : `scripts/supabase-workspaces.sql` (a executer sur Supabase).

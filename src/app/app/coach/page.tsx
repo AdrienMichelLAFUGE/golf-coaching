@@ -28,14 +28,29 @@ const formatDate = (
 };
 
 export default function CoachDashboardPage() {
-  const { organization } = useProfile();
+  const { organization, workspaceType } = useProfile();
   const [reports, setReports] = useState<ReportRow[]>([]);
   const [studentsCount, setStudentsCount] = useState<number | null>(null);
   const [reportsCount, setReportsCount] = useState<number | null>(null);
   const locale = organization?.locale ?? "fr-FR";
   const timezone = organization?.timezone ?? "Europe/Paris";
+  const isOrgMode = workspaceType === "org";
+  const modeLabel =
+    (organization?.workspace_type ?? "personal") === "org"
+      ? `Organisation : ${organization?.name ?? "Organisation"}`
+      : "Espace personnel";
+  const modeBadgeTone =
+    (organization?.workspace_type ?? "personal") === "org"
+      ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
+      : "border-sky-300/30 bg-sky-400/10 text-sky-100";
+
+  const openWorkspaceSwitcher = () => {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(new CustomEvent("gc:open-workspace-switcher"));
+  };
 
   useEffect(() => {
+    if (isOrgMode) return;
     const loadStats = async () => {
       const [{ count: studentTotal }, { count: reportTotal }] = await Promise.all([
         supabase.from("students").select("id", { count: "exact", head: true }),
@@ -58,7 +73,41 @@ export default function CoachDashboardPage() {
 
     loadStats();
     loadReports();
-  }, []);
+  }, [isOrgMode]);
+
+  if (isOrgMode) {
+    return (
+      <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
+        <div className="space-y-6">
+          <section className="panel rounded-2xl p-6">
+            <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+              Dashboard coach
+            </p>
+            <h2 className="mt-3 font-[var(--font-display)] text-3xl font-semibold">
+              Dashboard perso
+            </h2>
+            <p className="mt-2 text-sm text-[var(--muted)]">
+              Cette page est disponible uniquement en mode Perso.
+            </p>
+            <div
+              className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
+            >
+              Vous travaillez dans {modeLabel}
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={openWorkspaceSwitcher}
+                className="rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
+              >
+                Changer de mode
+              </button>
+            </div>
+          </section>
+        </div>
+      </RoleGuard>
+    );
+  }
 
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>

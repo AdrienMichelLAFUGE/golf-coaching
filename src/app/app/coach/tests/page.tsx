@@ -68,7 +68,7 @@ const statusLabel: Record<AssignmentRow["status"], string> = {
 };
 
 export default function CoachTestsPage() {
-  const { organization, userEmail } = useProfile();
+  const { organization, userEmail, workspaceType } = useProfile();
   const [students, setStudents] = useState<StudentOption[]>([]);
   const [assignments, setAssignments] = useState<AssignmentRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,6 +104,15 @@ export default function CoachTestsPage() {
   const [archivingId, setArchivingId] = useState<string | null>(null);
   const [premiumModalOpen, setPremiumModalOpen] = useState(false);
   const isAdmin = isAdminEmail(userEmail);
+  const isOrgMode = workspaceType === "org";
+  const modeLabel =
+    (organization?.workspace_type ?? "personal") === "org"
+      ? `Organisation : ${organization?.name ?? "Organisation"}`
+      : "Espace personnel";
+  const modeBadgeTone =
+    (organization?.workspace_type ?? "personal") === "org"
+      ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
+      : "border-sky-300/30 bg-sky-400/10 text-sky-100";
   const addonEnabled = isAdmin || organization?.coaching_dynamic_enabled;
   const tests = useMemo(
     () => [
@@ -250,6 +259,10 @@ export default function CoachTestsPage() {
     const loadAll = async () => {
       setLoading(true);
       setError("");
+      if (isOrgMode) {
+        setLoading(false);
+        return;
+      }
       if (addonEnabled) {
         await Promise.all([loadStudents(), loadAssignments()]);
       } else {
@@ -261,7 +274,7 @@ export default function CoachTestsPage() {
     return () => {
       cancelled = true;
     };
-  }, [addonEnabled, loadAssignments, loadStudents]);
+  }, [addonEnabled, isOrgMode, loadAssignments, loadStudents]);
 
   const toggleSelected = (studentId: string) => {
     setSelectedIds((prev) =>
@@ -413,6 +426,45 @@ export default function CoachTestsPage() {
     setAssigning(false);
   };
 
+  const openWorkspaceSwitcher = () => {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(new CustomEvent("gc:open-workspace-switcher"));
+  };
+
+  if (isOrgMode) {
+    return (
+      <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
+        <div className="space-y-6">
+          <section className="panel rounded-2xl p-6">
+            <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+              Tests normalises
+            </p>
+            <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
+              Tests perso
+            </h2>
+            <p className="mt-2 text-sm text-[var(--muted)]">
+              Cette section est disponible uniquement en mode Perso.
+            </p>
+            <div
+              className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
+            >
+              Vous travaillez dans {modeLabel}
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={openWorkspaceSwitcher}
+                className="rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
+              >
+                Changer de mode
+              </button>
+            </div>
+          </section>
+        </div>
+      </RoleGuard>
+    );
+  }
+
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       <div className="space-y-6">
@@ -426,6 +478,11 @@ export default function CoachTestsPage() {
           <p className="mt-2 text-sm text-[var(--muted)]">
             Selectionne un test normalise et assigne-le a tes eleves.
           </p>
+          <div
+            className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
+          >
+            Vous travaillez dans {modeLabel}
+          </div>
         </section>
 
         {loading ? (

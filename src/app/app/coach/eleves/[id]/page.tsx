@@ -92,6 +92,18 @@ type ShareEntry = {
   created_at: string;
 };
 
+type AssignmentCoach = {
+  coach_id: string;
+  profiles?: { full_name: string | null } | null;
+};
+
+type OrgCoachOption = {
+  user_id: string;
+  role: "admin" | "coach";
+  status: "active" | "invited" | "disabled";
+  profiles?: { full_name: string | null } | null;
+};
+
 type StudentEditForm = {
   first_name: string;
   last_name: string;
@@ -154,7 +166,14 @@ const LoadingDots = () => (
 );
 
 export default function CoachStudentDetailPage() {
-  const { organization, userEmail, profile } = useProfile();
+  const {
+    organization,
+    userEmail,
+    profile,
+    workspaceType,
+    isWorkspaceAdmin,
+    isWorkspacePremium,
+  } = useProfile();
   const params = useParams();
   const studentId = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const [student, setStudent] = useState<Student | null>(null);
@@ -203,6 +222,12 @@ export default function CoachStudentDetailPage() {
   });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
+  const [assignmentCoaches, setAssignmentCoaches] = useState<AssignmentCoach[]>([]);
+  const [coachOptions, setCoachOptions] = useState<OrgCoachOption[]>([]);
+  const [selectedCoachIds, setSelectedCoachIds] = useState<string[]>([]);
+  const [assignmentsLoading, setAssignmentsLoading] = useState(false);
+  const [assignmentsSaving, setAssignmentsSaving] = useState(false);
+  const [assignmentsError, setAssignmentsError] = useState("");
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [shareMessage, setShareMessage] = useState("");
   const [shareStatus, setShareStatus] = useState<ShareStatus | null>(null);
@@ -218,8 +243,13 @@ export default function CoachStudentDetailPage() {
   const tpiLocked = !tpiAddonEnabled;
   const radarLocked = !radarAddonEnabled;
   const isOwner = profile?.role === "owner";
+  const isAssigned = assignmentCoaches.some((entry) => entry.coach_id === profile?.id);
+  const canPublishInOrg =
+    workspaceType === "org" && isWorkspacePremium && (isAssigned || isWorkspaceAdmin);
+  const canProposeInOrg = workspaceType === "org" && isWorkspacePremium && !isAssigned;
   const shareAccess = getViewerShareAccess(shareStatus);
   const isReadOnly = shareAccess.canRead;
+  const canWriteReports = workspaceType === "org" ? canPublishInOrg : !isReadOnly;
   const radarTechMeta = getRadarTechMeta(radarTech);
   const radarVisibleFiles = useMemo(() => {
     if (radarFilter === "all") return radarFiles;
@@ -842,6 +872,67 @@ export default function CoachStudentDetailPage() {
     loadStudent();
   }, [studentId, loadTpi, userEmail, isOwner]);
 
+  useEffect(() => {
+    if (workspaceType !== "org" || !studentId || !organization?.id) {
+      return;
+    }
+
+    const loadAssignments = async () => {
+      setAssignmentsLoading(true);
+      setAssignmentsError("");
+
+      const { data: assignmentsData, error: assignmentsError } = await supabase
+        .from("student_assignments")
+        .select("coach_id, profiles(full_name)")
+        .eq("student_id", studentId);
+
+      if (assignmentsError) {
+        setAssignmentsError(assignmentsError.message);
+        setAssignmentsLoading(false);
+        return;
+      }
+
+      const { data: coachesData, error: coachesError } = await supabase
+        .from("org_memberships")
+        .select("user_id, role, status, profiles(full_name)")
+        .eq("org_id", organization.id)
+        .eq("status", "active");
+
+      if (coachesError) {
+        setAssignmentsError(coachesError.message);
+        setAssignmentsLoading(false);
+        return;
+      }
+
+      const assignments = (assignmentsData ?? []).map((entry) => {
+        const profiles = Array.isArray(entry.profiles)
+          ? entry.profiles[0] ?? null
+          : entry.profiles ?? null;
+        return {
+          coach_id: entry.coach_id,
+          profiles,
+        };
+      }) as AssignmentCoach[];
+      setAssignmentCoaches(assignments);
+      setSelectedCoachIds(assignments.map((item) => item.coach_id));
+      const options = (coachesData ?? []).map((entry) => {
+        const profiles = Array.isArray(entry.profiles)
+          ? entry.profiles[0] ?? null
+          : entry.profiles ?? null;
+        return {
+          user_id: entry.user_id,
+          role: entry.role,
+          status: entry.status,
+          profiles,
+        };
+      }) as OrgCoachOption[];
+      setCoachOptions(options);
+      setAssignmentsLoading(false);
+    };
+
+    loadAssignments();
+  }, [workspaceType, studentId, organization?.id]);
+
   const handleOwnerRevokeShare = async (shareId: string) => {
     setOwnerShareError("");
     setOwnerShareRevokingId(shareId);
@@ -871,6 +962,41 @@ export default function CoachStudentDetailPage() {
 
     setOwnerShares((prev) => prev.filter((share) => share.id !== shareId));
     setOwnerShareRevokingId(null);
+  };
+
+  const handleSaveAssignments = async () => {
+    if (!studentId) return;
+    if (selectedCoachIds.length === 0) {
+      setAssignmentsError("Selectionne au moins un coach.");
+      return;
+    }
+    setAssignmentsSaving(true);
+    setAssignmentsError("");
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setAssignmentsError("Session invalide.");
+      setAssignmentsSaving(false);
+      return;
+    }
+    const response = await fetch("/api/orgs/assignments", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        studentId,
+        coachIds: selectedCoachIds,
+      }),
+    });
+    const payload = (await response.json()) as { error?: string };
+    if (!response.ok) {
+      setAssignmentsError(payload.error ?? "Mise a jour impossible.");
+      setAssignmentsSaving(false);
+      return;
+    }
+    setAssignmentsSaving(false);
   };
 
   useEffect(() => {
@@ -1240,16 +1366,107 @@ export default function CoachStudentDetailPage() {
             {shareMessage ? (
               <p className="mt-3 text-xs text-emerald-200">{shareMessage}</p>
             ) : null}
-            {isReadOnly ? (
+          {isReadOnly ? (
+            <div className="mt-4 rounded-xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-xs uppercase tracking-wide text-amber-100">
+              Lecture seule active (eleve partage)
+            </div>
+          ) : null}
+        </section>
+
+        {workspaceType === "org" ? (
+          <section className="panel-soft rounded-2xl p-6">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-[var(--text)]">
+                  Assignations
+                </h3>
+                <p className="mt-1 text-sm text-[var(--muted)]">
+                  {canPublishInOrg
+                    ? "Vous pouvez publier pour cet eleve."
+                    : canProposeInOrg
+                      ? "Vous pouvez proposer une modification."
+                      : "Lecture seule sur cet eleve."}
+                </p>
+              </div>
+              {canProposeInOrg ? (
+                <Link
+                  href={`/app/org/proposals/new?studentId=${student.id}`}
+                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)] transition hover:border-white/30"
+                >
+                  Proposer une modification
+                </Link>
+              ) : null}
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-2 text-xs uppercase tracking-wide text-[var(--muted)]">
+              {assignmentsLoading ? (
+                <span>Chargement des assignations...</span>
+              ) : assignmentCoaches.length === 0 ? (
+                <span>Aucun coach assigne</span>
+              ) : (
+                assignmentCoaches.map((entry) => (
+                  <span
+                    key={entry.coach_id}
+                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1"
+                  >
+                    {entry.profiles?.full_name ?? "Coach"}
+                  </span>
+                ))
+              )}
+            </div>
+            {!isWorkspacePremium ? (
               <div className="mt-4 rounded-xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-xs uppercase tracking-wide text-amber-100">
-                Lecture seule active (eleve partage)
+                Freemium: lecture seule en organisation.
+              </div>
+            ) : null}
+            {isWorkspaceAdmin ? (
+              <div className="mt-5 rounded-xl border border-white/10 bg-white/5 p-4">
+                <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                  Modifier les assignations (admin)
+                </p>
+                <div className="mt-3 grid gap-2 md:grid-cols-2">
+                  {coachOptions.map((coach) => {
+                    const label = coach.profiles?.full_name ?? "Coach";
+                    const checked = selectedCoachIds.includes(coach.user_id);
+                    return (
+                      <label
+                        key={coach.user_id}
+                        className="flex items-center gap-2 text-xs text-[var(--muted)]"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(event) => {
+                            const next = event.target.checked
+                              ? [...selectedCoachIds, coach.user_id]
+                              : selectedCoachIds.filter((id) => id !== coach.user_id);
+                            setSelectedCoachIds(next);
+                          }}
+                          className="h-4 w-4 rounded border-white/10 bg-[var(--bg-elevated)]"
+                        />
+                        {label}
+                      </label>
+                    );
+                  })}
+                </div>
+                {assignmentsError ? (
+                  <p className="mt-3 text-sm text-red-400">{assignmentsError}</p>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={handleSaveAssignments}
+                  disabled={assignmentsSaving}
+                  className="mt-4 rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
+                >
+                  {assignmentsSaving ? "Enregistrement..." : "Enregistrer"}
+                </button>
               </div>
             ) : null}
           </section>
+        ) : null}
 
-          {isOwner && ownerShares.length > 0 ? (
-            <section className="panel-soft rounded-2xl p-6">
-              <div className="flex items-center justify-between gap-3">
+        {isOwner && ownerShares.length > 0 ? (
+          <section className="panel-soft rounded-2xl p-6">
+            <div className="flex items-center justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-semibold text-[var(--text)]">
                     Partages actifs
@@ -1293,7 +1510,7 @@ export default function CoachStudentDetailPage() {
             <section className="panel rounded-2xl p-6">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-[var(--text)]">Rapports</h3>
-                {isReadOnly ? (
+                {!canWriteReports ? (
                   <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)]">
                     Lecture seule
                   </span>
@@ -1344,11 +1561,11 @@ export default function CoachStudentDetailPage() {
                         <Link
                           href={`/app/coach/rapports/nouveau?reportId=${report.id}`}
                           onClick={(event) => {
-                            if (isReadOnly) event.preventDefault();
+                            if (!canWriteReports) event.preventDefault();
                           }}
-                          aria-disabled={isReadOnly}
+                          aria-disabled={!canWriteReports}
                           className={`w-28 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-center text-[0.65rem] uppercase tracking-wide transition ${
-                            isReadOnly
+                            !canWriteReports
                               ? "cursor-not-allowed text-[var(--muted)] opacity-60"
                               : "text-[var(--muted)] hover:text-[var(--text)]"
                           }`}
@@ -1358,7 +1575,7 @@ export default function CoachStudentDetailPage() {
                         <button
                           type="button"
                           onClick={() => handleDeleteReport(report)}
-                          disabled={isReadOnly || deletingId === report.id}
+                          disabled={!canWriteReports || deletingId === report.id}
                           className="w-28 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-center text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {deletingId === report.id ? "Suppression..." : "Supprimer"}

@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { useProfile } from "./profile-context";
+import WorkspaceSwitcher from "./workspace-switcher";
 
 type AppHeaderProps = {
   onToggleNav?: () => void;
@@ -129,12 +130,15 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
           </p>
         </div>
         {profile ? (
-          <div className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] text-[var(--muted)] md:hidden">
-            {roleLabel}
+          <div className="flex items-center gap-2 md:hidden">
+            <div className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] text-[var(--muted)]">
+              {roleLabel}
+            </div>
           </div>
         ) : null}
       </div>
       <div className="flex items-center gap-2 pr-16 md:gap-3 md:pr-0">
+        <WorkspaceSwitcher />
         <div className="hidden md:block">
           {profile?.avatar_url ? (
             <img
@@ -154,8 +158,10 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
           </span>
         </div>
         {profile ? (
-          <div className="hidden rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs text-[var(--muted)] md:inline-flex">
-            {roleLabel}
+          <div className="hidden items-center gap-2 md:flex">
+            <div className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs text-[var(--muted)]">
+              {roleLabel}
+            </div>
           </div>
         ) : null}
         <div className="hidden md:flex items-center gap-3">

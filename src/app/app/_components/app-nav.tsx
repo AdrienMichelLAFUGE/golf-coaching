@@ -24,8 +24,9 @@ type AppNavProps = {
 
 export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNavProps) {
   const pathname = usePathname();
-  const { profile, loading, userEmail } = useProfile();
+  const { profile, loading, userEmail, organization, isWorkspaceAdmin } = useProfile();
   const isAdmin = isAdminEmail(userEmail);
+  const workspaceType = organization?.workspace_type ?? "personal";
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem("gc.navCollapsed") === "true";
@@ -50,11 +51,24 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
           { label: "Parametres", href: "/app/eleve/parametres" },
         ],
       });
-    } else {
+    } else if (workspaceType === "org") {
       sections.push({
-        title: "General",
-        items: [{ label: "Accueil", href: "/app" }],
+        title: "Organisation",
+        items: [
+          { label: "Eleves (org)", href: "/app/coach/eleves" },
+          { label: "Propositions", href: "/app/org/proposals" },
+          { label: "Groupes / ecole", href: "/app/org" },
+          { label: "Parametres org", href: "/app/coach/parametres" },
+          ...(isWorkspaceAdmin
+            ? [
+                { label: "Membres / Invitations", href: "/app/org/members" },
+                { label: "Tarifs (batch)", href: "/app/org/pricing" },
+                { label: "Analytics", href: "/app/org/analytics" },
+              ]
+            : []),
+        ],
       });
+    } else {
       sections.push({
         title: "Coach",
         items: [
@@ -165,6 +179,26 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
         <svg viewBox="0 0 24 24" {...sharedProps}>
           <circle cx="12" cy="12" r="3" />
           <path d="M19.4 15a7.8 7.8 0 0 0 .1-6l2-1-2-3-2 1a8 8 0 0 0-5-2l-.5-2h-4l-.5 2a8 8 0 0 0-5 2l-2-1-2 3 2 1a7.8 7.8 0 0 0 .1 6l-2 1 2 3 2-1a8 8 0 0 0 5 2l.5 2h4l.5-2a8 8 0 0 0 5-2l2 1 2-3-2-1z" />
+        </svg>
+      );
+    }
+    if (href === "/app/org/members") {
+      return (
+        <svg viewBox="0 0 24 24" {...sharedProps}>
+          <circle cx="8" cy="8" r="3" />
+          <circle cx="16" cy="8" r="3" />
+          <path d="M3 20c0-3 3-5 6-5" />
+          <path d="M12 20c0-3 3-5 6-5" />
+        </svg>
+      );
+    }
+    if (href === "/app/org/proposals") {
+      return (
+        <svg viewBox="0 0 24 24" {...sharedProps}>
+          <path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+          <path d="M9 7h6" />
+          <path d="M9 11h6" />
+          <path d="M9 15h4" />
         </svg>
       );
     }

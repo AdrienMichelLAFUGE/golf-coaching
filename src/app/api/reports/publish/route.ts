@@ -112,6 +112,54 @@ export async function POST(req: Request) {
     return Response.json({ error: "Organisation introuvable." }, { status: 403 });
   }
 
+  const admin = createSupabaseAdminClient();
+  const { data: workspace, error: workspaceError } = await admin
+    .from("organizations")
+    .select("id, workspace_type, owner_profile_id, ai_enabled")
+    .eq("id", profileData.org_id)
+    .single();
+
+  if (workspaceError || !workspace) {
+    return Response.json({ error: "Workspace introuvable." }, { status: 404 });
+  }
+
+  if (workspace.workspace_type === "personal") {
+    if (workspace.owner_profile_id !== userId) {
+      return Response.json({ error: "Acces refuse." }, { status: 403 });
+    }
+  } else {
+    const { data: membership } = await admin
+      .from("org_memberships")
+      .select("role, status")
+      .eq("org_id", profileData.org_id)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (!membership || membership.status !== "active") {
+      return Response.json({ error: "Acces refuse." }, { status: 403 });
+    }
+
+    if (!workspace.ai_enabled) {
+      return Response.json(
+        { error: "Premium requis pour publier." },
+        { status: 403 }
+      );
+    }
+
+    const { data: assignments } = await admin
+      .from("student_assignments")
+      .select("coach_id")
+      .eq("student_id", report.student_id);
+
+    const assignedIds = (assignments ?? []).map(
+      (row) => (row as { coach_id: string }).coach_id
+    );
+    const isAssigned = assignedIds.includes(userId);
+    if (membership.role !== "admin" && !isAssigned) {
+      return Response.json({ error: "Acces refuse." }, { status: 403 });
+    }
+  }
+
   const { data: studentData } = await supabase
     .from("students")
     .select("org_id")
@@ -122,7 +170,6 @@ export async function POST(req: Request) {
     return Response.json({ error: "Acces refuse." }, { status: 403 });
   }
 
-  const admin = createSupabaseAdminClient();
   const { data: sectionsData, error: sectionsError } = await admin
     .from("report_sections")
     .select("id, title, type, content, content_formatted, content_format_hash")

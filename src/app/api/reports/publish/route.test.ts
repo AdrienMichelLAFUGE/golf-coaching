@@ -55,6 +55,16 @@ const buildSelectSingle = (result: QueryResult) => ({
   }),
 });
 
+const buildSelectMaybeSingle = (result: QueryResult) => ({
+  select: () => ({
+    eq: () => ({
+      eq: () => ({
+        maybeSingle: async () => result,
+      }),
+    }),
+  }),
+});
+
 const hashContent = (value: string) =>
   createHash("sha256").update(value.trim()).digest("hex");
 
@@ -104,7 +114,25 @@ describe("POST /api/reports/publish", () => {
       },
     } as SupabaseClient;
 
+    const admin = {
+      from: jest.fn((table: string) => {
+        if (table === "organizations") {
+          return buildSelectSingle({
+            data: {
+              id: "org-1",
+              workspace_type: "personal",
+              owner_profile_id: "user-1",
+              ai_enabled: true,
+            },
+            error: null,
+          });
+        }
+        return {};
+      }),
+    };
+
     serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
+    serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
 
     const response = await POST(buildRequest({ reportId: "report-1" }));
 
@@ -112,7 +140,7 @@ describe("POST /api/reports/publish", () => {
     const body = await response.json();
     expect(body.error).toBe("Acces refuse.");
     expect(openAiCreate).not.toHaveBeenCalled();
-    expect(serverMocks.createSupabaseAdminClient).not.toHaveBeenCalled();
+    expect(serverMocks.createSupabaseAdminClient).toHaveBeenCalled();
   });
 
   it("skips OpenAI when formatted hash matches", async () => {
@@ -143,6 +171,17 @@ describe("POST /api/reports/publish", () => {
 
     const admin = {
       from: jest.fn((table: string) => {
+        if (table === "organizations") {
+          return buildSelectSingle({
+            data: {
+              id: "org-1",
+              workspace_type: "personal",
+              owner_profile_id: "user-1",
+              ai_enabled: true,
+            },
+            error: null,
+          });
+        }
         if (table === "report_sections") {
           return {
             select: () => ({
@@ -184,5 +223,128 @@ describe("POST /api/reports/publish", () => {
     const body = await response.json();
     expect(body.formattedSections).toBe(0);
     expect(openAiCreate).not.toHaveBeenCalled();
+  });
+
+  it("blocks publish when org member is not premium", async () => {
+    const supabase = {
+      auth: {
+        getUser: async () => ({
+          data: { user: { id: "user-1", email: "coach@example.com" } },
+          error: null,
+        }),
+      },
+      from: (table: string) => {
+        if (table === "reports") {
+          return buildSelectSingle({
+            data: { id: "report-1", student_id: "student-1", sent_at: null },
+            error: null,
+          });
+        }
+        if (table === "profiles") {
+          return buildSelectSingle({ data: { org_id: "org-1" }, error: null });
+        }
+        if (table === "students") {
+          return buildSelectSingle({ data: { org_id: "org-1" }, error: null });
+        }
+        return buildSelectSingle({ data: null, error: null });
+      },
+    } as SupabaseClient;
+
+    const admin = {
+      from: jest.fn((table: string) => {
+        if (table === "organizations") {
+          return buildSelectSingle({
+            data: {
+              id: "org-1",
+              workspace_type: "org",
+              owner_profile_id: null,
+              ai_enabled: false,
+            },
+            error: null,
+          });
+        }
+        if (table === "org_memberships") {
+          return buildSelectMaybeSingle({
+            data: { role: "coach", status: "active" },
+            error: null,
+          });
+        }
+        return {};
+      }),
+    };
+
+    serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
+    serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
+
+    const response = await POST(buildRequest({ reportId: "report-1" }));
+
+    expect(response.status).toBe(403);
+    const body = await response.json();
+    expect(body.error).toBe("Premium requis pour publier.");
+  });
+
+  it("blocks publish when coach is not assigned", async () => {
+    const supabase = {
+      auth: {
+        getUser: async () => ({
+          data: { user: { id: "user-1", email: "coach@example.com" } },
+          error: null,
+        }),
+      },
+      from: (table: string) => {
+        if (table === "reports") {
+          return buildSelectSingle({
+            data: { id: "report-1", student_id: "student-1", sent_at: null },
+            error: null,
+          });
+        }
+        if (table === "profiles") {
+          return buildSelectSingle({ data: { org_id: "org-1" }, error: null });
+        }
+        if (table === "students") {
+          return buildSelectSingle({ data: { org_id: "org-1" }, error: null });
+        }
+        return buildSelectSingle({ data: null, error: null });
+      },
+    } as SupabaseClient;
+
+    const admin = {
+      from: jest.fn((table: string) => {
+        if (table === "organizations") {
+          return buildSelectSingle({
+            data: {
+              id: "org-1",
+              workspace_type: "org",
+              owner_profile_id: null,
+              ai_enabled: true,
+            },
+            error: null,
+          });
+        }
+        if (table === "org_memberships") {
+          return buildSelectMaybeSingle({
+            data: { role: "coach", status: "active" },
+            error: null,
+          });
+        }
+        if (table === "student_assignments") {
+          return {
+            select: () => ({
+              eq: async () => ({ data: [], error: null }),
+            }),
+          };
+        }
+        return {};
+      }),
+    };
+
+    serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
+    serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
+
+    const response = await POST(buildRequest({ reportId: "report-1" }));
+
+    expect(response.status).toBe(403);
+    const body = await response.json();
+    expect(body.error).toBe("Acces refuse.");
   });
 });

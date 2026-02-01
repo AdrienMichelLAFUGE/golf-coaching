@@ -30,7 +30,7 @@ const formatDate = (
 };
 
 export default function CoachReportsPage() {
-  const { organization } = useProfile();
+  const { organization, workspaceType } = useProfile();
   const [reports, setReports] = useState<ReportRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -45,6 +45,20 @@ export default function CoachReportsPage() {
   const [sortDirection, setSortDirection] = useState<"asc" | "desc" | "none">("none");
   const locale = organization?.locale ?? "fr-FR";
   const timezone = organization?.timezone ?? "Europe/Paris";
+  const isOrgMode = workspaceType === "org";
+  const modeLabel =
+    (organization?.workspace_type ?? "personal") === "org"
+      ? `Organisation : ${organization?.name ?? "Organisation"}`
+      : "Espace personnel";
+  const modeBadgeTone =
+    (organization?.workspace_type ?? "personal") === "org"
+      ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
+      : "border-sky-300/30 bg-sky-400/10 text-sky-100";
+
+  const openWorkspaceSwitcher = () => {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(new CustomEvent("gc:open-workspace-switcher"));
+  };
 
   const toInputDate = (value: Date) => {
     const year = value.getFullYear();
@@ -214,6 +228,11 @@ export default function CoachReportsPage() {
 
   useEffect(() => {
     let cancelled = false;
+    if (isOrgMode) {
+      return () => {
+        cancelled = true;
+      };
+    }
     Promise.resolve().then(() => {
       if (cancelled) return;
       void loadReports();
@@ -221,7 +240,7 @@ export default function CoachReportsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isOrgMode]);
 
   const handleDeleteReport = async (report: ReportRow) => {
     const confirmed = window.confirm(`Supprimer le rapport "${report.title}" ?`);
@@ -243,6 +262,43 @@ export default function CoachReportsPage() {
     setDeletingId(null);
   };
 
+  if (isOrgMode) {
+    return (
+      <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
+        <div className="space-y-6">
+          <section className="panel rounded-2xl p-6">
+            <div className="flex items-center gap-2">
+              <PageBack />
+              <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                Rapports
+              </p>
+            </div>
+            <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
+              Rapports perso
+            </h2>
+            <p className="mt-2 text-sm text-[var(--muted)]">
+              Cette section est disponible uniquement en mode Perso.
+            </p>
+            <div
+              className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
+            >
+              Vous travaillez dans {modeLabel}
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={openWorkspaceSwitcher}
+                className="rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
+              >
+                Changer de mode
+              </button>
+            </div>
+          </section>
+        </div>
+      </RoleGuard>
+    );
+  }
+
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       <div className="space-y-6">
@@ -261,6 +317,11 @@ export default function CoachReportsPage() {
               <p className="mt-2 text-sm text-[var(--muted)]">
                 Consulte et supprime les rapports par eleve.
               </p>
+              <div
+                className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
+              >
+                Vous travaillez dans {modeLabel}
+              </div>
             </div>
             <Link
               href="/app/coach/rapports/nouveau"
@@ -293,8 +354,26 @@ export default function CoachReportsPage() {
               {error}
             </div>
           ) : reports.length === 0 ? (
-            <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
-              Aucun rapport pour le moment.
+            <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-4 text-sm">
+              <p className="text-[var(--text)]">Aucun rapport personnel.</p>
+              <p className="mt-1 text-xs text-[var(--muted)]">
+                Vous etes en MODE PERSO.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link
+                  href="/app/coach/rapports/nouveau"
+                  className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
+                >
+                  Creer un rapport
+                </Link>
+                <button
+                  type="button"
+                  onClick={openWorkspaceSwitcher}
+                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                >
+                  Changer de mode
+                </button>
+              </div>
             </div>
           ) : (
             <div className="grid gap-4 text-sm text-[var(--muted)]">

@@ -399,7 +399,22 @@ const buildDiffSegments = (original: string, updated: string): DiffSegment[] => 
 };
 
 export default function CoachReportBuilderPage() {
-  const { organization, userEmail } = useProfile();
+  const {
+    organization,
+    userEmail,
+    workspaceType,
+    isWorkspacePremium,
+    profile,
+  } = useProfile();
+  const isOrgMode = workspaceType === "org";
+  const modeLabel =
+    (organization?.workspace_type ?? "personal") === "org"
+      ? `Organisation : ${organization?.name ?? "Organisation"}`
+      : "Espace personnel";
+  const modeBadgeTone =
+    (organization?.workspace_type ?? "personal") === "org"
+      ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
+      : "border-sky-300/30 bg-sky-400/10 text-sky-100";
   const searchParams = useSearchParams();
   const router = useRouter();
   const [editingReportId, setEditingReportId] = useState<string | null>(null);
@@ -501,6 +516,8 @@ export default function CoachReportBuilderPage() {
   const [studentId, setStudentId] = useState("");
   const [title, setTitle] = useState("");
   const [reportDate, setReportDate] = useState(() => formatDateInput(new Date()));
+  const [isAssignedCoach, setIsAssignedCoach] = useState(false);
+  const [assignmentChecked, setAssignmentChecked] = useState(false);
   const [sentAt, setSentAt] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState("");
   const [statusType, setStatusType] = useState<"idle" | "error" | "success">("idle");
@@ -567,6 +584,10 @@ export default function CoachReportBuilderPage() {
       : `${Date.now()}-${Math.random().toString(16).slice(2)}`
   );
   const isAdmin = userEmail?.toLowerCase() === "adrien.lafuge@outlook.fr";
+  const isOrgAdmin = profile?.role === "owner";
+  const isOrgPublishLocked =
+    workspaceType === "org" &&
+    (!isWorkspacePremium || (assignmentChecked && !isAssignedCoach && !isOrgAdmin));
   const aiEnabled = organization?.ai_enabled ?? false;
   const radarAddonEnabled = isAdmin || organization?.radar_enabled;
   const tpiAddonEnabled = isAdmin || organization?.tpi_enabled;
@@ -3011,6 +3032,26 @@ export default function CoachReportBuilderPage() {
       return;
     }
 
+    if (workspaceType === "org") {
+      if (!isWorkspacePremium) {
+        setStatusMessage("Premium requis pour publier en organisation.");
+        setStatusType("error");
+        return;
+      }
+      if (!assignmentChecked) {
+        setStatusMessage("Chargement des assignations en cours.");
+        setStatusType("error");
+        return;
+      }
+      if (!isAssignedCoach && !isOrgAdmin) {
+        setStatusMessage(
+          "Tu n es pas assigne. Propose une modification depuis la fiche eleve."
+        );
+        setStatusType("error");
+        return;
+      }
+    }
+
     if (!title.trim()) {
       setStatusMessage("Ajoute un titre au rapport.");
       setStatusType("error");
@@ -4088,6 +4129,39 @@ export default function CoachReportBuilderPage() {
   }, [studentId, loadRadarFiles]);
 
   useEffect(() => {
+    if (workspaceType !== "org" || !studentId) {
+      setIsAssignedCoach(false);
+      setAssignmentChecked(false);
+      return;
+    }
+
+    const loadAssignment = async () => {
+      if (!profile?.id) {
+        setIsAssignedCoach(false);
+        setAssignmentChecked(true);
+        return;
+      }
+      const { data, error } = await supabase
+        .from("student_assignments")
+        .select("coach_id")
+        .eq("student_id", studentId)
+        .eq("coach_id", profile.id)
+        .limit(1);
+
+      if (error) {
+        setIsAssignedCoach(false);
+        setAssignmentChecked(true);
+        return;
+      }
+
+      setIsAssignedCoach((data ?? []).length > 0);
+      setAssignmentChecked(true);
+    };
+
+    loadAssignment();
+  }, [workspaceType, studentId, profile?.id]);
+
+  useEffect(() => {
     setRadarSessionFileIds([]);
   }, [studentId, editingReportId]);
 
@@ -4236,6 +4310,48 @@ export default function CoachReportBuilderPage() {
       ? "lg:grid-cols-1"
       : "lg:grid-cols-[0.9fr_1.1fr]";
 
+  const openWorkspaceSwitcher = () => {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(new CustomEvent("gc:open-workspace-switcher"));
+  };
+
+  if (isOrgMode) {
+    return (
+      <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
+        <div className="space-y-6">
+          <section className="panel rounded-2xl p-6">
+            <div className="flex items-center gap-2">
+              <PageBack />
+              <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                Rapport
+              </p>
+            </div>
+            <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
+              Rapports perso
+            </h2>
+            <p className="mt-2 text-sm text-[var(--muted)]">
+              La creation de rapport est disponible uniquement en mode Perso.
+            </p>
+            <div
+              className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
+            >
+              Vous travaillez dans {modeLabel}
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={openWorkspaceSwitcher}
+                className="rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
+              >
+                Changer de mode
+              </button>
+            </div>
+          </section>
+        </div>
+      </RoleGuard>
+    );
+  }
+
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       <>
@@ -4303,6 +4419,11 @@ export default function CoachReportBuilderPage() {
                     ? "Selectionne et organise les sections avant la redaction."
                     : "Remplis le contenu et ajuste les sections au fil du rapport."}
             </p>
+            <div
+              className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
+            >
+              Vous travaillez dans {modeLabel}
+            </div>
             <div className="mt-4 flex flex-wrap items-center gap-2 text-[0.6rem] uppercase tracking-[0.25em] text-[var(--muted)]">
               {[
                 { id: "layout", label: "Layout" },
@@ -5804,7 +5925,7 @@ export default function CoachReportBuilderPage() {
                     {showPublish ? (
                       <button
                         type="button"
-                        disabled={saving || loadingReport}
+                        disabled={saving || loadingReport || isOrgPublishLocked}
                         onClick={() => handleSaveReport(true)}
                         className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
                       >
@@ -5813,7 +5934,7 @@ export default function CoachReportBuilderPage() {
                     ) : null}
                     <button
                       type="button"
-                      disabled={saving || loadingReport}
+                      disabled={saving || loadingReport || isOrgPublishLocked}
                       onClick={() => handleSaveReport(false)}
                       className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10 disabled:opacity-60"
                     >
@@ -7064,7 +7185,7 @@ export default function CoachReportBuilderPage() {
                     {showPublish ? (
                       <button
                         type="button"
-                        disabled={saving || loadingReport}
+                        disabled={saving || loadingReport || isOrgPublishLocked}
                         onClick={() => handleSaveReport(true)}
                         className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
                       >
@@ -7073,13 +7194,18 @@ export default function CoachReportBuilderPage() {
                     ) : null}
                     <button
                       type="button"
-                      disabled={saving || loadingReport}
+                      disabled={saving || loadingReport || isOrgPublishLocked}
                       onClick={() => handleSaveReport(false)}
                       className="rounded-full border border-white/10 bg-white/5 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10 disabled:opacity-60"
                     >
                       {saving ? "Sauvegarde..." : saveLabel}
                     </button>
                   </div>
+                  {isOrgPublishLocked ? (
+                    <p className="mt-3 text-xs text-amber-300">
+                      Premium et assignation requis pour publier en organisation.
+                    </p>
+                  ) : null}
                   {statusMessage ? (
                     <p
                       className={`mt-4 text-sm ${
