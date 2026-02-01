@@ -63,13 +63,13 @@ describe("POST /api/orgs/students", () => {
         }
         if (table === "organizations") {
           return buildSelectSingle({
-            data: { ai_enabled: false },
+            data: { ai_enabled: true },
             error: null,
           });
         }
         if (table === "org_memberships") {
           return buildSelectMaybeSingle({
-            data: { role: "coach", status: "active" },
+            data: { role: "coach", status: "active", premium_active: false },
             error: null,
           });
         }

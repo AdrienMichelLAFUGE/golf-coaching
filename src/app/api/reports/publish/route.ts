@@ -130,7 +130,7 @@ export async function POST(req: Request) {
   } else {
     const { data: membership } = await admin
       .from("org_memberships")
-      .select("role, status")
+      .select("role, status, premium_active")
       .eq("org_id", profileData.org_id)
       .eq("user_id", userId)
       .maybeSingle();
@@ -139,7 +139,7 @@ export async function POST(req: Request) {
       return Response.json({ error: "Acces refuse." }, { status: 403 });
     }
 
-    if (!workspace.ai_enabled) {
+    if (!workspace.ai_enabled || !membership.premium_active) {
       return Response.json(
         { error: "Premium requis pour publier." },
         { status: 403 }

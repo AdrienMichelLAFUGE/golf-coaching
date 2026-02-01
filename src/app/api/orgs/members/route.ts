@@ -13,6 +13,10 @@ const updateSchema = z.object({
   role: z.enum(["admin", "coach"]).optional(),
 });
 
+const deleteSchema = z.object({
+  memberId: z.string().uuid(),
+});
+
 export async function GET(request: Request) {
   const supabase = createSupabaseServerClientFromRequest(request);
   const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -44,14 +48,17 @@ export async function GET(request: Request) {
 
   const { data: members } = await admin
     .from("org_memberships")
-    .select("id, org_id, user_id, role, status, premium_active, profiles(full_name)")
+    .select(
+      "id, org_id, user_id, role, status, premium_active, profiles!org_memberships_user_id_fkey(full_name)"
+    )
     .eq("org_id", profile.org_id)
     .order("created_at", { ascending: true });
 
   const { data: invites } = await admin
     .from("org_invitations")
-    .select("id, email, role, status, created_at, expires_at")
+    .select("id, email, role, status, created_at, expires_at, token")
     .eq("org_id", profile.org_id)
+    .eq("status", "pending")
     .order("created_at", { ascending: false });
 
   return NextResponse.json({ members: members ?? [], invitations: invites ?? [] });
@@ -158,6 +165,98 @@ export async function PATCH(request: Request) {
 
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 400 });
+  }
+
+  return NextResponse.json({ ok: true });
+}
+
+export async function DELETE(request: Request) {
+  const parsed = await parseRequestJson(request, deleteSchema);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Payload invalide.", details: formatZodError(parsed.error) },
+      { status: 422 }
+    );
+  }
+
+  const supabase = createSupabaseServerClientFromRequest(request);
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  const admin = createSupabaseAdminClient();
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("id, org_id")
+    .eq("id", userData.user.id)
+    .single();
+
+  if (!profile?.org_id) {
+    return NextResponse.json({ error: "Organisation introuvable." }, { status: 403 });
+  }
+
+  const { data: membership } = await admin
+    .from("org_memberships")
+    .select("role, status")
+    .eq("org_id", profile.org_id)
+    .eq("user_id", profile.id)
+    .maybeSingle();
+
+  if (!membership || membership.status !== "active" || membership.role !== "admin") {
+    return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
+  }
+
+  const { data: target } = await admin
+    .from("org_memberships")
+    .select("id, org_id, user_id, role")
+    .eq("id", parsed.data.memberId)
+    .eq("org_id", profile.org_id)
+    .maybeSingle();
+
+  if (!target) {
+    return NextResponse.json({ error: "Membre introuvable." }, { status: 404 });
+  }
+
+  if (target.user_id === profile.id) {
+    return NextResponse.json(
+      { error: "Impossible de vous retirer." },
+      { status: 400 }
+    );
+  }
+
+  if (target.role === "admin") {
+    return NextResponse.json(
+      { error: "Impossible de retirer un admin." },
+      { status: 400 }
+    );
+  }
+
+  const { error: deleteError } = await admin
+    .from("org_memberships")
+    .delete()
+    .eq("id", parsed.data.memberId)
+    .eq("org_id", profile.org_id);
+
+  if (deleteError) {
+    return NextResponse.json({ error: deleteError.message }, { status: 400 });
+  }
+
+  const { data: targetProfile } = await admin
+    .from("profiles")
+    .select("id, org_id, active_workspace_id")
+    .eq("id", target.user_id)
+    .single();
+
+  if (
+    targetProfile?.active_workspace_id &&
+    targetProfile.active_workspace_id === profile.org_id
+  ) {
+    const nextWorkspaceId = targetProfile.org_id ?? null;
+    await admin
+      .from("profiles")
+      .update({ active_workspace_id: nextWorkspaceId })
+      .eq("id", targetProfile.id);
   }
 
   return NextResponse.json({ ok: true });

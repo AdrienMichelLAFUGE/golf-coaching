@@ -28,7 +28,7 @@ export async function POST(request: Request) {
   const admin = createSupabaseAdminClient();
   const { data: profile, error: profileError } = await admin
     .from("profiles")
-    .select("id, org_id")
+    .select("id, org_id, premium_active")
     .eq("id", userData.user.id)
     .single();
 
@@ -50,7 +50,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Organisation introuvable." }, { status: 403 });
   }
 
-  if (!workspace.ai_enabled) {
+  let isPremium = Boolean(workspace.ai_enabled);
+  if (!isPremium && profile.premium_active) {
+    const { error: premiumError } = await admin
+      .from("organizations")
+      .update({ ai_enabled: true })
+      .eq("id", workspace.id);
+
+    if (premiumError) {
+      return NextResponse.json({ error: premiumError.message }, { status: 500 });
+    }
+
+    isPremium = true;
+  }
+
+  if (!isPremium) {
     return NextResponse.json(
       { error: "Premium requis pour creer une organisation." },
       { status: 403 }
@@ -63,7 +77,7 @@ export async function POST(request: Request) {
       {
         name: parsed.data.name.trim(),
         workspace_type: "org",
-        ai_enabled: workspace.ai_enabled,
+        ai_enabled: isPremium,
       },
     ])
     .select("id")

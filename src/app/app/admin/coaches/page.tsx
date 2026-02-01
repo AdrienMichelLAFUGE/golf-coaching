@@ -5,21 +5,27 @@ import { supabase } from "@/lib/supabase/client";
 import AdminGuard from "../../_components/admin-guard";
 import PageBack from "../../_components/page-back";
 
-type OrganizationRow = {
+type WorkspaceRow = {
   id: string;
   name: string;
+  workspace_type: "personal" | "org";
   ai_enabled: boolean;
   tpi_enabled: boolean;
   radar_enabled: boolean;
   coaching_dynamic_enabled: boolean;
   ai_model: string;
-  owner: { id: string; full_name: string | null; email: string | null } | null;
+  membership_id: string | null;
+  membership_role: "admin" | "coach" | null;
+  membership_status: "invited" | "active" | "disabled" | null;
+  coach: { id: string; full_name: string | null; email: string | null } | null;
 };
+
+type DisplayWorkspace = WorkspaceRow & { isPlaceholder?: boolean };
 
 const MODEL_OPTIONS = ["gpt-5-mini", "gpt-5", "gpt-5.2"];
 
 export default function AdminCoachesPage() {
-  const [organizations, setOrganizations] = useState<OrganizationRow[]>([]);
+  const [workspaces, setWorkspaces] = useState<WorkspaceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -28,7 +34,7 @@ export default function AdminCoachesPage() {
   const [query, setQuery] = useState("");
   const [showOrphaned, setShowOrphaned] = useState(false);
 
-  const loadOrganizations = async () => {
+  const loadWorkspaces = async () => {
     setLoading(true);
     setError("");
     setMessage("");
@@ -46,7 +52,7 @@ export default function AdminCoachesPage() {
       headers: { Authorization: `Bearer ${token}` },
     });
     const payload = (await response.json()) as {
-      organizations?: OrganizationRow[];
+      workspaces?: WorkspaceRow[];
       error?: string;
     };
 
@@ -56,7 +62,7 @@ export default function AdminCoachesPage() {
       return;
     }
 
-    setOrganizations(payload.organizations ?? []);
+    setWorkspaces(payload.workspaces ?? []);
     setLoading(false);
   };
 
@@ -64,7 +70,7 @@ export default function AdminCoachesPage() {
     let cancelled = false;
     Promise.resolve().then(() => {
       if (cancelled) return;
-      void loadOrganizations();
+      void loadWorkspaces();
     });
     return () => {
       cancelled = true;
@@ -74,21 +80,80 @@ export default function AdminCoachesPage() {
   const filtered = useMemo(() => {
     const search = query.trim().toLowerCase();
     const scoped = showOrphaned
-      ? organizations
-      : organizations.filter((org) => org.owner?.id);
+      ? workspaces
+      : workspaces.filter((workspace) => workspace.coach?.id);
     if (!search) return scoped;
-    return scoped.filter((org) => {
-      const owner = org.owner?.full_name ?? "";
-      const ownerEmail = org.owner?.email ?? "";
+    return scoped.filter((workspace) => {
+      const coach = workspace.coach?.full_name ?? "";
+      const coachEmail = workspace.coach?.email ?? "";
       return (
-        org.name.toLowerCase().includes(search) ||
-        owner.toLowerCase().includes(search) ||
-        ownerEmail.toLowerCase().includes(search)
+        workspace.name.toLowerCase().includes(search) ||
+        coach.toLowerCase().includes(search) ||
+        coachEmail.toLowerCase().includes(search)
       );
     });
-  }, [organizations, query, showOrphaned]);
+  }, [workspaces, query, showOrphaned]);
 
-  const handleDeleteCoach = async (coachId: string, orgId: string) => {
+  const grouped = useMemo(() => {
+    const groups = new Map<
+      string,
+      { key: string; coach: WorkspaceRow["coach"]; items: DisplayWorkspace[] }
+    >();
+
+    for (const workspace of filtered) {
+      const coachId = workspace.coach?.id;
+      const key = coachId ? `coach-${coachId}` : `workspace-${workspace.id}`;
+      const existing = groups.get(key);
+      if (existing) {
+        existing.items.push(workspace);
+      } else {
+        groups.set(key, {
+          key,
+          coach: workspace.coach ?? null,
+          items: [workspace],
+        });
+      }
+    }
+
+    return Array.from(groups.values())
+      .map((group) => {
+        const items = [...group.items];
+        const hasOrg = items.some((item) => item.workspace_type === "org");
+        if (group.coach?.id && !hasOrg) {
+          items.push({
+            id: `placeholder-org-${group.coach.id}`,
+            name: "",
+            workspace_type: "org",
+            ai_enabled: false,
+            tpi_enabled: false,
+            radar_enabled: false,
+            coaching_dynamic_enabled: false,
+            ai_model: "gpt-5-mini",
+            membership_id: null,
+            membership_role: null,
+            membership_status: null,
+            coach: group.coach,
+            isPlaceholder: true,
+          });
+        }
+        return {
+          ...group,
+          items: items.sort((a, b) => {
+            if (a.workspace_type !== b.workspace_type) {
+              return a.workspace_type === "personal" ? -1 : 1;
+            }
+            return a.name.localeCompare(b.name);
+          }),
+        };
+      })
+      .sort((a, b) => {
+        const aCoach = a.coach?.full_name ?? a.coach?.email ?? "";
+        const bCoach = b.coach?.full_name ?? b.coach?.email ?? "";
+        return aCoach.localeCompare(bCoach);
+      });
+  }, [filtered]);
+
+  const handleDeleteCoach = async (coachId: string) => {
     if (!coachId) return;
     const confirmed = window.confirm(
       "Supprimer ce compte coach ? Cette action est irreversible."
@@ -124,14 +189,12 @@ export default function AdminCoachesPage() {
       return;
     }
 
-    setOrganizations((prev) =>
-      prev.map((org) => (org.id === orgId ? { ...org, owner: null } : org))
-    );
+    setWorkspaces((prev) => prev.filter((row) => row.coach?.id !== coachId));
     setMessage("Coach supprime.");
     setDeletingId(null);
   };
 
-  const handleUpdate = async (orgId: string, patch: Partial<OrganizationRow>) => {
+  const handleUpdate = async (orgId: string, patch: Partial<WorkspaceRow>) => {
     setSavingId(orgId);
     setError("");
     setMessage("");
@@ -168,19 +231,20 @@ export default function AdminCoachesPage() {
       return;
     }
 
-    setOrganizations((prev) =>
-      prev.map((org) =>
-        org.id === orgId
+    setWorkspaces((prev) =>
+      prev.map((workspace) =>
+        workspace.id === orgId
           ? {
-              ...org,
-              ai_enabled: patch.ai_enabled ?? org.ai_enabled,
-              tpi_enabled: patch.tpi_enabled ?? org.tpi_enabled,
-              radar_enabled: patch.radar_enabled ?? org.radar_enabled,
+              ...workspace,
+              ai_enabled: patch.ai_enabled ?? workspace.ai_enabled,
+              tpi_enabled: patch.tpi_enabled ?? workspace.tpi_enabled,
+              radar_enabled: patch.radar_enabled ?? workspace.radar_enabled,
               coaching_dynamic_enabled:
-                patch.coaching_dynamic_enabled ?? org.coaching_dynamic_enabled,
-              ai_model: patch.ai_model ?? org.ai_model,
+                patch.coaching_dynamic_enabled ??
+                workspace.coaching_dynamic_enabled,
+              ai_model: patch.ai_model ?? workspace.ai_model,
             }
-          : org
+          : workspace
       )
     );
     setMessage("Acces mis a jour.");
@@ -201,7 +265,7 @@ export default function AdminCoachesPage() {
             Acces premium
           </h2>
           <p className="mt-2 text-sm text-[var(--muted)]">
-            Active l IA et les add-ons pour chaque organisation.
+            Active l IA et les add-ons pour chaque workspace.
           </p>
         </section>
 
@@ -211,7 +275,7 @@ export default function AdminCoachesPage() {
               type="text"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Rechercher une organisation"
+              placeholder="Rechercher un workspace"
               className="w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-4 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500 md:max-w-sm"
             />
             <div className="flex items-center gap-3 text-xs text-[var(--muted)]">
@@ -222,9 +286,9 @@ export default function AdminCoachesPage() {
                   onChange={(event) => setShowOrphaned(event.target.checked)}
                   className="h-4 w-4 rounded border border-white/10 bg-[var(--bg-elevated)]"
                 />
-                <span>Afficher les orgs sans owner</span>
+                <span>Afficher les workspaces sans coach</span>
               </label>
-              <span>{filtered.length} organisations</span>
+              <span>{filtered.length} workspaces</span>
             </div>
           </div>
           {error ? <p className="mt-3 text-sm text-red-400">{error}</p> : null}
@@ -234,7 +298,7 @@ export default function AdminCoachesPage() {
         <section className="panel rounded-2xl p-6">
           <div className="grid gap-3 text-sm text-[var(--muted)]">
             <div className="hidden gap-3 uppercase tracking-wide text-[0.7rem] text-[var(--muted)] md:grid md:grid-cols-[1.3fr_1fr_1fr_1fr_0.6fr]">
-              <span>Organisation</span>
+              <span>Workspace info</span>
               <span>Coach</span>
               <span>Plan</span>
               <span>Modele</span>
@@ -242,121 +306,180 @@ export default function AdminCoachesPage() {
             </div>
             {loading ? (
               <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
-                Chargement des organisations...
+                Chargement des workspaces...
               </div>
-            ) : filtered.length === 0 ? (
+            ) : grouped.length === 0 ? (
               <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
-                Aucune organisation disponible.
+                Aucun workspace disponible.
               </div>
             ) : (
-              filtered.map((org) => (
+              grouped.map((group) => (
                 <div
-                  key={org.id}
-                  className="grid gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-[var(--text)] md:grid-cols-[1.3fr_1fr_1fr_1fr_0.6fr]"
+                  key={group.key}
+                  className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-[var(--text)]"
                 >
-                  <div>
-                    <p className="font-medium">{org.name || "Organisation"}</p>
-                  </div>
-                  <div className="text-sm text-[var(--muted)]">
-                    <p>{org.owner?.full_name ?? "Coach"}</p>
-                    <p className="mt-1 text-xs text-[var(--muted)]">
-                      {org.owner?.email ?? "Email indisponible"}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={savingId === org.id}
-                      onClick={() =>
-                        handleUpdate(org.id, {
-                          ai_enabled: !org.ai_enabled,
-                        })
-                      }
-                      className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
-                        org.ai_enabled
-                          ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/20"
-                          : "border-white/10 bg-white/5 text-[var(--muted)] hover:bg-white/10"
-                      }`}
-                    >
-                      {org.ai_enabled ? "IA active" : "IA off"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={savingId === org.id}
-                      onClick={() =>
-                        handleUpdate(org.id, {
-                          tpi_enabled: !org.tpi_enabled,
-                        })
-                      }
-                      className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide transition ${
-                        org.tpi_enabled
-                          ? "border-rose-300/30 bg-rose-400/10 text-rose-200 hover:bg-rose-400/20"
-                          : "border-white/10 bg-white/5 text-[var(--muted)] hover:bg-white/10"
-                      }`}
-                    >
-                      {org.tpi_enabled ? "TPI on" : "TPI off"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={savingId === org.id}
-                      onClick={() =>
-                        handleUpdate(org.id, {
-                          radar_enabled: !org.radar_enabled,
-                        })
-                      }
-                      className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide transition ${
-                        org.radar_enabled
-                          ? "border-violet-300/30 bg-violet-400/10 text-violet-200 hover:bg-violet-400/20"
-                          : "border-white/10 bg-white/5 text-[var(--muted)] hover:bg-white/10"
-                      }`}
-                    >
-                      {org.radar_enabled ? "Datas on" : "Datas off"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={savingId === org.id}
-                      onClick={() =>
-                        handleUpdate(org.id, {
-                          coaching_dynamic_enabled: !org.coaching_dynamic_enabled,
-                        })
-                      }
-                      className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide transition ${
-                        org.coaching_dynamic_enabled
-                          ? "border-cyan-300/30 bg-cyan-400/10 text-cyan-200 hover:bg-cyan-400/20"
-                          : "border-white/10 bg-white/5 text-[var(--muted)] hover:bg-white/10"
-                      }`}
-                    >
-                      {org.coaching_dynamic_enabled ? "Coaching on" : "Coaching off"}
-                    </button>
-                  </div>
-                  <div>
-                    <select
-                      value={org.ai_model}
-                      disabled={savingId === org.id}
-                      onChange={(event) =>
-                        handleUpdate(org.id, {
-                          ai_model: event.target.value,
-                        })
-                      }
-                      className="w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
-                    >
-                      {MODEL_OPTIONS.map((model) => (
-                        <option key={model} value={model}>
-                          {model}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex items-center">
-                    <button
-                      type="button"
-                      disabled={!org.owner?.id || deletingId === org.owner?.id}
-                      onClick={() => handleDeleteCoach(org.owner?.id ?? "", org.id)}
-                      className="rounded-full border border-rose-300/30 bg-rose-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-rose-200 transition hover:bg-rose-400/20 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {deletingId === org.owner?.id ? "Suppression..." : "Supprimer"}
-                    </button>
-                  </div>
+                  {group.items.map((workspace, index) => {
+                    const isPlaceholder = workspace.isPlaceholder === true;
+                    return (
+                      <div
+                        key={workspace.id}
+                        className={`grid gap-3 md:grid-cols-[1.3fr_1fr_1fr_1fr_0.6fr] ${
+                          index > 0
+                            ? "mt-3 border-t border-white/10 pt-3"
+                            : ""
+                        }`}
+                      >
+                        <div>
+                          <p className="font-medium">
+                            {isPlaceholder
+                              ? "Aucune organisation"
+                              : workspace.name || "Workspace"}
+                          </p>
+                          <p className="mt-1 text-xs text-[var(--muted)]">
+                            {workspace.workspace_type === "personal"
+                              ? "Perso"
+                              : "Organisation"}
+                            {!isPlaceholder && workspace.membership_role
+                              ? ` - ${workspace.membership_role === "admin" ? "Admin" : "Coach"}`
+                              : ""}
+                          </p>
+                        </div>
+                        <div className="text-sm text-[var(--muted)]">
+                          {isPlaceholder ? (
+                            <>
+                              <p>-</p>
+                              <p className="mt-1 text-xs text-[var(--muted)]">-</p>
+                            </>
+                          ) : (
+                            <>
+                              <p>{workspace.coach?.full_name ?? "Coach"}</p>
+                              <p className="mt-1 text-xs text-[var(--muted)]">
+                                {workspace.coach?.email ?? "Email indisponible"}
+                              </p>
+                            </>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {isPlaceholder ? (
+                            <p className="text-xs text-[var(--muted)]">-</p>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                disabled={savingId === workspace.id}
+                                onClick={() =>
+                                  handleUpdate(workspace.id, {
+                                    ai_enabled: !workspace.ai_enabled,
+                                  })
+                                }
+                                className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
+                                  workspace.ai_enabled
+                                    ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/20"
+                                    : "border-white/10 bg-white/5 text-[var(--muted)] hover:bg-white/10"
+                                }`}
+                              >
+                                {workspace.ai_enabled ? "IA active" : "IA off"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={savingId === workspace.id}
+                                onClick={() =>
+                                  handleUpdate(workspace.id, {
+                                    tpi_enabled: !workspace.tpi_enabled,
+                                  })
+                                }
+                                className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide transition ${
+                                  workspace.tpi_enabled
+                                    ? "border-rose-300/30 bg-rose-400/10 text-rose-200 hover:bg-rose-400/20"
+                                    : "border-white/10 bg-white/5 text-[var(--muted)] hover:bg-white/10"
+                                }`}
+                              >
+                                {workspace.tpi_enabled ? "TPI on" : "TPI off"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={savingId === workspace.id}
+                                onClick={() =>
+                                  handleUpdate(workspace.id, {
+                                    radar_enabled: !workspace.radar_enabled,
+                                  })
+                                }
+                                className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide transition ${
+                                  workspace.radar_enabled
+                                    ? "border-violet-300/30 bg-violet-400/10 text-violet-200 hover:bg-violet-400/20"
+                                    : "border-white/10 bg-white/5 text-[var(--muted)] hover:bg-white/10"
+                                }`}
+                              >
+                                {workspace.radar_enabled ? "Datas on" : "Datas off"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={savingId === workspace.id}
+                                onClick={() =>
+                                  handleUpdate(workspace.id, {
+                                    coaching_dynamic_enabled:
+                                      !workspace.coaching_dynamic_enabled,
+                                  })
+                                }
+                                className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide transition ${
+                                  workspace.coaching_dynamic_enabled
+                                    ? "border-cyan-300/30 bg-cyan-400/10 text-cyan-200 hover:bg-cyan-400/20"
+                                    : "border-white/10 bg-white/5 text-[var(--muted)] hover:bg-white/10"
+                                }`}
+                              >
+                                {workspace.coaching_dynamic_enabled
+                                  ? "Coaching on"
+                                  : "Coaching off"}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                        <div>
+                          {isPlaceholder ? (
+                            <p className="text-xs text-[var(--muted)]">-</p>
+                          ) : (
+                            <select
+                              value={workspace.ai_model}
+                              disabled={savingId === workspace.id}
+                              onChange={(event) =>
+                                handleUpdate(workspace.id, {
+                                  ai_model: event.target.value,
+                                })
+                              }
+                              className="w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                            >
+                              {MODEL_OPTIONS.map((model) => (
+                                <option key={model} value={model}>
+                                  {model}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                        <div className="flex items-center">
+                          {index === 0 && !isPlaceholder ? (
+                            <button
+                              type="button"
+                              disabled={
+                                !group.coach?.id ||
+                                deletingId === group.coach?.id
+                              }
+                              onClick={() =>
+                                handleDeleteCoach(group.coach?.id ?? "")
+                              }
+                              className="rounded-full border border-rose-300/30 bg-rose-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-rose-200 transition hover:bg-rose-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {deletingId === group.coach?.id
+                                ? "Suppression..."
+                                : "Supprimer"}
+                            </button>
+                          ) : (
+                            <span />
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               ))
             )}

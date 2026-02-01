@@ -251,6 +251,12 @@ export default function CoachStudentDetailPage() {
   const isReadOnly = shareAccess.canRead;
   const canWriteReports = workspaceType === "org" ? canPublishInOrg : !isReadOnly;
   const radarTechMeta = getRadarTechMeta(radarTech);
+  const getCoachLabel = (fullName: string | null | undefined, coachId: string) => {
+    const trimmed = fullName?.trim();
+    if (trimmed) return trimmed;
+    return `Coach (${coachId.slice(0, 6)})`;
+  };
+  const hasMissingCoachNames = coachOptions.some((coach) => !coach.profiles?.full_name);
   const radarVisibleFiles = useMemo(() => {
     if (radarFilter === "all") return radarFiles;
     return radarFiles.filter((file) => file.source === radarFilter);
@@ -881,57 +887,80 @@ export default function CoachStudentDetailPage() {
       setAssignmentsLoading(true);
       setAssignmentsError("");
 
-      const { data: assignmentsData, error: assignmentsError } = await supabase
-        .from("student_assignments")
-        .select("coach_id, profiles(full_name)")
-        .eq("student_id", studentId);
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (!token) {
+          setAssignmentsError("Session invalide.");
+          setAssignmentsLoading(false);
+          return;
+        }
 
-      if (assignmentsError) {
-        setAssignmentsError(assignmentsError.message);
-        setAssignmentsLoading(false);
-        return;
-      }
-
-      const { data: coachesData, error: coachesError } = await supabase
-        .from("org_memberships")
-        .select("user_id, role, status, profiles(full_name)")
-        .eq("org_id", organization.id)
-        .eq("status", "active");
-
-      if (coachesError) {
-        setAssignmentsError(coachesError.message);
-        setAssignmentsLoading(false);
-        return;
-      }
-
-      const assignments = (assignmentsData ?? []).map((entry) => {
-        const profiles = Array.isArray(entry.profiles)
-          ? entry.profiles[0] ?? null
-          : entry.profiles ?? null;
-        return {
-          coach_id: entry.coach_id,
-          profiles,
+        const assignmentsResponse = await fetch(
+          `/api/orgs/assignments?studentId=${studentId}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const assignmentsPayload = (await assignmentsResponse.json()) as {
+          assignments?: AssignmentCoach[];
+          error?: string;
         };
-      }) as AssignmentCoach[];
-      setAssignmentCoaches(assignments);
-      setSelectedCoachIds(assignments.map((item) => item.coach_id));
-      const options = (coachesData ?? []).map((entry) => {
-        const profiles = Array.isArray(entry.profiles)
-          ? entry.profiles[0] ?? null
-          : entry.profiles ?? null;
-        return {
-          user_id: entry.user_id,
-          role: entry.role,
-          status: entry.status,
-          profiles,
-        };
-      }) as OrgCoachOption[];
-      setCoachOptions(options);
-      setAssignmentsLoading(false);
-    };
+        if (!assignmentsResponse.ok) {
+          setAssignmentsError(assignmentsPayload.error ?? "Chargement impossible.");
+          setAssignmentsLoading(false);
+          return;
+        }
+        const assignmentsData = assignmentsPayload.assignments ?? [];
+
+        const assignments = (assignmentsData ?? []).map((entry) => {
+          const profiles = Array.isArray(entry.profiles)
+            ? entry.profiles[0] ?? null
+            : entry.profiles ?? null;
+          return {
+            coach_id: entry.coach_id,
+            profiles,
+          };
+        }) as AssignmentCoach[];
+        setAssignmentCoaches(assignments);
+        setSelectedCoachIds(assignments.map((item) => item.coach_id));
+        if (isWorkspaceAdmin) {
+          const { data: sessionData } = await supabase.auth.getSession();
+          const token = sessionData.session?.access_token;
+          if (!token) {
+            setAssignmentsError("Session invalide.");
+            setAssignmentsLoading(false);
+            return;
+          }
+          const membersResponse = await fetch("/api/orgs/members", {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const membersPayload = (await membersResponse.json()) as {
+            members?: OrgCoachOption[];
+            error?: string;
+          };
+          if (!membersResponse.ok) {
+            setAssignmentsError(membersPayload.error ?? "Chargement impossible.");
+            setAssignmentsLoading(false);
+            return;
+          }
+          const options = (membersPayload.members ?? []).map((entry) => {
+            const profiles = Array.isArray(entry.profiles)
+              ? entry.profiles[0] ?? null
+              : entry.profiles ?? null;
+            return {
+              user_id: entry.user_id,
+              role: entry.role,
+              status: entry.status,
+              profiles,
+            };
+          }) as OrgCoachOption[];
+          setCoachOptions(options);
+        } else {
+          setCoachOptions([]);
+        }
+        setAssignmentsLoading(false);
+      };
 
     loadAssignments();
-  }, [workspaceType, studentId, organization?.id]);
+  }, [workspaceType, studentId, organization?.id, isWorkspaceAdmin]);
 
   const handleOwnerRevokeShare = async (shareId: string) => {
     setOwnerShareError("");
@@ -1408,7 +1437,7 @@ export default function CoachStudentDetailPage() {
                     key={entry.coach_id}
                     className="rounded-full border border-white/10 bg-white/5 px-3 py-1"
                   >
-                    {entry.profiles?.full_name ?? "Coach"}
+                    {getCoachLabel(entry.profiles?.full_name, entry.coach_id)}
                   </span>
                 ))
               )}
@@ -1423,9 +1452,15 @@ export default function CoachStudentDetailPage() {
                 <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
                   Modifier les assignations (admin)
                 </p>
+                {hasMissingCoachNames ? (
+                  <p className="mt-2 text-xs text-amber-200">
+                    Certains coachs n ont pas renseigne leur nom/prenom. Demandez-leur
+                    de completer leur profil.
+                  </p>
+                ) : null}
                 <div className="mt-3 grid gap-2 md:grid-cols-2">
                   {coachOptions.map((coach) => {
-                    const label = coach.profiles?.full_name ?? "Coach";
+                    const label = getCoachLabel(coach.profiles?.full_name, coach.user_id);
                     const checked = selectedCoachIds.includes(coach.user_id);
                     return (
                       <label

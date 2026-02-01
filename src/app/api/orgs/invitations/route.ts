@@ -112,7 +112,8 @@ export async function POST(request: Request) {
   const apiKey = env.BREVO_API_KEY;
   const senderEmail = env.BREVO_SENDER_EMAIL;
   const senderName = env.BREVO_SENDER_NAME;
-  if (acceptUrl && apiKey && senderEmail && senderName) {
+  const emailSent = Boolean(acceptUrl && apiKey && senderEmail && senderName);
+  if (emailSent) {
     const apiInstance = new Brevo.TransactionalEmailsApi();
     apiInstance.setApiKey(Brevo.TransactionalEmailsApiApiKeys.apiKey, apiKey);
     await apiInstance.sendTransacEmail({
@@ -127,5 +128,5 @@ export async function POST(request: Request) {
     });
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, acceptUrl, emailSent });
 }

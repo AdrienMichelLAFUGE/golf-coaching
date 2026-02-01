@@ -22,10 +22,11 @@ type InvitationRow = {
   status: string;
   created_at: string;
   expires_at: string | null;
+  token?: string | null;
 };
 
 export default function OrgMembersPage() {
-  const { organization } = useProfile();
+  const { organization, profile } = useProfile();
   const modeLabel =
     (organization?.workspace_type ?? "personal") === "org"
       ? `Organisation : ${organization?.name ?? "Organisation"}`
@@ -41,6 +42,7 @@ export default function OrgMembersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   const loadMembers = async () => {
     setLoading(true);
@@ -103,13 +105,57 @@ export default function OrgMembersPage() {
       },
       body: JSON.stringify({ email: trimmed, role }),
     });
-    const payload = (await response.json()) as { error?: string };
+    const payload = (await response.json()) as {
+      error?: string;
+      acceptUrl?: string;
+      emailSent?: boolean;
+    };
     if (!response.ok) {
       setError(payload.error ?? "Invitation impossible.");
       return;
     }
     setEmail("");
-    setMessage("Invitation envoyee.");
+    setMessage("Invitation creee. Le coach la verra dans son compte.");
+    await loadMembers();
+  };
+
+  const handleRemoveMember = async (member: MemberRow) => {
+    if (member.role === "admin") {
+      setError("Impossible de retirer un admin.");
+      return;
+    }
+    if (profile?.id && member.user_id === profile.id) {
+      setError("Impossible de vous retirer.");
+      return;
+    }
+    const confirmed = window.confirm("Retirer ce coach de l organisation ?");
+    if (!confirmed) return;
+    setError("");
+    setMessage("");
+    setRemovingId(member.id);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setError("Session invalide.");
+      setRemovingId(null);
+      return;
+    }
+    const response = await fetch("/api/orgs/members", {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ memberId: member.id }),
+    });
+    const payload = (await response.json()) as { error?: string };
+    if (!response.ok) {
+      setError(payload.error ?? "Suppression impossible.");
+      setRemovingId(null);
+      return;
+    }
+    setRemovingId(null);
+    setMessage("Coach retire.");
     await loadMembers();
   };
 
@@ -202,6 +248,16 @@ export default function OrgMembersPage() {
                       {member.role === "admin" ? "Admin" : "Coach"} - {member.status}
                     </p>
                   </div>
+                  {member.role !== "admin" ? (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveMember(member)}
+                      disabled={removingId === member.id}
+                      className="rounded-full border border-rose-300/30 bg-rose-400/10 px-3 py-1 text-xs uppercase tracking-wide text-rose-100 transition hover:border-rose-300/60 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {removingId === member.id ? "Suppression..." : "Retirer"}
+                    </button>
+                  ) : null}
                 </div>
               ))
             )}
@@ -216,17 +272,19 @@ export default function OrgMembersPage() {
                 Aucune invitation en cours.
               </div>
             ) : (
-              invitations.map((invite) => (
-                <div
-                  key={invite.id}
-                  className="rounded-xl border border-white/5 bg-white/5 px-4 py-3"
-                >
-                  <p className="font-medium text-[var(--text)]">{invite.email}</p>
-                  <p className="text-xs text-[var(--muted)]">
-                    {invite.role} - {invite.status}
-                  </p>
-                </div>
-              ))
+              invitations.map((invite) => {
+                return (
+                  <div
+                    key={invite.id}
+                    className="rounded-xl border border-white/5 bg-white/5 px-4 py-3"
+                  >
+                    <p className="font-medium text-[var(--text)]">{invite.email}</p>
+                    <p className="text-xs text-[var(--muted)]">
+                      {invite.role} - {invite.status}
+                    </p>
+                  </div>
+                );
+              })
             )}
           </div>
         </section>

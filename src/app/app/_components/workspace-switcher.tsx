@@ -169,6 +169,9 @@ export default function WorkspaceSwitcher() {
 
     await refresh();
     router.refresh();
+    if (typeof window !== "undefined") {
+      window.location.reload();
+    }
     setSwitchingId(null);
     setOpen(false);
   };

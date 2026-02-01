@@ -31,6 +31,8 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
   const { profile, organization } = useProfile();
 
   const roleLabel = profile?.role === "student" ? "Eleve" : "Coach";
+  const needsProfileName =
+    !!profile && profile.role !== "student" && !(profile.full_name ?? "").trim();
   const avatarFallback = (profile?.full_name || email || "Coach").charAt(0).toUpperCase();
   const logoFallback = (organization?.name || "Golf Coaching").charAt(0).toUpperCase();
   const mobileIdentityUrl = profile?.avatar_url ?? organization?.logo_url ?? null;
@@ -157,6 +159,15 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
             {email ?? "Session active"}
           </span>
         </div>
+        {needsProfileName ? (
+          <button
+            type="button"
+            onClick={() => router.push("/app/coach/parametres")}
+            className="hidden rounded-full border border-amber-300/40 bg-amber-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-amber-100 transition hover:border-amber-300/70 md:block"
+          >
+            Profil incomplet
+          </button>
+        ) : null}
         {profile ? (
           <div className="hidden items-center gap-2 md:flex">
             <div className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs text-[var(--muted)]">

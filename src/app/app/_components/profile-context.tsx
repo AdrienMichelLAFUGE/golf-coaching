@@ -149,7 +149,22 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
         )
         .eq("user_id", profileData.id)
         .order("created_at", { ascending: true });
-      setMemberships((membershipData ?? []) as WorkspaceMembership[]);
+      const mappedMemberships = (membershipData ?? []).map((membership) => {
+        const typed = membership as WorkspaceMembership & {
+          organizations?:
+            | WorkspaceMembership["organization"]
+            | WorkspaceMembership["organization"][]
+            | null;
+        };
+        const organizations = Array.isArray(typed.organizations)
+          ? typed.organizations[0] ?? null
+          : typed.organizations ?? null;
+        return {
+          ...typed,
+          organization: organizations ?? typed.organization ?? null,
+        };
+      });
+      setMemberships(mappedMemberships as WorkspaceMembership[]);
     } else {
       setPersonalWorkspace(null);
       setMemberships([]);
@@ -186,7 +201,10 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 
   const workspaceType = organization?.workspace_type ?? null;
   const isWorkspaceAdmin = currentMembership?.role === "admin";
-  const isWorkspacePremium = Boolean(organization?.ai_enabled);
+  const isWorkspacePremium =
+    workspaceType === "org"
+      ? Boolean(organization?.ai_enabled) && Boolean(currentMembership?.premium_active)
+      : Boolean(organization?.ai_enabled);
 
   const value = useMemo(
     () => ({

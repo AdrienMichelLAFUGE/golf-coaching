@@ -75,7 +75,7 @@ describe("POST /api/orgs/proposals/decide", () => {
         }
         if (table === "org_memberships") {
           return buildSelectMaybeSingle({
-            data: { role: "coach", status: "active" },
+            data: { role: "coach", status: "active", premium_active: true },
             error: null,
           });
         }

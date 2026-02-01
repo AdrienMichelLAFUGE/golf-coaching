@@ -3,7 +3,6 @@ import {
   createSupabaseAdminClient,
   createSupabaseServerClientFromRequest,
 } from "@/lib/supabase/server";
-import { defaultSectionTemplates } from "@/lib/default-section-templates";
 
 const ensurePersonalWorkspace = async (
   admin: ReturnType<typeof createSupabaseAdminClient>,
@@ -102,6 +101,17 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (profile?.id) {
+    if (!profile.full_name || !profile.full_name.trim()) {
+      const derivedName =
+        String(user.user_metadata?.full_name ?? "").trim() ||
+        email.split("@")[0];
+      if (derivedName) {
+        await admin
+          .from("profiles")
+          .update({ full_name: derivedName })
+          .eq("id", profile.id);
+      }
+    }
     const personalWorkspaceId = await ensurePersonalWorkspace(
       admin,
       profile.id,
@@ -165,25 +175,11 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data: org, error: orgError } = await admin
-    .from("organizations")
-    .insert([{ name: "Nouvelle organisation" }])
-    .select("id")
-    .single();
-
-  if (orgError || !org) {
-    return NextResponse.json(
-      { error: orgError?.message ?? "Creation organisation impossible." },
-      { status: 400 }
-    );
-  }
-
   const fullName = String(user.user_metadata?.full_name ?? "").trim();
   const { error: profileError } = await admin.from("profiles").upsert(
     {
       id: user.id,
-      org_id: org.id,
-      role: "owner",
+      role: roleHint === "owner" ? "owner" : "coach",
       full_name: fullName || null,
     },
     { onConflict: "id" }
@@ -193,7 +189,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: profileError.message }, { status: 400 });
   }
 
-  await ensureOrgMembership(admin, org.id, user.id, "admin");
   const personalWorkspaceId = await ensurePersonalWorkspace(
     admin,
     user.id,
@@ -207,32 +202,48 @@ export async function POST(request: Request) {
         active_workspace_id: personalWorkspaceId,
       })
       .eq("id", user.id);
+  } else {
+    return NextResponse.json(
+      { error: "Creation espace personnel impossible." },
+      { status: 400 }
+    );
   }
 
-  const templatesPayload = defaultSectionTemplates.map((template) => ({
-    org_id: org.id,
-    title: template.title,
-    type: template.type,
-    tags: template.tags,
-  }));
-  const { error: templatesError } = await admin
-    .from("section_templates")
-    .upsert(templatesPayload, { onConflict: "org_id,title" });
+  const { data: membershipData } = await admin
+    .from("org_memberships")
+    .select("org_id")
+    .eq("user_id", user.id);
+  const orgIds = Array.from(
+    new Set((membershipData ?? []).map((membership) => membership.org_id))
+  );
 
-  if (templatesError) {
-    const { error: fallbackError } = await admin.from("section_templates").upsert(
-      defaultSectionTemplates.map((template) => ({
-        org_id: org.id,
-        title: template.title,
-        type: template.type,
-      })),
-      { onConflict: "org_id,title" }
-    );
+  if (orgIds.length > 0) {
+    const { data: orgsData } = await admin
+      .from("organizations")
+      .select("id, name, workspace_type, owner_profile_id")
+      .in("id", orgIds);
 
-    if (fallbackError) {
-      return NextResponse.json({ error: fallbackError.message }, { status: 400 });
+    const legacyOrgIds =
+      orgsData
+        ?.filter(
+          (org) =>
+            org.workspace_type === "org" &&
+            !org.owner_profile_id &&
+            org.name === "Nouvelle organisation"
+        )
+        .map((org) => org.id) ?? [];
+
+    if (legacyOrgIds.length > 0) {
+      await admin
+        .from("org_memberships")
+        .delete()
+        .eq("user_id", user.id)
+        .in("org_id", legacyOrgIds);
     }
   }
 
-  return NextResponse.json({ ok: true, role: "owner" });
+  return NextResponse.json({
+    ok: true,
+    role: roleHint === "owner" ? "owner" : "coach",
+  });
 }

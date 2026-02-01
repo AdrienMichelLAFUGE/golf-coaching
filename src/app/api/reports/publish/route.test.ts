@@ -258,14 +258,14 @@ describe("POST /api/reports/publish", () => {
               id: "org-1",
               workspace_type: "org",
               owner_profile_id: null,
-              ai_enabled: false,
+              ai_enabled: true,
             },
             error: null,
           });
         }
         if (table === "org_memberships") {
           return buildSelectMaybeSingle({
-            data: { role: "coach", status: "active" },
+            data: { role: "coach", status: "active", premium_active: false },
             error: null,
           });
         }
@@ -323,7 +323,7 @@ describe("POST /api/reports/publish", () => {
         }
         if (table === "org_memberships") {
           return buildSelectMaybeSingle({
-            data: { role: "coach", status: "active" },
+            data: { role: "coach", status: "active", premium_active: true },
             error: null,
           });
         }

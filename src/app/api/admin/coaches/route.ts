@@ -56,57 +56,137 @@ export async function GET(request: Request) {
   const { data: organizations, error: orgError } = await auth.admin
     .from("organizations")
     .select(
-      "id, name, ai_enabled, tpi_enabled, radar_enabled, coaching_dynamic_enabled, ai_model"
+      "id, name, workspace_type, owner_profile_id, ai_enabled, tpi_enabled, radar_enabled, coaching_dynamic_enabled, ai_model"
     );
 
   if (orgError) {
     return NextResponse.json({ error: orgError.message }, { status: 500 });
   }
 
-  const { data: owners, error: ownerError } = await auth.admin
-    .from("profiles")
-    .select("id, org_id, full_name, role")
-    .eq("role", "owner");
+  const { data: memberships, error: membershipError } = await auth.admin
+    .from("org_memberships")
+    .select("id, org_id, role, status, user_id");
 
-  if (ownerError) {
-    return NextResponse.json({ error: ownerError.message }, { status: 500 });
+  if (membershipError) {
+    return NextResponse.json({ error: membershipError.message }, { status: 500 });
   }
 
-  const ownerEntries = await Promise.all(
-    (owners ?? [])
-      .filter((owner) => owner.org_id)
-      .map(async (owner) => {
-        let email: string | null = null;
-        const { data: authData, error: authError } =
-          await auth.admin.auth.admin.getUserById(owner.id);
-        if (!authError) {
-          email = authData.user?.email ?? null;
-        }
-        return [
-          owner.org_id,
-          {
-            id: owner.id,
-            full_name: owner.full_name ?? null,
-            email,
-          },
-        ] as const;
-      })
+  const orgById = new Map(
+    (organizations ?? []).map((org) => [
+      org.id,
+      {
+        id: org.id,
+        name: org.name ?? "",
+        workspace_type: org.workspace_type ?? "org",
+        owner_profile_id: org.owner_profile_id ?? null,
+        ai_enabled: org.ai_enabled ?? false,
+        tpi_enabled: org.tpi_enabled ?? false,
+        radar_enabled: org.radar_enabled ?? false,
+        coaching_dynamic_enabled: org.coaching_dynamic_enabled ?? false,
+        ai_model: org.ai_model ?? "gpt-5-mini",
+      },
+    ])
   );
 
-  const ownerByOrg = new Map(ownerEntries);
+  const uniqueCoachIds = Array.from(
+    new Set((memberships ?? []).map((membership) => membership.user_id).filter(Boolean))
+  );
 
-  const payload = (organizations ?? []).map((org) => ({
-    id: org.id,
-    name: org.name ?? "",
-    ai_enabled: org.ai_enabled ?? false,
-    tpi_enabled: org.tpi_enabled ?? false,
-    radar_enabled: org.radar_enabled ?? false,
-    coaching_dynamic_enabled: org.coaching_dynamic_enabled ?? false,
-    ai_model: org.ai_model ?? "gpt-5-mini",
-    owner: ownerByOrg.get(org.id) ?? null,
-  }));
+  let profilesById = new Map<
+    string,
+    { id: string; full_name: string | null; role: string | null }
+  >();
+  if (uniqueCoachIds.length > 0) {
+    const { data: profilesData, error: profilesError } = await auth.admin
+      .from("profiles")
+      .select("id, full_name, role")
+      .in("id", uniqueCoachIds);
+    if (profilesError) {
+      return NextResponse.json({ error: profilesError.message }, { status: 500 });
+    }
+    profilesById = new Map(
+      (profilesData ?? []).map((profile) => [
+        profile.id,
+        {
+          id: profile.id,
+          full_name: profile.full_name ?? null,
+          role: profile.role ?? null,
+        },
+      ])
+    );
+  }
 
-  return NextResponse.json({ organizations: payload });
+  const coachEntries = await Promise.all(
+    uniqueCoachIds.map(async (coachId) => {
+      const { data: authData, error: authError } =
+        await auth.admin.auth.admin.getUserById(coachId);
+      if (authError) {
+        return [
+          coachId,
+          {
+            id: coachId,
+            full_name: null,
+            email: null,
+          },
+        ] as const;
+      }
+      return [
+        coachId,
+        {
+          id: coachId,
+          full_name: null,
+          email: authData.user?.email ?? null,
+        },
+      ] as const;
+    })
+  );
+
+  const coachById = new Map(coachEntries);
+
+  const rows =
+    memberships?.flatMap((membership) => {
+      const workspace = orgById.get(membership.org_id);
+      if (!workspace) return [];
+      const coach = coachById.get(membership.user_id) ?? {
+        id: membership.user_id,
+        full_name: null,
+        email: null,
+      };
+      const profile = profilesById.get(membership.user_id) ?? null;
+      if (profile?.role === "student") return [];
+
+      return [
+        {
+          ...workspace,
+          membership_id: membership.id,
+          membership_role: membership.role,
+          membership_status: membership.status,
+          coach: {
+            ...coach,
+            full_name: profile?.full_name ?? coach.full_name ?? null,
+          },
+        },
+      ];
+    }) ?? [];
+
+  const orgsWithMembers = new Set(rows.map((row) => row.id));
+  const orphanedRows = Array.from(orgById.values())
+    .filter((org) => !orgsWithMembers.has(org.id))
+    .filter((org) => {
+      if (org.workspace_type !== "personal") return true;
+      if (!org.owner_profile_id) return false;
+      const owner = profilesById.get(org.owner_profile_id);
+      return owner?.role && owner.role !== "student";
+    })
+    .map((org) => ({
+      ...org,
+      membership_id: null,
+      membership_role: null,
+      membership_status: null,
+      coach: null,
+    }));
+
+  return NextResponse.json({ workspaces: [...rows, ...orphanedRows] });
 }
 
 export async function PATCH(request: Request) {
@@ -145,6 +225,16 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "No updates." }, { status: 400 });
   }
 
+  const { data: orgData, error: orgDataError } = await auth.admin
+    .from("organizations")
+    .select("id, workspace_type, owner_profile_id")
+    .eq("id", orgId)
+    .single();
+
+  if (orgDataError || !orgData) {
+    return NextResponse.json({ error: "Organisation introuvable." }, { status: 404 });
+  }
+
   const { error: updateError } = await auth.admin
     .from("organizations")
     .update(updates)
@@ -152,6 +242,21 @@ export async function PATCH(request: Request) {
 
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
+  }
+
+  if (
+    typeof payload.ai_enabled === "boolean" &&
+    orgData.workspace_type === "personal" &&
+    orgData.owner_profile_id
+  ) {
+    const { error: premiumError } = await auth.admin
+      .from("profiles")
+      .update({ premium_active: payload.ai_enabled })
+      .eq("id", orgData.owner_profile_id);
+
+    if (premiumError) {
+      return NextResponse.json({ error: premiumError.message }, { status: 500 });
+    }
   }
 
   return NextResponse.json({ ok: true });
@@ -177,18 +282,46 @@ export async function DELETE(request: Request) {
     );
   }
 
-  const { error: deleteError } = await auth.admin.auth.admin.deleteUser(coachId);
-  if (deleteError) {
-    return NextResponse.json({ error: deleteError.message }, { status: 400 });
+  const { error: tpiCleanupError } = await auth.admin
+    .from("tpi_reports")
+    .update({ uploaded_by: null })
+    .eq("uploaded_by", coachId);
+
+  if (tpiCleanupError) {
+    return NextResponse.json(
+      { error: tpiCleanupError.message },
+      { status: 500 }
+    );
   }
 
-  const { error: profileError } = await auth.admin
-    .from("profiles")
-    .delete()
-    .eq("id", coachId);
+  const { error: deleteError } = await auth.admin.auth.admin.deleteUser(coachId);
+  if (deleteError) {
+    const { error: profileError } = await auth.admin
+      .from("profiles")
+      .delete()
+      .eq("id", coachId);
 
-  if (profileError) {
-    return NextResponse.json({ error: profileError.message }, { status: 500 });
+    if (profileError) {
+      return NextResponse.json(
+        { error: profileError.message },
+        { status: 500 }
+      );
+    }
+
+    const { error: retryError } =
+      await auth.admin.auth.admin.deleteUser(coachId);
+    if (retryError) {
+      return NextResponse.json({ error: retryError.message }, { status: 400 });
+    }
+  } else {
+    const { error: profileError } = await auth.admin
+      .from("profiles")
+      .delete()
+      .eq("id", coachId);
+
+    if (profileError) {
+      return NextResponse.json({ error: profileError.message }, { status: 500 });
+    }
   }
 
   return NextResponse.json({ ok: true });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { useProfile } from "./profile-context";
 
@@ -22,6 +22,53 @@ export default function WorkspaceSelector() {
   const [createdOrg, setCreatedOrg] = useState<{ id: string; name: string } | null>(
     null
   );
+  const [pendingInvites, setPendingInvites] = useState<
+    Array<{
+      id: string;
+      token: string;
+      role: "admin" | "coach";
+      organizations?: { name: string | null } | null;
+    }>
+  >([]);
+  const [invitesLoading, setInvitesLoading] = useState(false);
+  const [inviteActionId, setInviteActionId] = useState<string | null>(null);
+
+  const loadInvites = async () => {
+    setInvitesLoading(true);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setInvitesLoading(false);
+      return;
+    }
+    const response = await fetch("/api/orgs/invitations/pending", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const payload = (await response.json()) as {
+      invitations?: Array<{
+        id: string;
+        token: string;
+        role: "admin" | "coach";
+        organizations?: { name: string | null } | null;
+      }>;
+    };
+    if (response.ok) {
+      setPendingInvites(payload.invitations ?? []);
+    }
+    setInvitesLoading(false);
+  };
+
+  useEffect(() => {
+    if (!profile || profile.role === "student") return;
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (cancelled) return;
+      void loadInvites();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [profile]);
 
   const handleSwitch = async (workspaceId: string) => {
     setSwitchingId(workspaceId);
@@ -52,6 +99,9 @@ export default function WorkspaceSelector() {
     }
 
     await refresh();
+    if (typeof window !== "undefined") {
+      window.location.reload();
+    }
     setSwitchingId(null);
     setMessage("Espace mis a jour.");
   };
@@ -94,6 +144,67 @@ export default function WorkspaceSelector() {
     setCreating(false);
     setCreatedOrg({ id: payload.orgId ?? "", name });
     setMessage(`Organisation ${name} creee.`);
+  };
+
+  const handleAcceptInvite = async (token: string, inviteId: string) => {
+    setInviteActionId(inviteId);
+    setError(null);
+    setMessage(null);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) {
+      setError("Session invalide.");
+      setInviteActionId(null);
+      return;
+    }
+    const response = await fetch("/api/orgs/invitations/accept", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ token }),
+    });
+    const payload = (await response.json()) as { error?: string };
+    if (!response.ok) {
+      setError(payload.error ?? "Acceptation impossible.");
+      setInviteActionId(null);
+      return;
+    }
+    await refresh();
+    await loadInvites();
+    setInviteActionId(null);
+    setMessage("Invitation acceptee.");
+  };
+
+  const handleDeclineInvite = async (token: string, inviteId: string) => {
+    setInviteActionId(inviteId);
+    setError(null);
+    setMessage(null);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) {
+      setError("Session invalide.");
+      setInviteActionId(null);
+      return;
+    }
+    const response = await fetch("/api/orgs/invitations/decline", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ token }),
+    });
+    const payload = (await response.json()) as { error?: string };
+    if (!response.ok) {
+      setError(payload.error ?? "Refus impossible.");
+      setInviteActionId(null);
+      return;
+    }
+    await loadInvites();
+    setInviteActionId(null);
+    setMessage("Invitation refusee.");
   };
 
   if (!profile || profile.role === "student") return null;
@@ -180,6 +291,56 @@ export default function WorkspaceSelector() {
           Invitation en attente sur un workspace.
         </p>
       ) : null}
+      <div className="mt-6 rounded-xl border border-white/10 bg-white/5 p-4">
+        <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+          Invitations en attente
+        </p>
+        <div className="mt-3 space-y-3 text-sm text-[var(--muted)]">
+          {invitesLoading ? (
+            <div className="rounded-xl border border-white/5 bg-white/5 px-3 py-2">
+              Chargement...
+            </div>
+          ) : pendingInvites.length === 0 ? (
+            <div className="rounded-xl border border-white/5 bg-white/5 px-3 py-2">
+              Aucune invitation.
+            </div>
+          ) : (
+            pendingInvites.map((invite) => (
+              <div
+                key={invite.id}
+                className="flex flex-col gap-3 rounded-xl border border-white/5 bg-white/5 px-3 py-2 md:flex-row md:items-center md:justify-between"
+              >
+                <div>
+                  <p className="text-[var(--text)]">
+                    {invite.organizations?.name ?? "Organisation"}
+                  </p>
+                  <p className="text-xs text-[var(--muted)]">
+                    Role propose: {invite.role === "admin" ? "Admin" : "Coach"}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleAcceptInvite(invite.token, invite.id)}
+                    disabled={inviteActionId === invite.id}
+                    className="rounded-full bg-emerald-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
+                  >
+                    Accepter
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeclineInvite(invite.token, invite.id)}
+                    disabled={inviteActionId === invite.id}
+                    className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs uppercase tracking-wide text-[var(--text)] transition hover:border-white/30 disabled:opacity-60"
+                  >
+                    Refuser
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </section>
   );
 }

@@ -12,6 +12,7 @@ export default function Home() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
   const [rememberMe, setRememberMe] = useState(() => {
     if (typeof window === "undefined") return true;
     return window.sessionStorage.getItem("gc.rememberMe") !== "false";
@@ -100,12 +101,16 @@ export default function Home() {
     router.replace("/app");
   };
 
-  const signUpCoach = async (trimmedEmail: string, trimmedPassword: string) => {
+  const signUpCoach = async (
+    trimmedEmail: string,
+    trimmedPassword: string,
+    trimmedFullName: string
+  ) => {
     const { data, error } = await supabase.auth.signUp({
       email: trimmedEmail,
       password: trimmedPassword,
       options: {
-        data: { role: "coach" },
+        data: { role: "coach", full_name: trimmedFullName },
       },
     });
 
@@ -148,12 +153,18 @@ export default function Home() {
 
     if (accountType === "coach" && coachFlow === "signup") {
       const trimmedPassword = password.trim();
+      const trimmedFullName = fullName.trim();
+      if (!trimmedFullName) {
+        setStatus("error");
+        setMessage("Ajoute ton nom et prenom.");
+        return;
+      }
       if (!trimmedPassword) {
         setStatus("error");
         setMessage("Ajoute un mot de passe.");
         return;
       }
-      await signUpCoach(trimmedEmail, trimmedPassword);
+      await signUpCoach(trimmedEmail, trimmedPassword, trimmedFullName);
       return;
     }
 
@@ -261,6 +272,26 @@ export default function Home() {
             </div>
           ) : null}
           <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+            {accountType === "coach" && coachFlow === "signup" ? (
+              <div>
+                <label
+                  className="block text-xs uppercase tracking-wide text-[var(--muted)]"
+                  htmlFor="fullName"
+                >
+                  Nom et prenom
+                </label>
+                <input
+                  id="fullName"
+                  name="fullName"
+                  type="text"
+                  autoComplete="name"
+                  placeholder="Prenom Nom"
+                  value={fullName}
+                  onChange={(event) => setFullName(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-3 text-sm text-[var(--text)] placeholder:text-zinc-500 focus:border-[var(--accent)] focus:outline-none"
+                />
+              </div>
+            ) : null}
             <label
               className="block text-xs uppercase tracking-wide text-[var(--muted)]"
               htmlFor="email"
