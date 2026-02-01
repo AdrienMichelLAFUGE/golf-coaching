@@ -75,7 +75,7 @@ export default function CoachDashboardPage() {
           </p>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-3">
+        <section className="grid grid-cols-2 gap-4 md:grid-cols-3">
           {[
             {
               label: "Eleves actifs",
@@ -86,8 +86,13 @@ export default function CoachDashboardPage() {
               value: reportsCount !== null ? `${reportsCount}` : "-",
             },
             { label: "Prochaine action", value: "En attente" },
-          ].map((item) => (
-            <div key={item.label} className="panel-soft rounded-2xl p-4">
+          ].map((item, index) => (
+            <div
+              key={item.label}
+              className={`panel-soft rounded-2xl p-4 ${
+                index === 2 ? "col-span-2 md:col-span-1" : ""
+              }`}
+            >
               <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
                 {item.label}
               </p>

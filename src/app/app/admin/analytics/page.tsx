@@ -196,14 +196,14 @@ export default function AdminAnalyticsPage() {
     <AdminGuard>
       <div className="space-y-6">
         <section className="panel rounded-2xl p-6">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-2">
               <PageBack fallbackHref="/app/admin" />
               <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
                 Analytics
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {(Object.keys(periodLabels) as Period[]).map((value) => (
                 <button
                   key={value}
