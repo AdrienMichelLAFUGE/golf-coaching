@@ -122,6 +122,9 @@ export default function WorkspaceSwitcher() {
   const activeWorkspaceId = organization?.id ?? null;
   const activeName =
     workspaceType === "org" ? organization?.name ?? "Organisation" : "Perso";
+  const isCoach = profile.role === "coach" || profile.role === "owner";
+  const canCreateOrg =
+    isCoach && Boolean(personalWorkspace?.ai_enabled ?? organization?.ai_enabled);
 
   const shouldConfirmSwitch = () => {
     const active = document.activeElement;
@@ -297,6 +300,32 @@ export default function WorkspaceSwitcher() {
               )}
             </div>
           </div>
+          {isCoach ? (
+            <div className="mt-2 border-t border-white/5 pt-2">
+              <button
+                type="button"
+                role="menuitem"
+                disabled={!canCreateOrg}
+                onClick={() => {
+                  if (!canCreateOrg) return;
+                  setOpen(false);
+                  router.push("/app#workspace-create-org");
+                }}
+                className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left transition ${
+                  canCreateOrg
+                    ? "border border-emerald-300/40 bg-emerald-400/10 text-emerald-100 hover:border-emerald-300/70"
+                    : "border border-white/10 text-[var(--muted)] opacity-60"
+                }`}
+              >
+                <span className="text-[0.7rem] uppercase tracking-wide">
+                  Creer une organisation
+                </span>
+                <span className="text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                  {canCreateOrg ? "Disponible" : "IA requise"}
+                </span>
+              </button>
+            </div>
+          ) : null}
           {error ? <p className="mt-2 px-3 text-[0.7rem] text-red-300">{error}</p> : null}
         </div>
       ) : null}

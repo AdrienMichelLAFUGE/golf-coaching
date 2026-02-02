@@ -40,6 +40,7 @@ export type PersonalWorkspace = {
   name: string | null;
   workspace_type: "personal";
   owner_profile_id: string | null;
+  ai_enabled?: boolean | null;
 };
 
 export type WorkspaceMembership = {
@@ -133,7 +134,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     if (profileData?.id) {
       const { data: personalData, error: personalError } = await supabase
         .from("organizations")
-        .select("id, name, workspace_type, owner_profile_id")
+        .select("id, name, workspace_type, owner_profile_id, ai_enabled")
         .eq("workspace_type", "personal")
         .eq("owner_profile_id", profileData.id)
         .maybeSingle();

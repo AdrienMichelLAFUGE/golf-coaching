@@ -231,10 +231,13 @@ export default function WorkspaceSelector() {
       </div>
 
       <div className="mt-4 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
-        Le mode actif se change depuis la barre du haut.
+        Selectionne un workspace ci-dessous pour changer de mode.
       </div>
 
-      <div className="mt-6 rounded-xl border border-white/10 bg-white/5 p-4">
+      <div
+        id="workspace-create-org"
+        className="mt-6 rounded-xl border border-white/10 bg-white/5 p-4"
+      >
         <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
           Nouvelle organisation
         </p>

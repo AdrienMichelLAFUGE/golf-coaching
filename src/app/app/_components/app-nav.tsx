@@ -53,6 +53,10 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
       });
     } else if (workspaceType === "org") {
       sections.push({
+        title: "Workspaces",
+        items: [{ label: "Workspaces", href: "/app" }],
+      });
+      sections.push({
         title: "Organisation",
         items: [
           { label: "Eleves (org)", href: "/app/coach/eleves" },
@@ -69,6 +73,10 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
         ],
       });
     } else {
+      sections.push({
+        title: "Workspaces",
+        items: [{ label: "Workspaces", href: "/app" }],
+      });
       sections.push({
         title: "Coach",
         items: [
