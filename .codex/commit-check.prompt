@@ -1,54 +1,130 @@
-Tu es Codex dans VS Code. Ta mission: préparer un commit “prod-ready”, générer un message de commit de qualité, puis créer le commit UNIQUEMENT après validation.
+Tu es Codex dans VS Code.
+Ta mission : préparer un commit prod-ready, générer un message de commit de qualité, puis créer le commit UNIQUEMENT après validation humaine explicite.
 
-RÈGLES
-- Ne commite PAS tant que la qualité n’est pas verte.
-- Ne touche pas à l’architecture pour améliorer. Changements minimaux.
-- Aucun secret en repo. Si détecté: STOP et propose une remediation.
-- Le message de commit doit être clair, factuel, et orienté impact.
+Ce prompt s’applique à chaque commit.
+
+RÈGLES (non négociables)
+
+Ne commite PAS tant que la qualité n’est pas verte.
+
+Changements minimaux, pas de refacto cosmétique.
+
+Aucun secret en repo.
+
+Si détecté → STOP, expliquer le risque et proposer une remédiation.
+
+Aucune modification DB non versionnée :
+
+toute évolution DB doit être dans supabase/migrations/*.sql
+
+aucune modification via SQL Editor non reflétée en migration.
+
+MCP Supabase est en lecture seule (STAGING uniquement) :
+
+ne jamais proposer ou exécuter une action destructive via MCP.
+
+Le message de commit doit être clair, factuel, orienté impact.
 
 PROCESS OBLIGATOIRE
-
 1) Analyse des changements
-- Exécute: git status, git diff
-- Résume en 5 lignes:
-  - ce qui a été changé
-  - pourquoi
-  - impact fonctionnel
-  - impact technique
-  - risque potentiel
 
-2) Qualité locale
-- Si "npm run ci" existe: exécute-le.
-- Sinon: lint → typecheck → test → build (si présents).
-- Corrige jusqu’à ce que tout soit vert.
+Exécute : git status, git diff
 
-3) Tests
-- Si logique / route API / action server / composant important modifié:
-  - ajoute au moins 1 test ciblé si manquant
-- Relance les checks.
+Résume en 5 lignes max :
 
-4) Génération du message de commit
-- Génère UN SEUL message de commit.
-- Format:
-  - type(scope): résumé court
-  - ligne vide
-  - 3–6 bullets maximum décrivant les changements
-- Types autorisés: feat, fix, chore, refactor, test, docs
+ce qui a été changé
 
-5) Validation humaine (OBLIGATOIRE)
-- Affiche le message généré.
-- Demande explicitement:
-  "Valides-tu ce message de commit ? (oui/non)"
-- Si la réponse n’est pas "oui": ne pas commiter.
+pourquoi
 
-6) Commit
-- Une fois validé explicitement:
-  - git add -p
-  - git commit -m "<MESSAGE_VALIDÉ>"
-- Ne push PAS sauf demande explicite.
+impact fonctionnel
+
+impact technique
+
+risque potentiel (s’il existe)
+
+2) Vérifications spécifiques DB / Supabase
+
+Si des fichiers DB sont modifiés :
+
+vérifier qu’ils sont uniquement dans supabase/migrations/
+
+refuser tout INSERT INTO hors fonctions (CREATE FUNCTION ... $$ ... $$)
+
+signaler explicitement si une migration est :
+
+destructive
+
+sensible RLS / permissions
+
+Ne jamais supposer que “ça ira en prod”.
+
+3) Qualité locale
+
+Si npm run ci existe → exécute-le.
+
+Sinon, exécute dans l’ordre :
+
+npm run lint
+
+npm run typecheck
+
+npm test
+
+npm run build (si présent)
+
+Corrige jusqu’à tout vert.
+
+4) Tests
+
+Si logique critique modifiée (API, server action, RLS-related logic, workflow métier, sécurité) :
+
+ajouter au moins 1 test ciblé si manquant
+
+Relancer les checks.
+
+5) Génération du message de commit
+
+Génère UN SEUL message de commit.
+
+Format strict :
+
+type(scope): résumé court
+
+- point clé 1
+- point clé 2
+- point clé 3
+
+
+3 à 6 bullets maximum.
+
+Types autorisés : feat, fix, chore, refactor, test, docs.
+
+6) Validation humaine (OBLIGATOIRE)
+
+Affiche le message généré.
+
+Demande explicitement :
+
+“Valides-tu ce message de commit ? (oui / non)”
+
+Si la réponse n’est pas “oui” → ne pas commiter.
+
+7) Commit
+
+Une fois validé explicitement :
+
+git add -p
+
+git commit -m "<MESSAGE_VALIDÉ>"
+
+Ne push PAS sauf demande explicite.
 
 SORTIE ATTENDUE
-- Message de commit proposé
-- Résultat des checks
-- Fichiers inclus
-- Hash du commit (si créé)
+
+Message de commit proposé
+
+Résultat des checks exécutés
+
+Liste des fichiers inclus
+
+Hash du commit (si créé)

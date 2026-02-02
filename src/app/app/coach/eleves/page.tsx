@@ -27,7 +27,15 @@ type StudentForm = {
 };
 
 export default function CoachStudentsPage() {
-  const { userEmail, organization, isWorkspacePremium, workspaceType } = useProfile();
+  const {
+    userEmail,
+    organization,
+    currentMembership,
+    isWorkspacePremium,
+    workspaceType,
+    profile,
+    loading: profileLoading,
+  } = useProfile();
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -55,6 +63,9 @@ export default function CoachStudentsPage() {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
   const [sharedStudentIds, setSharedStudentIds] = useState<string[]>([]);
+  const isOrgWorkspace =
+    organization?.workspace_type === "org" ||
+    currentMembership?.organization?.workspace_type === "org";
   const isOrgReadOnly = organization?.workspace_type === "org" && !isWorkspacePremium;
   const currentWorkspaceType = workspaceType ?? "personal";
   const workspaceName = organization?.name ?? "Organisation";
@@ -93,13 +104,26 @@ export default function CoachStudentsPage() {
   }, [query, students]);
 
   const loadProfile = async () => {
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    const userId = userData.user?.id;
+    if (userError || !userId) {
+      setError("Session invalide.");
+      return;
+    }
+
     const { data, error: profileError } = await supabase
       .from("profiles")
       .select("org_id")
-      .single();
+      .eq("id", userId)
+      .maybeSingle();
 
     if (profileError) {
       setError(profileError.message);
+      return;
+    }
+
+    if (!data?.org_id) {
+      setError("Organisation introuvable.");
       return;
     }
 
@@ -183,6 +207,18 @@ export default function CoachStudentsPage() {
     setCreating(true);
     setError("");
 
+    if (profileLoading) {
+      setError("Profil en cours de chargement. Reessaie dans un instant.");
+      setCreating(false);
+      return;
+    }
+
+    if (!profile) {
+      setError("Profil introuvable. Reconnecte-toi.");
+      setCreating(false);
+      return;
+    }
+
     if (isOrgReadOnly) {
       setError("Lecture seule: premium requis pour ajouter un eleve.");
       setCreating(false);
@@ -200,13 +236,7 @@ export default function CoachStudentsPage() {
       return;
     }
 
-    if (!orgId) {
-      setError("Profil en cours de chargement. Reessaie dans un instant.");
-      setCreating(false);
-      return;
-    }
-
-    if (organization?.workspace_type === "org") {
+    if (isOrgWorkspace) {
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
       if (!token) {
@@ -234,9 +264,16 @@ export default function CoachStudentsPage() {
         return;
       }
     } else {
+      const personalOrgId =
+        orgId ?? profile.active_workspace_id ?? profile.org_id ?? organization?.id ?? null;
+      if (!personalOrgId) {
+        setError("Organisation introuvable.");
+        setCreating(false);
+        return;
+      }
       const { error: insertError } = await supabase.from("students").insert([
         {
-          org_id: orgId,
+          org_id: personalOrgId,
           first_name: firstName,
           last_name: lastName || null,
           email: email || null,

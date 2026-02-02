@@ -14,4 +14,6 @@ jobs:
           node-version-file: ".nvmrc"
           cache: "npm"
       - run: npm ci
+      - run: npm run db:check:schema
+      - run: npm run db:check:secrets
       - run: npm run ci

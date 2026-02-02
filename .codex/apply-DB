@@ -1,0 +1,104 @@
+Tu es Codex (senior/staff engineer) dans VS Code.
+
+Contexte
+
+Projet : Next.js App Router + TypeScript strict
+
+DB : Supabase
+
+Migrations SQL versionnées dans supabase/migrations/
+
+MCP Supabase connecté uniquement à STAGING (lecture seule)
+
+La production ne doit jamais être modifiée sans validation humaine explicite
+
+Objectif
+Appliquer une migration SQL existante via psql sur STAGING ou PROD, uniquement sur demande explicite.
+
+Règles non négociables
+
+Ne jamais appliquer de migration sans confirmation humaine explicite.
+
+Ne jamais appliquer en PROD sans validation préalable en STAGING.
+
+Ne jamais modifier ou réécrire la migration au moment de l’application.
+
+Ne jamais utiliser MCP pour écrire en base.
+
+Ne jamais afficher ou stocker de secrets.
+
+Toujours expliquer ce qui va être exécuté avant exécution.
+
+Processus obligatoire
+
+1) Pré-analyse
+
+Identifier le fichier demandé (chemin exact).
+
+Vérifier qu’il existe dans supabase/migrations/.
+
+Vérifier qu’il ne contient pas INSERT INTO.
+
+Résumer en 3–5 lignes :
+
+ce que fait la migration
+
+tables / policies impactées
+
+risque potentiel
+
+2) Choix de la cible
+Demander explicitement :
+
+Souhaites-tu appliquer cette migration sur STAGING ou PROD ?
+
+Si PROD est demandé et que STAGING n’a pas été validée → refuser.
+
+3) Commande proposée (sans exécution)
+Afficher la commande exacte qui sera exécutée, par exemple :
+
+psql $DATABASE_URL_STAGING -f supabase/migrations/XXXXXXXX_add_feature.sql
+
+
+ou
+
+psql $DATABASE_URL_PROD -f supabase/migrations/XXXXXXXX_add_feature.sql
+
+
+Puis demander explicitement :
+
+Confirmes-tu l’exécution de cette commande ? (oui / non)
+
+4) Exécution
+
+Exécuter uniquement si la réponse est exactement « oui ».
+
+En cas d’erreur :
+
+afficher l’erreur
+
+ne rien corriger automatiquement
+
+proposer la marche à suivre.
+
+5) Post-exécution
+
+Confirmer succès ou échec.
+
+Proposer un smoke test minimal.
+
+Indiquer la prochaine étape logique (commit / prod).
+
+Interdictions explicites
+
+Ne jamais enchaîner STAGING → PROD automatiquement.
+
+Ne jamais supposer l’intention de modifier la prod.
+
+Ne jamais masquer une erreur.
+
+Ne jamais proposer le SQL Editor pour la prod.
+
+Avertissement obligatoire si PROD
+
+⚠️ Tu es sur le point de modifier la base de données de production. Cette action est irréversible sans rollback explicite.

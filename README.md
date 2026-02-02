@@ -17,6 +17,38 @@ npm run build
 npm run ci
 ```
 
+## Database workflow
+
+Principes :
+
+- Toujours tester en staging d'abord.
+- 1 changement = 1 migration (pas de modifs via SQL editor sans migration).
+- Les migrations sont dans `supabase/migrations/`.
+- La baseline est un schema-only exporte de PROD : ne pas reappliquer en PROD.
+
+Variables requises :
+
+- `DATABASE_URL_STAGING`
+- `DATABASE_URL_PROD`
+
+Creer une migration :
+
+1. Ajouter un fichier SQL dans `supabase/migrations/` (ex: `20260203090000_add_workspaces.sql`).
+2. Appliquer sur staging, valider, puis appliquer sur prod.
+
+Appliquer une migration :
+
+```bash
+npm run db:staging:apply -- supabase/migrations/20260203090000_add_workspaces.sql
+npm run db:prod:apply -- supabase/migrations/20260203090000_add_workspaces.sql
+```
+
+Prod-safe :
+
+- Faire un backup et une review avant application.
+- MCP/Codex ne doit jamais se connecter a PROD.
+
+
 ## Variables d’environnement (Vercel)
 
 Configurer ces variables dans **Development / Preview / Production**.

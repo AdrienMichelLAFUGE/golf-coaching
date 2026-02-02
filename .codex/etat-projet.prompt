@@ -1,22 +1,57 @@
 Fais un état des lieux clair du repo.
 
 Objectif :
-- Me dire où en est le projet en termes de qualité, robustesse et readiness prod.
+
+Me dire où en est le projet en termes de qualité, robustesse et readiness prod (Next.js App Router + TS strict + Supabase + Vercel).
+
+Contexte outillage :
+
+MCP Supabase connecté uniquement à STAGING (lecture seule).
+
+PROD ne doit jamais être modifiée directement (pas de SQL Editor en prod).
+
+Toute évolution DB doit être versionnée dans supabase/migrations/.
 
 Analyse attendue (courte, factuelle) :
-1) Qualité actuelle
-- tests (présence, type, zones couvertes / manquantes)
-- validation runtime (env, routes, forms)
-- séparation client/server
-- scripts npm utiles
 
-2) Risques principaux (max 5)
-- ce qui pourrait casser en prod
-- ce qui manque encore pour être serein
+Qualité actuelle
 
-3) Prochaines actions recommandées
-- 3 actions maximum
-- classées par priorité
-- actionnables immédiatement
+tests (présence, type, zones couvertes / manquantes)
 
-Pas de code, pas de refacto. Diagnostic uniquement.
+validation runtime (env, routes, forms, query params)
+
+séparation client/server (Next + Supabase)
+
+scripts npm utiles (lint/typecheck/test/build/ci + db:* si présents)
+
+DB & RLS :
+
+migrations versionnées (présence d’une baseline, discipline “1 changement = 1 migration”)
+
+cohérence staging/prod (à haut niveau)
+
+état de la RLS (risques de fuite inter-org, policies permissives)
+
+Risques principaux (max 5)
+
+ce qui pourrait casser en prod
+
+ce qui manque encore pour être serein
+
+inclure au moins 1 risque lié à DB/RLS si pertinent
+
+Prochaines actions recommandées
+
+3 actions maximum
+
+classées par priorité
+
+actionnables immédiatement
+
+inclure DB/migrations si c’est un point bloquant
+
+Contraintes :
+
+Pas de code, pas de refacto.
+
+Diagnostic uniquement (si un manque est identifié, proposer l’action minimale pour le combler).

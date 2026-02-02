@@ -15,7 +15,11 @@
     "ci": "npm run lint && npm run typecheck && npm run test && npm run build",
     "predeploy": "npm run ci",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "db:staging:apply": "node scripts/db/apply-migration.js --env DATABASE_URL_STAGING",
+    "db:prod:apply": "node scripts/db/apply-migration.js --env DATABASE_URL_PROD",
+    "db:check:schema": "node scripts/db/check-migrations.js",
+    "db:check:secrets": "node scripts/db/check-tracked-env.js"
   },
   "dependencies": {
     "@getbrevo/brevo": "^3.0.1",
