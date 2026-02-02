@@ -186,6 +186,7 @@ export default function WorkspaceSwitcher() {
         onClick={() => setOpen((prev) => !prev)}
         aria-haspopup="menu"
         aria-expanded={open}
+        data-testid="workspace-switcher-button"
         className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs uppercase tracking-wide text-[var(--text)] transition hover:border-white/30"
       >
         <span className={`inline-flex items-center gap-2 rounded-full border px-2 py-1 ${modeClass}`}>
@@ -228,6 +229,7 @@ export default function WorkspaceSwitcher() {
                     <button
                       type="button"
                       role="menuitem"
+                      data-testid="workspace-switcher-personal"
                       disabled={isDisabled || switchingId === personalOption.id}
                       onClick={() => handleSwitch(personalOption.id)}
                       className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left transition ${
