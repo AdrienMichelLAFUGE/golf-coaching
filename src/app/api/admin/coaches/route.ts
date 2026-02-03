@@ -6,6 +6,7 @@ import {
   createSupabaseServerClientFromRequest,
 } from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
+import { PLAN_ENTITLEMENTS, planTierSchema, resolvePlanTier } from "@/lib/plans";
 
 export const runtime = "nodejs";
 
@@ -16,6 +17,7 @@ type CoachUpdatePayload = {
   radar_enabled?: boolean;
   coaching_dynamic_enabled?: boolean;
   ai_model?: string | null;
+  plan_tier?: string;
 };
 
 const coachUpdateSchema = z.object({
@@ -25,6 +27,7 @@ const coachUpdateSchema = z.object({
   radar_enabled: z.boolean().optional(),
   coaching_dynamic_enabled: z.boolean().optional(),
   ai_model: z.string().nullable().optional(),
+  plan_tier: planTierSchema.optional(),
 });
 
 const coachDeleteSchema = z.object({
@@ -56,7 +59,7 @@ export async function GET(request: Request) {
   const { data: organizations, error: orgError } = await auth.admin
     .from("organizations")
     .select(
-      "id, name, workspace_type, owner_profile_id, ai_enabled, tpi_enabled, radar_enabled, coaching_dynamic_enabled, ai_model"
+      "id, name, workspace_type, owner_profile_id, plan_tier, ai_enabled, tpi_enabled, radar_enabled, coaching_dynamic_enabled, ai_model"
     );
 
   if (orgError) {
@@ -79,6 +82,7 @@ export async function GET(request: Request) {
         name: org.name ?? "",
         workspace_type: org.workspace_type ?? "org",
         owner_profile_id: org.owner_profile_id ?? null,
+        plan_tier: org.plan_tier ?? "free",
         ai_enabled: org.ai_enabled ?? false,
         tpi_enabled: org.tpi_enabled ?? false,
         radar_enabled: org.radar_enabled ?? false,
@@ -205,6 +209,15 @@ export async function PATCH(request: Request) {
   const orgId = payload.orgId?.trim();
 
   const updates: Record<string, unknown> = {};
+  if (typeof payload.plan_tier === "string") {
+    const resolved = resolvePlanTier(payload.plan_tier);
+    const entitlements = PLAN_ENTITLEMENTS[resolved];
+    updates.plan_tier = resolved;
+    updates.ai_enabled = entitlements.aiEnabled;
+    updates.tpi_enabled = entitlements.tpiEnabled;
+    updates.radar_enabled = entitlements.dataExtractEnabled;
+    updates.coaching_dynamic_enabled = entitlements.tests.scope === "catalog";
+  }
   if (typeof payload.ai_enabled === "boolean") {
     updates.ai_enabled = payload.ai_enabled;
   }
@@ -244,18 +257,27 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
   }
 
-  if (
-    typeof payload.ai_enabled === "boolean" &&
-    orgData.workspace_type === "personal" &&
-    orgData.owner_profile_id
-  ) {
-    const { error: premiumError } = await auth.admin
-      .from("profiles")
-      .update({ premium_active: payload.ai_enabled })
-      .eq("id", orgData.owner_profile_id);
+  if (orgData.workspace_type === "personal" && orgData.owner_profile_id) {
+    if (typeof payload.plan_tier === "string") {
+      const resolved = resolvePlanTier(payload.plan_tier);
+      const premiumActive = resolved !== "free";
+      const { error: premiumError } = await auth.admin
+        .from("profiles")
+        .update({ premium_active: premiumActive })
+        .eq("id", orgData.owner_profile_id);
 
-    if (premiumError) {
-      return NextResponse.json({ error: premiumError.message }, { status: 500 });
+      if (premiumError) {
+        return NextResponse.json({ error: premiumError.message }, { status: 500 });
+      }
+    } else if (typeof payload.ai_enabled === "boolean") {
+      const { error: premiumError } = await auth.admin
+        .from("profiles")
+        .update({ premium_active: payload.ai_enabled })
+        .eq("id", orgData.owner_profile_id);
+
+      if (premiumError) {
+        return NextResponse.json({ error: premiumError.message }, { status: 500 });
+      }
     }
   }
 

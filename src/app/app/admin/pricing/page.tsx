@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import AdminGuard from "../../_components/admin-guard";
 import PageBack from "../../_components/page-back";
+import PremiumOfferModal from "../../_components/premium-offer-modal";
 
 type PricingPlan = {
   id: string;
@@ -43,11 +44,13 @@ const parseFeatures = (value: string) =>
     .filter(Boolean);
 
 const toPlanCategory = (plan: EditablePlan) => {
-  const badge = plan.badge.toLowerCase();
   const slug = plan.slug.toLowerCase();
-  if (badge.includes("add") || slug.startsWith("addon")) return "addon";
-  if (badge.includes("pack") || slug.startsWith("pack")) return "pack";
-  if (badge.includes("base") || slug.startsWith("premium")) return "base";
+  const label = plan.label.toLowerCase();
+  const value = `${slug} ${label}`;
+  if (value.includes("free")) return "free";
+  if (value.includes("standard")) return "standard";
+  if (value.includes("pro")) return "pro";
+  if (value.includes("entreprise") || value.includes("enterprise")) return "enterprise";
   return "other";
 };
 
@@ -68,12 +71,13 @@ export default function AdminPricingPage() {
   const [message, setMessage] = useState("");
   const [intervalFilter, setIntervalFilter] = useState<"all" | "month" | "year">("all");
   const [typeFilter, setTypeFilter] = useState<
-    "all" | "base" | "addon" | "pack" | "other"
+    "all" | "free" | "standard" | "pro" | "enterprise" | "other"
   >("all");
   const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("all");
   const [priceSort, setPriceSort] = useState<"order" | "price-asc" | "price-desc">(
     "order"
   );
+  const [previewOpen, setPreviewOpen] = useState(false);
   const hasDirtyPlans = plans.some((plan) => plan.is_dirty);
   const filteredPlans = plans
     .filter((plan) => {
@@ -358,7 +362,7 @@ export default function AdminPricingPage() {
             Prix et features
           </h2>
           <p className="mt-2 text-sm text-[var(--muted)]">
-            Les cartes premium utilisees dans l app sont alimentees ici.
+            Les cartes des plans tarifaires utilisees dans l app sont alimentees ici.
           </p>
         </section>
 
@@ -375,6 +379,13 @@ export default function AdminPricingPage() {
                 className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
               >
                 {savingAll ? "Sauvegarde..." : "Sauvegarder tout"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setPreviewOpen(true)}
+                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10"
+              >
+                Voir le modal client
               </button>
               <button
                 type="button"
@@ -410,15 +421,22 @@ export default function AdminPricingPage() {
                 value={typeFilter}
                 onChange={(event) =>
                   setTypeFilter(
-                    event.target.value as "all" | "base" | "addon" | "pack" | "other"
+                    event.target.value as
+                      | "all"
+                      | "free"
+                      | "standard"
+                      | "pro"
+                      | "enterprise"
+                      | "other"
                   )
                 }
                 className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
               >
                 <option value="all">Tous</option>
-                <option value="base">Base</option>
-                <option value="addon">Add-on</option>
-                <option value="pack">Pack</option>
+                <option value="free">Free</option>
+                <option value="standard">Standard</option>
+                <option value="pro">Pro</option>
+                <option value="enterprise">Entreprise</option>
                 <option value="other">Autre</option>
               </select>
             </div>
@@ -692,7 +710,7 @@ export default function AdminPricingPage() {
                     className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
                   />
                   <p className="mt-2 text-xs text-[var(--muted)]">
-                    Ces lignes alimentent la liste visible dans le modal Premium.
+                    Ces lignes alimentent la liste visible dans le modal des plans.
                   </p>
                 </div>
               </div>
@@ -700,6 +718,7 @@ export default function AdminPricingPage() {
           ))
         )}
       </div>
+      <PremiumOfferModal open={previewOpen} onClose={() => setPreviewOpen(false)} />
     </AdminGuard>
   );
 }

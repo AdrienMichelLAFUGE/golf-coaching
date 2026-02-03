@@ -7,6 +7,7 @@ import {
 } from "@/lib/supabase/server";
 import { applyTemplate, loadPromptSection } from "@/lib/promptLoader";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
+import { PLAN_ENTITLEMENTS, resolvePlanTier } from "@/lib/plans";
 
 type ExtractedTest = {
   test_name: string;
@@ -182,12 +183,17 @@ export async function POST(req: Request) {
 
   const { data: orgData } = await admin
     .from("organizations")
-    .select("locale, tpi_enabled")
+    .select("locale, plan_tier")
     .eq("id", report.org_id)
     .single();
 
-  if (!isAdmin && !orgData?.tpi_enabled) {
-    return Response.json({ error: "Add-on TPI requis." }, { status: 403 });
+  const planTier = resolvePlanTier(orgData?.plan_tier);
+  const entitlements = PLAN_ENTITLEMENTS[planTier];
+  if (!isAdmin && !entitlements.tpiEnabled) {
+    return Response.json(
+      { error: "Plan requis pour utiliser le profil TPI." },
+      { status: 403 }
+    );
   }
 
   const { data: fileData, error: fileError } = await admin.storage

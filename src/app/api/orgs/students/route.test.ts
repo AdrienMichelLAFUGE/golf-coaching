@@ -43,7 +43,7 @@ describe("POST /api/orgs/students", () => {
     serverMocks.createSupabaseAdminClient.mockReset();
   });
 
-  it("blocks creation for freemium org member", async () => {
+  it("blocks creation for free org member", async () => {
     const supabase = {
       auth: {
         getUser: async () => ({
@@ -63,13 +63,13 @@ describe("POST /api/orgs/students", () => {
         }
         if (table === "organizations") {
           return buildSelectSingle({
-            data: { ai_enabled: true },
+            data: { plan_tier: "free" },
             error: null,
           });
         }
         if (table === "org_memberships") {
           return buildSelectMaybeSingle({
-            data: { role: "coach", status: "active", premium_active: false },
+            data: { role: "coach", status: "active" },
             error: null,
           });
         }
@@ -91,6 +91,6 @@ describe("POST /api/orgs/students", () => {
 
     expect(response.status).toBe(403);
     const body = await response.json();
-    expect(body.error).toBe("Premium requis pour creer un eleve en organisation.");
+    expect(body.error).toBe("Lecture seule: plan Free en organisation.");
   });
 });

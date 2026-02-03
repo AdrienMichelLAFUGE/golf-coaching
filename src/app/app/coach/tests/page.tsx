@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
+import { PLAN_ENTITLEMENTS, resolvePlanTier } from "@/lib/plans";
 import RoleGuard from "../../_components/role-guard";
 import { useProfile } from "../../_components/profile-context";
 import PremiumOfferModal from "../../_components/premium-offer-modal";
@@ -105,6 +106,8 @@ export default function CoachTestsPage() {
   const [premiumModalOpen, setPremiumModalOpen] = useState(false);
   const isAdmin = isAdminEmail(userEmail);
   const isOrgMode = workspaceType === "org";
+  const planTier = resolvePlanTier(organization?.plan_tier);
+  const testAccess = PLAN_ENTITLEMENTS[planTier].tests;
   const modeLabel =
     (organization?.workspace_type ?? "personal") === "org"
       ? `Organisation : ${organization?.name ?? "Organisation"}`
@@ -113,16 +116,22 @@ export default function CoachTestsPage() {
     (organization?.workspace_type ?? "personal") === "org"
       ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
       : "border-sky-300/30 bg-sky-400/10 text-sky-100";
-  const addonEnabled = isAdmin || organization?.coaching_dynamic_enabled;
-  const tests = useMemo(
-    () => [
+  const showUpgradeNotice = planTier === "free" && !isAdmin;
+  const canCreateTests = isAdmin || testAccess.canCreate;
+  const createTestLabel = canCreateTests
+    ? "Creer un test (bientot)"
+    : "Creer un test (Pro)";
+  const tests = useMemo(() => {
+    if (testAccess.scope === "pelz") {
+      return [PELZ_PUTTING_TEST, PELZ_APPROCHES_TEST];
+    }
+    return [
       PELZ_PUTTING_TEST,
       PELZ_APPROCHES_TEST,
       WEDGING_DRAPEAU_LONG_TEST,
       WEDGING_DRAPEAU_COURT_TEST,
-    ],
-    []
-  );
+    ];
+  }, [testAccess.scope]);
   const testBySlug = useMemo(
     () => ({
       [PELZ_PUTTING_SLUG]: PELZ_PUTTING_TEST,
@@ -145,10 +154,16 @@ export default function CoachTestsPage() {
 
   const filteredAssignments = useMemo(() => {
     const query = assignmentSearch.trim().toLowerCase();
+    const allowedSlugs = new Set(tests.map((test) => test.slug));
+    const scopedAssignments = assignments.filter((assignment) =>
+      allowedSlugs.has(assignment.test_slug)
+    );
     const byTest =
       assignmentFilter === "all"
-        ? assignments
-        : assignments.filter((assignment) => assignment.test_slug === assignmentFilter);
+        ? scopedAssignments
+        : scopedAssignments.filter(
+            (assignment) => assignment.test_slug === assignmentFilter
+          );
 
     const byStatus =
       assignmentStatusFilter === "all"
@@ -182,6 +197,7 @@ export default function CoachTestsPage() {
     assignments,
     showArchived,
     testBySlug,
+    tests,
   ]);
 
   const loadStudents = useCallback(async () => {
@@ -263,18 +279,14 @@ export default function CoachTestsPage() {
         setLoading(false);
         return;
       }
-      if (addonEnabled) {
-        await Promise.all([loadStudents(), loadAssignments()]);
-      } else {
-        await loadAssignments();
-      }
+      await Promise.all([loadStudents(), loadAssignments()]);
       if (!cancelled) setLoading(false);
     };
     loadAll();
     return () => {
       cancelled = true;
     };
-  }, [addonEnabled, isOrgMode, loadAssignments, loadStudents]);
+  }, [isOrgMode, loadAssignments, loadStudents]);
 
   const toggleSelected = (studentId: string) => {
     setSelectedIds((prev) =>
@@ -495,14 +507,14 @@ export default function CoachTestsPage() {
           </section>
         ) : (
           <div className="space-y-6">
-            {!addonEnabled ? (
+            {showUpgradeNotice ? (
               <section className="panel-soft rounded-2xl p-6">
                 <h3 className="text-lg font-semibold text-[var(--text)]">
-                  Add-on Coaching dynamique requis
+                  Plan Free
                 </h3>
                 <p className="mt-2 text-sm text-[var(--muted)]">
-                  Active l add-on pour debloquer les tests normalises et le suivi
-                  dynamique.
+                  Tu as acces aux 2 tests Pelz. Passe a Standard pour acceder au
+                  catalogue complet.
                 </p>
                 <button
                   type="button"
@@ -529,7 +541,7 @@ export default function CoachTestsPage() {
                   disabled
                   className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] opacity-60"
                 >
-                  Creer un test (bientot)
+                  {createTestLabel}
                 </button>
               </div>
 
@@ -568,18 +580,8 @@ export default function CoachTestsPage() {
                       </Link>
                       <button
                         type="button"
-                        onClick={() => {
-                          if (!addonEnabled) {
-                            setPremiumModalOpen(true);
-                            return;
-                          }
-                          openAssignModal(test.slug);
-                        }}
-                        className={`rounded-full border px-4 py-2 text-xs uppercase tracking-wide transition ${
-                          addonEnabled
-                            ? "border-white/10 bg-white/10 text-[var(--text)] hover:bg-white/20"
-                            : "border-white/10 bg-white/5 text-[var(--muted)] opacity-70"
-                        }`}
+                        onClick={() => openAssignModal(test.slug)}
+                        className="rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
                       >
                         Assigner a des eleves
                       </button>
@@ -633,12 +635,16 @@ export default function CoachTestsPage() {
                   <option value="all">Tous les tests</option>
                   <option value={PELZ_PUTTING_SLUG}>Pelz - Putting</option>
                   <option value={PELZ_APPROCHES_SLUG}>Pelz - Approches</option>
-                  <option value={WEDGING_DRAPEAU_LONG_SLUG}>
-                    Wedging - Drapeau long
-                  </option>
-                  <option value={WEDGING_DRAPEAU_COURT_SLUG}>
-                    Wedging - Drapeau court
-                  </option>
+                  {testAccess.scope === "catalog" ? (
+                    <>
+                      <option value={WEDGING_DRAPEAU_LONG_SLUG}>
+                        Wedging - Drapeau long
+                      </option>
+                      <option value={WEDGING_DRAPEAU_COURT_SLUG}>
+                        Wedging - Drapeau court
+                      </option>
+                    </>
+                  ) : null}
                 </select>
                 <select
                   value={assignmentStatusFilter}
@@ -874,13 +880,14 @@ export default function CoachTestsPage() {
         open={premiumModalOpen}
         onClose={() => setPremiumModalOpen(false)}
         notice={{
-          title: "Acces tests normalises bloque",
-          description: "Ajoute l add-on Coaching dynamique pour debloquer cette section.",
-          tags: ["Add-on Coaching dynamique"],
+          title: "Catalogue complet indisponible",
+          description:
+            "Le plan Free donne acces aux 2 tests Pelz. Passe a Standard pour debloquer le catalogue complet.",
+          tags: ["Plan Free"],
           status: [
             {
-              label: "Add-on",
-              value: addonEnabled ? "Actif" : "Inactif",
+              label: "Plan",
+              value: PLAN_ENTITLEMENTS[planTier].label,
             },
           ],
         }}

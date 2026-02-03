@@ -82,14 +82,19 @@ describe("POST /api/normalized-tests/unassign", () => {
       from: (table: string) => {
         if (table === "organizations") {
           return buildSelectSingle({
-            data: { coaching_dynamic_enabled: true },
+            data: { plan_tier: "standard" },
             error: null,
           });
         }
         if (table === "normalized_test_assignments") {
           return {
             ...buildSelectMaybeSingle({
-              data: { id: "assign-1", org_id: "org-1", status: "finalized" },
+              data: {
+                id: "assign-1",
+                org_id: "org-1",
+                status: "finalized",
+                test_slug: "pelz-putting",
+              },
               error: null,
             }),
             ...buildDelete({ error: null }),
@@ -134,14 +139,19 @@ describe("POST /api/normalized-tests/unassign", () => {
       from: (table: string) => {
         if (table === "organizations") {
           return buildSelectSingle({
-            data: { coaching_dynamic_enabled: true },
+            data: { plan_tier: "standard" },
             error: null,
           });
         }
         if (table === "normalized_test_assignments") {
           return {
             ...buildSelectMaybeSingle({
-              data: { id: "assign-1", org_id: "org-1", status: "finalized" },
+              data: {
+                id: "assign-1",
+                org_id: "org-1",
+                status: "finalized",
+                test_slug: "pelz-putting",
+              },
               error: null,
             }),
             ...buildDelete({ error: null }),
@@ -189,14 +199,19 @@ describe("POST /api/normalized-tests/unassign", () => {
       from: (table: string) => {
         if (table === "organizations") {
           return buildSelectSingle({
-            data: { coaching_dynamic_enabled: true },
+            data: { plan_tier: "standard" },
             error: null,
           });
         }
         if (table === "normalized_test_assignments") {
           return {
             ...buildSelectMaybeSingle({
-              data: { id: "assign-2", org_id: "org-2", status: "assigned" },
+              data: {
+                id: "assign-2",
+                org_id: "org-2",
+                status: "assigned",
+                test_slug: "pelz-putting",
+              },
               error: null,
             }),
             ...buildDelete({ error: null }),

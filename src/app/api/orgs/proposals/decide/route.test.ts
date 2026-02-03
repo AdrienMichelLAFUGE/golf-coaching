@@ -69,7 +69,7 @@ describe("POST /api/orgs/proposals/decide", () => {
         }
         if (table === "organizations") {
           return buildSelectSingle({
-            data: { ai_enabled: true },
+            data: { plan_tier: "standard" },
             error: null,
           });
         }

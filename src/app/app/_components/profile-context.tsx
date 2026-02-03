@@ -2,6 +2,12 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
+import {
+  getWorkspaceEntitlements,
+  resolvePlanTier,
+  type PlanTier,
+  type WorkspaceEntitlements,
+} from "@/lib/plans";
 
 export type Profile = {
   id: string;
@@ -22,6 +28,7 @@ export type OrganizationSettings = {
   timezone: string | null;
   workspace_type?: "personal" | "org" | null;
   owner_profile_id?: string | null;
+  plan_tier?: PlanTier | null;
   ai_enabled: boolean | null;
   tpi_enabled: boolean | null;
   radar_enabled: boolean | null;
@@ -40,6 +47,7 @@ export type PersonalWorkspace = {
   name: string | null;
   workspace_type: "personal";
   owner_profile_id: string | null;
+  plan_tier?: PlanTier | null;
   ai_enabled?: boolean | null;
 };
 
@@ -54,6 +62,7 @@ export type WorkspaceMembership = {
     name: string | null;
     workspace_type: "personal" | "org";
     owner_profile_id: string | null;
+    plan_tier?: PlanTier | null;
     ai_enabled?: boolean | null;
   } | null;
 };
@@ -66,6 +75,8 @@ type ProfileState = {
   workspaceType: "personal" | "org" | null;
   isWorkspaceAdmin: boolean;
   isWorkspacePremium: boolean;
+  planTier: PlanTier;
+  entitlements: WorkspaceEntitlements;
   userEmail: string | null;
   personalWorkspace: PersonalWorkspace | null;
   loading: boolean;
@@ -119,7 +130,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       const { data: orgData, error: orgError } = await supabase
         .from("organizations")
         .select(
-          "id, name, logo_url, accent_color, locale, timezone, workspace_type, owner_profile_id, ai_enabled, tpi_enabled, radar_enabled, coaching_dynamic_enabled, ai_model, ai_tone, ai_tech_level, ai_style, ai_length, ai_imagery, ai_focus"
+          "id, name, logo_url, accent_color, locale, timezone, workspace_type, owner_profile_id, plan_tier, ai_enabled, tpi_enabled, radar_enabled, coaching_dynamic_enabled, ai_model, ai_tone, ai_tech_level, ai_style, ai_length, ai_imagery, ai_focus"
         )
         .eq("id", activeWorkspaceId)
         .single();
@@ -134,7 +145,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     if (profileData?.id) {
       const { data: personalData, error: personalError } = await supabase
         .from("organizations")
-        .select("id, name, workspace_type, owner_profile_id, ai_enabled")
+        .select("id, name, workspace_type, owner_profile_id, plan_tier, ai_enabled")
         .eq("workspace_type", "personal")
         .eq("owner_profile_id", profileData.id)
         .maybeSingle();
@@ -146,7 +157,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       const { data: membershipData } = await supabase
         .from("org_memberships")
         .select(
-          "id, org_id, role, status, premium_active, organizations(id, name, workspace_type, owner_profile_id, ai_enabled)"
+          "id, org_id, role, status, premium_active, organizations(id, name, workspace_type, owner_profile_id, plan_tier, ai_enabled)"
         )
         .eq("user_id", profileData.id)
         .order("created_at", { ascending: true });
@@ -202,10 +213,9 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 
   const workspaceType = organization?.workspace_type ?? null;
   const isWorkspaceAdmin = currentMembership?.role === "admin";
-  const isWorkspacePremium =
-    workspaceType === "org"
-      ? Boolean(organization?.ai_enabled) && Boolean(currentMembership?.premium_active)
-      : Boolean(organization?.ai_enabled);
+  const planTier = resolvePlanTier(organization?.plan_tier);
+  const entitlements = getWorkspaceEntitlements(planTier, workspaceType);
+  const isWorkspacePremium = planTier !== "free";
 
   const value = useMemo(
     () => ({
@@ -216,6 +226,8 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       workspaceType,
       isWorkspaceAdmin,
       isWorkspacePremium,
+      planTier,
+      entitlements,
       userEmail,
       personalWorkspace,
       loading,
@@ -230,6 +242,8 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       workspaceType,
       isWorkspaceAdmin,
       isWorkspacePremium,
+      planTier,
+      entitlements,
       userEmail,
       personalWorkspace,
       loading,

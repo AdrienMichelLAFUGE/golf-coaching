@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { PLAN_ENTITLEMENTS, PLAN_LABELS, resolvePlanTier } from "@/lib/plans";
 import RoleGuard from "../../../_components/role-guard";
 import { useProfile } from "../../../_components/profile-context";
 import PageBack from "../../../_components/page-back";
@@ -236,10 +237,11 @@ export default function CoachStudentDetailPage() {
   const [ownerShareRevokingId, setOwnerShareRevokingId] = useState<string | null>(null);
   const locale = organization?.locale ?? "fr-FR";
   const timezone = organization?.timezone ?? "Europe/Paris";
-  const aiEnabled = organization?.ai_enabled ?? false;
   const isAdmin = userEmail?.toLowerCase() === "adrien.lafuge@outlook.fr";
-  const tpiAddonEnabled = isAdmin || organization?.tpi_enabled;
-  const radarAddonEnabled = isAdmin || organization?.radar_enabled;
+  const planTier = resolvePlanTier(organization?.plan_tier);
+  const entitlements = PLAN_ENTITLEMENTS[planTier];
+  const tpiAddonEnabled = isAdmin || entitlements.tpiEnabled;
+  const radarAddonEnabled = isAdmin || entitlements.dataExtractEnabled;
   const tpiLocked = !tpiAddonEnabled;
   const radarLocked = !radarAddonEnabled;
   const isOwner = profile?.role === "owner";
@@ -314,34 +316,34 @@ export default function CoachStudentDetailPage() {
   }, []);
 
   const openRadarAddonModal = useCallback(() => {
-    const needsPremium = !aiEnabled;
+    const planLabel = PLAN_LABELS[planTier];
     openPremiumModal({
       title: "Acces datas bloque",
-      description: needsPremium
-        ? "Cette section est reservee aux coachs Premium IA avec l add-on Datas."
-        : "Ajoute l add-on Datas pour debloquer cette section.",
-      tags: needsPremium ? ["Premium IA", "Add-on Datas"] : ["Add-on Datas"],
+      description:
+        planTier === "free"
+          ? "Disponible des le plan Standard."
+          : "Ton plan actuel ne permet pas l extraction de datas.",
+      tags: [`Plan ${planLabel}`],
       status: [
-        { label: "Premium IA", value: aiEnabled ? "Actif" : "Inactif" },
-        { label: "Add-on Datas", value: radarAddonEnabled ? "Actif" : "Inactif" },
+        { label: "Plan", value: planLabel },
       ],
     });
-  }, [aiEnabled, openPremiumModal, radarAddonEnabled]);
+  }, [openPremiumModal, planTier]);
 
   const openTpiAddonModal = useCallback(() => {
-    const needsPremium = !aiEnabled;
+    const planLabel = PLAN_LABELS[planTier];
     openPremiumModal({
       title: "Acces TPI bloque",
-      description: needsPremium
-        ? "Cette fonctionnalite est reservee aux coachs Premium IA avec l add-on TPI."
-        : "Ajoute l add-on TPI pour debloquer cette fonctionnalite.",
-      tags: needsPremium ? ["Premium IA", "Add-on TPI"] : ["Add-on TPI"],
+      description:
+        planTier === "free"
+          ? "Disponible des le plan Standard."
+          : "Ton plan actuel ne permet pas le profil TPI.",
+      tags: [`Plan ${planLabel}`],
       status: [
-        { label: "Premium IA", value: aiEnabled ? "Actif" : "Inactif" },
-        { label: "Add-on TPI", value: tpiAddonEnabled ? "Actif" : "Inactif" },
+        { label: "Plan", value: planLabel },
       ],
     });
-  }, [aiEnabled, openPremiumModal, tpiAddonEnabled]);
+  }, [openPremiumModal, planTier]);
 
   const handleShareStudent = async (email: string) => {
     if (!studentId) {
@@ -565,7 +567,7 @@ export default function CoachStudentDetailPage() {
       return;
     }
     if (tpiLocked) {
-      setTpiError("Add-on TPI requis pour importer un rapport.");
+      setTpiError("Plan Standard requis pour importer un rapport TPI.");
       openTpiAddonModal();
       return;
     }
@@ -617,7 +619,11 @@ export default function CoachStudentDetailPage() {
       .single();
 
     if (insertError || !reportData) {
-      setTpiError(insertError?.message ?? "Erreur lors de l enregistrement TPI.");
+      const message =
+        insertError?.message?.includes("row-level security") ?? false
+          ? "Quota TPI atteint (30 jours glissants)."
+          : insertError?.message ?? "Erreur lors de l enregistrement TPI.";
+      setTpiError(message);
       stopTpiProgress();
       setTpiProgress(0);
       setTpiUploading(false);
@@ -678,7 +684,7 @@ export default function CoachStudentDetailPage() {
       return;
     }
     if (radarLocked) {
-      setRadarError("Add-on Datas requis pour importer un fichier.");
+      setRadarError("Plan Standard requis pour importer un fichier datas.");
       openRadarAddonModal();
       return;
     }
@@ -750,7 +756,11 @@ export default function CoachStudentDetailPage() {
       .single();
 
     if (insertError || !radarRow) {
-      setRadarError(insertError?.message ?? "Erreur d enregistrement datas.");
+      const message =
+        insertError?.message?.includes("row-level security") ?? false
+          ? "Plan Standard requis pour importer des datas."
+          : insertError?.message ?? "Erreur d enregistrement datas.";
+      setRadarError(message);
       stopRadarProgress();
       setRadarProgress(0);
       setRadarUploading(false);
@@ -1651,7 +1661,7 @@ export default function CoachStudentDetailPage() {
                         <rect x="5" y="11" width="14" height="9" rx="2" />
                         <path d="M8 11V8a4 4 0 0 1 8 0v3" />
                       </svg>
-                      Add-on TPI requis
+                      Plan requis (Standard+)
                     </span>
                     <button
                       type="button"
@@ -1701,7 +1711,7 @@ export default function CoachStudentDetailPage() {
                 onDragLeave={() => setTpiDragging(false)}
                 onDrop={(event) => {
                   if (tpiLocked) {
-                    setTpiError("Add-on TPI requis pour importer un rapport.");
+                    setTpiError("Plan Standard requis pour importer un rapport TPI.");
                     openTpiAddonModal();
                     return;
                   }
@@ -1972,7 +1982,7 @@ export default function CoachStudentDetailPage() {
                         <rect x="5" y="11" width="14" height="9" rx="2" />
                         <path d="M8 11V8a4 4 0 0 1 8 0v3" />
                       </svg>
-                      Add-on Datas requis
+                      Plan requis (Standard+)
                     </span>
                     <button
                       type="button"
@@ -2052,7 +2062,7 @@ export default function CoachStudentDetailPage() {
                 onDrop={(event) => {
                   if (isReadOnly) return;
                   if (radarLocked) {
-                    setRadarError("Add-on Datas requis pour importer un fichier.");
+                    setRadarError("Plan Standard requis pour importer un fichier datas.");
                     openRadarAddonModal();
                     return;
                   }
@@ -2071,7 +2081,7 @@ export default function CoachStudentDetailPage() {
                     </p>
                   </div>
                   <span className="rounded-full border border-violet-300/30 bg-violet-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-violet-100">
-                    Add-on Datas Extraction
+                    Extraction datas
                   </span>
                 </div>
                 <input

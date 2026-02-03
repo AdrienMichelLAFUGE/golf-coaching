@@ -13,6 +13,7 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { defaultSectionTemplates } from "@/lib/default-section-templates";
+import { PLAN_ENTITLEMENTS, PLAN_LABELS, resolvePlanTier } from "@/lib/plans";
 import RoleGuard from "../../../_components/role-guard";
 import { useProfile } from "../../../_components/profile-context";
 import PageBack from "../../../_components/page-back";
@@ -588,9 +589,11 @@ export default function CoachReportBuilderPage() {
   const isOrgPublishLocked =
     workspaceType === "org" &&
     (!isWorkspacePremium || (assignmentChecked && !isAssignedCoach && !isOrgAdmin));
-  const aiEnabled = organization?.ai_enabled ?? false;
-  const radarAddonEnabled = isAdmin || organization?.radar_enabled;
-  const tpiAddonEnabled = isAdmin || organization?.tpi_enabled;
+  const planTier = resolvePlanTier(organization?.plan_tier);
+  const entitlements = PLAN_ENTITLEMENTS[planTier];
+  const aiEnabled = entitlements.aiEnabled;
+  const radarAddonEnabled = isAdmin || entitlements.dataExtractEnabled;
+  const tpiAddonEnabled = isAdmin || entitlements.tpiEnabled;
   const aiLocked = !aiEnabled;
   const canUseAi = aiEnabled && !aiBusyId;
   const isDraft = !sentAt;
@@ -621,46 +624,40 @@ export default function CoachReportBuilderPage() {
   }, []);
 
   const openRadarAddonModal = useCallback(() => {
-    const needsPremium = !aiEnabled;
+    const planLabel = PLAN_LABELS[planTier];
     openPremiumModal({
       title: "Acces datas bloque",
-      description: needsPremium
-        ? "Cette section est reservee aux coachs Premium IA avec l add-on Datas."
-        : "Ajoute l add-on Datas pour debloquer cette section.",
-      tags: needsPremium ? ["Premium IA", "Add-on Datas"] : ["Add-on Datas"],
+      description:
+        planTier === "free"
+          ? "Disponible des le plan Standard."
+          : "Ton plan actuel ne permet pas l extraction de datas.",
+      tags: [`Plan ${planLabel}`],
       status: [
         {
-          label: "Premium IA",
-          value: aiEnabled ? "Actif" : "Inactif",
-        },
-        {
-          label: "Add-on Datas",
-          value: radarAddonEnabled ? "Actif" : "Inactif",
+          label: "Plan",
+          value: planLabel,
         },
       ],
     });
-  }, [aiEnabled, openPremiumModal, radarAddonEnabled]);
+  }, [openPremiumModal, planTier]);
 
   const openTpiAddonModal = useCallback(() => {
-    const needsPremium = !aiEnabled;
+    const planLabel = PLAN_LABELS[planTier];
     openPremiumModal({
       title: "Acces TPI bloque",
-      description: needsPremium
-        ? "Cette fonctionnalite est reservee aux coachs Premium IA avec l add-on TPI."
-        : "Ajoute l add-on TPI pour debloquer cette fonctionnalite.",
-      tags: needsPremium ? ["Premium IA", "Add-on TPI"] : ["Add-on TPI"],
+      description:
+        planTier === "free"
+          ? "Disponible des le plan Standard."
+          : "Ton plan actuel ne permet pas le profil TPI.",
+      tags: [`Plan ${planLabel}`],
       status: [
         {
-          label: "Premium IA",
-          value: aiEnabled ? "Actif" : "Inactif",
-        },
-        {
-          label: "Add-on TPI",
-          value: tpiAddonEnabled ? "Actif" : "Inactif",
+          label: "Plan",
+          value: planLabel,
         },
       ],
     });
-  }, [aiEnabled, openPremiumModal, tpiAddonEnabled]);
+  }, [openPremiumModal, planTier]);
 
   const isFeatureLocked = useCallback(
     (featureKey: FeatureKey | null) => {
@@ -1203,7 +1200,7 @@ export default function CoachReportBuilderPage() {
       return;
     }
     if (customType === "radar" && !radarAddonEnabled) {
-      setSectionsNotice("Add-on Datas requis pour cette section.", "error");
+      setSectionsNotice("Plan Standard requis pour cette section.", "error");
       openRadarAddonModal();
       return;
     }
@@ -1698,7 +1695,7 @@ export default function CoachReportBuilderPage() {
 
   const processRadarFile = async (file: File) => {
     if (!radarAddonEnabled) {
-      setRadarError("Add-on Datas requis pour importer un fichier.");
+      setRadarError("Plan Standard requis pour importer un fichier datas.");
       openRadarAddonModal();
       return false;
     }
@@ -2439,7 +2436,7 @@ export default function CoachReportBuilderPage() {
       return;
     }
     if (layoutCustomType === "radar" && !radarAddonEnabled) {
-      setLayoutNotice("Add-on Datas requis pour cette section.", "error");
+      setLayoutNotice("Plan Standard requis pour cette section.", "error");
       openRadarAddonModal();
       return;
     }
@@ -3034,7 +3031,7 @@ export default function CoachReportBuilderPage() {
 
     if (workspaceType === "org") {
       if (!isWorkspacePremium) {
-        setStatusMessage("Premium requis pour publier en organisation.");
+        setStatusMessage("Plan requis (Standard/Pro) pour publier en organisation.");
         setStatusType("error");
         return;
       }
@@ -3140,7 +3137,11 @@ export default function CoachReportBuilderPage() {
         .single();
 
       if (reportError || !report) {
-        setStatusMessage(reportError?.message ?? "Erreur de creation.");
+        const message =
+          reportError?.message?.includes("row-level security") ?? false
+            ? "Quota de rapports atteint (30 jours glissants)."
+            : reportError?.message ?? "Erreur de creation.";
+        setStatusMessage(message);
         setStatusType("error");
         setSaving(false);
         return;
@@ -5958,7 +5959,7 @@ export default function CoachReportBuilderPage() {
                         type="button"
                         onClick={() => openPremiumModal()}
                         className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--overlay)] px-6 text-left backdrop-blur-sm"
-                        aria-label="Decouvrir Premium"
+                        aria-label="Voir les offres"
                       >
                         <div className="flex w-full max-w-md items-center justify-between gap-4 rounded-2xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-amber-200 shadow-[0_16px_40px_rgba(15,23,42,0.25)]">
                           <div className="flex items-center gap-3">
@@ -5981,7 +5982,7 @@ export default function CoachReportBuilderPage() {
                                 Assistant IA
                               </p>
                               <p className="text-sm text-amber-100/80">
-                                Debloque le mode Premium
+                                Debloque le mode IA (Standard/Pro)
                               </p>
                             </div>
                           </div>
@@ -6003,9 +6004,9 @@ export default function CoachReportBuilderPage() {
                         }`}
                         onClick={!aiEnabled ? () => openPremiumModal() : undefined}
                         role={!aiEnabled ? "button" : undefined}
-                        aria-label={!aiEnabled ? "Decouvrir Premium" : undefined}
+                        aria-label={!aiEnabled ? "Voir les offres" : undefined}
                       >
-                        {aiEnabled ? "Actif" : "Premium"}
+                        {aiEnabled ? "Actif" : "Plan requis"}
                       </span>
                     </div>
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
@@ -6812,7 +6813,7 @@ export default function CoachReportBuilderPage() {
                                           />
                                           <path d="M8 11V8a4 4 0 0 1 8 0v3" />
                                         </svg>
-                                        Add-on Datas requis
+                                        Plan requis (Standard+)
                                       </span>
                                       <button
                                         type="button"
@@ -7203,7 +7204,7 @@ export default function CoachReportBuilderPage() {
                   </div>
                   {isOrgPublishLocked ? (
                     <p className="mt-3 text-xs text-amber-300">
-                      Premium et assignation requis pour publier en organisation.
+                      Plan requis (Standard/Pro) et assignation pour publier en organisation.
                     </p>
                   ) : null}
                   {statusMessage ? (

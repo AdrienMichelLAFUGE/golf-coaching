@@ -4,6 +4,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
+import { PLAN_ENTITLEMENTS, resolvePlanTier } from "@/lib/plans";
 import RoleGuard from "../../_components/role-guard";
 import { useProfile } from "../../_components/profile-context";
 import PageBack from "../../_components/page-back";
@@ -29,6 +30,7 @@ type OrganizationSettings = {
   report_default_sections: string[] | null;
   locale: string | null;
   timezone: string | null;
+  plan_tier?: string | null;
   ai_enabled: boolean | null;
   ai_model: string | null;
   ai_tone: string | null;
@@ -104,7 +106,9 @@ export default function CoachSettingsPage() {
     () => normalizeSections(reportDefaultSections),
     [reportDefaultSections]
   );
-  const aiLocked = !(organization?.ai_enabled ?? false);
+  const planTier = resolvePlanTier(organization?.plan_tier);
+  const entitlements = PLAN_ENTITLEMENTS[planTier];
+  const aiLocked = !entitlements.aiEnabled;
   const openPremiumModal = () => setPremiumModalOpen(true);
   const closePremiumModal = () => setPremiumModalOpen(false);
 
@@ -127,7 +131,7 @@ export default function CoachSettingsPage() {
       const { data: orgData, error: orgError } = await supabase
         .from("organizations")
         .select(
-          "id, name, logo_url, accent_color, email_sender_name, email_reply_to, report_title_template, report_signature, report_default_sections, locale, timezone, ai_enabled, ai_model, ai_tone, ai_tech_level, ai_style, ai_length, ai_imagery, ai_focus"
+          "id, name, logo_url, accent_color, email_sender_name, email_reply_to, report_title_template, report_signature, report_default_sections, locale, timezone, plan_tier, ai_enabled, ai_model, ai_tone, ai_tech_level, ai_style, ai_length, ai_imagery, ai_focus"
         )
         .eq("id", profileData.org_id)
         .single();
@@ -613,7 +617,7 @@ export default function CoachSettingsPage() {
                   type="button"
                   onClick={openPremiumModal}
                   className="flex items-center gap-2 rounded-full border border-amber-300/30 bg-amber-400/10 px-2 py-1 text-[0.6rem] uppercase tracking-wide text-amber-200 transition hover:bg-amber-400/20"
-                  aria-label="Decouvrir Premium"
+                  aria-label="Voir les offres"
                 >
                   <svg
                     viewBox="0 0 24 24"
@@ -627,13 +631,13 @@ export default function CoachSettingsPage() {
                     <rect x="3" y="11" width="18" height="11" rx="2" />
                     <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                   </svg>
-                  Premium
+                  Plan requis
                 </button>
               ) : null}
             </div>
             <p className="mt-2 text-xs text-[var(--muted)]">
               Parametres par defaut utilises par l IA. Les actions IA sont reservees aux
-              comptes premium.
+              plans Standard/Pro.
             </p>
             <div className="relative mt-4">
               {aiLocked ? (
@@ -641,7 +645,7 @@ export default function CoachSettingsPage() {
                   type="button"
                   onClick={openPremiumModal}
                   className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-[var(--overlay)] px-4 text-left backdrop-blur-sm"
-                  aria-label="Decouvrir Premium"
+                  aria-label="Voir les offres"
                 >
                   <div className="flex w-full max-w-md items-center justify-between gap-4 rounded-2xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-amber-200 shadow-[0_16px_40px_rgba(15,23,42,0.25)]">
                     <div className="flex items-center gap-3">
@@ -662,7 +666,7 @@ export default function CoachSettingsPage() {
                       <div>
                         <p className="text-xs uppercase tracking-[0.2em]">Assistant IA</p>
                         <p className="text-sm text-amber-100/80">
-                          Debloque le mode Premium
+                          Debloque le mode IA (Standard/Pro)
                         </p>
                       </div>
                     </div>
@@ -687,7 +691,7 @@ export default function CoachSettingsPage() {
                     className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
                   >
                     <option value="off">Desactive</option>
-                    <option value="on">Premium actif</option>
+                    <option value="on">IA active</option>
                   </select>
                 </div>
                 <div>

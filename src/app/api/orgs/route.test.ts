@@ -48,7 +48,7 @@ describe("POST /api/orgs", () => {
       from: jest.fn((table: string) => {
         if (table === "profiles") {
           return buildSelectSingle({
-            data: { id: "user-1", org_id: "org-1", premium_active: false },
+            data: { id: "user-1", org_id: "org-1" },
             error: null,
           });
         }
@@ -57,7 +57,11 @@ describe("POST /api/orgs", () => {
             select: () => ({
               eq: () => ({
                 single: async () => ({
-                  data: { id: "org-1", ai_enabled: false },
+                  data: {
+                    id: "org-1",
+                    plan_tier: "free",
+                    workspace_type: "personal",
+                  },
                   error: null,
                 }),
               }),
@@ -76,11 +80,11 @@ describe("POST /api/orgs", () => {
 
     expect(response.status).toBe(403);
     const body = await response.json();
-    expect(body.error).toBe("Premium requis pour creer une organisation.");
+    expect(body.error).toBe("Plan Free: creation d organisation indisponible.");
     expect(orgInsert).not.toHaveBeenCalled();
   });
 
-  it("allows creation when profile is premium and upgrades workspace", async () => {
+  it("allows creation when plan is paid", async () => {
     const supabase = {
       auth: {
         getUser: async () => ({
@@ -90,8 +94,6 @@ describe("POST /api/orgs", () => {
       },
     };
 
-    const orgUpdateEq = jest.fn(async () => ({ error: null }));
-    const orgUpdate = jest.fn(() => ({ eq: orgUpdateEq }));
     const orgInsert = jest.fn(() => ({
       select: () => ({
         single: async () => ({ data: { id: "org-2" }, error: null }),
@@ -103,7 +105,7 @@ describe("POST /api/orgs", () => {
       from: jest.fn((table: string) => {
         if (table === "profiles") {
           return buildSelectSingle({
-            data: { id: "user-2", org_id: "org-1", premium_active: true },
+            data: { id: "user-2", org_id: "org-1" },
             error: null,
           });
         }
@@ -112,12 +114,15 @@ describe("POST /api/orgs", () => {
             select: () => ({
               eq: () => ({
                 single: async () => ({
-                  data: { id: "org-1", ai_enabled: false },
+                  data: {
+                    id: "org-1",
+                    plan_tier: "standard",
+                    workspace_type: "personal",
+                  },
                   error: null,
                 }),
               }),
             }),
-            update: orgUpdate,
             insert: orgInsert,
           };
         }
@@ -134,8 +139,6 @@ describe("POST /api/orgs", () => {
     const response = await POST(buildRequest({ name: "Nouvelle orga" }));
 
     expect(response.status).toBe(200);
-    expect(orgUpdate).toHaveBeenCalledWith({ ai_enabled: true });
-    expect(orgUpdateEq).toHaveBeenCalledWith("id", "org-1");
     expect(orgInsert).toHaveBeenCalled();
     expect(membershipInsert).toHaveBeenCalledWith([
       {

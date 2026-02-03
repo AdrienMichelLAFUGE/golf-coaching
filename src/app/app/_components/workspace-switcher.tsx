@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { resolvePlanTier } from "@/lib/plans";
 import { useProfile } from "./profile-context";
 
 type WorkspaceOption = {
@@ -123,8 +124,8 @@ export default function WorkspaceSwitcher() {
   const activeName =
     workspaceType === "org" ? organization?.name ?? "Organisation" : "Perso";
   const isCoach = profile.role === "coach" || profile.role === "owner";
-  const canCreateOrg =
-    isCoach && Boolean(personalWorkspace?.ai_enabled ?? organization?.ai_enabled);
+  const personalPlanTier = resolvePlanTier(personalWorkspace?.plan_tier);
+  const canCreateOrg = isCoach && personalPlanTier !== "free";
 
   const shouldConfirmSwitch = () => {
     const active = document.activeElement;

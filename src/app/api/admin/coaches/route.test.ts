@@ -212,6 +212,7 @@ describe("GET /api/admin/coaches", () => {
                   name: "Espace personnel",
                   workspace_type: "personal",
                   owner_profile_id: "coach-1",
+                  plan_tier: "standard",
                   ai_enabled: true,
                   tpi_enabled: false,
                   radar_enabled: false,
@@ -223,6 +224,7 @@ describe("GET /api/admin/coaches", () => {
                   name: "Club",
                   workspace_type: "org",
                   owner_profile_id: null,
+                  plan_tier: "free",
                   ai_enabled: false,
                   tpi_enabled: false,
                   radar_enabled: false,
@@ -316,7 +318,7 @@ describe("PATCH /api/admin/coaches", () => {
     serverMocks.createSupabaseAdminClient.mockReset();
   });
 
-  it("updates profile premium when toggling personal workspace", async () => {
+  it("updates profile premium when changing plan tier on personal workspace", async () => {
     const supabase = {
       auth: {
         getUser: async () => ({
@@ -361,7 +363,7 @@ describe("PATCH /api/admin/coaches", () => {
     serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
 
     const response = await PATCH(
-      buildRequest({ orgId: "org-personal", ai_enabled: true })
+      buildRequest({ orgId: "org-personal", plan_tier: "standard" })
     );
 
     if (!response) {
@@ -369,7 +371,13 @@ describe("PATCH /api/admin/coaches", () => {
     }
     expect(response.status).toBe(200);
     expect(orgSelect).toHaveBeenCalled();
-    expect(orgUpdate).toHaveBeenCalledWith({ ai_enabled: true });
+    expect(orgUpdate).toHaveBeenCalledWith({
+      plan_tier: "standard",
+      ai_enabled: true,
+      tpi_enabled: true,
+      radar_enabled: true,
+      coaching_dynamic_enabled: true,
+    });
     expect(orgUpdateEq).toHaveBeenCalledWith("id", "org-personal");
     expect(profileUpdate).toHaveBeenCalledWith({ premium_active: true });
     expect(profileUpdateEq).toHaveBeenCalledWith("id", "coach-1");

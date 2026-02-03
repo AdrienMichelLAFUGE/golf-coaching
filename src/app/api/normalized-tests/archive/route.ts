@@ -6,8 +6,16 @@ import {
 } from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { isAdminEmail } from "@/lib/admin";
+import { PLAN_ENTITLEMENTS, resolvePlanTier } from "@/lib/plans";
+import { PELZ_PUTTING_SLUG } from "@/lib/normalized-tests/pelz-putting";
+import { PELZ_APPROCHES_SLUG } from "@/lib/normalized-tests/pelz-approches";
 
 export const runtime = "nodejs";
+
+const isPelzSlug = (
+  slug: string | null | undefined
+): slug is typeof PELZ_PUTTING_SLUG | typeof PELZ_APPROCHES_SLUG =>
+  slug === PELZ_PUTTING_SLUG || slug === PELZ_APPROCHES_SLUG;
 
 const archiveSchema = z.object({
   assignmentId: z.string().uuid(),
@@ -49,22 +57,15 @@ export async function POST(request: Request) {
   const admin = createSupabaseAdminClient();
   const { data: orgData, error: orgError } = await admin
     .from("organizations")
-    .select("coaching_dynamic_enabled")
+    .select("plan_tier")
     .eq("id", profile.org_id)
     .single();
 
   const isAdmin = isAdminEmail(userEmail);
 
-  if (!isAdmin && (orgError || !orgData?.coaching_dynamic_enabled)) {
-    return NextResponse.json(
-      { error: "Add-on Coaching dynamique requis." },
-      { status: 403 }
-    );
-  }
-
   const { data: assignment, error: assignmentError } = await admin
     .from("normalized_test_assignments")
-    .select("id, org_id")
+    .select("id, org_id, test_slug")
     .eq("id", parsed.data.assignmentId)
     .maybeSingle();
 
@@ -78,6 +79,20 @@ export async function POST(request: Request) {
 
   if (assignment.org_id !== profile.org_id) {
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
+  }
+
+  if (!isAdmin) {
+    if (orgError || !orgData) {
+      return NextResponse.json({ error: "Organisation introuvable." }, { status: 403 });
+    }
+    const planTier = resolvePlanTier(orgData.plan_tier);
+    const testAccess = PLAN_ENTITLEMENTS[planTier].tests;
+    if (testAccess.scope === "pelz" && !isPelzSlug(assignment.test_slug)) {
+      return NextResponse.json(
+        { error: "Plan Standard requis pour ce test." },
+        { status: 403 }
+      );
+    }
   }
 
   const shouldArchive = parsed.data.archived !== false;

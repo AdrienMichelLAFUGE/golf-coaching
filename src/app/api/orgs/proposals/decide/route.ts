@@ -6,6 +6,7 @@ import {
 } from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { createOrgNotifications } from "@/lib/org-notifications";
+import { resolvePlanTier } from "@/lib/plans";
 
 const decideSchema = z.object({
   proposalId: z.string().uuid(),
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
 
   const { data: workspace, error: workspaceError } = await admin
     .from("organizations")
-    .select("ai_enabled")
+    .select("plan_tier")
     .eq("id", profile.org_id)
     .single();
 
@@ -50,7 +51,7 @@ export async function POST(request: Request) {
 
   const { data: membership } = await admin
     .from("org_memberships")
-    .select("role, status, premium_active")
+    .select("role, status")
     .eq("org_id", profile.org_id)
     .eq("user_id", profile.id)
     .maybeSingle();
@@ -59,9 +60,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
-  if (!workspace.ai_enabled || !membership.premium_active) {
+  const planTier = resolvePlanTier(workspace.plan_tier);
+  if (planTier === "free") {
     return NextResponse.json(
-      { error: "Premium requis pour statuer." },
+      { error: "Lecture seule: plan Free en organisation." },
       { status: 403 }
     );
   }

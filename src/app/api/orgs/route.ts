@@ -5,6 +5,7 @@ import {
   createSupabaseServerClientFromRequest,
 } from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
+import { resolvePlanTier } from "@/lib/plans";
 
 const createOrgSchema = z.object({
   name: z.string().min(2).max(80),
@@ -28,7 +29,7 @@ export async function POST(request: Request) {
   const admin = createSupabaseAdminClient();
   const { data: profile, error: profileError } = await admin
     .from("profiles")
-    .select("id, org_id, premium_active")
+    .select("id, org_id")
     .eq("id", userData.user.id)
     .single();
 
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
 
   const { data: workspace, error: workspaceError } = await admin
     .from("organizations")
-    .select("id, ai_enabled")
+    .select("id, plan_tier, workspace_type")
     .eq("id", profile.org_id)
     .single();
 
@@ -50,23 +51,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Organisation introuvable." }, { status: 403 });
   }
 
-  let isPremium = Boolean(workspace.ai_enabled);
-  if (!isPremium && profile.premium_active) {
-    const { error: premiumError } = await admin
-      .from("organizations")
-      .update({ ai_enabled: true })
-      .eq("id", workspace.id);
-
-    if (premiumError) {
-      return NextResponse.json({ error: premiumError.message }, { status: 500 });
-    }
-
-    isPremium = true;
-  }
-
-  if (!isPremium) {
+  const planTier = resolvePlanTier(workspace.plan_tier);
+  if (planTier === "free") {
     return NextResponse.json(
-      { error: "Premium requis pour creer une organisation." },
+      { error: "Plan Free: creation d organisation indisponible." },
       { status: 403 }
     );
   }
@@ -77,7 +65,7 @@ export async function POST(request: Request) {
       {
         name: parsed.data.name.trim(),
         workspace_type: "org",
-        ai_enabled: isPremium,
+        plan_tier: planTier,
       },
     ])
     .select("id")

@@ -10,8 +10,14 @@ import { PELZ_APPROCHES_SLUG } from "@/lib/normalized-tests/pelz-approches";
 import { WEDGING_DRAPEAU_LONG_SLUG } from "@/lib/normalized-tests/wedging-drapeau-long";
 import { WEDGING_DRAPEAU_COURT_SLUG } from "@/lib/normalized-tests/wedging-drapeau-court";
 import { isAdminEmail } from "@/lib/admin";
+import { PLAN_ENTITLEMENTS, resolvePlanTier } from "@/lib/plans";
 
 export const runtime = "nodejs";
+
+const isPelzSlug = (
+  slug: string
+): slug is typeof PELZ_PUTTING_SLUG | typeof PELZ_APPROCHES_SLUG =>
+  slug === PELZ_PUTTING_SLUG || slug === PELZ_APPROCHES_SLUG;
 
 const assignSchema = z.object({
   testSlug: z.enum([
@@ -58,17 +64,24 @@ export async function POST(request: Request) {
   const admin = createSupabaseAdminClient();
   const { data: orgData, error: orgError } = await admin
     .from("organizations")
-    .select("coaching_dynamic_enabled")
+    .select("plan_tier")
     .eq("id", profile.org_id)
     .single();
 
   const isAdmin = isAdminEmail(userEmail);
 
-  if (!isAdmin && (orgError || !orgData?.coaching_dynamic_enabled)) {
-    return NextResponse.json(
-      { error: "Add-on Coaching dynamique requis." },
-      { status: 403 }
-    );
+  if (!isAdmin) {
+    if (orgError || !orgData) {
+      return NextResponse.json({ error: "Organisation introuvable." }, { status: 403 });
+    }
+    const planTier = resolvePlanTier(orgData.plan_tier);
+    const testAccess = PLAN_ENTITLEMENTS[planTier].tests;
+    if (testAccess.scope === "pelz" && !isPelzSlug(parsed.data.testSlug)) {
+      return NextResponse.json(
+        { error: "Plan Standard requis pour ce test." },
+        { status: 403 }
+      );
+    }
   }
 
   const studentIds = Array.from(new Set(parsed.data.studentIds.map((id) => id.trim())));

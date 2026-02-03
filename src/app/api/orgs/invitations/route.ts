@@ -7,6 +7,7 @@ import {
 } from "@/lib/supabase/server";
 import { env } from "@/env";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
+import { resolvePlanTier } from "@/lib/plans";
 
 const inviteSchema = z.object({
   email: z.string().email(),
@@ -41,7 +42,7 @@ export async function POST(request: Request) {
 
   const { data: workspace, error: workspaceError } = await admin
     .from("organizations")
-    .select("ai_enabled")
+    .select("plan_tier")
     .eq("id", profile.org_id)
     .single();
 
@@ -60,9 +61,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
-  if (!workspace.ai_enabled) {
+  const planTier = resolvePlanTier(workspace.plan_tier);
+  if (planTier === "free") {
     return NextResponse.json(
-      { error: "Premium requis pour inviter des coachs." },
+      { error: "Lecture seule: plan Free en organisation." },
       { status: 403 }
     );
   }

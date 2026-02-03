@@ -86,7 +86,7 @@ describe("POST /api/ai", () => {
     expect(body.error).toBe("Unauthorized.");
   });
 
-  it("returns 403 when AI is disabled for the org", async () => {
+  it("returns 403 when plan does not allow AI", async () => {
     const supabase = {
       auth: {
         getUser: async () => ({
@@ -105,6 +105,7 @@ describe("POST /api/ai", () => {
           return buildSelectMaybeSingle({
             data: {
               id: "org-1",
+              plan_tier: "free",
               ai_enabled: false,
               ai_model: "gpt-5-mini",
               ai_tone: null,
@@ -131,6 +132,6 @@ describe("POST /api/ai", () => {
 
     expect(response.status).toBe(403);
     const body = await response.json();
-    expect(body.error).toBe("AI disabled.");
+    expect(body.error).toBe("Plan requis pour les fonctions IA.");
   });
 });

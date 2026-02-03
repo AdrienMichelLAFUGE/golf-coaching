@@ -10,6 +10,7 @@ import {
 } from "@/lib/supabase/server";
 import { applyTemplate, loadPromptSection } from "@/lib/promptLoader";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
+import { PLAN_ENTITLEMENTS, resolvePlanTier } from "@/lib/plans";
 
 export const runtime = "nodejs";
 
@@ -445,12 +446,39 @@ export async function POST(req: Request) {
 
   const { data: orgData } = await admin
     .from("organizations")
-    .select("locale, radar_enabled")
+    .select("locale, plan_tier")
     .eq("id", radarFile.org_id)
     .single();
 
-  if (!isAdmin && !orgData?.radar_enabled) {
-    return Response.json({ error: "Add-on Datas requis." }, { status: 403 });
+  const planTier = resolvePlanTier(orgData?.plan_tier);
+  const entitlements = PLAN_ENTITLEMENTS[planTier];
+  if (!isAdmin && !entitlements.dataExtractEnabled) {
+    return Response.json(
+      { error: "Plan requis pour l extraction de datas." },
+      { status: 403 }
+    );
+  }
+
+  if (!isAdmin && entitlements.quotas.dataExtractsPer30d !== null) {
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const { count: usageCount, error: usageError } = await admin
+      .from("ai_usage")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("action", "radar_extract")
+      .gte("created_at", since);
+    if (usageError) {
+      return Response.json(
+        { error: usageError.message },
+        { status: 500 }
+      );
+    }
+    if ((usageCount ?? 0) >= entitlements.quotas.dataExtractsPer30d) {
+      return Response.json(
+        { error: "Quota d extractions atteint (30 jours glissants)." },
+        { status: 403 }
+      );
+    }
   }
 
   const { data: fileData, error: fileError } = await admin.storage

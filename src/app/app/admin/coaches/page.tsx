@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
+import { PLAN_ENTITLEMENTS, resolvePlanTier } from "@/lib/plans";
 import AdminGuard from "../../_components/admin-guard";
 import PageBack from "../../_components/page-back";
 
@@ -9,6 +10,7 @@ type WorkspaceRow = {
   id: string;
   name: string;
   workspace_type: "personal" | "org";
+  plan_tier: "free" | "standard" | "pro" | "enterprise";
   ai_enabled: boolean;
   tpi_enabled: boolean;
   radar_enabled: boolean;
@@ -23,6 +25,12 @@ type WorkspaceRow = {
 type DisplayWorkspace = WorkspaceRow & { isPlaceholder?: boolean };
 
 const MODEL_OPTIONS = ["gpt-5-mini", "gpt-5", "gpt-5.2"];
+const PLAN_TIER_OPTIONS = [
+  { value: "free", label: "Free" },
+  { value: "standard", label: "Standard" },
+  { value: "pro", label: "Pro" },
+  { value: "enterprise", label: "Entreprise" },
+] as const;
 
 export default function AdminCoachesPage() {
   const [workspaces, setWorkspaces] = useState<WorkspaceRow[]>([]);
@@ -124,6 +132,7 @@ export default function AdminCoachesPage() {
             id: `placeholder-org-${group.coach.id}`,
             name: "",
             workspace_type: "org",
+            plan_tier: "free",
             ai_enabled: false,
             tpi_enabled: false,
             radar_enabled: false,
@@ -216,6 +225,7 @@ export default function AdminCoachesPage() {
       },
       body: JSON.stringify({
         orgId,
+        plan_tier: patch.plan_tier,
         ai_enabled: patch.ai_enabled,
         tpi_enabled: patch.tpi_enabled,
         radar_enabled: patch.radar_enabled,
@@ -231,23 +241,39 @@ export default function AdminCoachesPage() {
       return;
     }
 
+    const resolvedPlan =
+      typeof patch.plan_tier === "string" ? resolvePlanTier(patch.plan_tier) : null;
+    const planEntitlements = resolvedPlan ? PLAN_ENTITLEMENTS[resolvedPlan] : null;
+
     setWorkspaces((prev) =>
       prev.map((workspace) =>
         workspace.id === orgId
           ? {
               ...workspace,
-              ai_enabled: patch.ai_enabled ?? workspace.ai_enabled,
-              tpi_enabled: patch.tpi_enabled ?? workspace.tpi_enabled,
-              radar_enabled: patch.radar_enabled ?? workspace.radar_enabled,
+              plan_tier: patch.plan_tier ?? workspace.plan_tier,
+              ai_enabled:
+                patch.ai_enabled ??
+                planEntitlements?.aiEnabled ??
+                workspace.ai_enabled,
+              tpi_enabled:
+                patch.tpi_enabled ??
+                planEntitlements?.tpiEnabled ??
+                workspace.tpi_enabled,
+              radar_enabled:
+                patch.radar_enabled ??
+                planEntitlements?.dataExtractEnabled ??
+                workspace.radar_enabled,
               coaching_dynamic_enabled:
                 patch.coaching_dynamic_enabled ??
-                workspace.coaching_dynamic_enabled,
+                (planEntitlements
+                  ? planEntitlements.tests.scope === "catalog"
+                  : workspace.coaching_dynamic_enabled),
               ai_model: patch.ai_model ?? workspace.ai_model,
             }
           : workspace
       )
     );
-    setMessage("Acces mis a jour.");
+    setMessage("Plan mis a jour.");
     setSavingId(null);
   };
 
@@ -262,10 +288,10 @@ export default function AdminCoachesPage() {
             </p>
           </div>
           <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
-            Acces premium
+            Plans et acces
           </h2>
           <p className="mt-2 text-sm text-[var(--muted)]">
-            Active l IA et les add-ons pour chaque workspace.
+            Definis le plan de chaque workspace.
           </p>
         </section>
 
@@ -363,75 +389,27 @@ export default function AdminCoachesPage() {
                           {isPlaceholder ? (
                             <p className="text-xs text-[var(--muted)]">-</p>
                           ) : (
-                            <>
-                              <button
-                                type="button"
+                            <div className="flex flex-col gap-1">
+                              <label className="text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                                Plan
+                              </label>
+                              <select
+                                value={workspace.plan_tier}
                                 disabled={savingId === workspace.id}
-                                onClick={() =>
+                                onChange={(event) =>
                                   handleUpdate(workspace.id, {
-                                    ai_enabled: !workspace.ai_enabled,
+                                    plan_tier: event.target.value as WorkspaceRow["plan_tier"],
                                   })
                                 }
-                                className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
-                                  workspace.ai_enabled
-                                    ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/20"
-                                    : "border-white/10 bg-white/5 text-[var(--muted)] hover:bg-white/10"
-                                }`}
+                                className="w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs uppercase tracking-wide text-[var(--text)]"
                               >
-                                {workspace.ai_enabled ? "IA active" : "IA off"}
-                              </button>
-                              <button
-                                type="button"
-                                disabled={savingId === workspace.id}
-                                onClick={() =>
-                                  handleUpdate(workspace.id, {
-                                    tpi_enabled: !workspace.tpi_enabled,
-                                  })
-                                }
-                                className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide transition ${
-                                  workspace.tpi_enabled
-                                    ? "border-rose-300/30 bg-rose-400/10 text-rose-200 hover:bg-rose-400/20"
-                                    : "border-white/10 bg-white/5 text-[var(--muted)] hover:bg-white/10"
-                                }`}
-                              >
-                                {workspace.tpi_enabled ? "TPI on" : "TPI off"}
-                              </button>
-                              <button
-                                type="button"
-                                disabled={savingId === workspace.id}
-                                onClick={() =>
-                                  handleUpdate(workspace.id, {
-                                    radar_enabled: !workspace.radar_enabled,
-                                  })
-                                }
-                                className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide transition ${
-                                  workspace.radar_enabled
-                                    ? "border-violet-300/30 bg-violet-400/10 text-violet-200 hover:bg-violet-400/20"
-                                    : "border-white/10 bg-white/5 text-[var(--muted)] hover:bg-white/10"
-                                }`}
-                              >
-                                {workspace.radar_enabled ? "Datas on" : "Datas off"}
-                              </button>
-                              <button
-                                type="button"
-                                disabled={savingId === workspace.id}
-                                onClick={() =>
-                                  handleUpdate(workspace.id, {
-                                    coaching_dynamic_enabled:
-                                      !workspace.coaching_dynamic_enabled,
-                                  })
-                                }
-                                className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide transition ${
-                                  workspace.coaching_dynamic_enabled
-                                    ? "border-cyan-300/30 bg-cyan-400/10 text-cyan-200 hover:bg-cyan-400/20"
-                                    : "border-white/10 bg-white/5 text-[var(--muted)] hover:bg-white/10"
-                                }`}
-                              >
-                                {workspace.coaching_dynamic_enabled
-                                  ? "Coaching on"
-                                  : "Coaching off"}
-                              </button>
-                            </>
+                                {PLAN_TIER_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
                           )}
                         </div>
                         <div>

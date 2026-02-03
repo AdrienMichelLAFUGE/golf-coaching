@@ -220,7 +220,7 @@ export default function CoachStudentsPage() {
     }
 
     if (isOrgReadOnly) {
-      setError("Lecture seule: premium requis pour ajouter un eleve.");
+      setError("Lecture seule: plan Free en organisation.");
       setCreating(false);
       return;
     }
@@ -295,7 +295,7 @@ export default function CoachStudentsPage() {
 
   const handleInviteStudent = async (student: Student) => {
     if (isOrgReadOnly) {
-      setInviteError("Lecture seule: premium requis pour inviter un eleve.");
+      setInviteError("Lecture seule: plan Free en organisation.");
       return;
     }
     if (!student.email) {
@@ -340,7 +340,7 @@ export default function CoachStudentsPage() {
 
   const handleDeleteStudent = async (student: Student) => {
     if (isOrgReadOnly) {
-      setInviteError("Lecture seule: premium requis pour supprimer un eleve.");
+      setInviteError("Lecture seule: plan Free en organisation.");
       return;
     }
     const confirmed = window.confirm(
@@ -399,7 +399,7 @@ export default function CoachStudentsPage() {
   const handleUpdateStudent = async () => {
     if (!editingStudent) return;
     if (isOrgReadOnly) {
-      setEditError("Lecture seule: premium requis pour modifier un eleve.");
+      setEditError("Lecture seule: plan Free en organisation.");
       return;
     }
     const firstName = editForm.first_name.trim();

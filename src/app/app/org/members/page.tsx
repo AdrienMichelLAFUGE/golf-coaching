@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
+import { PLAN_LABELS, resolvePlanTier } from "@/lib/plans";
 import RoleGuard from "../../_components/role-guard";
 import PageBack from "../../_components/page-back";
 import { useProfile } from "../../_components/profile-context";
@@ -181,7 +182,7 @@ export default function OrgMembersPage() {
             Vous travaillez dans {modeLabel}
           </div>
           <div className="mt-3 inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-wide text-[var(--muted)]">
-            {organization?.ai_enabled ? "IA active" : "Freemium"}
+            Plan {PLAN_LABELS[resolvePlanTier(organization?.plan_tier)]}
           </div>
         </section>
 

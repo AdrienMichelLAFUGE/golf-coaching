@@ -7,6 +7,7 @@ import {
   createSupabaseServerClientFromRequest,
 } from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
+import { resolvePlanTier } from "@/lib/plans";
 import { loadPromptSection } from "@/lib/promptLoader";
 
 export const runtime = "nodejs";
@@ -115,7 +116,7 @@ export async function POST(req: Request) {
   const admin = createSupabaseAdminClient();
   const { data: workspace, error: workspaceError } = await admin
     .from("organizations")
-    .select("id, workspace_type, owner_profile_id, ai_enabled")
+    .select("id, workspace_type, owner_profile_id, plan_tier")
     .eq("id", profileData.org_id)
     .single();
 
@@ -130,7 +131,7 @@ export async function POST(req: Request) {
   } else {
     const { data: membership } = await admin
       .from("org_memberships")
-      .select("role, status, premium_active")
+      .select("role, status")
       .eq("org_id", profileData.org_id)
       .eq("user_id", userId)
       .maybeSingle();
@@ -139,9 +140,10 @@ export async function POST(req: Request) {
       return Response.json({ error: "Acces refuse." }, { status: 403 });
     }
 
-    if (!workspace.ai_enabled || !membership.premium_active) {
+    const planTier = resolvePlanTier(workspace.plan_tier);
+    if (planTier === "free") {
       return Response.json(
-        { error: "Premium requis pour publier." },
+        { error: "Lecture seule: plan Free en organisation." },
         { status: 403 }
       );
     }

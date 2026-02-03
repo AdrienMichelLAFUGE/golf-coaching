@@ -14,6 +14,7 @@ type PricingPlan = {
   cta_label: string | null;
   features: string[] | null;
   is_highlighted: boolean;
+  sort_order: number;
 };
 
 type PremiumOfferModalProps = {
@@ -27,14 +28,38 @@ type PremiumOfferModalProps = {
   } | null;
 };
 
+const isEnterprisePlan = (plan: PricingPlan) => {
+  const slug = plan.slug.toLowerCase();
+  const label = plan.label.toLowerCase();
+  return slug.includes("enterprise") || label.includes("entreprise");
+};
+
+const isFreePlan = (plan: PricingPlan) => {
+  const slug = plan.slug.toLowerCase();
+  const label = plan.label.toLowerCase();
+  return slug.includes("free") || label.includes("free");
+};
+
+const formatCurrency = (value: string) => {
+  const upper = value.toUpperCase();
+  if (upper === "EUR") return "€";
+  if (upper === "USD") return "$";
+  if (upper === "GBP") return "£";
+  return upper;
+};
+
 const formatPrice = (plan: PricingPlan) => {
+  if (isEnterprisePlan(plan)) return "Sur devis";
+  if (plan.price_cents === 0) {
+    return isFreePlan(plan) ? "Gratuit" : "Prix a definir";
+  }
   const amount = plan.price_cents / 100;
   const value =
     Number.isInteger(amount) || Number.isInteger(plan.price_cents / 100)
       ? `${Math.round(amount)}`
       : amount.toFixed(2);
   const intervalLabel = plan.interval === "year" ? "an" : "mois";
-  return `${value} ${plan.currency} / ${intervalLabel}`;
+  return `${value} ${formatCurrency(plan.currency)} / ${intervalLabel}`;
 };
 
 const toBaseSlug = (slug: string) => slug.replace(/-(annual|year)$/i, "");
@@ -42,16 +67,19 @@ const toBaseSlug = (slug: string) => slug.replace(/-(annual|year)$/i, "");
 const formatMonthlyEquivalent = (plan: PricingPlan) => {
   const amount = plan.price_cents / 1200;
   const value = Number.isInteger(amount) ? `${Math.round(amount)}` : amount.toFixed(1);
-  return `${value} ${plan.currency} / mois`;
+  return `${value} ${formatCurrency(plan.currency)} / mois`;
 };
 
-const getPlanCategory = (plan: PricingPlan) => {
-  const badge = (plan.badge ?? "").toLowerCase();
-  const slug = plan.slug.toLowerCase();
-  if (badge.includes("base") || slug.startsWith("premium")) return "base";
-  if (badge.includes("pack") || slug.startsWith("pack")) return "pack";
-  if (badge.includes("add") || slug.startsWith("addon")) return "addon";
-  return "other";
+const parseFeature = (feature: string) => {
+  const trimmed = feature.trim();
+  const lowered = trimmed.toLowerCase();
+  const isExcluded =
+    /^(-|x)/i.test(trimmed) ||
+    lowered.startsWith("non ") ||
+    lowered.startsWith("pas ") ||
+    lowered.startsWith("no ");
+  const label = trimmed.replace(/^(-|x)\s*/i, "");
+  return { label, isExcluded };
 };
 
 export default function PremiumOfferModal({
@@ -117,68 +145,119 @@ export default function PremiumOfferModal({
     return "border-white/10 bg-white/5 text-[var(--muted)]";
   };
 
-  const monthlyBySlug = new Map(
-    plans
-      .filter((plan) => plan.interval === "month")
-      .map((plan) => [toBaseSlug(plan.slug), plan])
-  );
-  const visiblePlans = plans.filter((plan) => plan.interval === billingInterval);
-  const groupedPlans = visiblePlans.reduce(
-    (acc, plan) => {
-      const key = getPlanCategory(plan);
-      acc[key].push(plan);
-      return acc;
-    },
+  const hasMonthly = plans.some((plan) => plan.interval === "month");
+  const hasYearly = plans.some((plan) => plan.interval === "year");
+  const showIntervalToggle = hasMonthly && hasYearly;
+
+  const plansByBase = new Map<
+    string,
     {
-      base: [] as PricingPlan[],
-      addon: [] as PricingPlan[],
-      pack: [] as PricingPlan[],
-      other: [] as PricingPlan[],
+      baseSlug: string;
+      sortOrder: number;
+      monthly?: PricingPlan;
+      yearly?: PricingPlan;
     }
-  );
+  >();
+
+  plans.forEach((plan) => {
+    const baseSlug = toBaseSlug(plan.slug);
+    const existing = plansByBase.get(baseSlug) ?? {
+      baseSlug,
+      sortOrder: plan.sort_order ?? 0,
+    };
+    if (plan.interval === "month") existing.monthly = plan;
+    if (plan.interval === "year") existing.yearly = plan;
+    existing.sortOrder = Math.min(existing.sortOrder, plan.sort_order ?? 0);
+    plansByBase.set(baseSlug, existing);
+  });
+
+  const planCards = Array.from(plansByBase.values())
+    .map((group) => {
+      const plan =
+        (billingInterval === "month" ? group.monthly : group.yearly) ??
+        group.monthly ??
+        group.yearly ??
+        null;
+      if (!plan) return null;
+      return {
+        plan,
+        monthlyPlan: group.monthly ?? null,
+        yearlyPlan: group.yearly ?? null,
+        sortOrder: group.sortOrder,
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
+    .sort((a, b) => a.sortOrder - b.sortOrder);
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 px-4 py-10">
-      <div className="mx-auto flex w-full max-w-4xl flex-col rounded-3xl border border-white/10 bg-[var(--bg-elevated)] shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
-        <div className="flex items-start justify-between gap-4 p-6">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/40 px-4 py-10 backdrop-blur-sm">
+      <div className="mx-auto w-full max-w-7xl overflow-hidden rounded-[32px] border border-black/10 bg-gradient-to-br from-[#f3efe6] via-[#f6f2ea] to-[#ece2cc] text-slate-900 shadow-[0_30px_80px_rgba(0,0,0,0.35)]">
+        <div className="flex flex-wrap items-center justify-between gap-4 px-7 py-6">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-              Premium
+            <p className="text-xs uppercase tracking-[0.25em] text-slate-500">
+              Pricing
             </p>
-            <h3 className="mt-2 text-xl font-semibold text-[var(--text)]">
-              Debloque l assistant IA
+            <h3 className="mt-2 text-2xl font-semibold text-slate-900">
+              Plans et tarifs
             </h3>
-            <p className="mt-2 text-sm text-[var(--muted)]">
-              Generation de layouts, resume automatique, propagation multi-sections et
-              outils IA avances.
+            <p className="mt-2 max-w-2xl text-sm text-slate-600">
+              Compare les offres et choisis le plan qui correspond a ton coaching.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
-            aria-label="Fermer"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+          <div className="flex items-center gap-3">
+            {showIntervalToggle ? (
+              <div className="inline-flex rounded-full border border-black/10 bg-white/70 p-1 text-xs shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setBillingInterval("year")}
+                  className={`rounded-full px-4 py-1.5 font-semibold uppercase tracking-wide transition ${
+                    billingInterval === "year"
+                      ? "bg-slate-900 text-white shadow"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  Annuel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBillingInterval("month")}
+                  className={`rounded-full px-4 py-1.5 font-semibold uppercase tracking-wide transition ${
+                    billingInterval === "month"
+                      ? "bg-slate-900 text-white shadow"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  Mensuel
+                </button>
+              </div>
+            ) : null}
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-black/10 bg-white/70 text-slate-600 transition hover:bg-white hover:text-slate-900"
+              aria-label="Fermer"
             >
-              <path d="M18 6L6 18" />
-              <path d="M6 6l12 12" />
-            </svg>
-          </button>
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M18 6L6 18" />
+                <path d="M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
         {notice ? (
-          <div className="mx-6 mb-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-            <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+          <div className="mx-7 mb-4 rounded-2xl border border-black/10 bg-white/70 px-4 py-3 text-slate-800 shadow-sm">
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
               {notice.title}
             </p>
-            <p className="mt-2 text-sm text-[var(--text)]">{notice.description}</p>
+            <p className="mt-2 text-sm text-slate-800">{notice.description}</p>
             {notice.tags && notice.tags.length > 0 ? (
               <div className="mt-3 flex flex-wrap gap-2">
                 {notice.tags.map((tag) => (
@@ -194,13 +273,13 @@ export default function PremiumOfferModal({
               </div>
             ) : null}
             {notice.status && notice.status.length > 0 ? (
-              <div className="mt-3 grid gap-2 text-xs text-[var(--muted)] sm:grid-cols-2">
+              <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
                 {notice.status.map((line) => (
                   <div key={line.label} className="flex items-center gap-2">
-                    <span className="uppercase tracking-[0.2em] text-[0.6rem] text-[var(--muted)]">
+                    <span className="uppercase tracking-[0.2em] text-[0.6rem] text-slate-500">
                       {line.label}
                     </span>
-                    <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[0.6rem] uppercase tracking-wide text-[var(--text)]">
+                    <span className="rounded-full border border-black/10 bg-white/60 px-2 py-0.5 text-[0.6rem] uppercase tracking-wide text-slate-700">
                       {line.value}
                     </span>
                   </div>
@@ -209,166 +288,189 @@ export default function PremiumOfferModal({
             ) : null}
           </div>
         ) : null}
-        <div className="flex flex-wrap items-center justify-between gap-3 px-6 pb-4">
-          <div className="inline-flex rounded-full border border-white/10 bg-white/5 p-1 text-xs">
-            <button
-              type="button"
-              onClick={() => setBillingInterval("month")}
-              className={`rounded-full px-4 py-1.5 font-semibold uppercase tracking-wide transition ${
-                billingInterval === "month"
-                  ? "bg-white/15 text-[var(--text)]"
-                  : "text-[var(--muted)] hover:text-[var(--text)]"
-              }`}
-            >
-              Mensuel
-            </button>
-            <button
-              type="button"
-              onClick={() => setBillingInterval("year")}
-              className={`relative rounded-full px-4 py-1.5 font-semibold uppercase tracking-wide transition ${
-                billingInterval === "year"
-                  ? "bg-emerald-300/20 text-emerald-100"
-                  : "text-emerald-200/80 hover:text-emerald-100"
-              }`}
-            >
-              Annuel
-              <span className="ml-2 rounded-full border border-emerald-300/40 bg-emerald-400/10 px-2 py-0.5 text-[0.55rem] uppercase tracking-wide text-emerald-100">
-                Meilleur deal
-              </span>
-            </button>
-          </div>
-          <p className="text-xs text-[var(--muted)]">
-            Choisis la facturation {billingInterval === "year" ? "annuelle" : "mensuelle"}
-            .
-          </p>
-        </div>
-        <div className="space-y-6 px-6 pb-6">
+        <div className="px-7 pb-10 pt-2">
           {loading ? (
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-[var(--muted)]">
+            <div className="rounded-2xl border border-black/10 bg-white/70 p-5 text-sm text-slate-600">
               Chargement des offres...
             </div>
           ) : error ? (
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-red-300">
+            <div className="rounded-2xl border border-black/10 bg-white/70 p-5 text-sm text-red-600">
               {error}
             </div>
-          ) : visiblePlans.length === 0 ? (
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-[var(--muted)]">
+          ) : planCards.length === 0 ? (
+            <div className="rounded-2xl border border-black/10 bg-white/70 p-5 text-sm text-slate-600">
               Aucune offre disponible.
             </div>
           ) : (
-            (
-              [
-                { key: "base", label: "Base" },
-                { key: "addon", label: "Add-ons" },
-                { key: "pack", label: "Packs" },
-                { key: "other", label: "Autres" },
-              ] as const
-            ).map((section) => {
-              const sectionPlans = groupedPlans[section.key];
-              if (sectionPlans.length === 0) return null;
-              return (
-                <div key={section.key}>
-                  <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                    {section.label}
-                  </p>
-                  <div className="mt-3 grid gap-4 md:grid-cols-2">
-                    {sectionPlans.map((plan) => {
-                      const highlight = plan.is_highlighted;
-                      const baseSlug = toBaseSlug(plan.slug);
-                      const monthlyPlan =
-                        billingInterval === "year" ? monthlyBySlug.get(baseSlug) : null;
-                      const annualSavings =
-                        monthlyPlan && monthlyPlan.price_cents > 0
-                          ? Math.round(
-                              (1 - plan.price_cents / (monthlyPlan.price_cents * 12)) *
-                                100
-                            )
-                          : null;
-                      return (
-                        <div
-                          key={plan.id}
-                          className={`flex h-full flex-col rounded-2xl border p-5 ${
-                            highlight
-                              ? "border-emerald-300/30 bg-emerald-400/10"
-                              : "border-white/10 bg-white/5"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <p
-                                className={`text-xs uppercase tracking-[0.2em] ${
-                                  highlight ? "text-emerald-100" : "text-[var(--muted)]"
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {planCards.map(({ plan, monthlyPlan, yearlyPlan }) => {
+                const highlight = plan.is_highlighted;
+                const showMonthlyEquivalent =
+                  plan.interval === "year" &&
+                  monthlyPlan &&
+                  plan.price_cents > 0 &&
+                  !isEnterprisePlan(plan);
+                const annualSavings =
+                  plan.interval === "year" && monthlyPlan && monthlyPlan.price_cents > 0
+                    ? Math.round(
+                        (1 - plan.price_cents / (monthlyPlan.price_cents * 12)) * 100
+                      )
+                    : null;
+                const priceLabel = formatPrice(plan);
+                const priceParts = priceLabel.split(" /");
+                const amountLabel = priceParts[0] ?? priceLabel;
+                const intervalLabel = priceParts[1] ?? "";
+                const badgeLabel = plan.badge ?? (highlight ? "Populaire" : null);
+                const billedYearlyTotal = yearlyPlan
+                  ? `${Math.round(yearlyPlan.price_cents / 100)} ${formatCurrency(
+                      yearlyPlan.currency
+                    )} facture annuellement`
+                  : null;
+                return (
+                  <div
+                    key={plan.id}
+                    className={`relative flex h-full flex-col rounded-3xl border px-5 py-6 transition ${
+                      highlight
+                        ? "border-[#f2d68a] bg-[#2c2c2c] text-white shadow-[0_25px_60px_rgba(15,23,42,0.45)]"
+                        : "border-black/10 bg-white/85 text-slate-900 shadow-sm"
+                    }`}
+                  >
+                    {badgeLabel ? (
+                      <span
+                        className={`absolute -right-px -top-px rounded-bl-2xl rounded-tr-[28px] rounded-br-sm rounded-tl-sm border px-3.5 py-1.5 text-[0.6rem] uppercase tracking-[0.2em] shadow-md ${
+                          highlight
+                            ? "border-white/25 bg-[#3a3a3a] text-white"
+                            : "border-black/10 bg-[#f0e6cf] text-slate-700"
+                        }`}
+                      >
+                        {badgeLabel}
+                      </span>
+                    ) : null}
+                    <div className="min-h-[120px]">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p
+                            className={`text-xs uppercase tracking-[0.2em] ${
+                              highlight ? "text-white/70" : "text-slate-500"
+                            }`}
+                          >
+                            {plan.label}
+                          </p>
+                          <div className="mt-3 flex items-end gap-2">
+                            <span
+                              className={`text-3xl font-semibold ${
+                                highlight ? "text-[#f2d68a]" : "text-slate-900"
+                              }`}
+                            >
+                              {amountLabel}
+                            </span>
+                            {intervalLabel ? (
+                              <span
+                                className={`pb-1 text-xs uppercase tracking-wide ${
+                                  highlight ? "text-white/60" : "text-slate-500"
                                 }`}
                               >
-                                {plan.label}
-                              </p>
-                              <p className="mt-2 text-2xl font-semibold text-[var(--text)]">
-                                {formatPrice(plan)}
-                              </p>
-                              {billingInterval === "year" && monthlyPlan ? (
-                                <p className="mt-2 text-xs text-emerald-100/80">
-                                  Facture annuellement - Equiv{" "}
-                                  {formatMonthlyEquivalent(plan)}
-                                </p>
-                              ) : null}
-                            </div>
-                            <div className="flex flex-col items-end gap-2">
-                              {plan.badge ? (
-                                <span
-                                  className={`rounded-full border px-3 py-1 text-[0.55rem] uppercase tracking-wide ${
-                                    highlight
-                                      ? "border-emerald-300/30 bg-emerald-400/20 text-emerald-100"
-                                      : "border-amber-300/30 bg-amber-400/10 text-amber-200"
-                                  }`}
-                                >
-                                  {plan.badge}
-                                </span>
-                              ) : null}
-                              {billingInterval === "year" &&
-                              annualSavings !== null &&
-                              annualSavings > 0 ? (
-                                <span className="rounded-full border border-emerald-300/40 bg-emerald-400/15 px-2 py-0.5 text-[0.55rem] uppercase tracking-wide text-emerald-100">
-                                  Economise {annualSavings}%
-                                </span>
-                              ) : null}
-                            </div>
+                                / {intervalLabel}
+                              </span>
+                            ) : null}
                           </div>
-                          <ul
-                            className={`mt-4 flex-1 space-y-2 text-xs ${
-                              highlight ? "text-emerald-100/80" : "text-[var(--muted)]"
+                        {billingInterval === "year" && showMonthlyEquivalent ? (
+                          <p
+                            className={`mt-2 text-xs ${
+                              highlight ? "text-white/60" : "text-slate-500"
                             }`}
                           >
-                            {(plan.features ?? []).length === 0 ? (
-                              <li>Aucune feature specifiee.</li>
-                            ) : (
-                              (plan.features ?? []).map((feature, idx) => (
-                                <li key={`${plan.id}-feature-${idx}`}>{feature}</li>
-                              ))
-                            )}
-                          </ul>
-                          <button
-                            type="button"
-                            className={`mt-5 w-full rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-wide transition ${
-                              highlight
-                                ? "bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 text-zinc-900 hover:opacity-90"
-                                : "border border-white/10 bg-white/10 text-[var(--text)] hover:bg-white/20"
+                            Equiv {formatMonthlyEquivalent(plan)}
+                          </p>
+                        ) : billingInterval === "month" ? (
+                          <p
+                            className={`mt-2 text-xs ${
+                              highlight ? "text-white/60" : "text-slate-500"
                             }`}
                           >
-                            {plan.cta_label || "Choisir"}
-                          </button>
+                            Facturation mensuelle.
+                          </p>
+                        ) : null}
                         </div>
-                      );
-                    })}
+                      </div>
+                    </div>
+                    <ul
+                      className={`mt-5 flex-1 space-y-2 text-[0.7rem] ${
+                        highlight ? "text-white/85" : "text-slate-700"
+                      }`}
+                    >
+                      {(plan.features ?? []).length === 0 ? (
+                        <li>Aucune feature specifiee.</li>
+                      ) : (
+                        (plan.features ?? []).map((feature, idx) => {
+                          const { label, isExcluded } = parseFeature(feature);
+                          return (
+                            <li
+                              key={`${plan.id}-feature-${idx}`}
+                              className="flex items-start gap-2"
+                            >
+                              <span
+                                className={`mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full text-[0.6rem] font-semibold leading-none ${
+                                  isExcluded
+                                    ? highlight
+                                      ? "bg-white/10 text-white/40"
+                                      : "bg-slate-300 text-slate-500"
+                                    : "bg-emerald-500 text-white"
+                                }`}
+                                aria-hidden
+                              >
+                                {isExcluded ? "x" : "+"}
+                              </span>
+                              <span
+                                className={
+                                  isExcluded
+                                    ? highlight
+                                      ? "text-white/50"
+                                      : "text-slate-500"
+                                    : ""
+                                }
+                              >
+                                {label}
+                              </span>
+                            </li>
+                          );
+                        })
+                      )}
+                    </ul>
+                    {billingInterval === "year" &&
+                    billedYearlyTotal &&
+                    annualSavings !== null &&
+                    annualSavings > 0 ? (
+                      <p
+                        className={`mt-4 text-xs ${
+                          highlight ? "text-white/60" : "text-slate-500"
+                        }`}
+                      >
+                        {billedYearlyTotal}. Economise {annualSavings}%.
+                      </p>
+                    ) : null}
+                    <button
+                      type="button"
+                      className={`mt-5 w-full rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-wide transition ${
+                        highlight
+                          ? "bg-white text-slate-900 hover:bg-white/90"
+                          : "border border-black/10 bg-white text-slate-900 hover:bg-slate-50"
+                      }`}
+                    >
+                      {plan.cta_label || "Choisir"}
+                    </button>
                   </div>
-                </div>
-              );
-            })
+                );
+              })}
+            </div>
           )}
         </div>
-        <div className="border-t border-white/10 px-6 py-4 text-xs text-[var(--muted)]">
-          Besoin d un plan equipe ou club ? Contacte-nous pour une offre sur mesure.
+        <div className="border-t border-black/10 px-7 py-4 text-xs text-slate-600">
+          Besoin d&apos;un plan equipe ou club ? Contacte-nous pour une offre sur
+          mesure.
         </div>
       </div>
     </div>
   );
+
 }

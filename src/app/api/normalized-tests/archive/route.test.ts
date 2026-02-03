@@ -82,14 +82,14 @@ describe("POST /api/normalized-tests/archive", () => {
       from: (table: string) => {
         if (table === "organizations") {
           return buildSelectSingle({
-            data: { coaching_dynamic_enabled: true },
+            data: { plan_tier: "standard" },
             error: null,
           });
         }
         if (table === "normalized_test_assignments") {
           return {
             ...buildSelectMaybeSingle({
-              data: { id: "assign-1", org_id: "org-1" },
+              data: { id: "assign-1", org_id: "org-1", test_slug: "pelz-putting" },
               error: null,
             }),
             ...buildUpdate({ error: null }),

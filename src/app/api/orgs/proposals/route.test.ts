@@ -43,7 +43,7 @@ describe("POST /api/orgs/proposals", () => {
     serverMocks.createSupabaseAdminClient.mockReset();
   });
 
-  it("blocks proposal creation for freemium member", async () => {
+  it("blocks proposal creation for free member", async () => {
     const supabase = {
       auth: {
         getUser: async () => ({
@@ -63,13 +63,13 @@ describe("POST /api/orgs/proposals", () => {
         }
         if (table === "organizations") {
           return buildSelectSingle({
-            data: { ai_enabled: true },
+            data: { plan_tier: "free" },
             error: null,
           });
         }
         if (table === "org_memberships") {
           return buildSelectMaybeSingle({
-            data: { status: "active", premium_active: false },
+            data: { status: "active" },
             error: null,
           });
         }
@@ -90,6 +90,6 @@ describe("POST /api/orgs/proposals", () => {
 
     expect(response.status).toBe(403);
     const body = await response.json();
-    expect(body.error).toBe("Premium requis pour proposer.");
+    expect(body.error).toBe("Lecture seule: plan Free en organisation.");
   });
 });

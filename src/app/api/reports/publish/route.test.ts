@@ -122,7 +122,7 @@ describe("POST /api/reports/publish", () => {
               id: "org-1",
               workspace_type: "personal",
               owner_profile_id: "user-1",
-              ai_enabled: true,
+              plan_tier: "standard",
             },
             error: null,
           });
@@ -177,7 +177,7 @@ describe("POST /api/reports/publish", () => {
               id: "org-1",
               workspace_type: "personal",
               owner_profile_id: "user-1",
-              ai_enabled: true,
+              plan_tier: "standard",
             },
             error: null,
           });
@@ -258,14 +258,14 @@ describe("POST /api/reports/publish", () => {
               id: "org-1",
               workspace_type: "org",
               owner_profile_id: null,
-              ai_enabled: true,
+              plan_tier: "free",
             },
             error: null,
           });
         }
         if (table === "org_memberships") {
           return buildSelectMaybeSingle({
-            data: { role: "coach", status: "active", premium_active: false },
+            data: { role: "coach", status: "active" },
             error: null,
           });
         }
@@ -280,7 +280,7 @@ describe("POST /api/reports/publish", () => {
 
     expect(response.status).toBe(403);
     const body = await response.json();
-    expect(body.error).toBe("Premium requis pour publier.");
+    expect(body.error).toBe("Lecture seule: plan Free en organisation.");
   });
 
   it("blocks publish when coach is not assigned", async () => {
@@ -316,14 +316,14 @@ describe("POST /api/reports/publish", () => {
               id: "org-1",
               workspace_type: "org",
               owner_profile_id: null,
-              ai_enabled: true,
+              plan_tier: "standard",
             },
             error: null,
           });
         }
         if (table === "org_memberships") {
           return buildSelectMaybeSingle({
-            data: { role: "coach", status: "active", premium_active: true },
+            data: { role: "coach", status: "active" },
             error: null,
           });
         }

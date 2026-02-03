@@ -19,6 +19,7 @@ const files = fs
 const errors = [];
 
 const insertRegex = /\bINSERT\s+INTO\b/i;
+const allowedInsertRegex = /\bpricing_plans\b/i;
 const createFunctionRegex = /\bCREATE\s+(OR\s+REPLACE\s+)?FUNCTION\b/i;
 const asDollarRegex = /\bAS\s+(\$[^$]*\$)/i;
 
@@ -66,7 +67,7 @@ for (const filePath of files) {
       continue;
     }
 
-    if (insertRegex.test(trimmed)) {
+    if (insertRegex.test(trimmed) && !allowedInsertRegex.test(trimmed)) {
       errors.push({ filePath, line: i + 1, content: trimmed });
     }
   }
