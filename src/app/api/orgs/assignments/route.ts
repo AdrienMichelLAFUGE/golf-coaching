@@ -5,7 +5,7 @@ import {
   createSupabaseServerClientFromRequest,
 } from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
-import { resolvePlanTier } from "@/lib/plans";
+import { loadPersonalPlanTier } from "@/lib/plan-access";
 
 const assignmentSchema = z.object({
   studentId: z.string().uuid(),
@@ -107,16 +107,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Organisation introuvable." }, { status: 403 });
   }
 
-  const { data: workspace, error: workspaceError } = await admin
-    .from("organizations")
-    .select("plan_tier")
-    .eq("id", profile.org_id)
-    .single();
-
-  if (workspaceError || !workspace) {
-    return NextResponse.json({ error: "Organisation introuvable." }, { status: 403 });
-  }
-
   const { data: membership } = await admin
     .from("org_memberships")
     .select("role, status")
@@ -128,7 +118,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
-  const planTier = resolvePlanTier(workspace.plan_tier);
+  const planTier = await loadPersonalPlanTier(admin, profile.id);
   if (planTier === "free") {
     return NextResponse.json(
       { error: "Lecture seule: plan Free en organisation." },

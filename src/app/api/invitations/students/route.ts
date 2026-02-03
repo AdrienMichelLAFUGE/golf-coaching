@@ -58,7 +58,7 @@ export async function POST(request: Request) {
   const admin = createSupabaseAdminClient();
 
   const origin = request.headers.get("origin") ?? "";
-  const redirectTo = origin ? `${origin}/auth/reset` : undefined;
+  const redirectTo = origin ? `${origin}/auth/reset?flow=student` : undefined;
 
   const { error: inviteError } = await admin.auth.admin.inviteUserByEmail(
     student.email,

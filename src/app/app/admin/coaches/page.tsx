@@ -252,9 +252,7 @@ export default function AdminCoachesPage() {
               ...workspace,
               plan_tier: patch.plan_tier ?? workspace.plan_tier,
               ai_enabled:
-                patch.ai_enabled ??
-                planEntitlements?.aiEnabled ??
-                workspace.ai_enabled,
+                patch.ai_enabled ?? planEntitlements?.aiEnabled ?? workspace.ai_enabled,
               tpi_enabled:
                 patch.tpi_enabled ??
                 planEntitlements?.tpiEnabled ??
@@ -350,9 +348,7 @@ export default function AdminCoachesPage() {
                       <div
                         key={workspace.id}
                         className={`grid gap-3 md:grid-cols-[1.3fr_1fr_1fr_1fr_0.6fr] ${
-                          index > 0
-                            ? "mt-3 border-t border-white/10 pt-3"
-                            : ""
+                          index > 0 ? "mt-3 border-t border-white/10 pt-3" : ""
                         }`}
                       >
                         <div>
@@ -398,7 +394,8 @@ export default function AdminCoachesPage() {
                                 disabled={savingId === workspace.id}
                                 onChange={(event) =>
                                   handleUpdate(workspace.id, {
-                                    plan_tier: event.target.value as WorkspaceRow["plan_tier"],
+                                    plan_tier: event.target
+                                      .value as WorkspaceRow["plan_tier"],
                                   })
                                 }
                                 className="w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs uppercase tracking-wide text-[var(--text)]"
@@ -439,12 +436,9 @@ export default function AdminCoachesPage() {
                             <button
                               type="button"
                               disabled={
-                                !group.coach?.id ||
-                                deletingId === group.coach?.id
+                                !group.coach?.id || deletingId === group.coach?.id
                               }
-                              onClick={() =>
-                                handleDeleteCoach(group.coach?.id ?? "")
-                              }
+                              onClick={() => handleDeleteCoach(group.coach?.id ?? "")}
                               className="rounded-full border border-rose-300/30 bg-rose-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-rose-200 transition hover:bg-rose-400/20 disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               {deletingId === group.coach?.id

@@ -21,23 +21,17 @@ test("workspace switcher happy path (perso -> org -> perso)", async ({ page }) =
       exact: true,
     })
   ).toBeVisible();
-  await expect(page.getByTestId("workspace-switcher-button")).toContainText(
-    "MODE PERSO"
-  );
+  await expect(page.getByTestId("workspace-switcher-button")).toContainText("MODE PERSO");
 
   await page.getByTestId("workspace-switcher-button").click();
   await expect(page.getByRole("menu")).toBeVisible();
-  await page
-    .getByRole("menuitem", { name: new RegExp(orgName!, "i") })
-    .click();
+  await page.getByRole("menuitem", { name: new RegExp(orgName!, "i") }).click();
 
   await page.waitForLoadState("domcontentloaded");
   await expect(page.getByTestId("workspace-switcher-button")).toContainText(
     "MODE ORGANISATION"
   );
-  await expect(
-    page.getByTestId("workspace-org-panel").getByText(orgName!)
-  ).toBeVisible();
+  await expect(page.getByTestId("workspace-org-panel").getByText(orgName!)).toBeVisible();
   await expect(
     page
       .getByTestId("workspace-org-panel")
@@ -51,9 +45,7 @@ test("workspace switcher happy path (perso -> org -> perso)", async ({ page }) =
   await personalItem.click();
 
   await page.waitForLoadState("domcontentloaded");
-  await expect(page.getByTestId("workspace-switcher-button")).toContainText(
-    "MODE PERSO"
-  );
+  await expect(page.getByTestId("workspace-switcher-button")).toContainText("MODE PERSO");
   await expect(
     page
       .getByTestId("workspace-personal-panel")

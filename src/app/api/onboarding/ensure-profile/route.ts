@@ -103,8 +103,7 @@ export async function POST(request: Request) {
   if (profile?.id) {
     if (!profile.full_name || !profile.full_name.trim()) {
       const derivedName =
-        String(user.user_metadata?.full_name ?? "").trim() ||
-        email.split("@")[0];
+        String(user.user_metadata?.full_name ?? "").trim() || email.split("@")[0];
       if (derivedName) {
         await admin
           .from("profiles")

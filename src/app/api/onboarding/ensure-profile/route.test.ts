@@ -217,7 +217,10 @@ describe("POST /api/onboarding/ensure-profile", () => {
     });
     expect(profileUpdateEq).toHaveBeenCalledWith("id", "coach-1");
     expect(orgInsert).toHaveBeenCalledTimes(1);
-    const inserted = insertedOrganizations[0] as Array<{ workspace_type?: string; name?: string }>;
+    const inserted = insertedOrganizations[0] as Array<{
+      workspace_type?: string;
+      name?: string;
+    }>;
     expect(inserted[0]?.workspace_type).toBe("personal");
     expect(inserted[0]?.name).not.toBe("Nouvelle organisation");
     expect(orgMembershipInsert).toHaveBeenCalledWith([

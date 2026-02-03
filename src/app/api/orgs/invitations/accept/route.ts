@@ -40,10 +40,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invitation deja traitee." }, { status: 400 });
   }
 
-  if (
-    invitation.expires_at &&
-    new Date(invitation.expires_at).getTime() < Date.now()
-  ) {
+  if (invitation.expires_at && new Date(invitation.expires_at).getTime() < Date.now()) {
     return NextResponse.json({ error: "Invitation expiree." }, { status: 400 });
   }
 
@@ -61,10 +58,7 @@ export async function POST(request: Request) {
       .eq("status", "active")
       .limit(1);
     if ((activeAdmins ?? []).length > 0) {
-      return NextResponse.json(
-        { error: "Un admin actif existe deja." },
-        { status: 409 }
-      );
+      return NextResponse.json({ error: "Un admin actif existe deja." }, { status: 409 });
     }
   }
 

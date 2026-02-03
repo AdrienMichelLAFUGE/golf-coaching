@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
-import { PLAN_ENTITLEMENTS, resolvePlanTier } from "@/lib/plans";
+import { PLAN_ENTITLEMENTS } from "@/lib/plans";
 import RoleGuard from "../../_components/role-guard";
 import { useProfile } from "../../_components/profile-context";
 import PremiumOfferModal from "../../_components/premium-offer-modal";
@@ -69,7 +69,7 @@ const statusLabel: Record<AssignmentRow["status"], string> = {
 };
 
 export default function CoachTestsPage() {
-  const { organization, userEmail, workspaceType } = useProfile();
+  const { organization, userEmail, planTier } = useProfile();
   const [students, setStudents] = useState<StudentOption[]>([]);
   const [assignments, setAssignments] = useState<AssignmentRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,9 +105,10 @@ export default function CoachTestsPage() {
   const [archivingId, setArchivingId] = useState<string | null>(null);
   const [premiumModalOpen, setPremiumModalOpen] = useState(false);
   const isAdmin = isAdminEmail(userEmail);
-  const isOrgMode = workspaceType === "org";
-  const planTier = resolvePlanTier(organization?.plan_tier);
   const testAccess = PLAN_ENTITLEMENTS[planTier].tests;
+  const isOrgReadOnly =
+    (organization?.workspace_type ?? "personal") === "org" && planTier === "free";
+  const readOnlyMessage = "Lecture seule: plan Free en organisation.";
   const modeLabel =
     (organization?.workspace_type ?? "personal") === "org"
       ? `Organisation : ${organization?.name ?? "Organisation"}`
@@ -275,10 +276,6 @@ export default function CoachTestsPage() {
     const loadAll = async () => {
       setLoading(true);
       setError("");
-      if (isOrgMode) {
-        setLoading(false);
-        return;
-      }
       await Promise.all([loadStudents(), loadAssignments()]);
       if (!cancelled) setLoading(false);
     };
@@ -286,7 +283,7 @@ export default function CoachTestsPage() {
     return () => {
       cancelled = true;
     };
-  }, [isOrgMode, loadAssignments, loadStudents]);
+  }, [loadAssignments, loadStudents]);
 
   const toggleSelected = (studentId: string) => {
     setSelectedIds((prev) =>
@@ -303,6 +300,10 @@ export default function CoachTestsPage() {
       | typeof WEDGING_DRAPEAU_LONG_SLUG
       | typeof WEDGING_DRAPEAU_COURT_SLUG
   ) => {
+    if (isOrgReadOnly) {
+      setAssignmentError(readOnlyMessage);
+      return;
+    }
     setAssignError("");
     setSelectedIds([]);
     setStudentSearch("");
@@ -317,6 +318,10 @@ export default function CoachTestsPage() {
   };
 
   const handleRemoveAssignment = async (assignmentId: string) => {
+    if (isOrgReadOnly) {
+      setAssignmentError(readOnlyMessage);
+      return;
+    }
     setAssignmentError("");
     const assignment = assignments.find((item) => item.id === assignmentId);
     if (!assignment) return;
@@ -366,6 +371,10 @@ export default function CoachTestsPage() {
   };
 
   const handleArchiveAssignment = async (assignmentId: string, archived: boolean) => {
+    if (isOrgReadOnly) {
+      setAssignmentError(readOnlyMessage);
+      return;
+    }
     setAssignmentError("");
     setArchivingId(assignmentId);
     const { data: sessionData } = await supabase.auth.getSession();
@@ -397,6 +406,10 @@ export default function CoachTestsPage() {
   };
 
   const handleAssign = async () => {
+    if (isOrgReadOnly) {
+      setAssignError(readOnlyMessage);
+      return;
+    }
     if (selectedIds.length === 0) {
       setAssignError("Selectionne au moins un eleve.");
       return;
@@ -438,45 +451,6 @@ export default function CoachTestsPage() {
     setAssigning(false);
   };
 
-  const openWorkspaceSwitcher = () => {
-    if (typeof window === "undefined") return;
-    window.dispatchEvent(new CustomEvent("gc:open-workspace-switcher"));
-  };
-
-  if (isOrgMode) {
-    return (
-      <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
-        <div className="space-y-6">
-          <section className="panel rounded-2xl p-6">
-            <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-              Tests normalises
-            </p>
-            <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
-              Tests perso
-            </h2>
-            <p className="mt-2 text-sm text-[var(--muted)]">
-              Cette section est disponible uniquement en mode Perso.
-            </p>
-            <div
-              className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
-            >
-              Vous travaillez dans {modeLabel}
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={openWorkspaceSwitcher}
-                className="rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
-              >
-                Changer de mode
-              </button>
-            </div>
-          </section>
-        </div>
-      </RoleGuard>
-    );
-  }
-
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       <div className="space-y-6">
@@ -509,12 +483,11 @@ export default function CoachTestsPage() {
           <div className="space-y-6">
             {showUpgradeNotice ? (
               <section className="panel-soft rounded-2xl p-6">
-                <h3 className="text-lg font-semibold text-[var(--text)]">
-                  Plan Free
-                </h3>
+                <h3 className="text-lg font-semibold text-[var(--text)]">Plan Free</h3>
                 <p className="mt-2 text-sm text-[var(--muted)]">
-                  Tu as acces aux 2 tests Pelz. Passe a Standard pour acceder au
-                  catalogue complet.
+                  En mode organisation, le plan Free est en lecture seule. Tu peux
+                  consulter les tests Pelz, mais les assignations sont bloquees. Passe a
+                  Standard pour acceder au catalogue complet.
                 </p>
                 <button
                   type="button"
@@ -581,7 +554,10 @@ export default function CoachTestsPage() {
                       <button
                         type="button"
                         onClick={() => openAssignModal(test.slug)}
-                        className="rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
+                        disabled={isOrgReadOnly}
+                        className={`rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20 ${
+                          isOrgReadOnly ? "cursor-not-allowed opacity-60" : ""
+                        }`}
                       >
                         Assigner a des eleves
                       </button>
@@ -611,7 +587,9 @@ export default function CoachTestsPage() {
                 <select
                   value={assignmentSort}
                   onChange={(event) =>
-                    setAssignmentSort(event.target.value as "assigned_desc" | "assigned_asc")
+                    setAssignmentSort(
+                      event.target.value as "assigned_desc" | "assigned_asc"
+                    )
                   }
                   className="rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs uppercase tracking-wide text-[var(--muted)]"
                 >
@@ -702,7 +680,8 @@ export default function CoachTestsPage() {
                               {formatStudentName(assignment.students)}
                             </p>
                             <p className="mt-1 text-xs text-[var(--muted)]">
-                              {test.title} - Assigne le {formatDate(assignment.assigned_at)}
+                              {test.title} - Assigne le{" "}
+                              {formatDate(assignment.assigned_at)}
                             </p>
                             <p className="mt-1 text-[0.65rem] uppercase tracking-[0.2em] text-[var(--muted)]">
                               Derniere maj {formatDate(assignment.updated_at)}
@@ -721,32 +700,48 @@ export default function CoachTestsPage() {
                           {isArchived ? (
                             <button
                               type="button"
-                              onClick={() => handleArchiveAssignment(assignment.id, false)}
-                              disabled={archivingId === assignment.id}
-                              className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-60"
+                              onClick={() =>
+                                handleArchiveAssignment(assignment.id, false)
+                              }
+                              disabled={isOrgReadOnly || archivingId === assignment.id}
+                              className={`rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-60 ${
+                                isOrgReadOnly ? "cursor-not-allowed opacity-60" : ""
+                              }`}
                             >
-                              {archivingId === assignment.id ? "Restauration..." : "Restaurer"}
+                              {archivingId === assignment.id
+                                ? "Restauration..."
+                                : "Restaurer"}
                             </button>
                           ) : (
                             <button
                               type="button"
                               onClick={() => handleArchiveAssignment(assignment.id, true)}
-                              disabled={archivingId === assignment.id}
-                              className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-60"
+                              disabled={isOrgReadOnly || archivingId === assignment.id}
+                              className={`rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-60 ${
+                                isOrgReadOnly ? "cursor-not-allowed opacity-60" : ""
+                              }`}
                             >
-                              {archivingId === assignment.id ? "Archivage..." : "Archiver"}
+                              {archivingId === assignment.id
+                                ? "Archivage..."
+                                : "Archiver"}
                             </button>
                           )}
                           <button
                             type="button"
                             onClick={() => handleRemoveAssignment(assignment.id)}
-                            disabled={removingId === assignment.id || archivingId === assignment.id}
+                            disabled={
+                              isOrgReadOnly ||
+                              removingId === assignment.id ||
+                              archivingId === assignment.id
+                            }
                             title={
                               isFinalized
                                 ? "Suppression requiert une confirmation"
                                 : "Retirer l assignation"
                             }
-                            className="rounded-full border border-red-300/30 bg-red-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-red-200 transition hover:bg-red-400/20 disabled:opacity-60"
+                            className={`rounded-full border border-red-300/30 bg-red-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-red-200 transition hover:bg-red-400/20 disabled:opacity-60 ${
+                              isOrgReadOnly ? "cursor-not-allowed opacity-60" : ""
+                            }`}
                           >
                             {removingId === assignment.id
                               ? "Suppression..."
@@ -865,7 +860,7 @@ export default function CoachTestsPage() {
                 <button
                   type="button"
                   onClick={handleAssign}
-                  disabled={assigning}
+                  disabled={assigning || isOrgReadOnly}
                   className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-4 py-2 text-xs uppercase tracking-wide text-emerald-100 transition hover:bg-emerald-400/20 disabled:opacity-60"
                 >
                   {assigning ? "Envoi..." : "Envoyer"}

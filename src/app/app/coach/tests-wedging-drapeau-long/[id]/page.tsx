@@ -177,7 +177,8 @@ export default function CoachWedgingDrapeauLongPage() {
         if (row.subtest_key !== WEDGING_DRAPEAU_LONG_SUBTEST_KEY) return;
         if (row.attempt_index < 1 || row.attempt_index > nextAttempts.length) return;
         if (!isWedgingDrapeauLongResultValue(row.result_value)) return;
-        nextAttempts[row.attempt_index - 1] = row.result_value as WedgingDrapeauLongResultValue;
+        nextAttempts[row.attempt_index - 1] =
+          row.result_value as WedgingDrapeauLongResultValue;
       });
 
       setAttempts(nextAttempts);
@@ -187,7 +188,10 @@ export default function CoachWedgingDrapeauLongPage() {
     loadAssignment();
   }, [assignmentId]);
 
-  const totalScore = useMemo(() => computeWedgingDrapeauLongTotalScore(attempts), [attempts]);
+  const totalScore = useMemo(
+    () => computeWedgingDrapeauLongTotalScore(attempts),
+    [attempts]
+  );
   const objectivation = useMemo(
     () =>
       computeWedgingDrapeauLongObjectivation(

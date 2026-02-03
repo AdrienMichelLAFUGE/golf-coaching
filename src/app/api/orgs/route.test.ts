@@ -22,6 +22,16 @@ const buildSelectSingle = (result: QueryResult) => ({
   }),
 });
 
+const buildSelectMaybeSingle = (result: QueryResult) => ({
+  select: () => {
+    const chain = {
+      eq: () => chain,
+      maybeSingle: async () => result,
+    };
+    return chain;
+  },
+});
+
 describe("POST /api/orgs", () => {
   const serverMocks = jest.requireMock("@/lib/supabase/server") as {
     createSupabaseServerClientFromRequest: jest.Mock;
@@ -54,17 +64,9 @@ describe("POST /api/orgs", () => {
         }
         if (table === "organizations") {
           return {
-            select: () => ({
-              eq: () => ({
-                single: async () => ({
-                  data: {
-                    id: "org-1",
-                    plan_tier: "free",
-                    workspace_type: "personal",
-                  },
-                  error: null,
-                }),
-              }),
+            ...buildSelectMaybeSingle({
+              data: { plan_tier: "free" },
+              error: null,
             }),
             insert: orgInsert,
           };
@@ -111,17 +113,9 @@ describe("POST /api/orgs", () => {
         }
         if (table === "organizations") {
           return {
-            select: () => ({
-              eq: () => ({
-                single: async () => ({
-                  data: {
-                    id: "org-1",
-                    plan_tier: "standard",
-                    workspace_type: "personal",
-                  },
-                  error: null,
-                }),
-              }),
+            ...buildSelectMaybeSingle({
+              data: { plan_tier: "standard" },
+              error: null,
             }),
             insert: orgInsert,
           };

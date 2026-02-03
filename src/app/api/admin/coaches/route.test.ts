@@ -170,7 +170,6 @@ describe("DELETE /api/admin/coaches", () => {
   });
 });
 
-
 describe("GET /api/admin/coaches", () => {
   const serverMocks = jest.requireMock("@/lib/supabase/server") as {
     createSupabaseServerClientFromRequest: jest.Mock;

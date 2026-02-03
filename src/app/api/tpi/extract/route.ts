@@ -7,7 +7,8 @@ import {
 } from "@/lib/supabase/server";
 import { applyTemplate, loadPromptSection } from "@/lib/promptLoader";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
-import { PLAN_ENTITLEMENTS, resolvePlanTier } from "@/lib/plans";
+import { PLAN_ENTITLEMENTS } from "@/lib/plans";
+import { loadPersonalPlanTier } from "@/lib/plan-access";
 
 type ExtractedTest = {
   test_name: string;
@@ -183,11 +184,11 @@ export async function POST(req: Request) {
 
   const { data: orgData } = await admin
     .from("organizations")
-    .select("locale, plan_tier")
+    .select("locale")
     .eq("id", report.org_id)
     .single();
 
-  const planTier = resolvePlanTier(orgData?.plan_tier);
+  const planTier = await loadPersonalPlanTier(admin, userId);
   const entitlements = PLAN_ENTITLEMENTS[planTier];
   if (!isAdmin && !entitlements.tpiEnabled) {
     return Response.json(

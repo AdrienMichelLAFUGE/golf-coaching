@@ -5,7 +5,7 @@ import {
   createSupabaseServerClientFromRequest,
 } from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
-import { resolvePlanTier } from "@/lib/plans";
+import { loadPersonalPlanTier } from "@/lib/plan-access";
 
 const createOrgSchema = z.object({
   name: z.string().min(2).max(80),
@@ -41,17 +41,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Organisation introuvable." }, { status: 403 });
   }
 
-  const { data: workspace, error: workspaceError } = await admin
-    .from("organizations")
-    .select("id, plan_tier, workspace_type")
-    .eq("id", profile.org_id)
-    .single();
-
-  if (workspaceError || !workspace) {
-    return NextResponse.json({ error: "Organisation introuvable." }, { status: 403 });
-  }
-
-  const planTier = resolvePlanTier(workspace.plan_tier);
+  const planTier = await loadPersonalPlanTier(admin, profile.id);
   if (planTier === "free") {
     return NextResponse.json(
       { error: "Plan Free: creation d organisation indisponible." },
@@ -65,7 +55,7 @@ export async function POST(request: Request) {
       {
         name: parsed.data.name.trim(),
         workspace_type: "org",
-        plan_tier: planTier,
+        plan_tier: "free",
       },
     ])
     .select("id")

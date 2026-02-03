@@ -3,8 +3,11 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { z } from "zod";
 
 export const dynamic = "force-dynamic";
+
+const flowSchema = z.enum(["student"]);
 
 function ResetPasswordContent() {
   const router = useRouter();
@@ -15,6 +18,8 @@ function ResetPasswordContent() {
   const [status, setStatus] = useState<"idle" | "saving" | "error" | "success">("idle");
   const [message, setMessage] = useState("");
   const [ready, setReady] = useState(false);
+  const flowParam = searchParams.get("flow");
+  const isStudentInvite = flowSchema.safeParse(flowParam).success;
 
   useEffect(() => {
     let active = true;
@@ -69,6 +74,11 @@ function ResetPasswordContent() {
     if (error) {
       setStatus("error");
       setMessage(error.message);
+      return;
+    }
+
+    if (isStudentInvite) {
+      router.replace("/auth/account?flow=student&state=ready");
       return;
     }
 

@@ -56,13 +56,28 @@ const buildSelectSingle = (result: QueryResult) => ({
 });
 
 const buildSelectMaybeSingle = (result: QueryResult) => ({
-  select: () => ({
-    eq: () => ({
-      eq: () => ({
-        maybeSingle: async () => result,
-      }),
-    }),
-  }),
+  select: () => {
+    const chain = {
+      eq: () => chain,
+      maybeSingle: async () => result,
+    };
+    return chain;
+  },
+});
+
+const buildOrgSelect = (workspaceResult: QueryResult, planResult: QueryResult) => ({
+  select: (fields?: string) => {
+    const wantsWorkspace =
+      typeof fields === "string" &&
+      (fields.includes("workspace_type") || fields.includes("owner_profile_id"));
+    const result = wantsWorkspace ? workspaceResult : planResult;
+    const chain = {
+      eq: () => chain,
+      single: async () => result,
+      maybeSingle: async () => result,
+    };
+    return chain;
+  },
 });
 
 const hashContent = (value: string) =>
@@ -117,15 +132,17 @@ describe("POST /api/reports/publish", () => {
     const admin = {
       from: jest.fn((table: string) => {
         if (table === "organizations") {
-          return buildSelectSingle({
-            data: {
-              id: "org-1",
-              workspace_type: "personal",
-              owner_profile_id: "user-1",
-              plan_tier: "standard",
+          return buildOrgSelect(
+            {
+              data: {
+                id: "org-1",
+                workspace_type: "personal",
+                owner_profile_id: "user-1",
+              },
+              error: null,
             },
-            error: null,
-          });
+            { data: { plan_tier: "standard" }, error: null }
+          );
         }
         return {};
       }),
@@ -172,15 +189,17 @@ describe("POST /api/reports/publish", () => {
     const admin = {
       from: jest.fn((table: string) => {
         if (table === "organizations") {
-          return buildSelectSingle({
-            data: {
-              id: "org-1",
-              workspace_type: "personal",
-              owner_profile_id: "user-1",
-              plan_tier: "standard",
+          return buildOrgSelect(
+            {
+              data: {
+                id: "org-1",
+                workspace_type: "personal",
+                owner_profile_id: "user-1",
+              },
+              error: null,
             },
-            error: null,
-          });
+            { data: { plan_tier: "standard" }, error: null }
+          );
         }
         if (table === "report_sections") {
           return {
@@ -253,15 +272,17 @@ describe("POST /api/reports/publish", () => {
     const admin = {
       from: jest.fn((table: string) => {
         if (table === "organizations") {
-          return buildSelectSingle({
-            data: {
-              id: "org-1",
-              workspace_type: "org",
-              owner_profile_id: null,
-              plan_tier: "free",
+          return buildOrgSelect(
+            {
+              data: {
+                id: "org-1",
+                workspace_type: "org",
+                owner_profile_id: null,
+              },
+              error: null,
             },
-            error: null,
-          });
+            { data: { plan_tier: "free" }, error: null }
+          );
         }
         if (table === "org_memberships") {
           return buildSelectMaybeSingle({
@@ -311,15 +332,17 @@ describe("POST /api/reports/publish", () => {
     const admin = {
       from: jest.fn((table: string) => {
         if (table === "organizations") {
-          return buildSelectSingle({
-            data: {
-              id: "org-1",
-              workspace_type: "org",
-              owner_profile_id: null,
-              plan_tier: "standard",
+          return buildOrgSelect(
+            {
+              data: {
+                id: "org-1",
+                workspace_type: "org",
+                owner_profile_id: null,
+              },
+              error: null,
             },
-            error: null,
-          });
+            { data: { plan_tier: "standard" }, error: null }
+          );
         }
         if (table === "org_memberships") {
           return buildSelectMaybeSingle({

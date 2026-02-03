@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
-import { PLAN_ENTITLEMENTS, resolvePlanTier } from "@/lib/plans";
+import { PLAN_ENTITLEMENTS } from "@/lib/plans";
 import RoleGuard from "../../_components/role-guard";
 import { useProfile } from "../../_components/profile-context";
 import PageBack from "../../_components/page-back";
@@ -60,7 +60,7 @@ const normalizeSections = (value: string) => {
 };
 
 export default function CoachSettingsPage() {
-  const { refresh } = useProfile();
+  const { refresh, planTier } = useProfile();
   const [profile, setProfile] = useState<ProfileSettings | null>(null);
   const [organization, setOrganization] = useState<OrganizationSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -106,7 +106,6 @@ export default function CoachSettingsPage() {
     () => normalizeSections(reportDefaultSections),
     [reportDefaultSections]
   );
-  const planTier = resolvePlanTier(organization?.plan_tier);
   const entitlements = PLAN_ENTITLEMENTS[planTier];
   const aiLocked = !entitlements.aiEnabled;
   const openPremiumModal = () => setPremiumModalOpen(true);

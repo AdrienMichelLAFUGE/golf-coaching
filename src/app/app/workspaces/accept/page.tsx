@@ -8,9 +8,7 @@ export default function WorkspaceInviteAcceptPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const token = searchParams.get("token");
-  const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">(
-    "idle"
-  );
+  const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -52,16 +50,12 @@ export default function WorkspaceInviteAcceptPage() {
 
   return (
     <section className="panel rounded-2xl p-6">
-      <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-        Workspaces
-      </p>
+      <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">Workspaces</p>
       <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
         Acceptation d invitation
       </h2>
       <p className="mt-2 text-sm text-[var(--muted)]">
-        {status === "loading"
-          ? "Traitement..."
-          : message || "Verification en cours."}
+        {status === "loading" ? "Traitement..." : message || "Verification en cours."}
       </p>
     </section>
   );

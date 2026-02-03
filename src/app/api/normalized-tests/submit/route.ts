@@ -75,10 +75,7 @@ const allSubtestKeys = [
   ...approchesSubtestKeys,
   ...wedgingSubtestKeys,
   ...wedgingCourtSubtestKeys,
-] as [
-  string,
-  ...string[],
-];
+] as [string, ...string[]];
 
 type AllSubtestKey =
   | PelzSubtestKey
@@ -261,7 +258,10 @@ export async function POST(request: Request) {
     const wedgingValidation = wedgingAttemptsSchema.safeParse(wedgingAttempts);
     if (!wedgingValidation.success) {
       return NextResponse.json(
-        { error: "Tentatives invalides.", details: formatZodError(wedgingValidation.error) },
+        {
+          error: "Tentatives invalides.",
+          details: formatZodError(wedgingValidation.error),
+        },
         { status: 422 }
       );
     }
@@ -277,7 +277,10 @@ export async function POST(request: Request) {
     const wedgingValidation = wedgingCourtAttemptsSchema.safeParse(wedgingAttempts);
     if (!wedgingValidation.success) {
       return NextResponse.json(
-        { error: "Tentatives invalides.", details: formatZodError(wedgingValidation.error) },
+        {
+          error: "Tentatives invalides.",
+          details: formatZodError(wedgingValidation.error),
+        },
         { status: 422 }
       );
     }
@@ -350,17 +353,25 @@ export async function POST(request: Request) {
     const labelValidation = wedgingIndexLabelSchema.safeParse(parsed.data.indexLabel);
     if (!labelValidation.success) {
       return NextResponse.json(
-        { error: "Index ou drapeau invalide.", details: formatZodError(labelValidation.error) },
+        {
+          error: "Index ou drapeau invalide.",
+          details: formatZodError(labelValidation.error),
+        },
         { status: 422 }
       );
     }
   }
 
   if (assignment.test_slug === WEDGING_DRAPEAU_COURT_SLUG) {
-    const labelValidation = wedgingCourtIndexLabelSchema.safeParse(parsed.data.indexLabel);
+    const labelValidation = wedgingCourtIndexLabelSchema.safeParse(
+      parsed.data.indexLabel
+    );
     if (!labelValidation.success) {
       return NextResponse.json(
-        { error: "Index ou drapeau invalide.", details: formatZodError(labelValidation.error) },
+        {
+          error: "Index ou drapeau invalide.",
+          details: formatZodError(labelValidation.error),
+        },
         { status: 422 }
       );
     }

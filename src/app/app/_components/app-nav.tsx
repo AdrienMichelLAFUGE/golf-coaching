@@ -60,6 +60,7 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
         title: "Organisation",
         items: [
           { label: "Eleves (org)", href: "/app/coach/eleves" },
+          { label: "Tests (org)", href: "/app/coach/tests" },
           { label: "Propositions", href: "/app/org/proposals" },
           { label: "Groupes / ecole", href: "/app/org" },
           { label: "Parametres org", href: "/app/coach/parametres" },

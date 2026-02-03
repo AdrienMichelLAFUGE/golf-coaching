@@ -17,14 +17,26 @@ type WorkspaceOption = {
 const iconClass = "h-4 w-4";
 
 const UserIcon = () => (
-  <svg viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth="2">
+  <svg
+    viewBox="0 0 24 24"
+    className={iconClass}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+  >
     <circle cx="12" cy="8" r="4" />
     <path d="M4 20c0-4 4-6 8-6s8 2 8 6" />
   </svg>
 );
 
 const BuildingIcon = () => (
-  <svg viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth="2">
+  <svg
+    viewBox="0 0 24 24"
+    className={iconClass}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+  >
     <path d="M3 21h18" />
     <path d="M6 21V7l6-4 6 4v14" />
     <path d="M9 9h2" />
@@ -37,8 +49,7 @@ const BuildingIcon = () => (
 );
 
 export default function WorkspaceSwitcher() {
-  const { profile, organization, memberships, personalWorkspace, refresh } =
-    useProfile();
+  const { profile, organization, memberships, personalWorkspace, refresh } = useProfile();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [switchingId, setSwitchingId] = useState<string | null>(null);
@@ -122,7 +133,7 @@ export default function WorkspaceSwitcher() {
       : "border-sky-400/30 bg-sky-400/15 text-sky-200";
   const activeWorkspaceId = organization?.id ?? null;
   const activeName =
-    workspaceType === "org" ? organization?.name ?? "Organisation" : "Perso";
+    workspaceType === "org" ? (organization?.name ?? "Organisation") : "Perso";
   const isCoach = profile.role === "coach" || profile.role === "owner";
   const personalPlanTier = resolvePlanTier(personalWorkspace?.plan_tier);
   const canCreateOrg = isCoach && personalPlanTier !== "free";
@@ -190,7 +201,9 @@ export default function WorkspaceSwitcher() {
         data-testid="workspace-switcher-button"
         className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs uppercase tracking-wide text-[var(--text)] transition hover:border-white/30"
       >
-        <span className={`inline-flex items-center gap-2 rounded-full border px-2 py-1 ${modeClass}`}>
+        <span
+          className={`inline-flex items-center gap-2 rounded-full border px-2 py-1 ${modeClass}`}
+        >
           {workspaceType === "org" ? <BuildingIcon /> : <UserIcon />}
           {modeLabel}
         </span>

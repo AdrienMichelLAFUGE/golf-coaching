@@ -199,23 +199,21 @@ describeIf("RLS integration: multi-tenant students", () => {
       if (orgBError || !orgB) throw orgBError ?? new Error("Org B creation failed.");
       orgBId = orgB.id;
 
-      const { data: coachAUser, error: coachAError } =
-        await admin.auth.admin.createUser({
-          email: coachAEmail,
-          password,
-          email_confirm: true,
-        });
+      const { data: coachAUser, error: coachAError } = await admin.auth.admin.createUser({
+        email: coachAEmail,
+        password,
+        email_confirm: true,
+      });
       if (coachAError || !coachAUser?.user) {
         throw coachAError ?? new Error("Coach A creation failed.");
       }
       coachAId = coachAUser.user.id;
 
-      const { data: coachBUser, error: coachBError } =
-        await admin.auth.admin.createUser({
-          email: coachBEmail,
-          password,
-          email_confirm: true,
-        });
+      const { data: coachBUser, error: coachBError } = await admin.auth.admin.createUser({
+        email: coachBEmail,
+        password,
+        email_confirm: true,
+      });
       if (coachBError || !coachBUser?.user) {
         throw coachBError ?? new Error("Coach B creation failed.");
       }

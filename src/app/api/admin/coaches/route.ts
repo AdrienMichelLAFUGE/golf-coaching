@@ -310,10 +310,7 @@ export async function DELETE(request: Request) {
     .eq("uploaded_by", coachId);
 
   if (tpiCleanupError) {
-    return NextResponse.json(
-      { error: tpiCleanupError.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: tpiCleanupError.message }, { status: 500 });
   }
 
   const { error: deleteError } = await auth.admin.auth.admin.deleteUser(coachId);
@@ -324,14 +321,10 @@ export async function DELETE(request: Request) {
       .eq("id", coachId);
 
     if (profileError) {
-      return NextResponse.json(
-        { error: profileError.message },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: profileError.message }, { status: 500 });
     }
 
-    const { error: retryError } =
-      await auth.admin.auth.admin.deleteUser(coachId);
+    const { error: retryError } = await auth.admin.auth.admin.deleteUser(coachId);
     if (retryError) {
       return NextResponse.json({ error: retryError.message }, { status: 400 });
     }

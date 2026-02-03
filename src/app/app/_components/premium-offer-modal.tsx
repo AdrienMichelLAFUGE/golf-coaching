@@ -194,9 +194,7 @@ export default function PremiumOfferModal({
       <div className="mx-auto w-full max-w-7xl overflow-hidden rounded-[32px] border border-black/10 bg-gradient-to-br from-[#f3efe6] via-[#f6f2ea] to-[#ece2cc] text-slate-900 shadow-[0_30px_80px_rgba(0,0,0,0.35)]">
         <div className="flex flex-wrap items-center justify-between gap-4 px-7 py-6">
           <div>
-            <p className="text-xs uppercase tracking-[0.25em] text-slate-500">
-              Pricing
-            </p>
+            <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Pricing</p>
             <h3 className="mt-2 text-2xl font-semibold text-slate-900">
               Plans et tarifs
             </h3>
@@ -374,23 +372,23 @@ export default function PremiumOfferModal({
                               </span>
                             ) : null}
                           </div>
-                        {billingInterval === "year" && showMonthlyEquivalent ? (
-                          <p
-                            className={`mt-2 text-xs ${
-                              highlight ? "text-white/60" : "text-slate-500"
-                            }`}
-                          >
-                            Equiv {formatMonthlyEquivalent(plan)}
-                          </p>
-                        ) : billingInterval === "month" ? (
-                          <p
-                            className={`mt-2 text-xs ${
-                              highlight ? "text-white/60" : "text-slate-500"
-                            }`}
-                          >
-                            Facturation mensuelle.
-                          </p>
-                        ) : null}
+                          {billingInterval === "year" && showMonthlyEquivalent ? (
+                            <p
+                              className={`mt-2 text-xs ${
+                                highlight ? "text-white/60" : "text-slate-500"
+                              }`}
+                            >
+                              Equiv {formatMonthlyEquivalent(plan)}
+                            </p>
+                          ) : billingInterval === "month" ? (
+                            <p
+                              className={`mt-2 text-xs ${
+                                highlight ? "text-white/60" : "text-slate-500"
+                              }`}
+                            >
+                              Facturation mensuelle.
+                            </p>
+                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -466,11 +464,9 @@ export default function PremiumOfferModal({
           )}
         </div>
         <div className="border-t border-black/10 px-7 py-4 text-xs text-slate-600">
-          Besoin d&apos;un plan equipe ou club ? Contacte-nous pour une offre sur
-          mesure.
+          Besoin d&apos;un plan equipe ou club ? Contacte-nous pour une offre sur mesure.
         </div>
       </div>
     </div>
   );
-
 }

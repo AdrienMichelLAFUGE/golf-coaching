@@ -47,11 +47,13 @@ const buildRequest = (payload: unknown) =>
   }) as unknown as Request;
 
 const buildSelectMaybeSingle = (result: QueryResult) => ({
-  select: () => ({
-    eq: () => ({
+  select: () => {
+    const chain = {
+      eq: () => chain,
       maybeSingle: async () => result,
-    }),
-  }),
+    };
+    return chain;
+  },
 });
 
 describe("POST /api/ai", () => {
@@ -105,8 +107,6 @@ describe("POST /api/ai", () => {
           return buildSelectMaybeSingle({
             data: {
               id: "org-1",
-              plan_tier: "free",
-              ai_enabled: false,
               ai_model: "gpt-5-mini",
               ai_tone: null,
               ai_tech_level: null,
@@ -123,7 +123,17 @@ describe("POST /api/ai", () => {
     } as SupabaseClient;
 
     serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
-    serverMocks.createSupabaseAdminClient.mockReturnValue({});
+    serverMocks.createSupabaseAdminClient.mockReturnValue({
+      from: (table: string) => {
+        if (table === "organizations") {
+          return buildSelectMaybeSingle({
+            data: { plan_tier: "free" },
+            error: null,
+          });
+        }
+        return buildSelectMaybeSingle({ data: null, error: null });
+      },
+    });
 
     const response = await POST(buildRequest({ action: "write" }));
     if (!response) {

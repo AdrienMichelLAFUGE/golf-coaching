@@ -237,6 +237,10 @@ export default function StudentSettingsPage() {
     }
 
     await supabase.auth.signOut();
+    if (typeof window !== "undefined") {
+      window.location.replace("/");
+      return;
+    }
     router.replace("/");
   };
 

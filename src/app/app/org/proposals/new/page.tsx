@@ -72,8 +72,8 @@ export default function NewProposalPage() {
             Nouvelle proposition
           </h2>
           <p className="mt-2 text-sm text-[var(--muted)]">
-            Propose une mise a jour pour cet eleve. L acceptation cree un nouveau
-            contenu publie.
+            Propose une mise a jour pour cet eleve. L acceptation cree un nouveau contenu
+            publie.
           </p>
           {isOrgReadOnly ? (
             <p className="mt-3 text-sm text-amber-300">

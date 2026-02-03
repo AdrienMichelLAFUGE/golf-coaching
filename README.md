@@ -48,7 +48,6 @@ Prod-safe :
 - Faire un backup et une review avant application.
 - MCP/Codex ne doit jamais se connecter a PROD.
 
-
 ## Variables d’environnement (Vercel)
 
 Configurer ces variables dans **Development / Preview / Production**.

@@ -11,7 +11,8 @@ import {
 } from "@/lib/supabase/server";
 import { applyTemplate, loadPromptSection } from "@/lib/promptLoader";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
-import { PLAN_ENTITLEMENTS, resolvePlanTier } from "@/lib/plans";
+import { PLAN_ENTITLEMENTS } from "@/lib/plans";
+import { loadPersonalPlanTier } from "@/lib/plan-access";
 
 export const runtime = "nodejs";
 
@@ -410,7 +411,7 @@ export async function POST(req: Request) {
   const { data: orgData, error: orgError } = await supabase
     .from("organizations")
     .select(
-      "id, plan_tier, ai_enabled, ai_model, ai_tone, ai_tech_level, ai_style, ai_length, ai_imagery, ai_focus"
+      "id, ai_model, ai_tone, ai_tech_level, ai_style, ai_length, ai_imagery, ai_focus"
     )
     .eq("id", profileData.org_id)
     .single();
@@ -419,9 +420,9 @@ export async function POST(req: Request) {
     return Response.json({ error: "Organisation introuvable." }, { status: 403 });
   }
 
-  const planTier = resolvePlanTier(orgData.plan_tier);
+  const planTier = await loadPersonalPlanTier(admin, userId);
   const entitlements = PLAN_ENTITLEMENTS[planTier];
-  if (!entitlements.aiEnabled || !orgData.ai_enabled) {
+  if (!entitlements.aiEnabled) {
     return Response.json(
       { error: "Plan requis pour les fonctions IA." },
       { status: 403 }

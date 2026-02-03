@@ -27,11 +27,13 @@ const buildSelectSingle = (result: QueryResult) => ({
 });
 
 const buildSelectMaybeSingle = (result: QueryResult) => ({
-  select: () => ({
-    eq: () => ({
+  select: () => {
+    const chain = {
+      eq: () => chain,
       maybeSingle: async () => result,
-    }),
-  }),
+    };
+    return chain;
+  },
 });
 
 const buildDelete = (result: { error?: { message?: string } | null }) => ({
@@ -81,7 +83,7 @@ describe("POST /api/normalized-tests/unassign", () => {
     const admin = {
       from: (table: string) => {
         if (table === "organizations") {
-          return buildSelectSingle({
+          return buildSelectMaybeSingle({
             data: { plan_tier: "standard" },
             error: null,
           });
@@ -138,7 +140,7 @@ describe("POST /api/normalized-tests/unassign", () => {
     const admin = {
       from: (table: string) => {
         if (table === "organizations") {
-          return buildSelectSingle({
+          return buildSelectMaybeSingle({
             data: { plan_tier: "standard" },
             error: null,
           });
@@ -198,7 +200,7 @@ describe("POST /api/normalized-tests/unassign", () => {
     const admin = {
       from: (table: string) => {
         if (table === "organizations") {
-          return buildSelectSingle({
+          return buildSelectMaybeSingle({
             data: { plan_tier: "standard" },
             error: null,
           });

@@ -47,7 +47,10 @@ export default function OrgProposalsPage() {
     const response = await fetch("/api/orgs/proposals", {
       headers: { Authorization: `Bearer ${token}` },
     });
-    const payload = (await response.json()) as { proposals?: ProposalRow[]; error?: string };
+    const payload = (await response.json()) as {
+      proposals?: ProposalRow[];
+      error?: string;
+    };
     if (!response.ok) {
       setError(payload.error ?? "Chargement impossible.");
       setLoading(false);

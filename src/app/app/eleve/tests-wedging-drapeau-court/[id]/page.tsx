@@ -165,7 +165,8 @@ export default function StudentWedgingDrapeauCourtPage() {
         if (row.subtest_key !== WEDGING_DRAPEAU_COURT_SUBTEST_KEY) return;
         if (row.attempt_index < 1 || row.attempt_index > nextAttempts.length) return;
         if (!isWedgingDrapeauCourtResultValue(row.result_value)) return;
-        nextAttempts[row.attempt_index - 1] = row.result_value as WedgingDrapeauCourtResultValue;
+        nextAttempts[row.attempt_index - 1] =
+          row.result_value as WedgingDrapeauCourtResultValue;
       });
 
       setAttempts(nextAttempts);
@@ -402,7 +403,8 @@ export default function StudentWedgingDrapeauCourtPage() {
                   className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500 disabled:opacity-70"
                 />
                 <p className="mt-2 text-xs text-[var(--muted)]">
-                  Accepte un index numeric [-5..54] ou un drapeau (Blanc/Jaune/Bleu/Rouge).
+                  Accepte un index numeric [-5..54] ou un drapeau
+                  (Blanc/Jaune/Bleu/Rouge).
                 </p>
               </div>
               <div>

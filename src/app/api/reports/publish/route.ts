@@ -7,7 +7,7 @@ import {
   createSupabaseServerClientFromRequest,
 } from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
-import { resolvePlanTier } from "@/lib/plans";
+import { loadPersonalPlanTier } from "@/lib/plan-access";
 import { loadPromptSection } from "@/lib/promptLoader";
 
 export const runtime = "nodejs";
@@ -116,7 +116,7 @@ export async function POST(req: Request) {
   const admin = createSupabaseAdminClient();
   const { data: workspace, error: workspaceError } = await admin
     .from("organizations")
-    .select("id, workspace_type, owner_profile_id, plan_tier")
+    .select("id, workspace_type, owner_profile_id")
     .eq("id", profileData.org_id)
     .single();
 
@@ -140,7 +140,7 @@ export async function POST(req: Request) {
       return Response.json({ error: "Acces refuse." }, { status: 403 });
     }
 
-    const planTier = resolvePlanTier(workspace.plan_tier);
+    const planTier = await loadPersonalPlanTier(admin, userId);
     if (planTier === "free") {
       return Response.json(
         { error: "Lecture seule: plan Free en organisation." },

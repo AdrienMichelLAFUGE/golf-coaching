@@ -10,7 +10,8 @@ import { PELZ_APPROCHES_SLUG } from "@/lib/normalized-tests/pelz-approches";
 import { WEDGING_DRAPEAU_LONG_SLUG } from "@/lib/normalized-tests/wedging-drapeau-long";
 import { WEDGING_DRAPEAU_COURT_SLUG } from "@/lib/normalized-tests/wedging-drapeau-court";
 import { isAdminEmail } from "@/lib/admin";
-import { PLAN_ENTITLEMENTS, resolvePlanTier } from "@/lib/plans";
+import { PLAN_ENTITLEMENTS } from "@/lib/plans";
+import { loadPersonalPlanTier } from "@/lib/plan-access";
 
 export const runtime = "nodejs";
 
@@ -62,19 +63,10 @@ export async function POST(request: Request) {
   }
 
   const admin = createSupabaseAdminClient();
-  const { data: orgData, error: orgError } = await admin
-    .from("organizations")
-    .select("plan_tier")
-    .eq("id", profile.org_id)
-    .single();
-
   const isAdmin = isAdminEmail(userEmail);
 
   if (!isAdmin) {
-    if (orgError || !orgData) {
-      return NextResponse.json({ error: "Organisation introuvable." }, { status: 403 });
-    }
-    const planTier = resolvePlanTier(orgData.plan_tier);
+    const planTier = await loadPersonalPlanTier(admin, profile.id);
     const testAccess = PLAN_ENTITLEMENTS[planTier].tests;
     if (testAccess.scope === "pelz" && !isPelzSlug(parsed.data.testSlug)) {
       return NextResponse.json(

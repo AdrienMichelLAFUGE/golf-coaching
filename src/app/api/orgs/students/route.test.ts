@@ -23,13 +23,13 @@ const buildSelectSingle = (result: QueryResult) => ({
 });
 
 const buildSelectMaybeSingle = (result: QueryResult) => ({
-  select: () => ({
-    eq: () => ({
-      eq: () => ({
-        maybeSingle: async () => result,
-      }),
-    }),
-  }),
+  select: () => {
+    const chain = {
+      eq: () => chain,
+      maybeSingle: async () => result,
+    };
+    return chain;
+  },
 });
 
 describe("POST /api/orgs/students", () => {
@@ -62,7 +62,7 @@ describe("POST /api/orgs/students", () => {
           });
         }
         if (table === "organizations") {
-          return buildSelectSingle({
+          return buildSelectMaybeSingle({
             data: { plan_tier: "free" },
             error: null,
           });

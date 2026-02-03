@@ -127,10 +127,7 @@ export default function AppPage() {
     <div className="space-y-6">
       <WorkspaceSelector />
       <section className="grid gap-6 md:grid-cols-2">
-        <div
-          className="panel rounded-2xl p-6"
-          data-testid="workspace-personal-panel"
-        >
+        <div className="panel rounded-2xl p-6" data-testid="workspace-personal-panel">
           <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
             Workspace personnel
           </p>
@@ -171,10 +168,7 @@ export default function AppPage() {
           )}
         </div>
 
-        <div
-          className="panel-soft rounded-2xl p-6"
-          data-testid="workspace-org-panel"
-        >
+        <div className="panel-soft rounded-2xl p-6" data-testid="workspace-org-panel">
           <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
             Workspace organisation
           </p>

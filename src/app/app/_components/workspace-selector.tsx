@@ -7,21 +7,14 @@ import { useProfile } from "./profile-context";
 const sanitizeName = (value: string) => value.trim().slice(0, 80);
 
 export default function WorkspaceSelector() {
-  const {
-    profile,
-    organization,
-    currentMembership,
-    isWorkspaceAdmin,
-    refresh,
-  } = useProfile();
+  const { profile, organization, currentMembership, isWorkspaceAdmin, refresh } =
+    useProfile();
   const [switchingId, setSwitchingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [createName, setCreateName] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [createdOrg, setCreatedOrg] = useState<{ id: string; name: string } | null>(
-    null
-  );
+  const [createdOrg, setCreatedOrg] = useState<{ id: string; name: string } | null>(null);
   const [pendingInvites, setPendingInvites] = useState<
     Array<{
       id: string;
@@ -220,7 +213,8 @@ export default function WorkspaceSelector() {
             Espace courant : {organization?.name ?? "Workspace"}
           </h3>
           <p className="mt-1 text-sm text-[var(--muted)]">
-            Type : {organization?.workspace_type === "personal" ? "Personnel" : "Organisation"}
+            Type :{" "}
+            {organization?.workspace_type === "personal" ? "Personnel" : "Organisation"}
           </p>
         </div>
         {isWorkspaceAdmin ? (
@@ -267,9 +261,7 @@ export default function WorkspaceSelector() {
       {message ? <p className="mt-3 text-sm text-[var(--muted)]">{message}</p> : null}
       {createdOrg?.id ? (
         <div className="mt-4 rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-4 text-sm">
-          <p className="text-[var(--text)]">
-            Organisation {createdOrg.name} creee.
-          </p>
+          <p className="text-[var(--text)]">Organisation {createdOrg.name} creee.</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"

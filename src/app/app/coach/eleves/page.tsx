@@ -70,7 +70,9 @@ export default function CoachStudentsPage() {
   const currentWorkspaceType = workspaceType ?? "personal";
   const workspaceName = organization?.name ?? "Organisation";
   const modeLabel =
-    currentWorkspaceType === "org" ? `Organisation : ${workspaceName}` : "Espace personnel";
+    currentWorkspaceType === "org"
+      ? `Organisation : ${workspaceName}`
+      : "Espace personnel";
   const modeBadgeTone =
     currentWorkspaceType === "org"
       ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
@@ -265,7 +267,11 @@ export default function CoachStudentsPage() {
       }
     } else {
       const personalOrgId =
-        orgId ?? profile.active_workspace_id ?? profile.org_id ?? organization?.id ?? null;
+        orgId ??
+        profile.active_workspace_id ??
+        profile.org_id ??
+        organization?.id ??
+        null;
       if (!personalOrgId) {
         setError("Organisation introuvable.");
         setCreating(false);
@@ -603,8 +609,8 @@ export default function CoachStudentsPage() {
                     : "Vous n avez aucun eleve personnel."}
                 </p>
                 <p className="mt-1 text-xs text-[var(--muted)]">
-                  Vous etes en {currentWorkspaceType === "org" ? "MODE ORGANISATION" : "MODE PERSO"}
-                  .
+                  Vous etes en{" "}
+                  {currentWorkspaceType === "org" ? "MODE ORGANISATION" : "MODE PERSO"}.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button

@@ -177,7 +177,8 @@ export default function CoachWedgingDrapeauCourtPage() {
         if (row.subtest_key !== WEDGING_DRAPEAU_COURT_SUBTEST_KEY) return;
         if (row.attempt_index < 1 || row.attempt_index > nextAttempts.length) return;
         if (!isWedgingDrapeauCourtResultValue(row.result_value)) return;
-        nextAttempts[row.attempt_index - 1] = row.result_value as WedgingDrapeauCourtResultValue;
+        nextAttempts[row.attempt_index - 1] =
+          row.result_value as WedgingDrapeauCourtResultValue;
       });
 
       setAttempts(nextAttempts);

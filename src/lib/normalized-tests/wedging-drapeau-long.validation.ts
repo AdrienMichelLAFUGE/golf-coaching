@@ -35,8 +35,9 @@ export const wedgingAttemptSchema = z.object({
 
 export type WedgingDrapeauLongAttemptInput = z.infer<typeof wedgingAttemptSchema>;
 
-export const wedgingAttemptsSchema = z.array(wedgingAttemptSchema).superRefine(
-  (attempts, ctx) => {
+export const wedgingAttemptsSchema = z
+  .array(wedgingAttemptSchema)
+  .superRefine((attempts, ctx) => {
     const expected = WEDGING_DRAPEAU_LONG_SEQUENCE;
     const byIndex = new Map<number, WedgingDrapeauLongSituation>();
     attempts.forEach((attempt, idx) => {
@@ -60,8 +61,7 @@ export const wedgingAttemptsSchema = z.array(wedgingAttemptSchema).superRefine(
         });
       }
     });
-  }
-);
+  });
 
 export const wedgingIndexLabelSchema = z
   .string()

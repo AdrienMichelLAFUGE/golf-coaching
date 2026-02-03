@@ -25,9 +25,7 @@ export default function OrgPricingPage() {
               Organisation
             </p>
           </div>
-          <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
-            Tarifs batch
-          </h2>
+          <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">Tarifs batch</h2>
           <p className="mt-2 text-sm text-[var(--muted)]">
             Configuration des tarifs annuels par coach (visible admin seulement).
           </p>

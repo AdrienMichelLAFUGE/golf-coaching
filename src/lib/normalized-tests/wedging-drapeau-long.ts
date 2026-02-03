@@ -133,18 +133,15 @@ export const getWedgingDrapeauLongResultOptions = () => WEDGING_RESULTS;
 export const isWedgingDrapeauLongResultValue = (value: string) =>
   WEDGING_RESULTS.some((option) => option.value === value);
 
-export const getWedgingDrapeauLongResultLabel = (
-  value: WedgingDrapeauLongResultValue
-) => WEDGING_RESULTS.find((option) => option.value === value)?.label ?? value;
+export const getWedgingDrapeauLongResultLabel = (value: WedgingDrapeauLongResultValue) =>
+  WEDGING_RESULTS.find((option) => option.value === value)?.label ?? value;
 
-export const getWedgingDrapeauLongResultPoints = (
-  value: WedgingDrapeauLongResultValue
-) => WEDGING_RESULTS.find((option) => option.value === value)?.points ?? 0;
+export const getWedgingDrapeauLongResultPoints = (value: WedgingDrapeauLongResultValue) =>
+  WEDGING_RESULTS.find((option) => option.value === value)?.points ?? 0;
 
 const normalizeNumericLabel = (label: string) => label.trim().replace(",", ".");
 
-const isNumericLabel = (label: string) =>
-  /^-?\d+(?:[.,]\d+)?$/.test(label.trim());
+const isNumericLabel = (label: string) => /^-?\d+(?:[.,]\d+)?$/.test(label.trim());
 
 export const parseWedgingIndexOrFlagLabel = (label?: string | null) => {
   if (!label) return null;
@@ -166,9 +163,9 @@ export const parseWedgingIndexOrFlagLabel = (label?: string | null) => {
   }
 
   const lower = trimmed.toLowerCase();
-  const flagKey = (Object.keys(FLAG_EXPECTATIONS) as Array<keyof typeof FLAG_EXPECTATIONS>).find(
-    (key) => lower.includes(key)
-  );
+  const flagKey = (
+    Object.keys(FLAG_EXPECTATIONS) as Array<keyof typeof FLAG_EXPECTATIONS>
+  ).find((key) => lower.includes(key));
   if (!flagKey) return null;
   return {
     kind: "flag" as const,

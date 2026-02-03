@@ -116,7 +116,9 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 
     const { data: profileData, error: profileError } = await supabase
       .from("profiles")
-      .select("id, org_id, active_workspace_id, role, full_name, avatar_url, premium_active")
+      .select(
+        "id, org_id, active_workspace_id, role, full_name, avatar_url, premium_active"
+      )
       .eq("id", userId)
       .single();
 
@@ -169,8 +171,8 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
             | null;
         };
         const organizations = Array.isArray(typed.organizations)
-          ? typed.organizations[0] ?? null
-          : typed.organizations ?? null;
+          ? (typed.organizations[0] ?? null)
+          : (typed.organizations ?? null);
         return {
           ...typed,
           organization: organizations ?? typed.organization ?? null,
@@ -206,14 +208,15 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     const activeWorkspaceId = profile?.active_workspace_id ?? profile?.org_id;
     if (!activeWorkspaceId) return null;
     return (
-      memberships.find((membership) => membership.org_id === activeWorkspaceId) ??
-      null
+      memberships.find((membership) => membership.org_id === activeWorkspaceId) ?? null
     );
   }, [memberships, profile?.active_workspace_id, profile?.org_id]);
 
   const workspaceType = organization?.workspace_type ?? null;
   const isWorkspaceAdmin = currentMembership?.role === "admin";
-  const planTier = resolvePlanTier(organization?.plan_tier);
+  const personalPlanTier = resolvePlanTier(personalWorkspace?.plan_tier);
+  const planTier =
+    workspaceType === "org" ? personalPlanTier : resolvePlanTier(organization?.plan_tier);
   const entitlements = getWorkspaceEntitlements(planTier, workspaceType);
   const isWorkspacePremium = planTier !== "free";
 

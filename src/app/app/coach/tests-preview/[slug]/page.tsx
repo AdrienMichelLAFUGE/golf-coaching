@@ -77,7 +77,9 @@ type PelzApprochesAttemptsBySubtest = Record<
 const createEmptyPelzAttempts = (): PelzAttemptsBySubtest => {
   const entries = PELZ_PUTTING_TEST.subtests.map((subtest) => [
     subtest.key,
-    Array(PELZ_PUTTING_TEST.attemptsPerSubtest).fill(null) as Array<PelzResultValue | null>,
+    Array(PELZ_PUTTING_TEST.attemptsPerSubtest).fill(
+      null
+    ) as Array<PelzResultValue | null>,
   ]);
   return Object.fromEntries(entries) as PelzAttemptsBySubtest;
 };
@@ -101,47 +103,49 @@ const pelzDistanceLabelByKey: Record<PelzSubtestKey, string> = {
   putt_court_2m: "A=2m, B=2m, C=2m, D=2m, E=2m",
 };
 
-const pelzDistanceItemsByKey: Record<PelzSubtestKey, { slot: string; distance: string }[]> =
-  {
-    putt_long: [
-      { slot: "A", distance: "13m" },
-      { slot: "B", distance: "19m" },
-      { slot: "C", distance: "25m" },
-    ],
-    putt_moyen: [
-      { slot: "A", distance: "7m" },
-      { slot: "B", distance: "9m" },
-      { slot: "C", distance: "11m" },
-    ],
-    putt_pente: [
-      { slot: "A", distance: "4m" },
-      { slot: "B", distance: "6m" },
-      { slot: "C", distance: "8m" },
-      { slot: "D", distance: "10m" },
-      { slot: "E", distance: "12m" },
-    ],
-    putt_offensif: [
-      { slot: "A", distance: "3m" },
-      { slot: "B", distance: "4m" },
-      { slot: "C", distance: "5m" },
-      { slot: "D", distance: "6m" },
-      { slot: "E", distance: "7m" },
-    ],
-    putt_court_1m: [
-      { slot: "A", distance: "1m" },
-      { slot: "B", distance: "1m" },
-      { slot: "C", distance: "1m" },
-      { slot: "D", distance: "1m" },
-      { slot: "E", distance: "1m" },
-    ],
-    putt_court_2m: [
-      { slot: "A", distance: "2m" },
-      { slot: "B", distance: "2m" },
-      { slot: "C", distance: "2m" },
-      { slot: "D", distance: "2m" },
-      { slot: "E", distance: "2m" },
-    ],
-  };
+const pelzDistanceItemsByKey: Record<
+  PelzSubtestKey,
+  { slot: string; distance: string }[]
+> = {
+  putt_long: [
+    { slot: "A", distance: "13m" },
+    { slot: "B", distance: "19m" },
+    { slot: "C", distance: "25m" },
+  ],
+  putt_moyen: [
+    { slot: "A", distance: "7m" },
+    { slot: "B", distance: "9m" },
+    { slot: "C", distance: "11m" },
+  ],
+  putt_pente: [
+    { slot: "A", distance: "4m" },
+    { slot: "B", distance: "6m" },
+    { slot: "C", distance: "8m" },
+    { slot: "D", distance: "10m" },
+    { slot: "E", distance: "12m" },
+  ],
+  putt_offensif: [
+    { slot: "A", distance: "3m" },
+    { slot: "B", distance: "4m" },
+    { slot: "C", distance: "5m" },
+    { slot: "D", distance: "6m" },
+    { slot: "E", distance: "7m" },
+  ],
+  putt_court_1m: [
+    { slot: "A", distance: "1m" },
+    { slot: "B", distance: "1m" },
+    { slot: "C", distance: "1m" },
+    { slot: "D", distance: "1m" },
+    { slot: "E", distance: "1m" },
+  ],
+  putt_court_2m: [
+    { slot: "A", distance: "2m" },
+    { slot: "B", distance: "2m" },
+    { slot: "C", distance: "2m" },
+    { slot: "D", distance: "2m" },
+    { slot: "E", distance: "2m" },
+  ],
+};
 
 const pelzSlotColorClassByLetter: Record<string, string> = {
   A: "text-sky-300",
@@ -268,11 +272,17 @@ const renderWedgingDistanceLabel = () => (
   <span>
     {wedgingDistanceItems.map((item, index) => (
       <span key={item.slot}>
-        <span className={`font-semibold ${getSlotColorClass(item.slot, wedgingSlotColorClassByLetter)}`}>
+        <span
+          className={`font-semibold ${getSlotColorClass(item.slot, wedgingSlotColorClassByLetter)}`}
+        >
           {item.slot}
         </span>
-        <span className={getSlotColorClass(item.slot, wedgingSlotColorClassByLetter)}>=</span>
-        <span className={getSlotColorClass(item.slot, wedgingSlotColorClassByLetter)}>{item.distance}</span>
+        <span className={getSlotColorClass(item.slot, wedgingSlotColorClassByLetter)}>
+          =
+        </span>
+        <span className={getSlotColorClass(item.slot, wedgingSlotColorClassByLetter)}>
+          {item.distance}
+        </span>
         {index < wedgingDistanceItems.length - 1 ? ", " : ""}
       </span>
     ))}
@@ -480,7 +490,10 @@ function PelzPuttingPreview({ onBack }: PreviewProps) {
       </section>
 
       <PelzResponsiveAccordion
-        mobileItems={[{ id: "bilan", label: "Bilan", content: summarySection }, ...subtestItems]}
+        mobileItems={[
+          { id: "bilan", label: "Bilan", content: summarySection },
+          ...subtestItems,
+        ]}
         defaultOpenId={subtestItems[0]?.id ?? null}
         desktopContent={
           <>
@@ -534,18 +547,18 @@ function PelzPuttingPreview({ onBack }: PreviewProps) {
                           {index + 1}
                         </span>{" "}
                         -{" "}
-                <span
-                  className={`font-semibold ${getSlotColorClass(
-                    slot,
-                    pelzSlotColorClassByLetter
-                  )}`}
-                >
-                  {slot}
-                </span>{" "}
-                <span className="text-[var(--muted)]">
-                  ({getPelzDistanceForSlot(subtest.key, slot)})
-                </span>
-              </span>
+                        <span
+                          className={`font-semibold ${getSlotColorClass(
+                            slot,
+                            pelzSlotColorClassByLetter
+                          )}`}
+                        >
+                          {slot}
+                        </span>{" "}
+                        <span className="text-[var(--muted)]">
+                          ({getPelzDistanceForSlot(subtest.key, slot)})
+                        </span>
+                      </span>
                       <p className="text-sm">
                         Resultat:{" "}
                         <span className="font-medium">
@@ -762,7 +775,10 @@ function PelzApprochesPreview({ onBack }: PreviewProps) {
       </section>
 
       <PelzResponsiveAccordion
-        mobileItems={[{ id: "bilan", label: "Bilan", content: summarySection }, ...subtestItems]}
+        mobileItems={[
+          { id: "bilan", label: "Bilan", content: summarySection },
+          ...subtestItems,
+        ]}
         defaultOpenId={subtestItems[0]?.id ?? null}
         desktopContent={
           <>
@@ -816,18 +832,18 @@ function PelzApprochesPreview({ onBack }: PreviewProps) {
                           {index + 1}
                         </span>{" "}
                         -{" "}
-                <span
-                  className={`font-semibold ${getSlotColorClass(
-                    slot,
-                    pelzApprochesSlotColorClassByLetter
-                  )}`}
-                >
-                  {slot}
-                </span>{" "}
-                <span className="text-[var(--muted)]">
-                  ({getPelzApprochesDistanceForSlot(subtest.key, slot)})
-                </span>
-              </span>
+                        <span
+                          className={`font-semibold ${getSlotColorClass(
+                            slot,
+                            pelzApprochesSlotColorClassByLetter
+                          )}`}
+                        >
+                          {slot}
+                        </span>{" "}
+                        <span className="text-[var(--muted)]">
+                          ({getPelzApprochesDistanceForSlot(subtest.key, slot)})
+                        </span>
+                      </span>
                       <p className="text-sm">
                         Resultat:{" "}
                         <span className="font-medium">
@@ -928,17 +944,13 @@ function WedgingDrapeauLongPreview({ onBack }: PreviewProps) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-[var(--text)]">Total</h3>
-            <p className="mt-1 text-sm text-[var(--muted)]">
-              Somme des 18 tentatives.
-            </p>
+            <p className="mt-1 text-sm text-[var(--muted)]">Somme des 18 tentatives.</p>
           </div>
           <div className="text-right">
             <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
               Total score
             </p>
-            <p className="mt-1 text-2xl font-semibold text-[var(--text)]">
-              {totalScore}
-            </p>
+            <p className="mt-1 text-2xl font-semibold text-[var(--text)]">{totalScore}</p>
           </div>
         </div>
         {objectivation ? (
@@ -961,9 +973,7 @@ function WedgingDrapeauLongPreview({ onBack }: PreviewProps) {
             </p>
             <p className="mt-1">
               Verdict:{" "}
-              <span className="font-semibold capitalize">
-                {objectivation.verdict}
-              </span>
+              <span className="font-semibold capitalize">{objectivation.verdict}</span>
             </p>
           </div>
         ) : null}
@@ -1101,17 +1111,13 @@ function WedgingDrapeauCourtPreview({ onBack }: PreviewProps) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-[var(--text)]">Total</h3>
-            <p className="mt-1 text-sm text-[var(--muted)]">
-              Somme des 18 tentatives.
-            </p>
+            <p className="mt-1 text-sm text-[var(--muted)]">Somme des 18 tentatives.</p>
           </div>
           <div className="text-right">
             <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
               Total score
             </p>
-            <p className="mt-1 text-2xl font-semibold text-[var(--text)]">
-              {totalScore}
-            </p>
+            <p className="mt-1 text-2xl font-semibold text-[var(--text)]">{totalScore}</p>
           </div>
         </div>
         {objectivation ? (
@@ -1134,9 +1140,7 @@ function WedgingDrapeauCourtPreview({ onBack }: PreviewProps) {
             </p>
             <p className="mt-1">
               Verdict:{" "}
-              <span className="font-semibold capitalize">
-                {objectivation.verdict}
-              </span>
+              <span className="font-semibold capitalize">{objectivation.verdict}</span>
             </p>
           </div>
         ) : null}

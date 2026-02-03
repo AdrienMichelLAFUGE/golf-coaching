@@ -13,7 +13,7 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { defaultSectionTemplates } from "@/lib/default-section-templates";
-import { PLAN_ENTITLEMENTS, PLAN_LABELS, resolvePlanTier } from "@/lib/plans";
+import { PLAN_ENTITLEMENTS, PLAN_LABELS } from "@/lib/plans";
 import RoleGuard from "../../../_components/role-guard";
 import { useProfile } from "../../../_components/profile-context";
 import PageBack from "../../../_components/page-back";
@@ -405,6 +405,7 @@ export default function CoachReportBuilderPage() {
     userEmail,
     workspaceType,
     isWorkspacePremium,
+    planTier,
     profile,
   } = useProfile();
   const isOrgMode = workspaceType === "org";
@@ -589,7 +590,6 @@ export default function CoachReportBuilderPage() {
   const isOrgPublishLocked =
     workspaceType === "org" &&
     (!isWorkspacePremium || (assignmentChecked && !isAssignedCoach && !isOrgAdmin));
-  const planTier = resolvePlanTier(organization?.plan_tier);
   const entitlements = PLAN_ENTITLEMENTS[planTier];
   const aiEnabled = entitlements.aiEnabled;
   const radarAddonEnabled = isAdmin || entitlements.dataExtractEnabled;
@@ -3138,9 +3138,9 @@ export default function CoachReportBuilderPage() {
 
       if (reportError || !report) {
         const message =
-          reportError?.message?.includes("row-level security") ?? false
+          (reportError?.message?.includes("row-level security") ?? false)
             ? "Quota de rapports atteint (30 jours glissants)."
-            : reportError?.message ?? "Erreur de creation.";
+            : (reportError?.message ?? "Erreur de creation.");
         setStatusMessage(message);
         setStatusType("error");
         setSaving(false);
@@ -7204,7 +7204,8 @@ export default function CoachReportBuilderPage() {
                   </div>
                   {isOrgPublishLocked ? (
                     <p className="mt-3 text-xs text-amber-300">
-                      Plan requis (Standard/Pro) et assignation pour publier en organisation.
+                      Plan requis (Standard/Pro) et assignation pour publier en
+                      organisation.
                     </p>
                   ) : null}
                   {statusMessage ? (

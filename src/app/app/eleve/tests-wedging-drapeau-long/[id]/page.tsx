@@ -165,7 +165,8 @@ export default function StudentWedgingDrapeauLongPage() {
         if (row.subtest_key !== WEDGING_DRAPEAU_LONG_SUBTEST_KEY) return;
         if (row.attempt_index < 1 || row.attempt_index > nextAttempts.length) return;
         if (!isWedgingDrapeauLongResultValue(row.result_value)) return;
-        nextAttempts[row.attempt_index - 1] = row.result_value as WedgingDrapeauLongResultValue;
+        nextAttempts[row.attempt_index - 1] =
+          row.result_value as WedgingDrapeauLongResultValue;
       });
 
       setAttempts(nextAttempts);
@@ -175,7 +176,10 @@ export default function StudentWedgingDrapeauLongPage() {
     loadAssignment();
   }, [assignmentId]);
 
-  const totalScore = useMemo(() => computeWedgingDrapeauLongTotalScore(attempts), [attempts]);
+  const totalScore = useMemo(
+    () => computeWedgingDrapeauLongTotalScore(attempts),
+    [attempts]
+  );
   const isComplete = attempts.every(Boolean);
   const objectivation = useMemo(
     () => computeWedgingDrapeauLongObjectivation(indexLabel, totalScore),
@@ -311,8 +315,7 @@ export default function StudentWedgingDrapeauLongPage() {
                   {WEDGING_DRAPEAU_LONG_TEST.description}
                 </p>
                 <p className="mt-2 text-sm text-[var(--muted)]">
-                  Pris le{" "}
-                  {formatDate(assignment.started_at ?? assignment.assigned_at)}.
+                  Pris le {formatDate(assignment.started_at ?? assignment.assigned_at)}.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -400,7 +403,8 @@ export default function StudentWedgingDrapeauLongPage() {
                   className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500 disabled:opacity-70"
                 />
                 <p className="mt-2 text-xs text-[var(--muted)]">
-                  Accepte un index numeric [-5..54] ou un drapeau (Blanc/Jaune/Bleu/Rouge).
+                  Accepte un index numeric [-5..54] ou un drapeau
+                  (Blanc/Jaune/Bleu/Rouge).
                 </p>
               </div>
               <div>

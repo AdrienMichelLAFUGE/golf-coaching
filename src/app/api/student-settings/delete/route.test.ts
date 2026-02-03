@@ -77,14 +77,7 @@ describe("POST /api/student-settings/delete", () => {
               data: { id: "student-1", avatar_url: null },
               error: null,
             }),
-            ...buildUpdate({ error: null }),
           };
-        }
-        if (table === "student_shares") {
-          return buildDoubleUpdate({ error: null });
-        }
-        if (table === "profiles") {
-          return buildUpdate({ error: null });
         }
         return buildSelectMaybeSingle({ data: null, error: null });
       },
@@ -102,6 +95,18 @@ describe("POST /api/student-settings/delete", () => {
           updateUserById: async () => ({ data: {}, error: null }),
           signOut: async () => ({ data: null, error: null }),
         },
+      },
+      from: (table: string) => {
+        if (table === "student_shares") {
+          return buildDoubleUpdate({ error: null });
+        }
+        if (table === "students") {
+          return buildUpdate({ error: null });
+        }
+        if (table === "profiles") {
+          return buildUpdate({ error: null });
+        }
+        return {};
       },
       storage: {
         from: () => ({

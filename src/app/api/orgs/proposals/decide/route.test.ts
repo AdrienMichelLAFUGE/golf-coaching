@@ -23,13 +23,13 @@ const buildSelectSingle = (result: QueryResult) => ({
 });
 
 const buildSelectMaybeSingle = (result: QueryResult) => ({
-  select: () => ({
-    eq: () => ({
-      eq: () => ({
-        maybeSingle: async () => result,
-      }),
-    }),
-  }),
+  select: () => {
+    const chain = {
+      eq: () => chain,
+      maybeSingle: async () => result,
+    };
+    return chain;
+  },
 });
 
 const buildSelectList = (result: QueryResult) => ({
@@ -68,7 +68,7 @@ describe("POST /api/orgs/proposals/decide", () => {
           });
         }
         if (table === "organizations") {
-          return buildSelectSingle({
+          return buildSelectMaybeSingle({
             data: { plan_tier: "standard" },
             error: null,
           });

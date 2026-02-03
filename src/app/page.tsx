@@ -121,8 +121,7 @@ export default function Home() {
     }
 
     if (!data.session) {
-      setStatus("sent");
-      setMessage("Compte cree. Verifie ta boite mail pour confirmer, puis connecte-toi.");
+      router.replace("/auth/account?flow=coach&state=verify");
       return;
     }
 
@@ -134,7 +133,7 @@ export default function Home() {
       return;
     }
 
-    router.replace("/app");
+    router.replace("/auth/account?flow=coach&state=ready");
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {

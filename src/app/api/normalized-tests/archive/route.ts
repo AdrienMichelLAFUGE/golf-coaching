@@ -6,7 +6,8 @@ import {
 } from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { isAdminEmail } from "@/lib/admin";
-import { PLAN_ENTITLEMENTS, resolvePlanTier } from "@/lib/plans";
+import { PLAN_ENTITLEMENTS } from "@/lib/plans";
+import { loadPersonalPlanTier } from "@/lib/plan-access";
 import { PELZ_PUTTING_SLUG } from "@/lib/normalized-tests/pelz-putting";
 import { PELZ_APPROCHES_SLUG } from "@/lib/normalized-tests/pelz-approches";
 
@@ -55,12 +56,6 @@ export async function POST(request: Request) {
   }
 
   const admin = createSupabaseAdminClient();
-  const { data: orgData, error: orgError } = await admin
-    .from("organizations")
-    .select("plan_tier")
-    .eq("id", profile.org_id)
-    .single();
-
   const isAdmin = isAdminEmail(userEmail);
 
   const { data: assignment, error: assignmentError } = await admin
@@ -82,10 +77,7 @@ export async function POST(request: Request) {
   }
 
   if (!isAdmin) {
-    if (orgError || !orgData) {
-      return NextResponse.json({ error: "Organisation introuvable." }, { status: 403 });
-    }
-    const planTier = resolvePlanTier(orgData.plan_tier);
+    const planTier = await loadPersonalPlanTier(admin, profile.id);
     const testAccess = PLAN_ENTITLEMENTS[planTier].tests;
     if (testAccess.scope === "pelz" && !isPelzSlug(assignment.test_slug)) {
       return NextResponse.json(

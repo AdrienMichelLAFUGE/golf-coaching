@@ -102,7 +102,8 @@ export async function PATCH(request: Request) {
   }
 
   const updatePayload: Record<string, unknown> = {};
-  if (typeof parsed.data.status !== "undefined") updatePayload.status = parsed.data.status;
+  if (typeof parsed.data.status !== "undefined")
+    updatePayload.status = parsed.data.status;
   if (typeof parsed.data.premium_active !== "undefined") {
     updatePayload.premium_active = parsed.data.premium_active;
   }
@@ -135,10 +136,7 @@ export async function PATCH(request: Request) {
 
   if (nextRole === "admin" && nextStatus === "active") {
     if (!nextPremium) {
-      return NextResponse.json(
-        { error: "Un admin doit etre premium." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Un admin doit etre premium." }, { status: 400 });
     }
     const { data: activeAdmins } = await admin
       .from("org_memberships")
@@ -150,10 +148,7 @@ export async function PATCH(request: Request) {
       (row) => (row as { id: string }).id !== currentMember.id
     );
     if (otherAdmin) {
-      return NextResponse.json(
-        { error: "Un admin actif existe deja." },
-        { status: 409 }
-      );
+      return NextResponse.json({ error: "Un admin actif existe deja." }, { status: 409 });
     }
   }
 
@@ -219,10 +214,7 @@ export async function DELETE(request: Request) {
   }
 
   if (target.user_id === profile.id) {
-    return NextResponse.json(
-      { error: "Impossible de vous retirer." },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Impossible de vous retirer." }, { status: 400 });
   }
 
   if (target.role === "admin") {

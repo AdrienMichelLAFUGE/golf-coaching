@@ -356,9 +356,7 @@ export default function CoachReportsPage() {
           ) : reports.length === 0 ? (
             <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-4 text-sm">
               <p className="text-[var(--text)]">Aucun rapport personnel.</p>
-              <p className="mt-1 text-xs text-[var(--muted)]">
-                Vous etes en MODE PERSO.
-              </p>
+              <p className="mt-1 text-xs text-[var(--muted)]">Vous etes en MODE PERSO.</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Link
                   href="/app/coach/rapports/nouveau"

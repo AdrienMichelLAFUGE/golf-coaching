@@ -327,10 +327,11 @@ describeIf("RLS integration: student shares", () => {
       expect(beforeError).toBeNull();
       expect(beforeData ?? []).toHaveLength(0);
 
-      const { data: beforeAssignments, error: beforeAssignmentsError } = await viewerClient
-        .from("normalized_test_assignments")
-        .select("id")
-        .eq("id", assignmentId);
+      const { data: beforeAssignments, error: beforeAssignmentsError } =
+        await viewerClient
+          .from("normalized_test_assignments")
+          .select("id")
+          .eq("id", assignmentId);
 
       expect(beforeAssignmentsError).toBeNull();
       expect(beforeAssignments ?? []).toHaveLength(0);

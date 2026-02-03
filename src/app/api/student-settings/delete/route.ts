@@ -88,7 +88,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const { error: revokeError } = await supabase
+  const { error: revokeError } = await admin
     .from("student_shares")
     .update({
       status: "revoked",
@@ -106,7 +106,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const { error: studentUpdateError } = await supabase
+  const { error: studentUpdateError } = await admin
     .from("students")
     .update({
       first_name: "Compte supprime",
@@ -125,7 +125,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const { error: profileUpdateError } = await supabase
+  const { error: profileUpdateError } = await admin
     .from("profiles")
     .update({
       full_name: "Compte supprime",

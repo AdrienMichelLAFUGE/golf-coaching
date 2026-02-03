@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
-import { PLAN_ENTITLEMENTS, PLAN_LABELS, resolvePlanTier } from "@/lib/plans";
+import { PLAN_ENTITLEMENTS, PLAN_LABELS } from "@/lib/plans";
 import RoleGuard from "../../../_components/role-guard";
 import { useProfile } from "../../../_components/profile-context";
 import PageBack from "../../../_components/page-back";
@@ -174,6 +174,7 @@ export default function CoachStudentDetailPage() {
     workspaceType,
     isWorkspaceAdmin,
     isWorkspacePremium,
+    planTier,
   } = useProfile();
   const params = useParams();
   const studentId = Array.isArray(params?.id) ? params.id[0] : params?.id;
@@ -238,7 +239,6 @@ export default function CoachStudentDetailPage() {
   const locale = organization?.locale ?? "fr-FR";
   const timezone = organization?.timezone ?? "Europe/Paris";
   const isAdmin = userEmail?.toLowerCase() === "adrien.lafuge@outlook.fr";
-  const planTier = resolvePlanTier(organization?.plan_tier);
   const entitlements = PLAN_ENTITLEMENTS[planTier];
   const tpiAddonEnabled = isAdmin || entitlements.tpiEnabled;
   const radarAddonEnabled = isAdmin || entitlements.dataExtractEnabled;
@@ -250,7 +250,8 @@ export default function CoachStudentDetailPage() {
     workspaceType === "org" && isWorkspacePremium && (isAssigned || isWorkspaceAdmin);
   const canProposeInOrg = workspaceType === "org" && isWorkspacePremium && !isAssigned;
   const shareAccess = getViewerShareAccess(shareStatus);
-  const isReadOnly = shareAccess.canRead;
+  const isOrgReadOnly = workspaceType === "org" && !isWorkspacePremium;
+  const isReadOnly = shareAccess.canRead || isOrgReadOnly;
   const canWriteReports = workspaceType === "org" ? canPublishInOrg : !isReadOnly;
   const radarTechMeta = getRadarTechMeta(radarTech);
   const getCoachLabel = (fullName: string | null | undefined, coachId: string) => {
@@ -324,9 +325,7 @@ export default function CoachStudentDetailPage() {
           ? "Disponible des le plan Standard."
           : "Ton plan actuel ne permet pas l extraction de datas.",
       tags: [`Plan ${planLabel}`],
-      status: [
-        { label: "Plan", value: planLabel },
-      ],
+      status: [{ label: "Plan", value: planLabel }],
     });
   }, [openPremiumModal, planTier]);
 
@@ -339,9 +338,7 @@ export default function CoachStudentDetailPage() {
           ? "Disponible des le plan Standard."
           : "Ton plan actuel ne permet pas le profil TPI.",
       tags: [`Plan ${planLabel}`],
-      status: [
-        { label: "Plan", value: planLabel },
-      ],
+      status: [{ label: "Plan", value: planLabel }],
     });
   }, [openPremiumModal, planTier]);
 
@@ -620,9 +617,9 @@ export default function CoachStudentDetailPage() {
 
     if (insertError || !reportData) {
       const message =
-        insertError?.message?.includes("row-level security") ?? false
+        (insertError?.message?.includes("row-level security") ?? false)
           ? "Quota TPI atteint (30 jours glissants)."
-          : insertError?.message ?? "Erreur lors de l enregistrement TPI.";
+          : (insertError?.message ?? "Erreur lors de l enregistrement TPI.");
       setTpiError(message);
       stopTpiProgress();
       setTpiProgress(0);
@@ -757,9 +754,9 @@ export default function CoachStudentDetailPage() {
 
     if (insertError || !radarRow) {
       const message =
-        insertError?.message?.includes("row-level security") ?? false
+        (insertError?.message?.includes("row-level security") ?? false)
           ? "Plan Standard requis pour importer des datas."
-          : insertError?.message ?? "Erreur d enregistrement datas.";
+          : (insertError?.message ?? "Erreur d enregistrement datas.");
       setRadarError(message);
       stopRadarProgress();
       setRadarProgress(0);
@@ -897,6 +894,41 @@ export default function CoachStudentDetailPage() {
       setAssignmentsLoading(true);
       setAssignmentsError("");
 
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        setAssignmentsError("Session invalide.");
+        setAssignmentsLoading(false);
+        return;
+      }
+
+      const assignmentsResponse = await fetch(
+        `/api/orgs/assignments?studentId=${studentId}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const assignmentsPayload = (await assignmentsResponse.json()) as {
+        assignments?: AssignmentCoach[];
+        error?: string;
+      };
+      if (!assignmentsResponse.ok) {
+        setAssignmentsError(assignmentsPayload.error ?? "Chargement impossible.");
+        setAssignmentsLoading(false);
+        return;
+      }
+      const assignmentsData = assignmentsPayload.assignments ?? [];
+
+      const assignments = (assignmentsData ?? []).map((entry) => {
+        const profiles = Array.isArray(entry.profiles)
+          ? (entry.profiles[0] ?? null)
+          : (entry.profiles ?? null);
+        return {
+          coach_id: entry.coach_id,
+          profiles,
+        };
+      }) as AssignmentCoach[];
+      setAssignmentCoaches(assignments);
+      setSelectedCoachIds(assignments.map((item) => item.coach_id));
+      if (isWorkspaceAdmin) {
         const { data: sessionData } = await supabase.auth.getSession();
         const token = sessionData.session?.access_token;
         if (!token) {
@@ -904,70 +936,35 @@ export default function CoachStudentDetailPage() {
           setAssignmentsLoading(false);
           return;
         }
-
-        const assignmentsResponse = await fetch(
-          `/api/orgs/assignments?studentId=${studentId}`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        const assignmentsPayload = (await assignmentsResponse.json()) as {
-          assignments?: AssignmentCoach[];
+        const membersResponse = await fetch("/api/orgs/members", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const membersPayload = (await membersResponse.json()) as {
+          members?: OrgCoachOption[];
           error?: string;
         };
-        if (!assignmentsResponse.ok) {
-          setAssignmentsError(assignmentsPayload.error ?? "Chargement impossible.");
+        if (!membersResponse.ok) {
+          setAssignmentsError(membersPayload.error ?? "Chargement impossible.");
           setAssignmentsLoading(false);
           return;
         }
-        const assignmentsData = assignmentsPayload.assignments ?? [];
-
-        const assignments = (assignmentsData ?? []).map((entry) => {
+        const options = (membersPayload.members ?? []).map((entry) => {
           const profiles = Array.isArray(entry.profiles)
-            ? entry.profiles[0] ?? null
-            : entry.profiles ?? null;
+            ? (entry.profiles[0] ?? null)
+            : (entry.profiles ?? null);
           return {
-            coach_id: entry.coach_id,
+            user_id: entry.user_id,
+            role: entry.role,
+            status: entry.status,
             profiles,
           };
-        }) as AssignmentCoach[];
-        setAssignmentCoaches(assignments);
-        setSelectedCoachIds(assignments.map((item) => item.coach_id));
-        if (isWorkspaceAdmin) {
-          const { data: sessionData } = await supabase.auth.getSession();
-          const token = sessionData.session?.access_token;
-          if (!token) {
-            setAssignmentsError("Session invalide.");
-            setAssignmentsLoading(false);
-            return;
-          }
-          const membersResponse = await fetch("/api/orgs/members", {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          const membersPayload = (await membersResponse.json()) as {
-            members?: OrgCoachOption[];
-            error?: string;
-          };
-          if (!membersResponse.ok) {
-            setAssignmentsError(membersPayload.error ?? "Chargement impossible.");
-            setAssignmentsLoading(false);
-            return;
-          }
-          const options = (membersPayload.members ?? []).map((entry) => {
-            const profiles = Array.isArray(entry.profiles)
-              ? entry.profiles[0] ?? null
-              : entry.profiles ?? null;
-            return {
-              user_id: entry.user_id,
-              role: entry.role,
-              status: entry.status,
-              profiles,
-            };
-          }) as OrgCoachOption[];
-          setCoachOptions(options);
-        } else {
-          setCoachOptions([]);
-        }
-        setAssignmentsLoading(false);
-      };
+        }) as OrgCoachOption[];
+        setCoachOptions(options);
+      } else {
+        setCoachOptions([]);
+      }
+      setAssignmentsLoading(false);
+    };
 
     loadAssignments();
   }, [workspaceType, studentId, organization?.id, isWorkspaceAdmin]);
@@ -1405,113 +1402,116 @@ export default function CoachStudentDetailPage() {
             {shareMessage ? (
               <p className="mt-3 text-xs text-emerald-200">{shareMessage}</p>
             ) : null}
-          {isReadOnly ? (
-            <div className="mt-4 rounded-xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-xs uppercase tracking-wide text-amber-100">
-              Lecture seule active (eleve partage)
-            </div>
-          ) : null}
-        </section>
-
-        {workspaceType === "org" ? (
-          <section className="panel-soft rounded-2xl p-6">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-[var(--text)]">
-                  Assignations
-                </h3>
-                <p className="mt-1 text-sm text-[var(--muted)]">
-                  {canPublishInOrg
-                    ? "Vous pouvez publier pour cet eleve."
-                    : canProposeInOrg
-                      ? "Vous pouvez proposer une modification."
-                      : "Lecture seule sur cet eleve."}
-                </p>
-              </div>
-              {canProposeInOrg ? (
-                <Link
-                  href={`/app/org/proposals/new?studentId=${student.id}`}
-                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)] transition hover:border-white/30"
-                >
-                  Proposer une modification
-                </Link>
-              ) : null}
-            </div>
-            <div className="mt-4 flex flex-wrap items-center gap-2 text-xs uppercase tracking-wide text-[var(--muted)]">
-              {assignmentsLoading ? (
-                <span>Chargement des assignations...</span>
-              ) : assignmentCoaches.length === 0 ? (
-                <span>Aucun coach assigne</span>
-              ) : (
-                assignmentCoaches.map((entry) => (
-                  <span
-                    key={entry.coach_id}
-                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1"
-                  >
-                    {getCoachLabel(entry.profiles?.full_name, entry.coach_id)}
-                  </span>
-                ))
-              )}
-            </div>
-            {!isWorkspacePremium ? (
+            {isReadOnly ? (
               <div className="mt-4 rounded-xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-xs uppercase tracking-wide text-amber-100">
-                Freemium: lecture seule en organisation.
-              </div>
-            ) : null}
-            {isWorkspaceAdmin ? (
-              <div className="mt-5 rounded-xl border border-white/10 bg-white/5 p-4">
-                <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                  Modifier les assignations (admin)
-                </p>
-                {hasMissingCoachNames ? (
-                  <p className="mt-2 text-xs text-amber-200">
-                    Certains coachs n ont pas renseigne leur nom/prenom. Demandez-leur
-                    de completer leur profil.
-                  </p>
-                ) : null}
-                <div className="mt-3 grid gap-2 md:grid-cols-2">
-                  {coachOptions.map((coach) => {
-                    const label = getCoachLabel(coach.profiles?.full_name, coach.user_id);
-                    const checked = selectedCoachIds.includes(coach.user_id);
-                    return (
-                      <label
-                        key={coach.user_id}
-                        className="flex items-center gap-2 text-xs text-[var(--muted)]"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(event) => {
-                            const next = event.target.checked
-                              ? [...selectedCoachIds, coach.user_id]
-                              : selectedCoachIds.filter((id) => id !== coach.user_id);
-                            setSelectedCoachIds(next);
-                          }}
-                          className="h-4 w-4 rounded border-white/10 bg-[var(--bg-elevated)]"
-                        />
-                        {label}
-                      </label>
-                    );
-                  })}
-                </div>
-                {assignmentsError ? (
-                  <p className="mt-3 text-sm text-red-400">{assignmentsError}</p>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={handleSaveAssignments}
-                  disabled={assignmentsSaving}
-                  className="mt-4 rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
-                >
-                  {assignmentsSaving ? "Enregistrement..." : "Enregistrer"}
-                </button>
+                Lecture seule active (eleve partage)
               </div>
             ) : null}
           </section>
-        ) : null}
 
-        {isOwner && ownerShares.length > 0 ? (
-          <section className="panel-soft rounded-2xl p-6">
-            <div className="flex items-center justify-between gap-3">
+          {workspaceType === "org" ? (
+            <section className="panel-soft rounded-2xl p-6">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-[var(--text)]">
+                    Assignations
+                  </h3>
+                  <p className="mt-1 text-sm text-[var(--muted)]">
+                    {canPublishInOrg
+                      ? "Vous pouvez publier pour cet eleve."
+                      : canProposeInOrg
+                        ? "Vous pouvez proposer une modification."
+                        : "Lecture seule sur cet eleve."}
+                  </p>
+                </div>
+                {canProposeInOrg ? (
+                  <Link
+                    href={`/app/org/proposals/new?studentId=${student.id}`}
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)] transition hover:border-white/30"
+                  >
+                    Proposer une modification
+                  </Link>
+                ) : null}
+              </div>
+              <div className="mt-4 flex flex-wrap items-center gap-2 text-xs uppercase tracking-wide text-[var(--muted)]">
+                {assignmentsLoading ? (
+                  <span>Chargement des assignations...</span>
+                ) : assignmentCoaches.length === 0 ? (
+                  <span>Aucun coach assigne</span>
+                ) : (
+                  assignmentCoaches.map((entry) => (
+                    <span
+                      key={entry.coach_id}
+                      className="rounded-full border border-white/10 bg-white/5 px-3 py-1"
+                    >
+                      {getCoachLabel(entry.profiles?.full_name, entry.coach_id)}
+                    </span>
+                  ))
+                )}
+              </div>
+              {!isWorkspacePremium ? (
+                <div className="mt-4 rounded-xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-xs uppercase tracking-wide text-amber-100">
+                  Freemium: lecture seule en organisation.
+                </div>
+              ) : null}
+              {isWorkspaceAdmin && !isOrgReadOnly ? (
+                <div className="mt-5 rounded-xl border border-white/10 bg-white/5 p-4">
+                  <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Modifier les assignations (admin)
+                  </p>
+                  {hasMissingCoachNames ? (
+                    <p className="mt-2 text-xs text-amber-200">
+                      Certains coachs n ont pas renseigne leur nom/prenom. Demandez-leur
+                      de completer leur profil.
+                    </p>
+                  ) : null}
+                  <div className="mt-3 grid gap-2 md:grid-cols-2">
+                    {coachOptions.map((coach) => {
+                      const label = getCoachLabel(
+                        coach.profiles?.full_name,
+                        coach.user_id
+                      );
+                      const checked = selectedCoachIds.includes(coach.user_id);
+                      return (
+                        <label
+                          key={coach.user_id}
+                          className="flex items-center gap-2 text-xs text-[var(--muted)]"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(event) => {
+                              const next = event.target.checked
+                                ? [...selectedCoachIds, coach.user_id]
+                                : selectedCoachIds.filter((id) => id !== coach.user_id);
+                              setSelectedCoachIds(next);
+                            }}
+                            className="h-4 w-4 rounded border-white/10 bg-[var(--bg-elevated)]"
+                          />
+                          {label}
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {assignmentsError ? (
+                    <p className="mt-3 text-sm text-red-400">{assignmentsError}</p>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={handleSaveAssignments}
+                    disabled={assignmentsSaving}
+                    className="mt-4 rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
+                  >
+                    {assignmentsSaving ? "Enregistrement..." : "Enregistrer"}
+                  </button>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
+          {isOwner && ownerShares.length > 0 ? (
+            <section className="panel-soft rounded-2xl p-6">
+              <div className="flex items-center justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-semibold text-[var(--text)]">
                     Partages actifs
@@ -1633,49 +1633,6 @@ export default function CoachStudentDetailPage() {
             </section>
 
             <section className="panel relative rounded-2xl border border-rose-400/40 bg-rose-500/5 p-6">
-              {tpiLocked ? (
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={openTpiAddonModal}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      openTpiAddonModal();
-                    }
-                  }}
-                  className="absolute inset-0 z-10 flex cursor-pointer items-center justify-center rounded-2xl border border-rose-300/40 bg-rose-500/10 text-center text-xs uppercase tracking-[0.2em] text-rose-100 backdrop-blur-sm"
-                >
-                  <div className="flex flex-col items-center gap-3 px-6">
-                    <span className="flex items-center gap-2">
-                      <svg
-                        viewBox="0 0 24 24"
-                        className="h-4 w-4"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
-                        <rect x="5" y="11" width="14" height="9" rx="2" />
-                        <path d="M8 11V8a4 4 0 0 1 8 0v3" />
-                      </svg>
-                      Plan requis (Standard+)
-                    </span>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openTpiAddonModal();
-                      }}
-                      className="rounded-full border border-rose-200/40 bg-rose-400/20 px-4 py-1 text-[0.6rem] uppercase tracking-wide text-rose-100 transition hover:bg-rose-400/30"
-                    >
-                      Voir les offres
-                    </button>
-                  </div>
-                </div>
-              ) : null}
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-semibold text-[var(--text)]">
@@ -1697,6 +1654,18 @@ export default function CoachStudentDetailPage() {
                   </div>
                 </div>
               </div>
+              {tpiLocked ? (
+                <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-rose-300/30 bg-rose-400/10 px-3 py-2 text-xs text-rose-100">
+                  <span>Plan Standard requis pour importer. Lecture seule.</span>
+                  <button
+                    type="button"
+                    onClick={openTpiAddonModal}
+                    className="rounded-full border border-rose-200/40 bg-rose-400/20 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-rose-100 transition hover:bg-rose-400/30"
+                  >
+                    Voir les offres
+                  </button>
+                </div>
+              ) : null}
               <div
                 className={`mt-4 rounded-xl border border-dashed px-4 py-4 text-sm text-[var(--muted)] transition ${
                   tpiDragging
@@ -1954,49 +1923,6 @@ export default function CoachStudentDetailPage() {
             </section>
 
             <section className="panel relative rounded-2xl border border-violet-400/40 bg-violet-500/5 p-6 lg:col-span-2">
-              {radarLocked ? (
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={openRadarAddonModal}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      openRadarAddonModal();
-                    }
-                  }}
-                  className="absolute inset-0 z-10 flex cursor-pointer items-center justify-center rounded-2xl border border-violet-300/40 bg-violet-500/10 text-center text-xs uppercase tracking-[0.2em] text-violet-100 backdrop-blur-sm"
-                >
-                  <div className="flex flex-col items-center gap-3 px-6">
-                    <span className="flex items-center gap-2">
-                      <svg
-                        viewBox="0 0 24 24"
-                        className="h-4 w-4"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
-                        <rect x="5" y="11" width="14" height="9" rx="2" />
-                        <path d="M8 11V8a4 4 0 0 1 8 0v3" />
-                      </svg>
-                      Plan requis (Standard+)
-                    </span>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openRadarAddonModal();
-                      }}
-                      className="rounded-full border border-violet-200/40 bg-violet-400/20 px-4 py-1 text-[0.6rem] uppercase tracking-wide text-violet-100 transition hover:bg-violet-400/30"
-                    >
-                      Voir les offres
-                    </button>
-                  </div>
-                </div>
-              ) : null}
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-semibold text-[var(--text)]">
@@ -2049,6 +1975,18 @@ export default function CoachStudentDetailPage() {
                   </button>
                 </div>
               </div>
+              {radarLocked ? (
+                <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-violet-300/30 bg-violet-400/10 px-3 py-2 text-xs text-violet-100">
+                  <span>Plan Standard requis pour importer. Lecture seule.</span>
+                  <button
+                    type="button"
+                    onClick={openRadarAddonModal}
+                    className="rounded-full border border-violet-200/40 bg-violet-400/20 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-violet-100 transition hover:bg-violet-400/30"
+                  >
+                    Voir les offres
+                  </button>
+                </div>
+              ) : null}
               <div
                 className={`mt-4 rounded-xl border border-dashed px-4 py-4 text-sm text-[var(--muted)] transition ${
                   radarUploading
@@ -2171,6 +2109,8 @@ export default function CoachStudentDetailPage() {
                         : file.status === "error"
                           ? "border-rose-300/30 bg-rose-400/10 text-rose-100"
                           : "border-amber-300/30 bg-amber-400/10 text-amber-100";
+                    const configDisabled = !isReady || isReadOnly;
+                    const deleteDisabled = radarDeletingId === file.id || isReadOnly;
                     return (
                       <div
                         key={file.id}
@@ -2235,10 +2175,10 @@ export default function CoachStudentDetailPage() {
                           </button>
                           <button
                             type="button"
-                            disabled={!isReady}
+                            disabled={configDisabled}
                             onClick={() => handleOpenRadarConfig(file)}
                             className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
-                              isReady
+                              !configDisabled
                                 ? "border-white/10 bg-white/5 text-[var(--text)] hover:bg-white/10"
                                 : "cursor-not-allowed border-white/5 bg-white/5 text-[var(--muted)]"
                             }`}
@@ -2247,10 +2187,10 @@ export default function CoachStudentDetailPage() {
                           </button>
                           <button
                             type="button"
-                            disabled={radarDeletingId === file.id}
+                            disabled={deleteDisabled}
                             onClick={() => handleDeleteRadarFile(file)}
                             className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
-                              radarDeletingId === file.id
+                              deleteDisabled
                                 ? "cursor-not-allowed border-rose-300/20 bg-rose-400/10 text-rose-100/70"
                                 : "border-rose-300/30 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20"
                             }`}
