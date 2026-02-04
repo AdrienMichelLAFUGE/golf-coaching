@@ -7,6 +7,19 @@ function fail(message) {
   process.exit(1);
 }
 
+function escapeSqlLiteral(value) {
+  return value.replace(/'/g, "''");
+}
+
+function getMigrationMeta(filePath) {
+  const base = path.basename(filePath);
+  const withoutExt = base.replace(/\.sql$/i, "");
+  const parts = withoutExt.split("_");
+  const version = parts[0] || withoutExt;
+  const name = parts.length > 1 ? parts.slice(1).join("_") : withoutExt;
+  return { base, version, name };
+}
+
 const args = process.argv.slice(2);
 let envKey;
 let migrationPath;
@@ -58,4 +71,36 @@ if (result.error) {
   throw result.error;
 }
 
-process.exit(result.status ?? 1);
+if ((result.status ?? 1) !== 0) {
+  process.exit(result.status ?? 1);
+}
+
+const meta = getMigrationMeta(resolvedPath);
+const version = escapeSqlLiteral(meta.version);
+const name = escapeSqlLiteral(meta.name);
+const filename = escapeSqlLiteral(meta.base);
+const insertSql = `
+DO $$
+BEGIN
+  IF to_regclass('public.app_migrations') IS NOT NULL THEN
+    INSERT INTO public.app_migrations (version, name, filename)
+    VALUES ('${version}', '${name}', '${filename}')
+    ON CONFLICT (filename) DO NOTHING;
+  END IF;
+END $$;
+`;
+
+const insertResult = spawnSync(
+  "psql",
+  ["-v", "ON_ERROR_STOP=1", "-c", insertSql, databaseUrl],
+  { stdio: "inherit" }
+);
+
+if (insertResult.error) {
+  if (insertResult.error.code === "ENOENT") {
+    fail("psql not found in PATH. Install PostgreSQL client tools.");
+  }
+  throw insertResult.error;
+}
+
+process.exit(insertResult.status ?? 1);

@@ -1,0 +1,103 @@
+Tu es Codex (senior/staff engineer).
+
+Objectif : décrire le produit tel qu’il existe aujourd’hui, du point de vue fonctionnel, comme si tu le présentais à :
+
+un nouveau développeur,
+
+un PM,
+
+ou un stakeholder technique.
+
+Périmètre
+
+Se concentrer sur :
+
+les features existantes
+
+les fonctionnalités utilisateur
+
+les workflows métier
+
+les rôles et permissions visibles côté produit
+
+Ne pas détailler :
+
+la sécurité
+
+l’architecture interne
+
+l’infra
+
+les choix techniques
+(sauf si nécessaire pour comprendre une feature)
+
+Sources autorisées
+
+Code applicatif (frontend + backend)
+
+Routes exposées
+
+UI / pages / composants
+
+Logique métier observable
+
+Schéma DB uniquement pour comprendre les features
+
+MCP GitHub (lecture seule)
+
+MCP Supabase (STAGING, lecture seule)
+
+Règles
+
+Décrire uniquement ce qui existe réellement dans le code
+
+Ne pas inventer de features futures
+
+Si une feature est partielle ou incomplète → le signaler explicitement
+
+Utiliser un vocabulaire produit, pas technique
+
+Être factuel, neutre, lisible
+
+Format attendu
+# Description du produit
+
+## Vue d’ensemble
+(1–2 paragraphes)
+
+## Rôles utilisateurs
+- Rôle A : ce qu’il peut faire
+- Rôle B : ce qu’il peut faire
+
+## Fonctionnalités principales
+### Feature 1
+- Description
+- Actions possibles
+- États / limites connus
+
+### Feature 2
+...
+
+## Workflows clés
+- Workflow X : étape 1 → étape 2 → étape 3
+- Workflow Y : ...
+
+## Limitations actuelles
+- Ce qui est présent mais incomplet
+- Ce qui est explicitement non géré
+
+Ton attendu
+
+Clair
+
+Produit
+
+Non marketing
+
+Non spéculatif
+
+Objectif final
+
+À la fin de la description, un lecteur doit pouvoir répondre à :
+
+“Qu’est-ce que ce produit fait aujourd’hui, concrètement ?”
