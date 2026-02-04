@@ -26,6 +26,13 @@ type StudentForm = {
   playing_hand: "" | "right" | "left";
 };
 
+type OrgCoachOption = {
+  user_id: string;
+  role: "admin" | "coach";
+  status: "active" | "invited" | "disabled";
+  profiles?: { full_name: string | null } | null;
+};
+
 export default function CoachStudentsPage() {
   const {
     userEmail,
@@ -63,11 +70,16 @@ export default function CoachStudentsPage() {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
   const [sharedStudentIds, setSharedStudentIds] = useState<string[]>([]);
+  const [coachOptions, setCoachOptions] = useState<OrgCoachOption[]>([]);
+  const [coachOptionsLoading, setCoachOptionsLoading] = useState(false);
+  const [coachOptionsError, setCoachOptionsError] = useState("");
+  const [selectedCoachIds, setSelectedCoachIds] = useState<string[]>([]);
   const isOrgWorkspace =
     organization?.workspace_type === "org" ||
     currentMembership?.organization?.workspace_type === "org";
   const isOrgReadOnly = organization?.workspace_type === "org" && !isWorkspacePremium;
   const currentWorkspaceType = workspaceType ?? "personal";
+  const canAssignCoaches = currentWorkspaceType === "org" && isWorkspacePremium;
   const workspaceName = organization?.name ?? "Organisation";
   const modeLabel =
     currentWorkspaceType === "org"
@@ -194,6 +206,55 @@ export default function CoachStudentsPage() {
   }, [userEmail]);
 
   useEffect(() => {
+    if (!canAssignCoaches) return;
+
+    let cancelled = false;
+    const loadCoaches = async () => {
+      setCoachOptionsLoading(true);
+      setCoachOptionsError("");
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        setCoachOptionsError("Session invalide.");
+        setCoachOptionsLoading(false);
+        return;
+      }
+      const response = await fetch("/api/orgs/coaches", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = (await response.json()) as {
+        members?: OrgCoachOption[];
+        error?: string;
+      };
+      if (!response.ok) {
+        setCoachOptionsError(payload.error ?? "Chargement impossible.");
+        setCoachOptionsLoading(false);
+        return;
+      }
+      const options = (payload.members ?? []).map((entry) => {
+        const profiles = Array.isArray(entry.profiles)
+          ? (entry.profiles[0] ?? null)
+          : (entry.profiles ?? null);
+        return {
+          user_id: entry.user_id,
+          role: entry.role,
+          status: entry.status,
+          profiles,
+        } as OrgCoachOption;
+      });
+      if (!cancelled) {
+        setCoachOptions(options);
+      }
+      setCoachOptionsLoading(false);
+    };
+
+    loadCoaches();
+    return () => {
+      cancelled = true;
+    };
+  }, [canAssignCoaches]);
+
+  useEffect(() => {
     if (!menuOpenId) return;
     const handleClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
@@ -239,6 +300,15 @@ export default function CoachStudentsPage() {
     }
 
     if (isOrgWorkspace) {
+      const coachIds = canAssignCoaches
+        ? Array.from(
+            new Set(
+              [profile?.id, ...selectedCoachIds].filter(
+                (id): id is string => Boolean(id)
+              )
+            )
+          )
+        : [];
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
       if (!token) {
@@ -257,6 +327,7 @@ export default function CoachStudentsPage() {
           last_name: lastName || null,
           email: email || null,
           playing_hand: playingHand || null,
+          ...(canAssignCoaches && coachIds.length ? { coach_ids: coachIds } : null),
         }),
       });
       const payload = (await response.json()) as { error?: string };
@@ -295,6 +366,9 @@ export default function CoachStudentsPage() {
     }
 
     setForm({ first_name: "", last_name: "", email: "", playing_hand: "" });
+    if (profile?.id) {
+      setSelectedCoachIds([profile.id]);
+    }
     await loadStudents();
     setCreating(false);
   };
@@ -442,6 +516,13 @@ export default function CoachStudentsPage() {
     await loadStudents();
   };
 
+  const toggleCoachSelection = (coachId: string) => {
+    if (coachId === profile?.id) return;
+    setSelectedCoachIds((prev) =>
+      prev.includes(coachId) ? prev.filter((id) => id !== coachId) : [...prev, coachId]
+    );
+  };
+
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       <div className="space-y-6">
@@ -554,6 +635,82 @@ export default function CoachStudentsPage() {
               {creating ? "Ajout..." : "Ajouter"}
             </button>
           </form>
+          {currentWorkspaceType === "org" ? (
+            <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                  Assignations coach
+                </p>
+                <span
+                  className={`rounded-full border px-2 py-1 text-[0.6rem] uppercase tracking-wide ${
+                    canAssignCoaches
+                      ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-200"
+                      : "border-amber-300/30 bg-amber-400/10 text-amber-200"
+                  }`}
+                >
+                  {canAssignCoaches ? "Actif" : "Plan requis"}
+                </span>
+              </div>
+              <p className="mt-2 text-xs text-[var(--muted)]">
+                Tu es toujours assigne automatiquement. Ajoute d autres coachs si besoin.
+              </p>
+              {!canAssignCoaches ? (
+                <p className="mt-3 text-sm text-amber-300">
+                  Plan Standard/Pro requis pour gerer les assignations.
+                </p>
+              ) : coachOptionsLoading ? (
+                <p className="mt-3 text-sm text-[var(--muted)]">
+                  Chargement des coachs...
+                </p>
+              ) : coachOptionsError ? (
+                <p className="mt-3 text-sm text-red-400">{coachOptionsError}</p>
+              ) : coachOptions.length === 0 ? (
+                <p className="mt-3 text-sm text-[var(--muted)]">
+                  Aucun coach actif disponible.
+                </p>
+              ) : (
+                <div className="mt-3 grid gap-2 md:grid-cols-2">
+                  {coachOptions.map((coach) => {
+                    const fullName = coach.profiles?.full_name?.trim();
+                    const isSelf = coach.user_id === profile?.id;
+                    const checked = selectedCoachIds.includes(coach.user_id) || isSelf;
+                    const label = fullName
+                      ? fullName
+                      : `Coach ${coach.user_id.slice(0, 6)}`;
+                    return (
+                      <label
+                        key={coach.user_id}
+                        className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs ${
+                          isSelf
+                            ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
+                            : "border-white/10 bg-white/5 text-[var(--muted)]"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={isSelf || isOrgReadOnly}
+                          onChange={() => toggleCoachSelection(coach.user_id)}
+                          className="h-4 w-4 rounded border-white/10 bg-[var(--bg-elevated)]"
+                        />
+                        <span className="flex-1">
+                          <span className="text-[var(--text)]">{label}</span>
+                          <span className="ml-2 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                            {coach.role === "admin" ? "Admin" : "Coach"}
+                          </span>
+                        </span>
+                        {isSelf ? (
+                          <span className="text-[0.6rem] uppercase tracking-wide text-emerald-200">
+                            Toi
+                          </span>
+                        ) : null}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ) : null}
           <p className="mt-3 text-xs text-[var(--muted)]">
             Cet eleve sera cree dans :{" "}
             <span className="text-[var(--text)]">{modeLabel}</span>

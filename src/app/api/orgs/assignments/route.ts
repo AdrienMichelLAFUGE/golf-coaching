@@ -109,12 +109,12 @@ export async function POST(request: Request) {
 
   const { data: membership } = await admin
     .from("org_memberships")
-    .select("role, status")
+    .select("status")
     .eq("org_id", profile.org_id)
     .eq("user_id", profile.id)
     .maybeSingle();
 
-  if (!membership || membership.status !== "active" || membership.role !== "admin") {
+  if (!membership || membership.status !== "active") {
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 

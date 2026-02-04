@@ -405,10 +405,10 @@ export default function CoachReportBuilderPage() {
     userEmail,
     workspaceType,
     isWorkspacePremium,
+    isWorkspaceAdmin,
     planTier,
     profile,
   } = useProfile();
-  const isOrgMode = workspaceType === "org";
   const modeLabel =
     (organization?.workspace_type ?? "personal") === "org"
       ? `Organisation : ${organization?.name ?? "Organisation"}`
@@ -586,7 +586,7 @@ export default function CoachReportBuilderPage() {
       : `${Date.now()}-${Math.random().toString(16).slice(2)}`
   );
   const isAdmin = userEmail?.toLowerCase() === "adrien.lafuge@outlook.fr";
-  const isOrgAdmin = profile?.role === "owner";
+  const isOrgAdmin = isWorkspaceAdmin || profile?.role === "owner";
   const isOrgPublishLocked =
     workspaceType === "org" &&
     (!isWorkspacePremium || (assignmentChecked && !isAssignedCoach && !isOrgAdmin));
@@ -4311,48 +4311,6 @@ export default function CoachReportBuilderPage() {
       ? "lg:grid-cols-1"
       : "lg:grid-cols-[0.9fr_1.1fr]";
 
-  const openWorkspaceSwitcher = () => {
-    if (typeof window === "undefined") return;
-    window.dispatchEvent(new CustomEvent("gc:open-workspace-switcher"));
-  };
-
-  if (isOrgMode) {
-    return (
-      <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
-        <div className="space-y-6">
-          <section className="panel rounded-2xl p-6">
-            <div className="flex items-center gap-2">
-              <PageBack />
-              <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                Rapport
-              </p>
-            </div>
-            <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
-              Rapports perso
-            </h2>
-            <p className="mt-2 text-sm text-[var(--muted)]">
-              La creation de rapport est disponible uniquement en mode Perso.
-            </p>
-            <div
-              className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
-            >
-              Vous travaillez dans {modeLabel}
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={openWorkspaceSwitcher}
-                className="rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
-              >
-                Changer de mode
-              </button>
-            </div>
-          </section>
-        </div>
-      </RoleGuard>
-    );
-  }
-
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       <>
@@ -6009,6 +5967,10 @@ export default function CoachReportBuilderPage() {
                         {aiEnabled ? "Actif" : "Plan requis"}
                       </span>
                     </div>
+                    <p className="mt-2 text-xs text-[var(--muted)]">
+                      L assistant IA utilise le profil TPI, les datas de seance et tes
+                      constats/travaux en cours quand ils sont disponibles.
+                    </p>
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                       <div>
                         <p className="text-[0.65rem] uppercase tracking-[0.2em] text-[var(--muted)]">

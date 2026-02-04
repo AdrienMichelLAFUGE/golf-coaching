@@ -2,6 +2,10 @@ import { POST } from "./route";
 
 jest.mock("server-only", () => ({}));
 
+jest.mock("@/lib/plan-access", () => ({
+  loadPersonalPlanTier: jest.fn(),
+}));
+
 jest.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClientFromRequest: jest.fn(),
   createSupabaseAdminClient: jest.fn(),
@@ -42,69 +46,22 @@ const buildSelectListWithIn = (result: QueryResult) => ({
   },
 });
 
-describe("POST /api/orgs/students", () => {
+describe("POST /api/orgs/assignments", () => {
   const serverMocks = jest.requireMock("@/lib/supabase/server") as {
     createSupabaseServerClientFromRequest: jest.Mock;
     createSupabaseAdminClient: jest.Mock;
+  };
+  const planMocks = jest.requireMock("@/lib/plan-access") as {
+    loadPersonalPlanTier: jest.Mock;
   };
 
   beforeEach(() => {
     serverMocks.createSupabaseServerClientFromRequest.mockReset();
     serverMocks.createSupabaseAdminClient.mockReset();
+    planMocks.loadPersonalPlanTier.mockReset();
   });
 
-  it("blocks creation for free org member", async () => {
-    const supabase = {
-      auth: {
-        getUser: async () => ({
-          data: { user: { id: "user-1", email: "coach@example.com" } },
-          error: null,
-        }),
-      },
-    };
-
-    const admin = {
-      from: jest.fn((table: string) => {
-        if (table === "profiles") {
-          return buildSelectSingle({
-            data: { id: "user-1", org_id: "org-1" },
-            error: null,
-          });
-        }
-        if (table === "organizations") {
-          return buildSelectMaybeSingle({
-            data: { plan_tier: "free" },
-            error: null,
-          });
-        }
-        if (table === "org_memberships") {
-          return buildSelectMaybeSingle({
-            data: { role: "coach", status: "active" },
-            error: null,
-          });
-        }
-        return {};
-      }),
-    };
-
-    serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
-    serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
-
-    const response = await POST(
-      buildRequest({
-        first_name: "Camille",
-        last_name: "Dupont",
-        email: "camille@example.com",
-        playing_hand: "right",
-      })
-    );
-
-    expect(response.status).toBe(403);
-    const body = await response.json();
-    expect(body.error).toBe("Lecture seule: plan Free en organisation.");
-  });
-
-  it("allows coach to assign other coaches when creating student", async () => {
+  it("allows active member to update assignments", async () => {
     const supabase = {
       auth: {
         getUser: async () => ({
@@ -114,15 +71,12 @@ describe("POST /api/orgs/students", () => {
       },
     };
 
-    const studentInsert = jest.fn(() => ({
-      select: () => ({
-        single: async () => ({
-          data: { id: "33333333-3333-3333-3333-333333333333" },
-          error: null,
-        }),
-      }),
+    planMocks.loadPersonalPlanTier.mockResolvedValue("standard");
+
+    const deleteAssignments = jest.fn(() => ({
+      eq: async () => ({ error: null }),
     }));
-    const assignmentsInsert = jest.fn(async () => ({ error: null }));
+    const insertAssignments = jest.fn(async () => ({ error: null }));
 
     let membershipCall = 0;
     const admin = {
@@ -133,17 +87,11 @@ describe("POST /api/orgs/students", () => {
             error: null,
           });
         }
-        if (table === "organizations") {
-          return buildSelectMaybeSingle({
-            data: { plan_tier: "standard" },
-            error: null,
-          });
-        }
         if (table === "org_memberships") {
           membershipCall += 1;
           if (membershipCall === 1) {
             return buildSelectMaybeSingle({
-              data: { role: "coach", status: "active" },
+              data: { status: "active" },
               error: null,
             });
           }
@@ -156,10 +104,13 @@ describe("POST /api/orgs/students", () => {
           });
         }
         if (table === "students") {
-          return { insert: studentInsert };
+          return buildSelectSingle({
+            data: { id: "33333333-3333-3333-3333-333333333333", org_id: "org-1" },
+            error: null,
+          });
         }
         if (table === "student_assignments") {
-          return { insert: assignmentsInsert };
+          return { delete: deleteAssignments, insert: insertAssignments };
         }
         return {};
       }),
@@ -170,17 +121,17 @@ describe("POST /api/orgs/students", () => {
 
     const response = await POST(
       buildRequest({
-        first_name: "Camille",
-        last_name: "Dupont",
-        email: "camille@example.com",
-        playing_hand: "right",
-        coach_ids: ["22222222-2222-2222-2222-222222222222"],
+        studentId: "33333333-3333-3333-3333-333333333333",
+        coachIds: [
+          "11111111-1111-1111-1111-111111111111",
+          "22222222-2222-2222-2222-222222222222",
+        ],
       })
     );
 
     expect(response.status).toBe(200);
-    expect(studentInsert).toHaveBeenCalled();
-    expect(assignmentsInsert).toHaveBeenCalledWith([
+    expect(deleteAssignments).toHaveBeenCalled();
+    expect(insertAssignments).toHaveBeenCalledWith([
       {
         org_id: "org-1",
         student_id: "33333333-3333-3333-3333-333333333333",

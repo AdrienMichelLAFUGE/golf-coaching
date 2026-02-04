@@ -83,9 +83,7 @@ export async function POST(request: Request) {
 
   const coachIds = new Set<string>();
   coachIds.add(profile.id);
-  if (membership.role === "admin") {
-    (parsed.data.coach_ids ?? []).forEach((id) => coachIds.add(id));
-  }
+  (parsed.data.coach_ids ?? []).forEach((id) => coachIds.add(id));
 
   const { data: eligibleCoaches } = await admin
     .from("org_memberships")

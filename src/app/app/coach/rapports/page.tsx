@@ -30,7 +30,7 @@ const formatDate = (
 };
 
 export default function CoachReportsPage() {
-  const { organization, workspaceType } = useProfile();
+  const { organization } = useProfile();
   const [reports, setReports] = useState<ReportRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -45,7 +45,6 @@ export default function CoachReportsPage() {
   const [sortDirection, setSortDirection] = useState<"asc" | "desc" | "none">("none");
   const locale = organization?.locale ?? "fr-FR";
   const timezone = organization?.timezone ?? "Europe/Paris";
-  const isOrgMode = workspaceType === "org";
   const modeLabel =
     (organization?.workspace_type ?? "personal") === "org"
       ? `Organisation : ${organization?.name ?? "Organisation"}`
@@ -228,11 +227,6 @@ export default function CoachReportsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    if (isOrgMode) {
-      return () => {
-        cancelled = true;
-      };
-    }
     Promise.resolve().then(() => {
       if (cancelled) return;
       void loadReports();
@@ -240,7 +234,7 @@ export default function CoachReportsPage() {
     return () => {
       cancelled = true;
     };
-  }, [isOrgMode]);
+  }, [organization?.id]);
 
   const handleDeleteReport = async (report: ReportRow) => {
     const confirmed = window.confirm(`Supprimer le rapport "${report.title}" ?`);
@@ -261,43 +255,6 @@ export default function CoachReportsPage() {
     await loadReports();
     setDeletingId(null);
   };
-
-  if (isOrgMode) {
-    return (
-      <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
-        <div className="space-y-6">
-          <section className="panel rounded-2xl p-6">
-            <div className="flex items-center gap-2">
-              <PageBack />
-              <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                Rapports
-              </p>
-            </div>
-            <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
-              Rapports perso
-            </h2>
-            <p className="mt-2 text-sm text-[var(--muted)]">
-              Cette section est disponible uniquement en mode Perso.
-            </p>
-            <div
-              className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
-            >
-              Vous travaillez dans {modeLabel}
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={openWorkspaceSwitcher}
-                className="rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
-              >
-                Changer de mode
-              </button>
-            </div>
-          </section>
-        </div>
-      </RoleGuard>
-    );
-  }
 
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>

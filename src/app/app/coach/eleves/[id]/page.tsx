@@ -253,6 +253,7 @@ export default function CoachStudentDetailPage() {
   const isOrgReadOnly = workspaceType === "org" && !isWorkspacePremium;
   const isReadOnly = shareAccess.canRead || isOrgReadOnly;
   const canWriteReports = workspaceType === "org" ? canPublishInOrg : !isReadOnly;
+  const canManageAssignments = workspaceType === "org" && isWorkspacePremium && !isReadOnly;
   const radarTechMeta = getRadarTechMeta(radarTech);
   const getCoachLabel = (fullName: string | null | undefined, coachId: string) => {
     const trimmed = fullName?.trim();
@@ -928,7 +929,7 @@ export default function CoachStudentDetailPage() {
       }) as AssignmentCoach[];
       setAssignmentCoaches(assignments);
       setSelectedCoachIds(assignments.map((item) => item.coach_id));
-      if (isWorkspaceAdmin) {
+      if (canManageAssignments) {
         const { data: sessionData } = await supabase.auth.getSession();
         const token = sessionData.session?.access_token;
         if (!token) {
@@ -936,7 +937,7 @@ export default function CoachStudentDetailPage() {
           setAssignmentsLoading(false);
           return;
         }
-        const membersResponse = await fetch("/api/orgs/members", {
+        const membersResponse = await fetch("/api/orgs/coaches", {
           headers: { Authorization: `Bearer ${token}` },
         });
         const membersPayload = (await membersResponse.json()) as {
@@ -967,7 +968,7 @@ export default function CoachStudentDetailPage() {
     };
 
     loadAssignments();
-  }, [workspaceType, studentId, organization?.id, isWorkspaceAdmin]);
+  }, [workspaceType, studentId, organization?.id, canManageAssignments]);
 
   const handleOwnerRevokeShare = async (shareId: string) => {
     setOwnerShareError("");
@@ -1454,10 +1455,10 @@ export default function CoachStudentDetailPage() {
                   Freemium: lecture seule en organisation.
                 </div>
               ) : null}
-              {isWorkspaceAdmin && !isOrgReadOnly ? (
+              {canManageAssignments ? (
                 <div className="mt-5 rounded-xl border border-white/10 bg-white/5 p-4">
                   <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                    Modifier les assignations (admin)
+                    Modifier les assignations
                   </p>
                   {hasMissingCoachNames ? (
                     <p className="mt-2 text-xs text-amber-200">
