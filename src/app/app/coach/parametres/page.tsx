@@ -39,6 +39,10 @@ type OrganizationSettings = {
   ai_length: string | null;
   ai_imagery: string | null;
   ai_focus: string | null;
+  stripe_status?: string | null;
+  stripe_current_period_end?: string | null;
+  stripe_cancel_at_period_end?: boolean | null;
+  stripe_customer_id?: string | null;
 };
 
 const STORAGE_BUCKET = "coach-assets";
@@ -68,6 +72,8 @@ export default function CoachSettingsPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [premiumModalOpen, setPremiumModalOpen] = useState(false);
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [billingError, setBillingError] = useState("");
 
   const [fullName, setFullName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
@@ -110,6 +116,44 @@ export default function CoachSettingsPage() {
   const aiLocked = !entitlements.aiEnabled;
   const openPremiumModal = () => setPremiumModalOpen(true);
   const closePremiumModal = () => setPremiumModalOpen(false);
+  const showPaymentIssue = organization?.stripe_status === "past_due";
+  const billingEndLabel = (() => {
+    if (!organization?.stripe_cancel_at_period_end) return null;
+    if (!organization?.stripe_current_period_end) return null;
+    const parsed = new Date(organization.stripe_current_period_end);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return new Intl.DateTimeFormat(locale, {
+      dateStyle: "medium",
+      timeZone: timezone,
+    }).format(parsed);
+  })();
+
+  const handleOpenPortal = async () => {
+    setBillingLoading(true);
+    setBillingError("");
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+
+    if (!token) {
+      setBillingError("Session invalide. Reconnecte toi.");
+      setBillingLoading(false);
+      return;
+    }
+
+    const response = await fetch("/api/billing/portal", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const payload = (await response.json()) as { url?: string; error?: string };
+
+    if (!response.ok || !payload.url) {
+      setBillingError(payload.error ?? "Impossible d ouvrir la page Stripe.");
+      setBillingLoading(false);
+      return;
+    }
+
+    window.location.assign(payload.url);
+  };
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -130,7 +174,7 @@ export default function CoachSettingsPage() {
       const { data: orgData, error: orgError } = await supabase
         .from("organizations")
         .select(
-          "id, name, logo_url, accent_color, email_sender_name, email_reply_to, report_title_template, report_signature, report_default_sections, locale, timezone, plan_tier, ai_enabled, ai_model, ai_tone, ai_tech_level, ai_style, ai_length, ai_imagery, ai_focus"
+          "id, name, logo_url, accent_color, email_sender_name, email_reply_to, report_title_template, report_signature, report_default_sections, locale, timezone, plan_tier, ai_enabled, ai_model, ai_tone, ai_tech_level, ai_style, ai_length, ai_imagery, ai_focus, stripe_status, stripe_current_period_end, stripe_cancel_at_period_end, stripe_customer_id"
         )
         .eq("id", profileData.org_id)
         .single();
@@ -358,6 +402,64 @@ export default function CoachSettingsPage() {
             <p className="mt-2 text-sm text-[var(--muted)]">
               Configure ton profil, ton organisation et les rapports.
             </p>
+          </section>
+
+          <section className="panel rounded-2xl p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                  Abonnement
+                </p>
+                <h3 className="mt-2 text-lg font-semibold text-[var(--text)]">
+                  Plan {PLAN_ENTITLEMENTS[planTier].label}
+                </h3>
+                {billingEndLabel ? (
+                  <p className="mt-1 text-xs text-[var(--muted)]">
+                    Actif jusqu au {billingEndLabel}.
+                  </p>
+                ) : null}
+                {showPaymentIssue ? (
+                  <p className="mt-2 text-xs text-amber-200">
+                    Paiement en attente. Pense a mettre a jour ton moyen de paiement.
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {planTier === "pro" ? (
+                  <button
+                    type="button"
+                    onClick={handleOpenPortal}
+                    disabled={billingLoading || !organization?.stripe_customer_id}
+                    className={`rounded-full border border-emerald-300/30 bg-emerald-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:bg-emerald-400/20 ${
+                      billingLoading || !organization?.stripe_customer_id
+                        ? "cursor-not-allowed opacity-60"
+                        : ""
+                    }`}
+                  >
+                    {billingLoading ? "Ouverture..." : "Gerer mon abonnement"}
+                  </button>
+                ) : planTier === "free" ? (
+                  <button
+                    type="button"
+                    onClick={openPremiumModal}
+                    className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:bg-emerald-400/20"
+                  >
+                    Passer Pro
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled
+                    className="cursor-not-allowed rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]"
+                  >
+                    Sur mesure
+                  </button>
+                )}
+              </div>
+            </div>
+            {billingError ? (
+              <p className="mt-3 text-xs text-amber-200">{billingError}</p>
+            ) : null}
           </section>
 
           <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">

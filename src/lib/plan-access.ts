@@ -1,6 +1,6 @@
 import "server-only";
 
-import { resolvePlanTier, type PlanTier } from "@/lib/plans";
+import { resolveEffectivePlanTier, type PlanTier } from "@/lib/plans";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 
 type AdminClient = ReturnType<typeof createSupabaseAdminClient>;
@@ -11,11 +11,15 @@ export const loadPersonalPlanTier = async (
 ): Promise<PlanTier> => {
   const { data, error } = await admin
     .from("organizations")
-    .select("plan_tier")
+    .select("plan_tier, plan_tier_override, plan_tier_override_expires_at")
     .eq("workspace_type", "personal")
     .eq("owner_profile_id", userId)
     .maybeSingle();
 
   if (error || !data) return "free";
-  return resolvePlanTier(data.plan_tier);
+  return resolveEffectivePlanTier(
+    data.plan_tier,
+    data.plan_tier_override,
+    data.plan_tier_override_expires_at
+  ).tier;
 };

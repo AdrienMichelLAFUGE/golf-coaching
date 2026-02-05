@@ -11,6 +11,8 @@ type WorkspaceRow = {
   name: string;
   workspace_type: "personal" | "org";
   plan_tier: "free" | "pro" | "enterprise";
+  plan_tier_override?: "free" | "pro" | "enterprise" | null;
+  plan_tier_override_expires_at?: string | null;
   ai_enabled: boolean;
   tpi_enabled: boolean;
   radar_enabled: boolean;
@@ -26,6 +28,13 @@ type DisplayWorkspace = WorkspaceRow & { isPlaceholder?: boolean };
 
 const MODEL_OPTIONS = ["gpt-5-mini", "gpt-5", "gpt-5.2"];
 const PLAN_TIER_OPTIONS = [
+  { value: "free", label: "Free" },
+  { value: "pro", label: "Pro" },
+  { value: "enterprise", label: "Entreprise" },
+] as const;
+
+const PLAN_OVERRIDE_OPTIONS = [
+  { value: "", label: "Aucun override" },
   { value: "free", label: "Free" },
   { value: "pro", label: "Pro" },
   { value: "enterprise", label: "Entreprise" },
@@ -225,6 +234,7 @@ export default function AdminCoachesPage() {
       body: JSON.stringify({
         orgId,
         plan_tier: patch.plan_tier,
+        plan_tier_override: patch.plan_tier_override,
         ai_enabled: patch.ai_enabled,
         tpi_enabled: patch.tpi_enabled,
         radar_enabled: patch.radar_enabled,
@@ -245,30 +255,34 @@ export default function AdminCoachesPage() {
     const planEntitlements = resolvedPlan ? PLAN_ENTITLEMENTS[resolvedPlan] : null;
 
     setWorkspaces((prev) =>
-      prev.map((workspace) =>
-        workspace.id === orgId
-          ? {
-              ...workspace,
-              plan_tier: patch.plan_tier ?? workspace.plan_tier,
-              ai_enabled:
-                patch.ai_enabled ?? planEntitlements?.aiEnabled ?? workspace.ai_enabled,
-              tpi_enabled:
-                patch.tpi_enabled ??
-                planEntitlements?.tpiEnabled ??
-                workspace.tpi_enabled,
-              radar_enabled:
-                patch.radar_enabled ??
-                planEntitlements?.dataExtractEnabled ??
-                workspace.radar_enabled,
-              coaching_dynamic_enabled:
-                patch.coaching_dynamic_enabled ??
-                (planEntitlements
-                  ? planEntitlements.tests.scope === "catalog"
-                  : workspace.coaching_dynamic_enabled),
-              ai_model: patch.ai_model ?? workspace.ai_model,
-            }
-          : workspace
-      )
+      prev.map((workspace) => {
+        if (workspace.id !== orgId) return workspace;
+        const hasOverride = Object.prototype.hasOwnProperty.call(
+          patch,
+          "plan_tier_override"
+        );
+        return {
+          ...workspace,
+          plan_tier: patch.plan_tier ?? workspace.plan_tier,
+          plan_tier_override: hasOverride
+            ? (patch.plan_tier_override ?? null)
+            : workspace.plan_tier_override ?? null,
+          ai_enabled:
+            patch.ai_enabled ?? planEntitlements?.aiEnabled ?? workspace.ai_enabled,
+          tpi_enabled:
+            patch.tpi_enabled ?? planEntitlements?.tpiEnabled ?? workspace.tpi_enabled,
+          radar_enabled:
+            patch.radar_enabled ??
+            planEntitlements?.dataExtractEnabled ??
+            workspace.radar_enabled,
+          coaching_dynamic_enabled:
+            patch.coaching_dynamic_enabled ??
+            (planEntitlements
+              ? planEntitlements.tests.scope === "catalog"
+              : workspace.coaching_dynamic_enabled),
+          ai_model: patch.ai_model ?? workspace.ai_model,
+        };
+      })
     );
     setMessage("Plan mis a jour.");
     setSavingId(null);
@@ -384,27 +398,48 @@ export default function AdminCoachesPage() {
                           {isPlaceholder ? (
                             <p className="text-xs text-[var(--muted)]">-</p>
                           ) : (
-                            <div className="flex flex-col gap-1">
-                              <label className="text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                                Plan
-                              </label>
-                              <select
-                                value={workspace.plan_tier}
-                                disabled={savingId === workspace.id}
-                                onChange={(event) =>
-                                  handleUpdate(workspace.id, {
-                                    plan_tier: event.target
-                                      .value as WorkspaceRow["plan_tier"],
-                                  })
-                                }
-                                className="w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs uppercase tracking-wide text-[var(--text)]"
-                              >
-                                {PLAN_TIER_OPTIONS.map((option) => (
-                                  <option key={option.value} value={option.value}>
-                                    {option.label}
-                                  </option>
-                                ))}
-                              </select>
+                            <div className="flex flex-col gap-2">
+                              <div>
+                                <p className="text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                                  Plan Stripe
+                                </p>
+                                <p className="text-xs text-[var(--text)]">
+                                  {PLAN_TIER_OPTIONS.find(
+                                    (option) => option.value === workspace.plan_tier
+                                  )?.label ?? workspace.plan_tier}
+                                </p>
+                              </div>
+                              {workspace.workspace_type === "personal" ? (
+                                <div>
+                                  <label className="text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                                    Override admin
+                                  </label>
+                                  <select
+                                    value={workspace.plan_tier_override ?? ""}
+                                    disabled={savingId === workspace.id}
+                                    onChange={(event) =>
+                                      handleUpdate(workspace.id, {
+                                        plan_tier_override:
+                                          event.target.value === ""
+                                            ? null
+                                            : (event.target
+                                                .value as WorkspaceRow["plan_tier_override"]),
+                                      })
+                                    }
+                                    className="w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs uppercase tracking-wide text-[var(--text)]"
+                                  >
+                                    {PLAN_OVERRIDE_OPTIONS.map((option) => (
+                                      <option key={option.value} value={option.value}>
+                                        {option.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              ) : (
+                                <p className="text-xs text-[var(--muted)]">
+                                  Override indisponible
+                                </p>
+                              )}
                             </div>
                           )}
                         </div>

@@ -14,6 +14,12 @@ const serverSchema = z.object({
   BREVO_SENDER_EMAIL: z.string().email(),
   BREVO_SENDER_NAME: z.string().min(1),
   NEXT_PUBLIC_SITE_URL: z.string().url(),
+  STRIPE_SECRET_KEY: z.string().min(1),
+  STRIPE_WEBHOOK_SECRET: z.string().min(1),
+  STRIPE_PRO_PRICE_MONTH_ID: z.string().min(1),
+  STRIPE_PRO_PRICE_YEAR_ID: z.string().min(1),
+  STRIPE_SUCCESS_URL: z.string().min(1),
+  STRIPE_CANCEL_URL: z.string().min(1),
   NEXT_PUBLIC_ADMIN_EMAILS: z.string().optional(),
 });
 
@@ -31,6 +37,12 @@ const buildTestEnv = () => ({
   BREVO_SENDER_EMAIL: "test@example.com",
   BREVO_SENDER_NAME: "Test Sender",
   NEXT_PUBLIC_SITE_URL: "http://localhost:3000",
+  STRIPE_SECRET_KEY: "test-stripe-secret",
+  STRIPE_WEBHOOK_SECRET: "test-stripe-webhook",
+  STRIPE_PRO_PRICE_MONTH_ID: "price_month_test",
+  STRIPE_PRO_PRICE_YEAR_ID: "price_year_test",
+  STRIPE_SUCCESS_URL: "http://localhost:3000/app/coach/parametres?billing=success",
+  STRIPE_CANCEL_URL: "http://localhost:3000/app/coach/parametres?billing=cancel",
   NEXT_PUBLIC_ADMIN_EMAILS: process.env.NEXT_PUBLIC_ADMIN_EMAILS,
 });
 

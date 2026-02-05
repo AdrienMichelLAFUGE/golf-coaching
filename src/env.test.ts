@@ -23,6 +23,12 @@ describe("env", () => {
     delete process.env.BREVO_SENDER_EMAIL;
     delete process.env.BREVO_SENDER_NAME;
     delete process.env.NEXT_PUBLIC_SITE_URL;
+    delete process.env.STRIPE_SECRET_KEY;
+    delete process.env.STRIPE_WEBHOOK_SECRET;
+    delete process.env.STRIPE_PRO_PRICE_MONTH_ID;
+    delete process.env.STRIPE_PRO_PRICE_YEAR_ID;
+    delete process.env.STRIPE_SUCCESS_URL;
+    delete process.env.STRIPE_CANCEL_URL;
 
     jest.isolateModules(() => {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -46,6 +52,12 @@ describe("env", () => {
     delete process.env.BREVO_SENDER_EMAIL;
     delete process.env.BREVO_SENDER_NAME;
     delete process.env.NEXT_PUBLIC_SITE_URL;
+    delete process.env.STRIPE_SECRET_KEY;
+    delete process.env.STRIPE_WEBHOOK_SECRET;
+    delete process.env.STRIPE_PRO_PRICE_MONTH_ID;
+    delete process.env.STRIPE_PRO_PRICE_YEAR_ID;
+    delete process.env.STRIPE_SUCCESS_URL;
+    delete process.env.STRIPE_CANCEL_URL;
 
     expect(() => {
       jest.isolateModules(() => {

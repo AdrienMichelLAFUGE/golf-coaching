@@ -65,6 +65,28 @@ Server-only :
 - `BREVO_API_KEY`
 - `BREVO_SENDER_EMAIL`
 - `BREVO_SENDER_NAME`
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `STRIPE_PRO_PRICE_MONTH_ID`
+- `STRIPE_PRO_PRICE_YEAR_ID`
+- `STRIPE_SUCCESS_URL`
+- `STRIPE_CANCEL_URL`
+
+Stripe (webhooks attendus) :
+
+- `checkout.session.completed`
+- `checkout.session.async_payment_succeeded`
+- `checkout.session.async_payment_failed`
+- `customer.subscription.created`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`
+- `invoice.paid`
+- `invoice.payment_succeeded`
+- `invoice.payment_failed`
+
+Notes Stripe :
+
+- `STRIPE_SUCCESS_URL` / `STRIPE_CANCEL_URL` doivent être absolues (ou relatives à `NEXT_PUBLIC_SITE_URL`).
 
 ## Workspaces & Org permissions
 

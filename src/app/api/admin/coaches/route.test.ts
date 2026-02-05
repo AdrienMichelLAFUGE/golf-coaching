@@ -317,7 +317,7 @@ describe("PATCH /api/admin/coaches", () => {
     serverMocks.createSupabaseAdminClient.mockReset();
   });
 
-  it("updates profile premium when changing plan tier on personal workspace", async () => {
+  it("blocks plan tier updates (managed by Stripe)", async () => {
     const supabase = {
       auth: {
         getUser: async () => ({
@@ -327,33 +327,9 @@ describe("PATCH /api/admin/coaches", () => {
       },
     } as SupabaseClient;
 
-    const orgSelectSingle = jest.fn(async () => ({
-      data: {
-        id: "org-personal",
-        workspace_type: "personal",
-        owner_profile_id: "coach-1",
-      },
-      error: null,
-    }));
-    const orgSelect = jest.fn(() => ({
-      eq: () => ({
-        single: orgSelectSingle,
-      }),
-    }));
-    const orgUpdateEq = jest.fn(async () => ({ error: null }));
-    const orgUpdate = jest.fn(() => ({ eq: orgUpdateEq }));
-    const profileUpdateEq = jest.fn(async () => ({ error: null }));
-    const profileUpdate = jest.fn(() => ({ eq: profileUpdateEq }));
-
     const admin = {
       auth: { admin: { deleteUser: jest.fn() } },
-      from: jest.fn((table: string) => {
-        if (table === "organizations") {
-          return { select: orgSelect, update: orgUpdate };
-        }
-        if (table === "profiles") {
-          return { update: profileUpdate };
-        }
+      from: jest.fn(() => {
         return {};
       }),
     } as AdminClient;
@@ -368,17 +344,60 @@ describe("PATCH /api/admin/coaches", () => {
     if (!response) {
       throw new Error("Missing response");
     }
+    expect(response.status).toBe(403);
+    const body = await response.json();
+    expect(body.error).toBe("Plan gere via Stripe. Modification interdite.");
+  });
+
+  it("allows plan tier override updates", async () => {
+    const supabase = {
+      auth: {
+        getUser: async () => ({
+          data: { user: { id: "admin-1", email: "adrien.lafuge@outlook.fr" } },
+          error: null,
+        }),
+      },
+    } as SupabaseClient;
+
+    const updateEq = jest.fn().mockResolvedValue({ error: null });
+    const update = jest.fn().mockReturnValue({ eq: updateEq });
+
+    const admin = {
+      auth: { admin: { deleteUser: jest.fn() } },
+      from: jest.fn((table: string) => {
+        if (table === "organizations") {
+          return {
+            select: () => ({
+              eq: () => ({
+                single: async () => ({
+                  data: {
+                    id: "org-personal",
+                    workspace_type: "personal",
+                    owner_profile_id: "coach-1",
+                  },
+                  error: null,
+                }),
+              }),
+            }),
+            update,
+          };
+        }
+        return {};
+      }),
+    } as AdminClient;
+
+    serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
+    serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
+
+    const response = await PATCH(
+      buildRequest({ orgId: "org-personal", plan_tier_override: "pro" })
+    );
+
+    if (!response) {
+      throw new Error("Missing response");
+    }
     expect(response.status).toBe(200);
-    expect(orgSelect).toHaveBeenCalled();
-    expect(orgUpdate).toHaveBeenCalledWith({
-      plan_tier: "pro",
-      ai_enabled: true,
-      tpi_enabled: true,
-      radar_enabled: true,
-      coaching_dynamic_enabled: true,
-    });
-    expect(orgUpdateEq).toHaveBeenCalledWith("id", "org-personal");
-    expect(profileUpdate).toHaveBeenCalledWith({ premium_active: true });
-    expect(profileUpdateEq).toHaveBeenCalledWith("id", "coach-1");
+    expect(update).toHaveBeenCalledWith({ plan_tier_override: "pro" });
+    expect(updateEq).toHaveBeenCalledWith("id", "org-personal");
   });
 });

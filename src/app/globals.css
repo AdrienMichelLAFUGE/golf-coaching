@@ -2,6 +2,8 @@
 
 :root {
   color-scheme: dark;
+  --font-ui: "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-display: "Segoe UI", system-ui, -apple-system, sans-serif;
   --bg: #0b0f14;
   --overlay: rgba(11, 15, 20, 0.72);
   --bg-elevated: #0f1621;

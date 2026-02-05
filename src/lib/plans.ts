@@ -105,6 +105,26 @@ export const resolvePlanTier = (value?: string | null): PlanTier => {
   return PLAN_TIERS.includes(value as PlanTier) ? (value as PlanTier) : "free";
 };
 
+export const resolveEffectivePlanTier = (
+  planTier: string | null | undefined,
+  overrideTier: string | null | undefined,
+  overrideExpiresAt: string | null | undefined,
+  now: Date = new Date()
+): { tier: PlanTier; isOverrideActive: boolean } => {
+  const baseTier = resolvePlanTier(planTier);
+  if (!overrideTier) {
+    return { tier: baseTier, isOverrideActive: false };
+  }
+  const override = resolvePlanTier(overrideTier);
+  if (overrideExpiresAt) {
+    const expires = new Date(overrideExpiresAt);
+    if (!Number.isNaN(expires.valueOf()) && expires <= now) {
+      return { tier: baseTier, isOverrideActive: false };
+    }
+  }
+  return { tier: override, isOverrideActive: true };
+};
+
 export const getWorkspaceEntitlements = (
   tier: PlanTier,
   workspaceType: "personal" | "org" | null

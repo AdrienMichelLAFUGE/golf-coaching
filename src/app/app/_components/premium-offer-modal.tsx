@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
+import { useProfile } from "./profile-context";
 
 type PricingPlan = {
   id: string;
@@ -38,6 +39,12 @@ const isFreePlan = (plan: PricingPlan) => {
   const slug = plan.slug.toLowerCase();
   const label = plan.label.toLowerCase();
   return slug.includes("free") || label.includes("free");
+};
+
+const isProPlan = (plan: PricingPlan) => {
+  const slug = plan.slug.toLowerCase();
+  const label = plan.label.toLowerCase();
+  return slug.includes("pro") || label.includes("pro");
 };
 
 const formatCurrency = (value: string) => {
@@ -87,10 +94,13 @@ export default function PremiumOfferModal({
   onClose,
   notice = null,
 }: PremiumOfferModalProps) {
+  const { planTier, planTierOverrideActive } = useProfile();
   const [plans, setPlans] = useState<PricingPlan[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [billingInterval, setBillingInterval] = useState<"month" | "year">("month");
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [billingError, setBillingError] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -128,6 +138,42 @@ export default function PremiumOfferModal({
 
     loadPlans();
   }, [open]);
+
+  const requestBilling = async (
+    endpoint: "checkout" | "portal",
+    payload?: { interval: "month" | "year" }
+  ) => {
+    setBillingLoading(true);
+    setBillingError("");
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+
+    if (!token) {
+      setBillingError("Session invalide. Reconnecte toi.");
+      setBillingLoading(false);
+      return;
+    }
+
+    const response = await fetch(`/api/billing/${endpoint}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: payload ? JSON.stringify(payload) : undefined,
+    });
+
+    const data = (await response.json()) as { url?: string; error?: string };
+
+    if (!response.ok || !data.url) {
+      setBillingError(data.error ?? "Impossible d ouvrir la page Stripe.");
+      setBillingLoading(false);
+      return;
+    }
+
+    window.location.assign(data.url);
+  };
 
   if (!open) return null;
 
@@ -304,11 +350,13 @@ export default function PremiumOfferModal({
               {planCards.map(({ plan, monthlyPlan, yearlyPlan }) => {
                 const highlight = plan.is_highlighted;
                 const isFree = isFreePlan(plan);
+                const isPro = isProPlan(plan);
+                const isEnterprise = isEnterprisePlan(plan);
                 const showMonthlyEquivalent =
                   plan.interval === "year" &&
                   monthlyPlan &&
                   plan.price_cents > 0 &&
-                  !isEnterprisePlan(plan);
+                  !isEnterprise;
                 const annualSavings =
                   plan.interval === "year" && monthlyPlan && monthlyPlan.price_cents > 0
                     ? Math.round(
@@ -320,12 +368,45 @@ export default function PremiumOfferModal({
                 const amountLabel = priceParts[0] ?? priceLabel;
                 const intervalLabel = priceParts[1] ?? "";
                 const badgeLabel =
-                  plan.badge ?? (highlight && !isEnterprisePlan(plan) ? "Populaire" : null);
+                  plan.badge ?? (highlight && !isEnterprise ? "Populaire" : null);
                 const billedYearlyTotal = yearlyPlan
                   ? `${Math.round(yearlyPlan.price_cents / 100)} ${formatCurrency(
                       yearlyPlan.currency
                     )} facture annuellement`
                   : null;
+                const isCurrentPlan =
+                  (planTier === "free" && isFree) ||
+                  (planTier === "pro" && isPro) ||
+                  (planTier === "enterprise" && isEnterprise);
+                const canManage = planTier === "pro" && isPro && !planTierOverrideActive;
+                const canCheckout = planTier === "free" && isPro && !planTierOverrideActive;
+                const canContact = isEnterprise && !isCurrentPlan;
+                const ctaLabel = (() => {
+                  if (isCurrentPlan) {
+                    if (planTierOverrideActive && planTier === "pro") return "Plan offert";
+                    if (planTier === "pro") return "Gerer mon abonnement";
+                    return "Plan actuel";
+                  }
+                  if (isEnterprise) return "Nous contacter";
+                  return plan.cta_label || "Choisir";
+                })();
+                const isDisabled =
+                  billingLoading ||
+                  (isCurrentPlan && (planTier !== "pro" || planTierOverrideActive)) ||
+                  (!isCurrentPlan && !canManage && !canCheckout && !canContact);
+                const handleCta = () => {
+                  if (canContact) {
+                    window.location.assign("mailto:adrien.lafuge@outlook.fr");
+                    return;
+                  }
+                  if (canManage) {
+                    void requestBilling("portal");
+                    return;
+                  }
+                  if (canCheckout) {
+                    void requestBilling("checkout", { interval: billingInterval });
+                  }
+                };
                 return (
                   <div
                     key={plan.id}
@@ -452,13 +533,17 @@ export default function PremiumOfferModal({
                     ) : null}
                     <button
                       type="button"
+                      onClick={handleCta}
+                      disabled={isDisabled}
                       className={`mt-5 w-full rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-wide transition ${
                         highlight
                           ? "bg-white text-slate-900 hover:bg-white/90"
                           : "border border-black/10 bg-white text-slate-900 hover:bg-slate-50"
-                      }`}
+                      } ${isDisabled ? "cursor-not-allowed opacity-60" : ""}`}
                     >
-                      {plan.cta_label || "Choisir"}
+                      {billingLoading && planTier === "pro" && isCurrentPlan
+                        ? "Ouverture..."
+                        : ctaLabel}
                     </button>
                   </div>
                 );
@@ -466,6 +551,11 @@ export default function PremiumOfferModal({
             </div>
           )}
         </div>
+        {billingError ? (
+          <div className="mx-7 mb-6 rounded-2xl border border-amber-300/30 bg-amber-200/40 px-4 py-3 text-xs text-amber-800">
+            {billingError}
+          </div>
+        ) : null}
         <div className="border-t border-black/10 px-7 py-4 text-xs text-slate-600">
           Besoin d&apos;un plan equipe ou club ? Contacte-nous pour une offre sur mesure : adrien.lafuge@outlook.fr
         </div>

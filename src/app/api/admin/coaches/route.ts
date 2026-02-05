@@ -6,7 +6,7 @@ import {
   createSupabaseServerClientFromRequest,
 } from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
-import { PLAN_ENTITLEMENTS, planTierSchema, resolvePlanTier } from "@/lib/plans";
+import { planTierSchema } from "@/lib/plans";
 
 export const runtime = "nodejs";
 
@@ -18,6 +18,8 @@ type CoachUpdatePayload = {
   coaching_dynamic_enabled?: boolean;
   ai_model?: string | null;
   plan_tier?: string;
+  plan_tier_override?: string | null;
+  plan_tier_override_expires_at?: string | null;
 };
 
 const coachUpdateSchema = z.object({
@@ -28,6 +30,8 @@ const coachUpdateSchema = z.object({
   coaching_dynamic_enabled: z.boolean().optional(),
   ai_model: z.string().nullable().optional(),
   plan_tier: planTierSchema.optional(),
+  plan_tier_override: planTierSchema.nullable().optional(),
+  plan_tier_override_expires_at: z.string().datetime().nullable().optional(),
 });
 
 const coachDeleteSchema = z.object({
@@ -59,7 +63,7 @@ export async function GET(request: Request) {
   const { data: organizations, error: orgError } = await auth.admin
     .from("organizations")
     .select(
-      "id, name, workspace_type, owner_profile_id, plan_tier, ai_enabled, tpi_enabled, radar_enabled, coaching_dynamic_enabled, ai_model"
+      "id, name, workspace_type, owner_profile_id, plan_tier, plan_tier_override, plan_tier_override_expires_at, ai_enabled, tpi_enabled, radar_enabled, coaching_dynamic_enabled, ai_model"
     );
 
   if (orgError) {
@@ -83,6 +87,8 @@ export async function GET(request: Request) {
         workspace_type: org.workspace_type ?? "org",
         owner_profile_id: org.owner_profile_id ?? null,
         plan_tier: org.plan_tier ?? "free",
+        plan_tier_override: org.plan_tier_override ?? null,
+        plan_tier_override_expires_at: org.plan_tier_override_expires_at ?? null,
         ai_enabled: org.ai_enabled ?? false,
         tpi_enabled: org.tpi_enabled ?? false,
         radar_enabled: org.radar_enabled ?? false,
@@ -210,13 +216,10 @@ export async function PATCH(request: Request) {
 
   const updates: Record<string, unknown> = {};
   if (typeof payload.plan_tier === "string") {
-    const resolved = resolvePlanTier(payload.plan_tier);
-    const entitlements = PLAN_ENTITLEMENTS[resolved];
-    updates.plan_tier = resolved;
-    updates.ai_enabled = entitlements.aiEnabled;
-    updates.tpi_enabled = entitlements.tpiEnabled;
-    updates.radar_enabled = entitlements.dataExtractEnabled;
-    updates.coaching_dynamic_enabled = entitlements.tests.scope === "catalog";
+    return NextResponse.json(
+      { error: "Plan gere via Stripe. Modification interdite." },
+      { status: 403 }
+    );
   }
   if (typeof payload.ai_enabled === "boolean") {
     updates.ai_enabled = payload.ai_enabled;
@@ -232,6 +235,16 @@ export async function PATCH(request: Request) {
   }
   if (typeof payload.ai_model === "string") {
     updates.ai_model = payload.ai_model.trim() || null;
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "plan_tier_override")) {
+    updates.plan_tier_override =
+      typeof payload.plan_tier_override === "string"
+        ? payload.plan_tier_override
+        : null;
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "plan_tier_override_expires_at")) {
+    updates.plan_tier_override_expires_at =
+      payload.plan_tier_override_expires_at ?? null;
   }
 
   if (Object.keys(updates).length === 0) {
@@ -258,18 +271,7 @@ export async function PATCH(request: Request) {
   }
 
   if (orgData.workspace_type === "personal" && orgData.owner_profile_id) {
-    if (typeof payload.plan_tier === "string") {
-      const resolved = resolvePlanTier(payload.plan_tier);
-      const premiumActive = resolved !== "free";
-      const { error: premiumError } = await auth.admin
-        .from("profiles")
-        .update({ premium_active: premiumActive })
-        .eq("id", orgData.owner_profile_id);
-
-      if (premiumError) {
-        return NextResponse.json({ error: premiumError.message }, { status: 500 });
-      }
-    } else if (typeof payload.ai_enabled === "boolean") {
+    if (typeof payload.ai_enabled === "boolean") {
       const { error: premiumError } = await auth.admin
         .from("profiles")
         .update({ premium_active: payload.ai_enabled })

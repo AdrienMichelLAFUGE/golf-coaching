@@ -1,16 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Fraunces, Space_Grotesk } from "next/font/google";
 import "./globals.css";
-
-const spaceGrotesk = Space_Grotesk({
-  subsets: ["latin"],
-  variable: "--font-ui",
-});
-
-const fraunces = Fraunces({
-  subsets: ["latin"],
-  variable: "--font-display",
-});
 
 export const metadata: Metadata = {
   title: "SwingFlow",
@@ -29,9 +18,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="fr">
-      <body className={`${spaceGrotesk.variable} ${fraunces.variable} antialiased`}>
-        {children}
-      </body>
+      <body className="antialiased">{children}</body>
     </html>
   );
 }

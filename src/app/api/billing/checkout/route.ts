@@ -1,0 +1,130 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import {
+  createSupabaseAdminClient,
+  createSupabaseServerClientFromRequest,
+} from "@/lib/supabase/server";
+import { formatZodError, parseRequestJson } from "@/lib/validation";
+import { resolveEffectivePlanTier } from "@/lib/plans";
+import { stripe } from "@/lib/stripe";
+import { resolveCancelUrl, resolveProPriceId, resolveSuccessUrl } from "@/lib/billing";
+
+export const runtime = "nodejs";
+
+const checkoutSchema = z.object({
+  interval: z.enum(["month", "year"]),
+});
+
+const allowedRoles = new Set(["owner", "coach"]);
+
+export async function POST(request: Request) {
+  const parsed = await parseRequestJson(request, checkoutSchema);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Payload invalide.", details: formatZodError(parsed.error) },
+      { status: 422 }
+    );
+  }
+
+  const supabase = createSupabaseServerClientFromRequest(request);
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  const userId = userData.user?.id;
+  const userEmail = userData.user?.email ?? null;
+
+  if (userError || !userId) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  const admin = createSupabaseAdminClient();
+  const { data: profile, error: profileError } = await admin
+    .from("profiles")
+    .select("id, role")
+    .eq("id", userId)
+    .single();
+
+  if (profileError || !profile) {
+    return NextResponse.json({ error: "Profil introuvable." }, { status: 403 });
+  }
+
+  if (!allowedRoles.has(profile.role)) {
+    return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
+  }
+
+  const { data: org, error: orgError } = await admin
+    .from("organizations")
+    .select(
+      "id, plan_tier, plan_tier_override, plan_tier_override_expires_at, workspace_type, owner_profile_id, stripe_customer_id"
+    )
+    .eq("workspace_type", "personal")
+    .eq("owner_profile_id", profile.id)
+    .maybeSingle();
+
+  if (orgError || !org) {
+    return NextResponse.json({ error: "Organisation personnelle introuvable." }, { status: 403 });
+  }
+
+  if (org.owner_profile_id !== profile.id) {
+    return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
+  }
+
+  const { tier: planTier, isOverrideActive } = resolveEffectivePlanTier(
+    org.plan_tier,
+    org.plan_tier_override,
+    org.plan_tier_override_expires_at
+  );
+  if (planTier === "enterprise") {
+    return NextResponse.json(
+      { error: "Plan Entreprise : contacte le support." },
+      { status: 409 }
+    );
+  }
+
+  if (planTier === "pro") {
+    if (isOverrideActive) {
+      return NextResponse.json(
+        { error: "Plan Pro offert par un admin." },
+        { status: 409 }
+      );
+    }
+    if (!org.stripe_customer_id) {
+      return NextResponse.json(
+        { error: "Abonnement introuvable. Contacte le support." },
+        { status: 409 }
+      );
+    }
+    const portal = await stripe.billingPortal.sessions.create({
+      customer: org.stripe_customer_id,
+      return_url: resolveSuccessUrl(),
+    });
+    return NextResponse.json({ url: portal.url, type: "portal" });
+  }
+
+  const priceId = resolveProPriceId(parsed.data.interval);
+  if (!priceId) {
+    return NextResponse.json({ error: "Plan Pro indisponible." }, { status: 500 });
+  }
+
+  if (!org.stripe_customer_id && !userEmail) {
+    return NextResponse.json({ error: "Email utilisateur introuvable." }, { status: 400 });
+  }
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "subscription",
+    line_items: [{ price: priceId, quantity: 1 }],
+    customer: org.stripe_customer_id ?? undefined,
+    customer_email: org.stripe_customer_id ? undefined : userEmail ?? undefined,
+    success_url: resolveSuccessUrl(),
+    cancel_url: resolveCancelUrl(),
+    metadata: {
+      org_id: org.id,
+      owner_id: profile.id,
+      plan: "pro",
+    },
+  });
+
+  if (!session.url) {
+    return NextResponse.json({ error: "Session Stripe invalide." }, { status: 500 });
+  }
+
+  return NextResponse.json({ url: session.url });
+}
