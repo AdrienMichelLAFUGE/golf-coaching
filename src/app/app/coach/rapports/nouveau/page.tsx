@@ -14,10 +14,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { defaultSectionTemplates } from "@/lib/default-section-templates";
 import { PLAN_ENTITLEMENTS, PLAN_LABELS } from "@/lib/plans";
+import { RADAR_LOADING_PHRASES, TPI_LOADING_PHRASES } from "@/lib/loading-phrases";
+import { useRotatingPhrase } from "@/lib/use-rotating-phrase";
 import RoleGuard from "../../../_components/role-guard";
 import { useProfile } from "../../../_components/profile-context";
 import PageBack from "../../../_components/page-back";
 import PremiumOfferModal from "../../../_components/premium-offer-modal";
+import RadarReviewModal from "../../../_components/radar-review-modal";
 import RadarCharts, {
   defaultRadarConfig,
   type RadarConfig,
@@ -72,7 +75,7 @@ type ReportSection = {
 
 type RadarFile = {
   id: string;
-  status: "processing" | "ready" | "error";
+  status: "processing" | "ready" | "error" | "review";
   original_name: string | null;
   columns: RadarColumn[];
   shots: RadarShot[];
@@ -502,6 +505,7 @@ export default function CoachReportBuilderPage() {
   const [radarTech, setRadarTech] = useState<RadarTech>("flightscope");
   const [radarUploading, setRadarUploading] = useState(false);
   const [radarUploadProgress, setRadarUploadProgress] = useState(0);
+  const [radarReview, setRadarReview] = useState<RadarFile | null>(null);
   const [radarUploadBatch, setRadarUploadBatch] = useState<{
     current: number;
     total: number;
@@ -517,6 +521,7 @@ export default function CoachReportBuilderPage() {
   const [radarConfigSaving, setRadarConfigSaving] = useState(false);
   const [radarConfigError, setRadarConfigError] = useState("");
   const [tpiContext, setTpiContext] = useState("");
+  const [tpiContextLoading, setTpiContextLoading] = useState(false);
   const [studentId, setStudentId] = useState("");
   const [title, setTitle] = useState("");
   const [reportDate, setReportDate] = useState(() => formatDateInput(new Date()));
@@ -606,6 +611,14 @@ export default function CoachReportBuilderPage() {
     : aiProofreadEnabled
       ? "Relecture uniquement"
       : "Plan requis";
+  const radarLoadingPhrase = useRotatingPhrase(
+    RADAR_LOADING_PHRASES,
+    radarUploading,
+    { intervalMs: 14000 }
+  );
+  const tpiLoadingPhrase = useRotatingPhrase(TPI_LOADING_PHRASES, tpiContextLoading, {
+    intervalMs: 14000,
+  });
   const isDraft = !sentAt;
   const showPublish = isDraft;
   const sendLabel = "Publier le rapport";
@@ -1656,7 +1669,7 @@ export default function CoachReportBuilderPage() {
       const targetStudentId = student ?? studentId;
       if (!targetStudentId) {
         setRadarFiles([]);
-        return;
+        return [];
       }
       setRadarLoading(true);
       setRadarError("");
@@ -1665,7 +1678,7 @@ export default function CoachReportBuilderPage() {
       if (linkedIds.length === 0) {
         setRadarFiles([]);
         setRadarLoading(false);
-        return;
+        return [];
       }
 
       const { data, error } = await supabase
@@ -1680,7 +1693,7 @@ export default function CoachReportBuilderPage() {
         setRadarError(error.message);
         setRadarFiles([]);
         setRadarLoading(false);
-        return;
+        return [];
       }
 
       const normalized =
@@ -1696,6 +1709,7 @@ export default function CoachReportBuilderPage() {
 
       setRadarFiles(normalized as RadarFile[]);
       setRadarLoading(false);
+      return normalized as RadarFile[];
     },
     [studentId, resolveLinkedStudentIds]
   );
@@ -1866,10 +1880,46 @@ export default function CoachReportBuilderPage() {
       return false;
     }
 
-    await loadRadarFiles();
+    const refreshed = await loadRadarFiles();
     stopRadarUploadProgress();
     setRadarUploadProgress(100);
+    const reviewFile = refreshed.find((file) => file.id === radarRow.id);
+    if (reviewFile?.status === "review") {
+      setRadarReview(reviewFile);
+    }
     return true;
+  };
+
+  const handleConfirmRadarReview = async (payload: {
+    columns: RadarColumn[];
+    shots: RadarShot[];
+    club: "auto" | "driver" | "iron";
+  }) => {
+    if (!radarReview) return;
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      throw new Error("Session invalide.");
+    }
+    const response = await fetch("/api/radar/confirm", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        radarFileId: radarReview.id,
+        columns: payload.columns,
+        shots: payload.shots,
+        club: payload.club,
+      }),
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.error ?? "Validation impossible.");
+    }
+    await loadRadarFiles();
+    setRadarReview(null);
   };
 
   const handleRadarUploadBatch = async (files: File[]) => {
@@ -1888,37 +1938,42 @@ export default function CoachReportBuilderPage() {
   };
 
   const loadTpiContext = async (reportId?: string | null) => {
-    if (!reportId) {
-      setTpiContext("");
-      return;
-    }
-    const { data, error } = await supabase
-      .from("tpi_tests")
-      .select(
-        "test_name, result_color, mini_summary, details, details_translated, position"
-      )
-      .eq("report_id", reportId)
-      .order("position", { ascending: true });
+    setTpiContextLoading(true);
+    try {
+      if (!reportId) {
+        setTpiContext("");
+        return;
+      }
+      const { data, error } = await supabase
+        .from("tpi_tests")
+        .select(
+          "test_name, result_color, mini_summary, details, details_translated, position"
+        )
+        .eq("report_id", reportId)
+        .order("position", { ascending: true });
 
-    if (error) {
-      setTpiContext("");
-      return;
-    }
+      if (error) {
+        setTpiContext("");
+        return;
+      }
 
-    const context =
-      data
-        ?.map((test, index) => {
-          const color = test.result_color;
-          const details = (
-            test.details_translated ||
-            test.details ||
-            test.mini_summary ||
-            ""
-          ).trim();
-          return `${index + 1}. ${test.test_name} (${color})\n${details}`.trim();
-        })
-        .join("\n\n") ?? "";
-    setTpiContext(context);
+      const context =
+        data
+          ?.map((test, index) => {
+            const color = test.result_color;
+            const details = (
+              test.details_translated ||
+              test.details ||
+              test.mini_summary ||
+              ""
+            ).trim();
+            return `${index + 1}. ${test.test_name} (${color})\n${details}`.trim();
+          })
+          .join("\n\n") ?? "";
+      setTpiContext(context);
+    } finally {
+      setTpiContextLoading(false);
+    }
   };
 
   const loadSectionTemplates = useCallback(async () => {
@@ -5937,6 +5992,11 @@ export default function CoachReportBuilderPage() {
                   <p className="mt-2 text-xs text-[var(--muted)]">
                     Organise les sections et remplis le contenu. Drag & drop actif.
                   </p>
+                  {tpiContextLoading ? (
+                    <p className="mt-2 text-xs text-[var(--muted)]" aria-live="polite">
+                      {tpiLoadingPhrase}
+                    </p>
+                  ) : null}
                   {tpiContext ? (
                     <div className="mt-3 inline-flex flex-wrap items-center gap-2 rounded-full border border-rose-300/20 bg-rose-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-rose-100">
                       <span className="h-1.5 w-1.5 rounded-full bg-rose-300" />
@@ -6472,6 +6532,7 @@ export default function CoachReportBuilderPage() {
                       const radarFile = section.radarFileId
                         ? radarFileMap.get(section.radarFileId)
                         : null;
+                      const radarFileReady = radarFile?.status === "ready";
                       const radarPreview = radarFile
                         ? `${radarFile.original_name ?? "Fichier datas"} • ${
                             radarFile.shots?.length ?? 0
@@ -6914,10 +6975,10 @@ export default function CoachReportBuilderPage() {
                                           : file.organizations?.name ?? null
                                       );
                                       return (
-                                        <option key={file.id} value={file.id}>
+                                        <option key={file.id} value={file.id} disabled={file.status !== "ready"}>
                                           {file.original_name || "Export datas"}
                                           {sourceLabel ? ` • ${sourceLabel}` : ""}{" "}
-                                          {file.status === "ready" ? "" : "(analyse)"}
+                                          {file.status === "ready" ? "" : file.status === "review" ? "(a verifier)" : "(analyse)"}
                                         </option>
                                       );
                                     })}
@@ -6967,9 +7028,9 @@ export default function CoachReportBuilderPage() {
                                     onClick={() =>
                                       handleOpenRadarSectionConfig(section.id)
                                     }
-                                    disabled={!section.radarFileId || radarLocked}
+                                    disabled={!section.radarFileId || radarLocked || !radarFileReady}
                                     className={`rounded-full border px-3 py-2 text-[0.65rem] uppercase tracking-wide transition ${
-                                      section.radarFileId && !radarLocked
+                                      section.radarFileId && !radarLocked && radarFileReady
                                         ? "border-white/10 bg-white/5 text-[var(--text)] hover:bg-white/10"
                                         : "cursor-not-allowed border-white/5 bg-white/5 text-[var(--muted)]"
                                     }`}
@@ -7038,6 +7099,14 @@ export default function CoachReportBuilderPage() {
                                         style={{ width: `${radarUploadProgress}%` }}
                                       />
                                     </div>
+                                    {radarLoadingPhrase ? (
+                                      <p
+                                        className="mt-2 text-[0.65rem] text-[var(--muted)]"
+                                        aria-live="polite"
+                                      >
+                                        {radarLoadingPhrase}
+                                      </p>
+                                    ) : null}
                                   </div>
                                 ) : null}
                                 {radarError ? (
@@ -7050,6 +7119,36 @@ export default function CoachReportBuilderPage() {
                                 ) : null}
                                 {radarFile ? (
                                   (() => {
+                                    if (radarFile.status === "review") {
+                                      return (
+                                        <div className="rounded-xl border border-amber-300/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+                                          <div className="flex flex-wrap items-center justify-between gap-3">
+                                            <div>Extraction a verifier avant affichage.</div>
+                                            <button
+                                              type="button"
+                                              onClick={() => setRadarReview(radarFile)}
+                                              className="rounded-full border border-amber-300/30 bg-amber-400/20 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-amber-100 transition hover:bg-amber-400/30"
+                                            >
+                                              Verifier
+                                            </button>
+                                          </div>
+                                        </div>
+                                      );
+                                    }
+                                    if (radarFile.status === "processing") {
+                                      return (
+                                        <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
+                                          Extraction en cours...
+                                        </div>
+                                      );
+                                    }
+                                    if (radarFile.status === "error") {
+                                      return (
+                                        <div className="rounded-xl border border-rose-300/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+                                          Erreur d extraction.
+                                        </div>
+                                      );
+                                    }
                                     const baseConfig =
                                       section.radarConfig ??
                                       radarFile.config ??
@@ -8018,11 +8117,11 @@ export default function CoachReportBuilderPage() {
                                     },
                                   }))
                                 }
-                                className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
+                                className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide transition ${
                                   (radarConfigDraft.options?.aiPreset ?? "standard") ===
                                   option.id
                                     ? "border-emerald-300/40 bg-emerald-400/20 text-emerald-50"
-                                    : "border-emerald-200/20 text-emerald-100/70"
+                                    : "border-emerald-200/20 text-emerald-100/70 hover:border-emerald-300/60 hover:bg-emerald-400/30 hover:text-emerald-100"
                                 }`}
                               >
                                 {option.label}
@@ -8068,11 +8167,11 @@ export default function CoachReportBuilderPage() {
                                     },
                                   }))
                                 }
-                                className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
+                                className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide transition ${
                                   (radarConfigDraft.options?.aiSyntax ??
                                     "exp-tech-solution") === option.id
                                     ? "border-emerald-300/40 bg-emerald-400/20 text-emerald-50"
-                                    : "border-emerald-200/20 text-emerald-100/70"
+                                    : "border-emerald-200/20 text-emerald-100/70 hover:border-emerald-300/60 hover:bg-emerald-400/30 hover:text-emerald-100"
                                 }`}
                               >
                                 {option.label}
@@ -8224,7 +8323,7 @@ export default function CoachReportBuilderPage() {
                               },
                             }))
                           }
-                          className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
+                          className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide transition ${
                             radarConfigDraft.mode !== "custom"
                               ? "border-white/10 text-[var(--muted)] opacity-60"
                               : "border-white/20 text-[var(--text)] hover:text-white"
@@ -8249,7 +8348,7 @@ export default function CoachReportBuilderPage() {
                               },
                             }))
                           }
-                          className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
+                          className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide transition ${
                             radarConfigDraft.mode !== "custom"
                               ? "border-white/10 text-[var(--muted)] opacity-60"
                               : "border-white/20 text-[var(--text)] hover:text-white"
@@ -8398,7 +8497,7 @@ export default function CoachReportBuilderPage() {
                                   [item.id]: choice,
                                 }))
                               }
-                              className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
+                              className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide transition ${
                                 radarAiQaAnswers[item.id] === choice
                                   ? "border-violet-300/40 bg-violet-400/10 text-violet-100"
                                   : "border-white/10 bg-white/5 text-[var(--muted)] hover:text-[var(--text)]"
@@ -8470,6 +8569,13 @@ export default function CoachReportBuilderPage() {
               </div>
             </div>
           </div>
+        ) : null}
+        {radarReview ? (
+          <RadarReviewModal
+            file={radarReview}
+            onClose={() => setRadarReview(null)}
+            onConfirm={handleConfirmRadarReview}
+          />
         ) : null}
         <PremiumOfferModal
           open={premiumModalOpen}

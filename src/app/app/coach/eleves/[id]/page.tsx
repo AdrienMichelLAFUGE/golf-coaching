@@ -2,14 +2,17 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { PLAN_ENTITLEMENTS, PLAN_LABELS } from "@/lib/plans";
+import { RADAR_LOADING_PHRASES, TPI_LOADING_PHRASES } from "@/lib/loading-phrases";
+import { useRotatingPhrase } from "@/lib/use-rotating-phrase";
 import RoleGuard from "../../../_components/role-guard";
 import { useProfile } from "../../../_components/profile-context";
 import PageBack from "../../../_components/page-back";
 import PremiumOfferModal from "../../../_components/premium-offer-modal";
 import ShareStudentModal from "../../../_components/share-student-modal";
+import RadarReviewModal from "../../../_components/radar-review-modal";
 import RadarCharts, {
   defaultRadarConfig,
   type RadarConfig,
@@ -80,7 +83,7 @@ type TpiTest = {
 
 type RadarFile = {
   id: string;
-  status: "processing" | "ready" | "error";
+  status: "processing" | "ready" | "error" | "review";
   source: "flightscope" | "trackman" | "smart2move" | "unknown";
   original_name: string | null;
   file_url: string;
@@ -188,6 +191,7 @@ export default function CoachStudentDetailPage() {
     planTier,
   } = useProfile();
   const params = useParams();
+  const router = useRouter();
   const studentId = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const [student, setStudent] = useState<Student | null>(null);
   const [reports, setReports] = useState<Report[]>([]);
@@ -217,6 +221,7 @@ export default function CoachStudentDetailPage() {
   const radarInputRef = useRef<HTMLInputElement | null>(null);
   const radarProgressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const [radarPreview, setRadarPreview] = useState<RadarFile | null>(null);
+  const [radarReview, setRadarReview] = useState<RadarFile | null>(null);
   const [radarConfigOpen, setRadarConfigOpen] = useState(false);
   const [radarConfigDraft, setRadarConfigDraft] =
     useState<RadarConfig>(defaultRadarConfig);
@@ -254,6 +259,14 @@ export default function CoachStudentDetailPage() {
   const tpiAddonEnabled = isAdmin || entitlements.tpiEnabled;
   const radarAddonEnabled = isAdmin || entitlements.dataExtractEnabled;
   const tpiLocked = !tpiAddonEnabled;
+  const radarLoadingPhrase = useRotatingPhrase(
+    RADAR_LOADING_PHRASES,
+    radarUploading,
+    { intervalMs: 14000 }
+  );
+  const tpiLoadingPhrase = useRotatingPhrase(TPI_LOADING_PHRASES, tpiUploading, {
+    intervalMs: 14000,
+  });
   const radarLocked = !radarAddonEnabled;
   const isOwner = profile?.role === "owner";
   const isAssigned = assignmentCoaches.some((entry) => entry.coach_id === profile?.id);
@@ -506,7 +519,7 @@ export default function CoachStudentDetailPage() {
   );
 
   const loadRadars = useCallback(async () => {
-    if (!studentId) return;
+    if (!studentId) return [];
     setRadarLoading(true);
     setRadarError("");
 
@@ -514,7 +527,7 @@ export default function CoachStudentDetailPage() {
     if (linkedIds.length === 0) {
       setRadarFiles([]);
       setRadarLoading(false);
-      return;
+      return [];
     }
 
     const { data, error } = await supabase
@@ -529,7 +542,7 @@ export default function CoachStudentDetailPage() {
       setRadarError(error.message);
       setRadarFiles([]);
       setRadarLoading(false);
-      return;
+      return [];
     }
 
     const normalized =
@@ -545,6 +558,7 @@ export default function CoachStudentDetailPage() {
 
     setRadarFiles(normalized as RadarFile[]);
     setRadarLoading(false);
+    return normalized as RadarFile[];
   }, [studentId, resolveLinkedStudentIds]);
 
   const stopTpiProgress = () => {
@@ -852,10 +866,46 @@ export default function CoachStudentDetailPage() {
       return;
     }
 
-    await loadRadars();
+    const refreshed = await loadRadars();
     stopRadarProgress();
     setRadarProgress(100);
     setRadarUploading(false);
+    const reviewFile = refreshed.find((file) => file.id === radarRow.id);
+    if (reviewFile?.status === "review") {
+      setRadarReview(reviewFile);
+    }
+  };
+
+  const handleConfirmRadarReview = async (payload: {
+    columns: RadarColumn[];
+    shots: RadarShot[];
+    club: "auto" | "driver" | "iron";
+  }) => {
+    if (!radarReview) return;
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      throw new Error("Session invalide.");
+    }
+    const response = await fetch("/api/radar/confirm", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        radarFileId: radarReview.id,
+        columns: payload.columns,
+        shots: payload.shots,
+        club: payload.club,
+      }),
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.error ?? "Validation impossible.");
+    }
+    await loadRadars();
+    setRadarReview(null);
   };
 
   useEffect(() => {
@@ -871,11 +921,16 @@ export default function CoachStudentDetailPage() {
           "id, first_name, last_name, email, avatar_url, invited_at, activated_at, created_at, tpi_report_id, playing_hand"
         )
         .eq("id", studentId)
-        .single();
+        .maybeSingle();
 
       if (studentError) {
         setError(studentError.message);
         setLoading(false);
+        return;
+      }
+      if (!studentData) {
+        setLoading(false);
+        router.replace("/app/coach/eleves");
         return;
       }
 
@@ -936,7 +991,7 @@ export default function CoachStudentDetailPage() {
     };
 
     loadStudent();
-  }, [studentId, loadTpi, userEmail, isOwner]);
+  }, [studentId, loadTpi, userEmail, isOwner, router]);
 
   useEffect(() => {
     if (workspaceType !== "org" || !studentId || !organization?.id) {
@@ -1874,6 +1929,11 @@ export default function CoachStudentDetailPage() {
                       style={{ width: `${tpiProgress}%` }}
                     />
                   </div>
+                  {tpiLoadingPhrase ? (
+                    <p className="mt-2 text-[0.65rem] text-[var(--muted)]" aria-live="polite">
+                      {tpiLoadingPhrase}
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
               {tpiLoading ? (
@@ -2120,6 +2180,11 @@ export default function CoachStudentDetailPage() {
                       style={{ width: `${radarProgress}%` }}
                     />
                   </div>
+                  {radarLoadingPhrase ? (
+                    <p className="mt-2 text-[0.65rem] text-[var(--muted)]" aria-live="polite">
+                      {radarLoadingPhrase}
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
               {radarLoading ? (
@@ -2162,6 +2227,7 @@ export default function CoachStudentDetailPage() {
                   radarVisibleFiles.map((file) => {
                     const shotCount = file.shots?.length ?? 0;
                     const isReady = file.status === "ready";
+                    const isReview = file.status === "review";
                     const badgeTone =
                       file.status === "ready"
                         ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
@@ -2173,6 +2239,9 @@ export default function CoachStudentDetailPage() {
                     const configDisabled = !isReady || isReadOnly || isExternalFile;
                     const deleteDisabled =
                       radarDeletingId === file.id || isReadOnly || isExternalFile;
+                    const canReview = isReview && !isReadOnly && !isExternalFile;
+                    const canPreview = isReady;
+                    const canOpen = canPreview || canReview;
                     const sourceLabel = formatSourceLabel(
                       file.org_id,
                       getOrgName(file.organizations)
@@ -2202,6 +2271,8 @@ export default function CoachStudentDetailPage() {
                             >
                               {file.status === "ready"
                                 ? "Pret"
+                                : file.status === "review"
+                                  ? "A verifier"
                                 : file.status === "error"
                                   ? "Erreur"
                                   : "Analyse"}
@@ -2234,15 +2305,17 @@ export default function CoachStudentDetailPage() {
                         <div className="flex flex-wrap items-center gap-2">
                           <button
                             type="button"
-                            disabled={!isReady}
-                            onClick={() => setRadarPreview(file)}
+                            disabled={!canOpen}
+                            onClick={() =>
+                              canReview ? setRadarReview(file) : setRadarPreview(file)
+                            }
                             className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
-                              isReady
+                              canOpen
                                 ? "border-white/10 bg-white/10 text-[var(--text)] hover:bg-white/20"
                                 : "cursor-not-allowed border-white/5 bg-white/5 text-[var(--muted)]"
                             }`}
                           >
-                            Voir
+                            {isReview ? "Verifier" : "Voir"}
                           </button>
                           <button
                             type="button"
@@ -2352,6 +2425,14 @@ export default function CoachStudentDetailPage() {
                   </div>
                 </div>
               </div>
+            ) : null}
+
+            {radarReview ? (
+              <RadarReviewModal
+                file={radarReview}
+                onClose={() => setRadarReview(null)}
+                onConfirm={handleConfirmRadarReview}
+              />
             ) : null}
 
             {radarConfigOpen && radarConfigFile ? (
@@ -2469,11 +2550,11 @@ export default function CoachStudentDetailPage() {
                                         },
                                       }))
                                     }
-                                    className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
+                                    className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide transition ${
                                       (radarConfigDraft.options?.aiPreset ??
                                         "standard") === option.id
                                         ? "border-emerald-300/40 bg-emerald-400/20 text-emerald-50"
-                                        : "border-emerald-200/20 text-emerald-100/70"
+                                        : "border-emerald-200/20 text-emerald-100/70 hover:border-emerald-300/60 hover:bg-emerald-400/30 hover:text-emerald-100"
                                     }`}
                                   >
                                     {option.label}
@@ -2519,11 +2600,11 @@ export default function CoachStudentDetailPage() {
                                         },
                                       }))
                                     }
-                                    className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
+                                    className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide transition ${
                                       (radarConfigDraft.options?.aiSyntax ??
                                         "exp-tech-solution") === option.id
                                         ? "border-emerald-300/40 bg-emerald-400/20 text-emerald-50"
-                                        : "border-emerald-200/20 text-emerald-100/70"
+                                        : "border-emerald-200/20 text-emerald-100/70 hover:border-emerald-300/60 hover:bg-emerald-400/30 hover:text-emerald-100"
                                     }`}
                                   >
                                     {option.label}
@@ -2679,7 +2760,7 @@ export default function CoachStudentDetailPage() {
                                   },
                                 }))
                               }
-                              className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
+                              className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide transition ${
                                 radarConfigDraft.mode !== "custom"
                                   ? "border-white/10 text-[var(--muted)] opacity-60"
                                   : "border-white/20 text-[var(--text)] hover:text-white"
@@ -2704,7 +2785,7 @@ export default function CoachStudentDetailPage() {
                                   },
                                 }))
                               }
-                              className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${
+                              className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide transition ${
                                 radarConfigDraft.mode !== "custom"
                                   ? "border-white/10 text-[var(--muted)] opacity-60"
                                   : "border-white/20 text-[var(--text)] hover:text-white"

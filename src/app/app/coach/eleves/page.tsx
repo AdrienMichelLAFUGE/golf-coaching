@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../_components/role-guard";
 import PageBack from "../../_components/page-back";
@@ -74,6 +74,7 @@ export default function CoachStudentsPage() {
   const [coachOptionsLoading, setCoachOptionsLoading] = useState(false);
   const [coachOptionsError, setCoachOptionsError] = useState("");
   const [selectedCoachIds, setSelectedCoachIds] = useState<string[]>([]);
+  const [tpiActiveById, setTpiActiveById] = useState<Record<string, boolean>>({});
   const isOrgWorkspace =
     organization?.workspace_type === "org" ||
     currentMembership?.organization?.workspace_type === "org";
@@ -117,7 +118,7 @@ export default function CoachStudentsPage() {
     });
   }, [query, students]);
 
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
     const { data: userData, error: userError } = await supabase.auth.getUser();
     const userId = userData.user?.id;
     if (userError || !userId) {
@@ -142,9 +143,35 @@ export default function CoachStudentsPage() {
     }
 
     setOrgId(data.org_id);
-  };
+  }, []);
 
-  const loadStudents = async () => {
+  const loadTpiStatus = useCallback(async (studentIds: string[]) => {
+    if (!studentIds.length) {
+      setTpiActiveById({});
+      return;
+    }
+    const { data, error } = await supabase.rpc("get_students_tpi_status", {
+      _student_ids: studentIds,
+    });
+    if (error) {
+      setTpiActiveById({});
+      return;
+    }
+    const map: Record<string, boolean> = {};
+    const rows = (data ?? []) as Array<{
+      student_id: string | null;
+      tpi_active: boolean | null;
+    }>;
+    rows.forEach((row) => {
+      const studentId = row?.student_id as string | undefined;
+      if (studentId) {
+        map[studentId] = Boolean(row?.tpi_active);
+      }
+    });
+    setTpiActiveById(map);
+  }, []);
+
+  const loadStudents = useCallback(async () => {
     setLoading(true);
     setError("");
     const { data, error: fetchError } = await supabase
@@ -156,11 +183,15 @@ export default function CoachStudentsPage() {
 
     if (fetchError) {
       setError(fetchError.message);
+      setStudents([]);
+      setTpiActiveById({});
     } else {
-      setStudents(data ?? []);
+      const rows = (data ?? []) as Student[];
+      setStudents(rows);
+      await loadTpiStatus(rows.map((student) => student.id));
     }
     setLoading(false);
-  };
+  }, [loadTpiStatus]);
 
   useEffect(() => {
     let cancelled = false;
@@ -173,7 +204,7 @@ export default function CoachStudentsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadProfile, loadStudents]);
 
   useEffect(() => {
     let cancelled = false;
@@ -794,6 +825,8 @@ export default function CoachStudentsPage() {
                 const inviteDisabled = Boolean(student.activated_at);
                 const isShared = sharedStudentSet.has(student.id);
                 const isReadOnlyAction = isShared || isOrgReadOnly;
+                const tpiActive =
+                  tpiActiveById[student.id] ?? Boolean(student.tpi_report_id);
                 const inviteLabel = inviteDisabled
                   ? "Inviter"
                   : invitingId === student.id
@@ -854,7 +887,7 @@ export default function CoachStudentsPage() {
                           Partage
                         </span>
                       ) : null}
-                      {student.tpi_report_id ? (
+                      {tpiActive ? (
                         <span className="inline-flex self-start rounded-full border border-rose-300/30 bg-rose-400/10 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-rose-200">
                           TPI actif
                         </span>

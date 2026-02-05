@@ -125,7 +125,7 @@ const buildGridLines = ({
         x2={x}
         y1={padding}
         y2={height - padding}
-        stroke="rgba(255,255,255,0.08)"
+        stroke="var(--chart-grid-1)"
         strokeWidth="1"
       />
     );
@@ -136,7 +136,7 @@ const buildGridLines = ({
         x2={width - padding}
         y1={y}
         y2={y}
-        stroke="rgba(255,255,255,0.08)"
+        stroke="var(--chart-grid-1)"
         strokeWidth="1"
       />
     );
@@ -978,7 +978,7 @@ const ScatterPlot = ({
           width={width - padding * 2}
           height={height - padding * 2}
           fill="none"
-          stroke="rgba(255,255,255,0.1)"
+          stroke="var(--chart-grid-2)"
           strokeWidth="1"
         />
         {meanX !== null ? (
@@ -987,7 +987,7 @@ const ScatterPlot = ({
             x2={padding + ((meanX - xMin) / xRange) * (width - padding * 2)}
             y1={padding}
             y2={height - padding}
-            stroke="rgba(255,255,255,0.2)"
+            stroke="var(--chart-grid-6)"
             strokeDasharray="4 4"
           />
         ) : null}
@@ -997,7 +997,7 @@ const ScatterPlot = ({
             x2={width - padding}
             y1={height - padding - ((meanY - yMin) / yRange) * (height - padding * 2)}
             y2={height - padding - ((meanY - yMin) / yRange) * (height - padding * 2)}
-            stroke="rgba(255,255,255,0.2)"
+            stroke="var(--chart-grid-6)"
             strokeDasharray="4 4"
           />
         ) : null}
@@ -1037,7 +1037,7 @@ const ScatterPlot = ({
               ((regression.intercept + regression.slope * xMax - yMin) / yRange) *
                 (height - padding * 2)
             }
-            stroke="rgba(255,255,255,0.35)"
+            stroke="var(--chart-grid-strong)"
             strokeWidth="1.2"
           />
         ) : null}
@@ -1067,7 +1067,7 @@ const ScatterPlot = ({
           x2={width - padding}
           y1={height - padding}
           y2={height - padding}
-          stroke="rgba(255,255,255,0.2)"
+          stroke="var(--chart-grid-6)"
           strokeWidth="1"
         />
         <line
@@ -1075,7 +1075,7 @@ const ScatterPlot = ({
           x2={padding}
           y1={padding}
           y2={height - padding}
-          stroke="rgba(255,255,255,0.2)"
+          stroke="var(--chart-grid-6)"
           strokeWidth="1"
         />
         {buildAxisTicks({
@@ -1177,7 +1177,7 @@ const LinePlot = ({
           width={width - padding * 2}
           height={height - padding * 2}
           fill="none"
-          stroke="rgba(255,255,255,0.1)"
+          stroke="var(--chart-grid-2)"
           strokeWidth="1"
         />
         {series.map((item) => (
@@ -1331,7 +1331,7 @@ const DispersionPlot = ({
                   x2={x}
                   y1={plotTop}
                   y2={plotBottom}
-                  stroke="rgba(255,255,255,0.08)"
+                  stroke="var(--chart-grid-1)"
                   strokeWidth="1"
                 />
                 <line
@@ -1339,7 +1339,7 @@ const DispersionPlot = ({
                   x2={plotRight}
                   y1={y}
                   y2={y}
-                  stroke="rgba(255,255,255,0.08)"
+                  stroke="var(--chart-grid-1)"
                   strokeWidth="1"
                 />
               </g>
@@ -1352,7 +1352,7 @@ const DispersionPlot = ({
               cy={originY}
               r={plotSize * ratio}
               fill="none"
-              stroke="rgba(255,255,255,0.08)"
+              stroke="var(--chart-grid-1)"
               strokeDasharray="3 6"
             />
           ))}
@@ -1361,7 +1361,7 @@ const DispersionPlot = ({
             x2={centerX}
             y1={plotTop}
             y2={originY}
-            stroke="rgba(255,255,255,0.2)"
+            stroke="var(--chart-grid-6)"
             strokeWidth="1"
             strokeDasharray="4 4"
           />
@@ -1383,7 +1383,7 @@ const DispersionPlot = ({
           width={plotSize}
           height={plotSize}
           fill="none"
-          stroke="rgba(255,255,255,0.12)"
+          stroke="var(--chart-grid-3)"
           strokeWidth="1"
         />
         <g>
@@ -1654,9 +1654,9 @@ const FaceImpactHeatmap = ({
           <feGaussianBlur stdDeviation="4" />
         </filter>
         <linearGradient id={faceGradId} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="rgba(255,255,255,0.06)" />
-          <stop offset="50%" stopColor="rgba(255,255,255,0.02)" />
-          <stop offset="100%" stopColor="rgba(255,255,255,0.05)" />
+          <stop offset="0%" stopColor="var(--impact-face-grad-1)" />
+          <stop offset="50%" stopColor="var(--impact-face-grad-2)" />
+          <stop offset="100%" stopColor="var(--impact-face-grad-3)" />
         </linearGradient>
       </defs>
       <g transform={`translate(${xOffset} 0)`}>
@@ -1666,11 +1666,11 @@ const FaceImpactHeatmap = ({
               <path
                 d={faceOutlinePath}
                 fill={`url(#${faceGradId})`}
-                stroke="rgba(255,255,255,0.18)"
+                stroke="var(--impact-face-stroke)"
                 strokeWidth="1.2"
                 vectorEffect="non-scaling-stroke"
               />
-              <g fill="rgba(255,255,255,0.08)" stroke="none">
+              <g fill="var(--impact-face-detail)" stroke="none">
                 {faceDetailPaths.map((path, index) => (
                   <path key={`impact-face-${index}`} d={path} />
                 ))}
@@ -1683,7 +1683,7 @@ const FaceImpactHeatmap = ({
           x2={centerX}
           y1={plotTop}
           y2={plotTop + plotH}
-          stroke="rgba(255,255,255,0.15)"
+          stroke="var(--chart-grid-4)"
           strokeDasharray="4 4"
         />
         <line
@@ -1691,7 +1691,7 @@ const FaceImpactHeatmap = ({
           x2={plotLeft + plotW}
           y1={centerY}
           y2={centerY}
-          stroke="rgba(255,255,255,0.15)"
+          stroke="var(--chart-grid-4)"
           strokeDasharray="4 4"
         />
         <g filter={`url(#${heatBlurId})`} opacity={0.9}>
@@ -1741,7 +1741,7 @@ const FaceImpactHeatmap = ({
                   cx={cx}
                   cy={cy}
                   r={isOutlier ? 3.2 : 1.8}
-                  fill={isOutlier ? "rgba(239,68,68,0.95)" : "rgba(255,255,255,0.9)"}
+                  fill={isOutlier ? "rgba(239,68,68,0.95)" : "var(--chart-point)"}
                   stroke={isOutlier ? "rgba(239,68,68,0.8)" : "none"}
                   strokeWidth={isOutlier ? 1 : 0}
                 />
@@ -1821,7 +1821,7 @@ const HistogramPlot = ({
           width={width - padding * 2}
           height={height - padding * 2}
           fill="none"
-          stroke="rgba(255,255,255,0.1)"
+          stroke="var(--chart-grid-2)"
           strokeWidth="1"
         />
         {bins.map((bin, index) => {
@@ -3732,7 +3732,7 @@ export default function RadarCharts({
                 <ChartLegend
                   items={[
                     { label: "Heatmap", color: "rgba(251,146,60,0.8)" },
-                    { label: "Coups", color: "rgba(255,255,255,0.8)" },
+                    { label: "Coups", color: "var(--chart-point-muted)" },
                   ]}
                 />
                 <ChartDescription text={chartDescriptions.faceImpact} />

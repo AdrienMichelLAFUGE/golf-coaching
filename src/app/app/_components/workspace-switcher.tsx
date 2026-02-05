@@ -144,6 +144,14 @@ export default function WorkspaceSwitcher() {
     return tag === "input" || tag === "textarea" || tag === "select";
   };
 
+  const resolveSafePath = () => {
+    if (typeof window === "undefined") return "/app";
+    const { pathname, search, hash } = window.location;
+    const isStudentDetail = pathname.startsWith("/app/coach/eleves/");
+    if (isStudentDetail) return "/app/coach/eleves";
+    return `${pathname}${search}${hash}`;
+  };
+
   const handleSwitch = async (workspaceId: string) => {
     if (workspaceId === activeWorkspaceId) {
       setOpen(false);
@@ -184,7 +192,7 @@ export default function WorkspaceSwitcher() {
     await refresh();
     router.refresh();
     if (typeof window !== "undefined") {
-      window.location.reload();
+      window.location.assign(resolveSafePath());
     }
     setSwitchingId(null);
     setOpen(false);

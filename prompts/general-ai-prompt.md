@@ -294,7 +294,7 @@ Les colonnes sont regroupees (Distance, Speed, Spin, etc).
 Conserve l ordre exact des colonnes.
 Chaque ligne correspond a un coup.
 La premiere colonne de donnees ne doit jamais etre un simple "#" isole.
-Si l image affiche "#" pour le numero de coup, renomme la colonne en "Shot" ou "Shot#" (au choix) et aligne toutes les valeurs sur cette colonne. Il ne peut pas y avoir deux colonne "shot" ou "shot#".
+Si l image affiche "#" pour le numero de coup, renomme la colonne en "Shot" ou "Shot#" (au choix) et aligne toutes les valeurs sur cette colonne. Il ne peut pas y avoir deux colonnes "shot" ou "shot#".
 Ignore les lignes vides.
 Si tu identifies les lignes AVG et DEV, renvoie-les dans avg et dev.
 Le club de la session est affiche en haut a droite de l image (ex: Driver, 7 Iron, Wedge).

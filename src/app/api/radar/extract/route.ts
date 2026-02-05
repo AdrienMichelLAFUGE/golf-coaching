@@ -812,7 +812,7 @@ export async function POST(req: Request) {
   await admin
     .from("radar_files")
     .update({
-      status: "ready",
+      status: "review",
       columns: normalizedColumns,
       shots,
       stats: { avg, dev },
