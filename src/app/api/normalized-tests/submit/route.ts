@@ -116,9 +116,8 @@ export async function POST(request: Request) {
   const supabase = createSupabaseServerClientFromRequest(request);
   const { data: userData, error: userError } = await supabase.auth.getUser();
   const userId = userData.user?.id;
-  const userEmail = userData.user?.email ?? "";
 
-  if (userError || !userId || !userEmail) {
+  if (userError || !userId) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
@@ -136,13 +135,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
-  const { data: student, error: studentError } = await supabase
-    .from("students")
-    .select("id, email")
-    .ilike("email", userEmail)
-    .maybeSingle();
+  const { data: linkedStudents, error: linkedError } = await supabase
+    .from("student_accounts")
+    .select("student_id")
+    .eq("user_id", userId);
 
-  if (studentError || !student) {
+  if (linkedError) {
+    return NextResponse.json({ error: linkedError.message }, { status: 403 });
+  }
+
+  const linkedStudentIds = new Set(
+    (linkedStudents ?? []).map((row) => row.student_id)
+  );
+
+  if (linkedStudentIds.size === 0) {
     return NextResponse.json({ error: "Eleve introuvable." }, { status: 403 });
   }
 
@@ -157,7 +163,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Test introuvable." }, { status: 404 });
   }
 
-  if (assignment.student_id !== student.id) {
+  if (!linkedStudentIds.has(assignment.student_id)) {
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 

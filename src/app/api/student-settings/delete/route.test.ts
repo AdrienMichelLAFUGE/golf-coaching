@@ -8,8 +8,6 @@ jest.mock("@/lib/supabase/server", () => ({
   createSupabaseAdminClient: jest.fn(),
 }));
 
-type QueryResult = { data: unknown; error?: { message?: string } | null };
-
 const buildRequest = (payload: unknown) =>
   ({
     json: async () => payload,
@@ -19,14 +17,6 @@ const buildRequest = (payload: unknown) =>
     },
   }) as unknown as Request;
 
-const buildSelectMaybeSingle = (result: QueryResult) => ({
-  select: () => ({
-    ilike: () => ({
-      maybeSingle: async () => result,
-    }),
-  }),
-});
-
 const buildUpdate = (result: { error?: { message?: string } | null }) => ({
   update: () => ({
     eq: () => result,
@@ -35,7 +25,7 @@ const buildUpdate = (result: { error?: { message?: string } | null }) => ({
 
 const buildDoubleUpdate = (result: { error?: { message?: string } | null }) => ({
   update: () => ({
-    eq: () => ({
+    in: () => ({
       eq: () => result,
     }),
   }),
@@ -70,17 +60,6 @@ describe("POST /api/student-settings/delete", () => {
           error: null,
         }),
       },
-      from: (table: string) => {
-        if (table === "students") {
-          return {
-            ...buildSelectMaybeSingle({
-              data: { id: "student-1", avatar_url: null },
-              error: null,
-            }),
-          };
-        }
-        return buildSelectMaybeSingle({ data: null, error: null });
-      },
     };
 
     const authCheck = {
@@ -97,11 +76,34 @@ describe("POST /api/student-settings/delete", () => {
         },
       },
       from: (table: string) => {
-        if (table === "student_shares") {
-          return buildDoubleUpdate({ error: null });
+        if (table === "student_accounts") {
+          return {
+            select: () => ({
+              eq: async () => ({
+                data: [{ student_id: "student-1" }],
+                error: null,
+              }),
+            }),
+            delete: () => ({
+              eq: async () => ({ error: null }),
+            }),
+          };
         }
         if (table === "students") {
-          return buildUpdate({ error: null });
+          return {
+            select: () => ({
+              in: async () => ({
+                data: [{ id: "student-1", avatar_url: null }],
+                error: null,
+              }),
+            }),
+            update: () => ({
+              eq: async () => ({ error: null }),
+            }),
+          };
+        }
+        if (table === "student_shares") {
+          return buildDoubleUpdate({ error: null });
         }
         if (table === "profiles") {
           return buildUpdate({ error: null });

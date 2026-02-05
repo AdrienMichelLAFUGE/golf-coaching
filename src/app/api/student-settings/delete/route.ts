@@ -41,6 +41,7 @@ export async function POST(request: Request) {
   }
 
   const email = userData.user.email?.trim();
+  const userId = userData.user.id;
   if (!email) {
     return NextResponse.json({ error: "Email introuvable." }, { status: 400 });
   }
@@ -54,30 +55,42 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Mot de passe incorrect." }, { status: 401 });
   }
 
-  const { data: student, error: studentError } = await supabase
-    .from("students")
-    .select("id, avatar_url")
-    .ilike("email", email)
-    .maybeSingle();
+  const now = new Date().toISOString();
+  const admin = createSupabaseAdminClient();
 
-  if (studentError) {
+  const { data: accountRows, error: accountError } = await admin
+    .from("student_accounts")
+    .select("student_id")
+    .eq("user_id", userId);
+
+  if (accountError) {
     return NextResponse.json(
-      { error: studentError.message ?? "Erreur lors du chargement eleve." },
+      { error: accountError.message ?? "Erreur lors du chargement eleve." },
       { status: 500 }
     );
   }
 
-  if (!student?.id) {
+  const studentIds = (accountRows ?? []).map((row) => row.student_id);
+  if (studentIds.length === 0) {
     return NextResponse.json({ error: "Eleve introuvable." }, { status: 404 });
   }
 
-  const now = new Date().toISOString();
-  const anonymizedStudentEmail = `deleted+${student.id}@example.invalid`;
-  const anonymizedAuthEmail = `deleted+${userData.user.id}@example.invalid`;
-  const admin = createSupabaseAdminClient();
+  const { data: students, error: studentsError } = await admin
+    .from("students")
+    .select("id, avatar_url")
+    .in("id", studentIds);
+
+  if (studentsError) {
+    return NextResponse.json(
+      { error: studentsError.message ?? "Erreur lors du chargement eleve." },
+      { status: 500 }
+    );
+  }
+
+  const anonymizedAuthEmail = `deleted+${userId}@example.invalid`;
 
   const { error: authUpdateError } = await admin.auth.admin.updateUserById(
-    userData.user.id,
+    userId,
     { email: anonymizedAuthEmail }
   );
 
@@ -95,7 +108,7 @@ export async function POST(request: Request) {
       revoked_at: now,
       updated_at: now,
     })
-    .eq("student_id", student.id)
+    .in("student_id", studentIds)
     .eq("status", "active");
 
   if (revokeError) {
@@ -106,23 +119,26 @@ export async function POST(request: Request) {
     );
   }
 
-  const { error: studentUpdateError } = await admin
-    .from("students")
-    .update({
-      first_name: "Compte supprime",
-      last_name: null,
-      email: anonymizedStudentEmail,
-      avatar_url: null,
-      deleted_at: now,
-    })
-    .eq("id", student.id);
+  for (const student of students ?? []) {
+    const anonymizedStudentEmail = `deleted+${student.id}@example.invalid`;
+    const { error: studentUpdateError } = await admin
+      .from("students")
+      .update({
+        first_name: "Compte supprime",
+        last_name: null,
+        email: anonymizedStudentEmail,
+        avatar_url: null,
+        deleted_at: now,
+      })
+      .eq("id", student.id);
 
-  if (studentUpdateError) {
-    await admin.auth.admin.updateUserById(userData.user.id, { email });
-    return NextResponse.json(
-      { error: studentUpdateError.message ?? "Anonymisation eleve impossible." },
-      { status: 500 }
-    );
+    if (studentUpdateError) {
+      await admin.auth.admin.updateUserById(userId, { email });
+      return NextResponse.json(
+        { error: studentUpdateError.message ?? "Anonymisation eleve impossible." },
+        { status: 500 }
+      );
+    }
   }
 
   const { error: profileUpdateError } = await admin
@@ -132,7 +148,7 @@ export async function POST(request: Request) {
       avatar_url: null,
       deleted_at: now,
     })
-    .eq("id", userData.user.id);
+    .eq("id", userId);
 
   if (profileUpdateError) {
     await admin.auth.admin.updateUserById(userData.user.id, { email });
@@ -142,19 +158,31 @@ export async function POST(request: Request) {
     );
   }
 
-  if (student.avatar_url) {
+  for (const student of students ?? []) {
+    if (!student.avatar_url) continue;
     const path = extractStoragePath(student.avatar_url, STORAGE_BUCKET);
-    if (path) {
-      const { error: removeError } = await admin.storage
-        .from(STORAGE_BUCKET)
-        .remove([path]);
-      if (removeError) {
-        return NextResponse.json(
-          { error: removeError.message ?? "Suppression avatar impossible." },
-          { status: 500 }
-        );
-      }
+    if (!path) continue;
+    const { error: removeError } = await admin.storage
+      .from(STORAGE_BUCKET)
+      .remove([path]);
+    if (removeError) {
+      return NextResponse.json(
+        { error: removeError.message ?? "Suppression avatar impossible." },
+        { status: 500 }
+      );
     }
+  }
+
+  const { error: unlinkError } = await admin
+    .from("student_accounts")
+    .delete()
+    .eq("user_id", userId);
+
+  if (unlinkError) {
+    return NextResponse.json(
+      { error: unlinkError.message ?? "Suppression compte eleve impossible." },
+      { status: 500 }
+    );
   }
 
   const authHeader = request.headers.get("authorization");

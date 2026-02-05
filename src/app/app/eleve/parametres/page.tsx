@@ -17,6 +17,7 @@ type StudentProfile = {
   email: string | null;
   avatar_url: string | null;
   deleted_at: string | null;
+  created_at?: string | null;
 };
 
 const STORAGE_BUCKET = "coach-assets";
@@ -56,17 +57,36 @@ export default function StudentSettingsPage() {
       setLoading(true);
       setError("");
 
-      if (!userEmail) {
+      const userId = profile?.id ?? (await supabase.auth.getUser()).data.user?.id;
+      if (!userId) {
         setError("Email introuvable.");
+        setLoading(false);
+        return;
+      }
+
+      const { data: accountRows, error: accountError } = await supabase
+        .from("student_accounts")
+        .select("student_id")
+        .eq("user_id", userId);
+
+      if (accountError) {
+        setError(accountError.message);
+        setLoading(false);
+        return;
+      }
+
+      const studentIds = (accountRows ?? []).map((row) => row.student_id);
+      if (studentIds.length === 0) {
+        setError("Profil eleve introuvable.");
         setLoading(false);
         return;
       }
 
       const { data, error: studentError } = await supabase
         .from("students")
-        .select("id, first_name, last_name, email, avatar_url, deleted_at")
-        .ilike("email", userEmail)
-        .maybeSingle();
+        .select("id, first_name, last_name, email, avatar_url, deleted_at, created_at")
+        .in("id", studentIds)
+        .order("created_at", { ascending: false });
 
       if (studentError) {
         setError(studentError.message);
@@ -74,14 +94,15 @@ export default function StudentSettingsPage() {
         return;
       }
 
-      if (!data) {
+      const primaryStudent = (data ?? [])[0] as StudentProfile | undefined;
+      if (!primaryStudent) {
         setError("Profil eleve introuvable.");
         setLoading(false);
         return;
       }
 
-      setStudent(data as StudentProfile);
-      setAvatarUrl(data.avatar_url ?? profile?.avatar_url ?? "");
+      setStudent(primaryStudent);
+      setAvatarUrl(primaryStudent.avatar_url ?? profile?.avatar_url ?? "");
       setLoading(false);
     };
 
@@ -89,7 +110,7 @@ export default function StudentSettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [userEmail, profile?.avatar_url]);
+  }, [profile?.id, profile?.avatar_url]);
 
   const handleAvatarUpload = async (file: File) => {
     if (!student || !profile) return;

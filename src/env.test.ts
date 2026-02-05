@@ -22,12 +22,14 @@ describe("env", () => {
     delete process.env.BREVO_API_KEY;
     delete process.env.BREVO_SENDER_EMAIL;
     delete process.env.BREVO_SENDER_NAME;
+    delete process.env.NEXT_PUBLIC_SITE_URL;
 
     jest.isolateModules(() => {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { env } = require("./env");
       expect(env.NEXT_PUBLIC_SUPABASE_URL).toBe("http://localhost:54321");
       expect(env.OPENAI_API_KEY).toBe("test-openai-key");
+      expect(env.NEXT_PUBLIC_SITE_URL).toBe("http://localhost:3000");
     });
   });
 
@@ -43,6 +45,7 @@ describe("env", () => {
     delete process.env.BREVO_API_KEY;
     delete process.env.BREVO_SENDER_EMAIL;
     delete process.env.BREVO_SENDER_NAME;
+    delete process.env.NEXT_PUBLIC_SITE_URL;
 
     expect(() => {
       jest.isolateModules(() => {

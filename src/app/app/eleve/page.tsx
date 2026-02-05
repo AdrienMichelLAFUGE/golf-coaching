@@ -8,10 +8,12 @@ import { useProfile } from "../_components/profile-context";
 
 type Student = {
   id: string;
+  org_id: string;
   first_name: string;
   last_name: string | null;
   email: string | null;
   tpi_report_id: string | null;
+  created_at?: string | null;
 };
 
 type Report = {
@@ -19,6 +21,8 @@ type Report = {
   title: string;
   report_date: string | null;
   created_at: string;
+  org_id: string;
+  organizations?: { name: string | null }[] | null;
 };
 
 type TpiReport = {
@@ -86,32 +90,51 @@ export default function StudentDashboardPage() {
 
       const { data: userData, error: userError } = await supabase.auth.getUser();
 
-      const email = userData.user?.email;
-      if (userError || !email) {
+      const userId = userData.user?.id;
+      if (userError || !userId) {
         setError("Impossible de charger ton profil.");
         setLoading(false);
         return;
       }
 
-      const { data: studentData, error: studentError } = await supabase
-        .from("students")
-        .select("id, first_name, last_name, email, tpi_report_id")
-        .ilike("email", email)
-        .maybeSingle();
+      const { data: accountRows, error: accountError } = await supabase
+        .from("student_accounts")
+        .select("student_id")
+        .eq("user_id", userId);
 
-      if (studentError) {
-        setError(studentError.message);
+      if (accountError) {
+        setError(accountError.message);
         setLoading(false);
         return;
       }
 
-      if (!studentData) {
+      const studentIds = (accountRows ?? []).map((row) => row.student_id);
+      if (studentIds.length === 0) {
         setNoStudent(true);
         setLoading(false);
         return;
       }
 
-      setStudent(studentData);
+      const { data: studentsData, error: studentsError } = await supabase
+        .from("students")
+        .select("id, org_id, first_name, last_name, email, tpi_report_id, created_at")
+        .in("id", studentIds)
+        .order("created_at", { ascending: false });
+
+      if (studentsError) {
+        setError(studentsError.message);
+        setLoading(false);
+        return;
+      }
+
+      const primaryStudent = (studentsData ?? [])[0] as Student | undefined;
+      if (!primaryStudent) {
+        setNoStudent(true);
+        setLoading(false);
+        return;
+      }
+
+      setStudent(primaryStudent);
 
       const { data: shareData } = await supabase
         .from("student_shares")
@@ -122,11 +145,11 @@ export default function StudentDashboardPage() {
 
       let reportData: TpiReport | null = null;
 
-      if (studentData.tpi_report_id) {
+      if (primaryStudent.tpi_report_id) {
         const { data } = await supabase
           .from("tpi_reports")
           .select("id, status, created_at")
-          .eq("id", studentData.tpi_report_id)
+          .eq("id", primaryStudent.tpi_report_id)
           .single();
         if (data) reportData = data as TpiReport;
       }
@@ -135,7 +158,7 @@ export default function StudentDashboardPage() {
         const { data } = await supabase
           .from("tpi_reports")
           .select("id, status, created_at")
-          .eq("student_id", studentData.id)
+          .eq("student_id", primaryStudent.id)
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
@@ -146,7 +169,7 @@ export default function StudentDashboardPage() {
         const { data } = await supabase
           .from("tpi_reports")
           .select("id, status, created_at")
-          .eq("student_id", studentData.id)
+          .eq("student_id", primaryStudent.id)
           .eq("status", "ready")
           .order("created_at", { ascending: false })
           .limit(1)
@@ -175,8 +198,8 @@ export default function StudentDashboardPage() {
 
       const { data: reportsData, error: reportsError } = await supabase
         .from("reports")
-        .select("id, title, report_date, created_at")
-        .eq("student_id", studentData.id)
+        .select("id, title, report_date, created_at, org_id, organizations(name)")
+        .in("student_id", studentIds)
         .not("sent_at", "is", null)
         .order("report_date", { ascending: false, nullsFirst: false })
         .order("created_at", { ascending: false });
@@ -365,25 +388,30 @@ export default function StudentDashboardPage() {
                   Aucun rapport disponible pour le moment.
                 </div>
               ) : (
-                reports.slice(0, 3).map((report) => (
-                  <Link
-                    key={report.id}
-                    href={`/app/eleve/rapports/${report.id}`}
-                    className="flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--text)] transition hover:border-white/20"
-                  >
-                    <div>
-                      <p className="font-medium">{report.title}</p>
-                      <p className="mt-1 text-xs text-[var(--muted)]">
-                        {formatDate(
-                          report.report_date ?? report.created_at,
-                          locale,
-                          timezone
-                        )}
-                      </p>
-                    </div>
-                    <span className="text-xs text-[var(--muted)]">Lire -&gt;</span>
-                  </Link>
-                ))
+                reports.slice(0, 3).map((report) => {
+                  const orgLabel = report.organizations?.[0]?.name ?? "Organisation";
+                  return (
+                    <Link
+                      key={report.id}
+                      href={`/app/eleve/rapports/${report.id}`}
+                      className="flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--text)] transition hover:border-white/20"
+                    >
+                      <div>
+                        <p className="font-medium">{report.title}</p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">
+                          {formatDate(
+                            report.report_date ?? report.created_at,
+                            locale,
+                            timezone
+                          )}
+                          {" - "}
+                          {orgLabel}
+                        </p>
+                      </div>
+                      <span className="text-xs text-[var(--muted)]">Lire -&gt;</span>
+                    </Link>
+                  );
+                })
               )}
             </div>
           </section>

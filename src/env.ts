@@ -13,6 +13,7 @@ const serverSchema = z.object({
   BREVO_API_KEY: z.string().min(1),
   BREVO_SENDER_EMAIL: z.string().email(),
   BREVO_SENDER_NAME: z.string().min(1),
+  NEXT_PUBLIC_SITE_URL: z.string().url(),
   NEXT_PUBLIC_ADMIN_EMAILS: z.string().optional(),
 });
 
@@ -29,6 +30,7 @@ const buildTestEnv = () => ({
   BREVO_API_KEY: "test-brevo-key",
   BREVO_SENDER_EMAIL: "test@example.com",
   BREVO_SENDER_NAME: "Test Sender",
+  NEXT_PUBLIC_SITE_URL: "http://localhost:3000",
   NEXT_PUBLIC_ADMIN_EMAILS: process.env.NEXT_PUBLIC_ADMIN_EMAILS,
 });
 

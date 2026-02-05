@@ -41,6 +41,15 @@ const buildSelectMaybeSingle = (result: QueryResult) => ({
     }),
     ilike: () => ({
       maybeSingle: async () => result,
+      order: async () => result,
+    }),
+  }),
+});
+
+const buildSelectList = (result: QueryResult) => ({
+  select: () => ({
+    ilike: () => ({
+      order: async () => result,
     }),
   }),
 });
@@ -96,7 +105,7 @@ describe("POST /api/onboarding/ensure-profile", () => {
           return buildSelectMaybeSingle({ data: null, error: null });
         }
         if (table === "students") {
-          return buildSelectMaybeSingle({ data: null, error: null });
+          return buildSelectList({ data: [], error: null });
         }
         if (table === "organizations") {
           return { insert: orgInsert };
@@ -179,7 +188,7 @@ describe("POST /api/onboarding/ensure-profile", () => {
           };
         }
         if (table === "students") {
-          return buildSelectMaybeSingle({ data: null, error: null });
+          return buildSelectList({ data: [], error: null });
         }
         if (table === "organizations") {
           return { select: orgSelect, insert: orgInsert };

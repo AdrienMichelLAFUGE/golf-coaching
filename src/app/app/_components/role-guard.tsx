@@ -22,21 +22,31 @@ export default function RoleGuard({ allowedRoles, children, fallback }: RoleGuar
 
     const markStudentActive = async () => {
       const { data: userData } = await supabase.auth.getUser();
-      const email = userData.user?.email;
-      if (!email) return;
+      const userId = userData.user?.id;
+      if (!userId) return;
 
-      const { data: student } = await supabase
+      const { data: accounts } = await supabase
+        .from("student_accounts")
+        .select("student_id")
+        .eq("user_id", userId);
+
+      const studentIds = (accounts ?? []).map((account) => account.student_id);
+      if (studentIds.length === 0) return;
+
+      const { data: students } = await supabase
         .from("students")
         .select("id, activated_at")
-        .ilike("email", email)
-        .maybeSingle();
+        .in("id", studentIds);
 
-      if (!student || student.activated_at) return;
+      const idsToUpdate =
+        students?.filter((student) => !student.activated_at).map((s) => s.id) ?? [];
+
+      if (idsToUpdate.length === 0) return;
 
       await supabase
         .from("students")
         .update({ activated_at: new Date().toISOString() })
-        .eq("id", student.id);
+        .in("id", idsToUpdate);
     };
 
     markStudentActive();

@@ -4,6 +4,14 @@ import {
   createSupabaseServerClientFromRequest,
 } from "@/lib/supabase/server";
 
+type StudentRow = {
+  id: string;
+  org_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  created_at?: string | null;
+};
+
 const ensurePersonalWorkspace = async (
   admin: ReturnType<typeof createSupabaseAdminClient>,
   userId: string,
@@ -78,6 +86,34 @@ const ensureOrgMembership = async (
   ]);
 };
 
+const loadStudentsByEmail = async (
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  email: string
+) => {
+  const { data } = await admin
+    .from("students")
+    .select("id, org_id, first_name, last_name, created_at")
+    .ilike("email", email)
+    .order("created_at", { ascending: false });
+
+  return (data ?? []) as StudentRow[];
+};
+
+const linkStudentAccounts = async (
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  userId: string,
+  students: StudentRow[]
+) => {
+  if (students.length === 0) return;
+
+  const payload = students.map((student) => ({
+    student_id: student.id,
+    user_id: userId,
+  }));
+
+  await admin.from("student_accounts").upsert(payload, { onConflict: "student_id" });
+};
+
 export async function POST(request: Request) {
   const supabase = createSupabaseServerClientFromRequest(request);
 
@@ -130,6 +166,24 @@ export async function POST(request: Request) {
           })
           .eq("id", profile.id);
       }
+    } else if (profile.role === "student") {
+      const students = await loadStudentsByEmail(admin, email);
+      if (students.length > 0) {
+        await linkStudentAccounts(admin, profile.id, students);
+        const primaryStudent = students[0];
+        await admin
+          .from("profiles")
+          .update({
+            org_id: primaryStudent.org_id,
+            active_workspace_id: primaryStudent.org_id,
+          })
+          .eq("id", profile.id);
+      } else if (!profile.active_workspace_id && profile.org_id) {
+        await admin
+          .from("profiles")
+          .update({ active_workspace_id: profile.org_id })
+          .eq("id", profile.id);
+      }
     } else if (!profile.active_workspace_id && profile.org_id) {
       await admin
         .from("profiles")
@@ -139,21 +193,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, role: profile.role });
   }
 
-  const { data: student } = await admin
-    .from("students")
-    .select("id, org_id, first_name, last_name")
-    .ilike("email", email)
-    .maybeSingle();
+  const students = await loadStudentsByEmail(admin, email);
+  const primaryStudent = students[0];
 
-  if (student?.id && student.org_id) {
-    const fullName = `${student.first_name ?? ""} ${student.last_name ?? ""}`.trim();
+  if (primaryStudent?.id && primaryStudent.org_id) {
+    const fullName = `${primaryStudent.first_name ?? ""} ${primaryStudent.last_name ?? ""}`.trim();
     const { error: profileError } = await admin.from("profiles").upsert(
       {
         id: user.id,
-        org_id: student.org_id,
+        org_id: primaryStudent.org_id,
         role: "student",
         full_name: fullName || null,
-        active_workspace_id: student.org_id,
+        active_workspace_id: primaryStudent.org_id,
       },
       { onConflict: "id" }
     );
@@ -162,6 +213,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: profileError.message }, { status: 400 });
     }
 
+    await linkStudentAccounts(admin, user.id, students);
     await ensurePersonalWorkspace(admin, user.id, fullName || null);
     return NextResponse.json({ ok: true, role: "student" });
   }
