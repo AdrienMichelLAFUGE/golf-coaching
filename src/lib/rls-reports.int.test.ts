@@ -140,6 +140,43 @@ type Database = {
         }>;
         Relationships: [];
       };
+      report_sections: {
+        Row: {
+          id: string;
+          org_id: string;
+          report_id: string;
+          title: string;
+          position: number;
+        };
+        Insert: {
+          org_id: string;
+          report_id: string;
+          title: string;
+          position?: number;
+        };
+        Update: Partial<{
+          title: string;
+          position: number;
+        }>;
+        Relationships: [];
+      };
+      student_accounts: {
+        Row: {
+          id: string;
+          student_id: string;
+          user_id: string;
+          created_at: string;
+        };
+        Insert: {
+          student_id: string;
+          user_id: string;
+        };
+        Update: Partial<{
+          student_id: string;
+          user_id: string;
+        }>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -294,6 +331,256 @@ describeIf("RLS integration: reports", () => {
       expect(insertError).not.toBeNull();
       expect(insertError?.message).toBeTruthy();
       expect(insertData ?? []).toHaveLength(0);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("allows coach to read linked student reports across workspaces", async () => {
+    const admin = createClient<Database>(testEnv.url!, testEnv.serviceKey!, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const coachClient = createClient<Database>(testEnv.url!, testEnv.anonKey!, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    let orgPersonalId = "";
+    let orgOrgId = "";
+    let coachId = "";
+    let studentUserId = "";
+    let studentOrgId = "";
+    let studentPersonalId = "";
+    let reportId = "";
+    let sectionId = "";
+
+    const cleanup = async () => {
+      if (sectionId) {
+        try {
+          await admin.from("report_sections").delete().eq("id", sectionId);
+        } catch {}
+      }
+      if (reportId) {
+        try {
+          await admin.from("reports").delete().eq("id", reportId);
+        } catch {}
+      }
+      if (studentOrgId || studentPersonalId) {
+        try {
+          await admin
+            .from("student_accounts")
+            .delete()
+            .in("student_id", [studentOrgId, studentPersonalId].filter(Boolean));
+        } catch {}
+      }
+      if (studentOrgId) {
+        try {
+          await admin.from("students").delete().eq("id", studentOrgId);
+        } catch {}
+      }
+      if (studentPersonalId) {
+        try {
+          await admin.from("students").delete().eq("id", studentPersonalId);
+        } catch {}
+      }
+      if (coachId || orgOrgId) {
+        try {
+          await admin
+            .from("org_memberships")
+            .delete()
+            .eq("org_id", orgOrgId)
+            .eq("user_id", coachId);
+        } catch {}
+      }
+      if (coachId) {
+        try {
+          await admin.from("profiles").delete().eq("id", coachId);
+        } catch {}
+        try {
+          await admin.auth.admin.deleteUser(coachId);
+        } catch {}
+      }
+      if (studentUserId) {
+        try {
+          await admin.from("profiles").delete().eq("id", studentUserId);
+        } catch {}
+        try {
+          await admin.auth.admin.deleteUser(studentUserId);
+        } catch {}
+      }
+      if (orgOrgId) {
+        try {
+          await admin.from("organizations").delete().eq("id", orgOrgId);
+        } catch {}
+      }
+      if (orgPersonalId) {
+        try {
+          await admin.from("organizations").delete().eq("id", orgPersonalId);
+        } catch {}
+      }
+    };
+
+    try {
+      const { data: personalOrg, error: personalError } = await admin
+        .from("organizations")
+        .insert({ name: `rls-personal-${stamp}`, workspace_type: "personal", ai_enabled: true })
+        .select("id")
+        .single();
+      if (personalError || !personalOrg) throw personalError ?? new Error("Org personal failed.");
+      orgPersonalId = personalOrg.id;
+
+      const { data: orgOrg, error: orgError } = await admin
+        .from("organizations")
+        .insert({ name: `rls-org-linked-${stamp}`, workspace_type: "org", ai_enabled: true })
+        .select("id")
+        .single();
+      if (orgError || !orgOrg) throw orgError ?? new Error("Org creation failed.");
+      orgOrgId = orgOrg.id;
+
+      const { data: coachUser, error: coachError } = await admin.auth.admin.createUser({
+        email: `coach-linked+${stamp}@example.com`,
+        password,
+        email_confirm: true,
+      });
+      if (coachError || !coachUser?.user) {
+        throw coachError ?? new Error("Coach creation failed.");
+      }
+      coachId = coachUser.user.id;
+
+      const { error: coachProfileError } = await admin.from("profiles").upsert(
+        {
+          id: coachId,
+          org_id: orgOrgId,
+          active_workspace_id: orgOrgId,
+          role: "coach",
+          full_name: "Coach Linked",
+        },
+        { onConflict: "id" }
+      );
+      if (coachProfileError) throw coachProfileError;
+
+      const { error: membershipError } = await admin.from("org_memberships").insert({
+        org_id: orgOrgId,
+        user_id: coachId,
+        role: "coach",
+        status: "active",
+        premium_active: true,
+      });
+      if (membershipError) throw membershipError;
+
+      const studentEmail = `student-linked+${stamp}@example.com`;
+      const { data: studentUser, error: studentUserError } =
+        await admin.auth.admin.createUser({
+          email: studentEmail,
+          password,
+          email_confirm: true,
+        });
+      if (studentUserError || !studentUser?.user) {
+        throw studentUserError ?? new Error("Student user failed.");
+      }
+      studentUserId = studentUser.user.id;
+
+      const { error: studentProfileError } = await admin.from("profiles").upsert(
+        {
+          id: studentUserId,
+          org_id: orgOrgId,
+          active_workspace_id: orgOrgId,
+          role: "student",
+          full_name: "Student Linked",
+        },
+        { onConflict: "id" }
+      );
+      if (studentProfileError) throw studentProfileError;
+
+      const { data: studentOrg, error: studentOrgError } = await admin
+        .from("students")
+        .insert({
+          org_id: orgOrgId,
+          first_name: "Eleve",
+          last_name: "Org",
+          email: studentEmail,
+        })
+        .select("id")
+        .single();
+      if (studentOrgError || !studentOrg) {
+        throw studentOrgError ?? new Error("Student org failed.");
+      }
+      studentOrgId = studentOrg.id;
+
+      const { data: studentPersonal, error: studentPersonalError } = await admin
+        .from("students")
+        .insert({
+          org_id: orgPersonalId,
+          first_name: "Eleve",
+          last_name: "Perso",
+          email: studentEmail,
+        })
+        .select("id")
+        .single();
+      if (studentPersonalError || !studentPersonal) {
+        throw studentPersonalError ?? new Error("Student personal failed.");
+      }
+      studentPersonalId = studentPersonal.id;
+
+      const { error: accountError } = await admin.from("student_accounts").insert([
+        { student_id: studentOrgId, user_id: studentUserId },
+        { student_id: studentPersonalId, user_id: studentUserId },
+      ]);
+      if (accountError) throw accountError;
+
+      const { data: reportData, error: reportError } = await admin
+        .from("reports")
+        .insert({
+          org_id: orgPersonalId,
+          student_id: studentPersonalId,
+          author_id: coachId,
+          title: "Rapport perso",
+          content: "Test",
+        })
+        .select("id")
+        .single();
+      if (reportError || !reportData) {
+        throw reportError ?? new Error("Report creation failed.");
+      }
+      reportId = reportData.id;
+
+      const { data: sectionData, error: sectionError } = await admin
+        .from("report_sections")
+        .insert({
+          org_id: orgPersonalId,
+          report_id: reportId,
+          title: "Section",
+          position: 1,
+        })
+        .select("id")
+        .single();
+      if (sectionError || !sectionData) {
+        throw sectionError ?? new Error("Section creation failed.");
+      }
+      sectionId = sectionData.id;
+
+      const { error: signInError } = await coachClient.auth.signInWithPassword({
+        email: `coach-linked+${stamp}@example.com`,
+        password,
+      });
+      if (signInError) throw signInError;
+
+      const { data: reportRead, error: reportReadError } = await coachClient
+        .from("reports")
+        .select("id")
+        .eq("id", reportId)
+        .maybeSingle();
+
+      expect(reportReadError).toBeNull();
+      expect(reportRead?.id).toBe(reportId);
+
+      const { data: sectionRead, error: sectionReadError } = await coachClient
+        .from("report_sections")
+        .select("id")
+        .eq("report_id", reportId)
+        .maybeSingle();
+
+      expect(sectionReadError).toBeNull();
+      expect(sectionRead?.id).toBe(sectionId);
     } finally {
       await cleanup();
     }

@@ -25,7 +25,16 @@ type Report = {
   created_at: string;
   student_id: string;
   sent_at: string | null;
+  org_id: string;
+  organizations?: OrganizationRef;
 };
+
+type OrganizationRef =
+  | {
+      name: string | null;
+    }
+  | { name: string | null }[]
+  | null;
 
 type ReportSection = {
   id: string;
@@ -109,6 +118,23 @@ const formatDate = (
   if (!value) return "-";
   const options = timezone ? { timeZone: timezone } : undefined;
   return new Date(value).toLocaleDateString(locale ?? "fr-FR", options);
+};
+
+const getOrgName = (value?: OrganizationRef) => {
+  if (!value) return null;
+  if (Array.isArray(value)) return value[0]?.name ?? null;
+  return value.name ?? null;
+};
+
+const formatSourceLabel = (
+  orgId?: string | null,
+  orgName?: string | null,
+  currentOrgId?: string | null
+) => {
+  if (orgName) return orgName;
+  if (!orgId) return null;
+  if (orgId === currentOrgId) return "Workspace actuel";
+  return "Autre workspace";
 };
 
 type InlineMatch = {
@@ -335,7 +361,7 @@ export default function CoachReportDetailPage() {
 
       const { data: reportData, error: reportError } = await supabase
         .from("reports")
-        .select("id, title, report_date, created_at, student_id, sent_at")
+        .select("id, title, report_date, created_at, student_id, sent_at, org_id, organizations(name)")
         .eq("id", reportId)
         .single();
 
@@ -488,6 +514,19 @@ export default function CoachReportDetailPage() {
                       Brouillon
                     </span>
                   ) : null}
+                  {(() => {
+                    const label = formatSourceLabel(
+                      report.org_id,
+                      getOrgName(report.organizations),
+                      organization?.id ?? null
+                    );
+                    if (!label) return null;
+                    return (
+                      <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                        {label}
+                      </span>
+                    );
+                  })()}
                 </div>
                 <p className="mt-2 text-sm text-[var(--muted)]">
                   Date :{" "}

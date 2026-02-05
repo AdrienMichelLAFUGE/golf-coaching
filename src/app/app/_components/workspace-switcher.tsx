@@ -148,7 +148,9 @@ export default function WorkspaceSwitcher() {
     if (typeof window === "undefined") return "/app";
     const { pathname, search, hash } = window.location;
     const isStudentDetail = pathname.startsWith("/app/coach/eleves/");
+    const isReportDetail = pathname.startsWith("/app/coach/rapports/");
     if (isStudentDetail) return "/app/coach/eleves";
+    if (isReportDetail) return "/app/coach";
     return `${pathname}${search}${hash}`;
   };
 

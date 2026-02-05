@@ -51,6 +51,8 @@ type Report = {
   report_date: string | null;
   created_at: string;
   sent_at: string | null;
+  org_id: string;
+  organizations?: OrganizationRef;
 };
 
 type OrganizationRef =
@@ -974,10 +976,16 @@ export default function CoachStudentDetailPage() {
         setOwnerShares([]);
       }
 
+      const linkedIds = await resolveLinkedStudentIds(studentId);
+      if (linkedIds.length === 0) {
+        setReports([]);
+        setLoading(false);
+        return;
+      }
       const { data: reportData, error: reportError } = await supabase
         .from("reports")
-        .select("id, title, report_date, created_at, sent_at")
-        .eq("student_id", studentId)
+        .select("id, title, report_date, created_at, sent_at, org_id, organizations(name)")
+        .in("student_id", linkedIds)
         .order("created_at", { ascending: false });
 
       if (reportError) {
@@ -991,7 +999,7 @@ export default function CoachStudentDetailPage() {
     };
 
     loadStudent();
-  }, [studentId, loadTpi, userEmail, isOwner, router]);
+  }, [studentId, loadTpi, resolveLinkedStudentIds, userEmail, isOwner, router]);
 
   useEffect(() => {
     if (workspaceType !== "org" || !studentId || !organization?.id) {
@@ -1695,6 +1703,18 @@ export default function CoachStudentDetailPage() {
                               Brouillon
                             </span>
                           ) : null}
+                          {(() => {
+                            const label = formatSourceLabel(
+                              report.org_id,
+                              getOrgName(report.organizations)
+                            );
+                            if (!label) return null;
+                            return (
+                              <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                                {label}
+                              </span>
+                            );
+                          })()}
                         </div>
                         <p className="mt-1 text-xs text-[var(--muted)]">
                           {formatDate(
