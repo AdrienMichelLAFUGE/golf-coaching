@@ -303,6 +303,7 @@ export default function PremiumOfferModal({
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {planCards.map(({ plan, monthlyPlan, yearlyPlan }) => {
                 const highlight = plan.is_highlighted;
+                const isFree = isFreePlan(plan);
                 const showMonthlyEquivalent =
                   plan.interval === "year" &&
                   monthlyPlan &&
@@ -318,7 +319,8 @@ export default function PremiumOfferModal({
                 const priceParts = priceLabel.split(" /");
                 const amountLabel = priceParts[0] ?? priceLabel;
                 const intervalLabel = priceParts[1] ?? "";
-                const badgeLabel = plan.badge ?? (highlight ? "Populaire" : null);
+                const badgeLabel =
+                  plan.badge ?? (highlight && !isEnterprisePlan(plan) ? "Populaire" : null);
                 const billedYearlyTotal = yearlyPlan
                   ? `${Math.round(yearlyPlan.price_cents / 100)} ${formatCurrency(
                       yearlyPlan.currency
@@ -362,33 +364,33 @@ export default function PremiumOfferModal({
                             >
                               {amountLabel}
                             </span>
-                            {intervalLabel ? (
-                              <span
-                                className={`pb-1 text-xs uppercase tracking-wide ${
+                              {intervalLabel && !isFree ? (
+                                <span
+                                  className={`pb-1 text-xs uppercase tracking-wide ${
+                                    highlight ? "text-white/60" : "text-slate-500"
+                                  }`}
+                                >
+                                  / {intervalLabel}
+                                </span>
+                              ) : null}
+                            </div>
+                            {billingInterval === "year" && showMonthlyEquivalent && !isFree ? (
+                              <p
+                                className={`mt-2 text-xs ${
                                   highlight ? "text-white/60" : "text-slate-500"
                                 }`}
                               >
-                                / {intervalLabel}
-                              </span>
+                                Equiv {formatMonthlyEquivalent(plan)}
+                              </p>
+                            ) : billingInterval === "month" && !isFree ? (
+                              <p
+                                className={`mt-2 text-xs ${
+                                  highlight ? "text-white/60" : "text-slate-500"
+                                }`}
+                              >
+                                Facturation mensuelle.
+                              </p>
                             ) : null}
-                          </div>
-                          {billingInterval === "year" && showMonthlyEquivalent ? (
-                            <p
-                              className={`mt-2 text-xs ${
-                                highlight ? "text-white/60" : "text-slate-500"
-                              }`}
-                            >
-                              Equiv {formatMonthlyEquivalent(plan)}
-                            </p>
-                          ) : billingInterval === "month" ? (
-                            <p
-                              className={`mt-2 text-xs ${
-                                highlight ? "text-white/60" : "text-slate-500"
-                              }`}
-                            >
-                              Facturation mensuelle.
-                            </p>
-                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -435,15 +437,16 @@ export default function PremiumOfferModal({
                         })
                       )}
                     </ul>
-                    {billingInterval === "year" &&
-                    billedYearlyTotal &&
-                    annualSavings !== null &&
-                    annualSavings > 0 ? (
-                      <p
-                        className={`mt-4 text-xs ${
-                          highlight ? "text-white/60" : "text-slate-500"
-                        }`}
-                      >
+                      {billingInterval === "year" &&
+                      billedYearlyTotal &&
+                      annualSavings !== null &&
+                      annualSavings > 0 &&
+                      !isFree ? (
+                        <p
+                          className={`mt-4 text-xs ${
+                            highlight ? "text-white/60" : "text-slate-500"
+                          }`}
+                        >
                         {billedYearlyTotal}. Economise {annualSavings}%.
                       </p>
                     ) : null}
@@ -464,7 +467,7 @@ export default function PremiumOfferModal({
           )}
         </div>
         <div className="border-t border-black/10 px-7 py-4 text-xs text-slate-600">
-          Besoin d&apos;un plan equipe ou club ? Contacte-nous pour une offre sur mesure.
+          Besoin d&apos;un plan equipe ou club ? Contacte-nous pour une offre sur mesure : adrien.lafuge@outlook.fr
         </div>
       </div>
     </div>

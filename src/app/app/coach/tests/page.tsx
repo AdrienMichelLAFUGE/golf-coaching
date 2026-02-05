@@ -487,7 +487,7 @@ export default function CoachTestsPage() {
                 <p className="mt-2 text-sm text-[var(--muted)]">
                   En mode organisation, le plan Free est en lecture seule. Tu peux
                   consulter les tests Pelz, mais les assignations sont bloquees. Passe a
-                  Standard pour acceder au catalogue complet.
+                  Pro pour acceder au catalogue complet.
                 </p>
                 <button
                   type="button"
@@ -877,7 +877,7 @@ export default function CoachTestsPage() {
         notice={{
           title: "Catalogue complet indisponible",
           description:
-            "Le plan Free donne acces aux 2 tests Pelz. Passe a Standard pour debloquer le catalogue complet.",
+            "Le plan Free donne acces aux 2 tests Pelz. Passe a Pro pour debloquer le catalogue complet.",
           tags: ["Plan Free"],
           status: [
             {

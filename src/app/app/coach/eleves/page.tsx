@@ -656,7 +656,7 @@ export default function CoachStudentsPage() {
               </p>
               {!canAssignCoaches ? (
                 <p className="mt-3 text-sm text-amber-300">
-                  Plan Standard/Pro requis pour gerer les assignations.
+                  Plan Pro/Entreprise requis pour gerer les assignations.
                 </p>
               ) : coachOptionsLoading ? (
                 <p className="mt-3 text-sm text-[var(--muted)]">

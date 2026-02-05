@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PLAN_TIERS = ["free", "standard", "pro", "enterprise"] as const;
+export const PLAN_TIERS = ["free", "pro", "enterprise"] as const;
 export type PlanTier = (typeof PLAN_TIERS)[number];
 
 export const planTierSchema = z.enum(PLAN_TIERS);
@@ -20,6 +20,7 @@ export type TestsAccess = {
 export type PlanEntitlements = {
   tier: PlanTier;
   label: string;
+  aiProofreadEnabled: boolean;
   aiEnabled: boolean;
   tpiEnabled: boolean;
   dataExtractEnabled: boolean;
@@ -34,7 +35,6 @@ export type WorkspaceEntitlements = PlanEntitlements & {
 
 export const PLAN_LABELS: Record<PlanTier, string> = {
   free: "Free",
-  standard: "Standard",
   pro: "Pro",
   enterprise: "Entreprise",
 };
@@ -43,6 +43,7 @@ export const PLAN_ENTITLEMENTS: Record<PlanTier, PlanEntitlements> = {
   free: {
     tier: "free",
     label: "Free",
+    aiProofreadEnabled: true,
     aiEnabled: false,
     tpiEnabled: false,
     dataExtractEnabled: false,
@@ -58,27 +59,10 @@ export const PLAN_ENTITLEMENTS: Record<PlanTier, PlanEntitlements> = {
       publicRequiresAdminValidation: true,
     },
   },
-  standard: {
-    tier: "standard",
-    label: "Standard",
-    aiEnabled: true,
-    tpiEnabled: true,
-    dataExtractEnabled: true,
-    canCreateOrg: true,
-    quotas: {
-      reportsPer30d: 30,
-      tpiImportsPer30d: 10,
-      dataExtractsPer30d: 30,
-    },
-    tests: {
-      scope: "catalog",
-      canCreate: false,
-      publicRequiresAdminValidation: true,
-    },
-  },
   pro: {
     tier: "pro",
     label: "Pro",
+    aiProofreadEnabled: true,
     aiEnabled: true,
     tpiEnabled: true,
     dataExtractEnabled: true,
@@ -97,6 +81,7 @@ export const PLAN_ENTITLEMENTS: Record<PlanTier, PlanEntitlements> = {
   enterprise: {
     tier: "enterprise",
     label: "Entreprise",
+    aiProofreadEnabled: true,
     aiEnabled: true,
     tpiEnabled: true,
     dataExtractEnabled: true,
@@ -116,6 +101,7 @@ export const PLAN_ENTITLEMENTS: Record<PlanTier, PlanEntitlements> = {
 
 export const resolvePlanTier = (value?: string | null): PlanTier => {
   if (!value) return "free";
+  if (value === "standard") return "pro";
   return PLAN_TIERS.includes(value as PlanTier) ? (value as PlanTier) : "free";
 };
 

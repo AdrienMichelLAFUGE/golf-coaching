@@ -135,7 +135,7 @@ describe("POST /api/orgs/students", () => {
         }
         if (table === "organizations") {
           return buildSelectMaybeSingle({
-            data: { plan_tier: "standard" },
+            data: { plan_tier: "pro" },
             error: null,
           });
         }

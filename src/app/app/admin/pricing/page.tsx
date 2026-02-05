@@ -48,7 +48,7 @@ const toPlanCategory = (plan: EditablePlan) => {
   const label = plan.label.toLowerCase();
   const value = `${slug} ${label}`;
   if (value.includes("free")) return "free";
-  if (value.includes("standard")) return "standard";
+  if (value.includes("standard")) return "pro";
   if (value.includes("pro")) return "pro";
   if (value.includes("entreprise") || value.includes("enterprise")) return "enterprise";
   return "other";
@@ -71,7 +71,7 @@ export default function AdminPricingPage() {
   const [message, setMessage] = useState("");
   const [intervalFilter, setIntervalFilter] = useState<"all" | "month" | "year">("all");
   const [typeFilter, setTypeFilter] = useState<
-    "all" | "free" | "standard" | "pro" | "enterprise" | "other"
+    "all" | "free" | "pro" | "enterprise" | "other"
   >("all");
   const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("all");
   const [priceSort, setPriceSort] = useState<"order" | "price-asc" | "price-desc">(
@@ -424,7 +424,6 @@ export default function AdminPricingPage() {
                     event.target.value as
                       | "all"
                       | "free"
-                      | "standard"
                       | "pro"
                       | "enterprise"
                       | "other"
@@ -434,7 +433,6 @@ export default function AdminPricingPage() {
               >
                 <option value="all">Tous</option>
                 <option value="free">Free</option>
-                <option value="standard">Standard</option>
                 <option value="pro">Pro</option>
                 <option value="enterprise">Entreprise</option>
                 <option value="other">Autre</option>

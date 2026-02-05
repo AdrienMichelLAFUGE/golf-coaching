@@ -14,21 +14,21 @@ type Database = {
           workspace_type: "personal" | "org";
           ai_enabled: boolean | null;
           owner_profile_id: string | null;
-          plan_tier: "free" | "standard" | "pro" | "enterprise";
+          plan_tier: "free" | "pro" | "enterprise";
         };
         Insert: Partial<{
           name: string | null;
           workspace_type: "personal" | "org";
           ai_enabled: boolean | null;
           owner_profile_id: string | null;
-          plan_tier: "free" | "standard" | "pro" | "enterprise";
+          plan_tier: "free" | "pro" | "enterprise";
         }>;
         Update: Partial<{
           name: string | null;
           workspace_type: "personal" | "org";
           ai_enabled: boolean | null;
           owner_profile_id: string | null;
-          plan_tier: "free" | "standard" | "pro" | "enterprise";
+          plan_tier: "free" | "pro" | "enterprise";
         }>;
         Relationships: [];
       };

@@ -636,7 +636,7 @@ export default function CoachSettingsPage() {
             </div>
             <p className="mt-2 text-xs text-[var(--muted)]">
               Parametres par defaut utilises par l IA. Les actions IA sont reservees aux
-              plans Standard/Pro.
+              plans Pro/Entreprise.
             </p>
             <div className="relative mt-4">
               {aiLocked ? (
@@ -665,7 +665,7 @@ export default function CoachSettingsPage() {
                       <div>
                         <p className="text-xs uppercase tracking-[0.2em]">Assistant IA</p>
                         <p className="text-sm text-amber-100/80">
-                          Debloque le mode IA (Standard/Pro)
+                          Debloque l IA complete (Pro/Entreprise)
                         </p>
                       </div>
                     </div>

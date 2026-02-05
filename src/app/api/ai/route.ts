@@ -541,15 +541,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Organisation introuvable." }, { status: 403 });
     }
 
-    const planTier = await loadPersonalPlanTier(admin, userData.user.id);
-    const entitlements = PLAN_ENTITLEMENTS[planTier];
-    if (!entitlements.aiEnabled) {
-      return NextResponse.json(
-        { error: "Plan requis pour les fonctions IA." },
-        { status: 403 }
-      );
-    }
-
     const parsedPayload = await parseRequestJson(request, aiPayloadSchema);
     if (!parsedPayload.success) {
       return NextResponse.json(
@@ -558,6 +549,24 @@ export async function POST(request: Request) {
       );
     }
     const payload = parsedPayload.data as AiPayload;
+
+    const planTier = await loadPersonalPlanTier(admin, userData.user.id);
+    const entitlements = PLAN_ENTITLEMENTS[planTier];
+    const canUseProofread = entitlements.aiProofreadEnabled;
+    const canUseFullAi = entitlements.aiEnabled;
+    if (payload.action === "improve") {
+      if (!canUseProofread) {
+        return NextResponse.json(
+          { error: "Plan requis pour la relecture IA." },
+          { status: 403 }
+        );
+      }
+    } else if (!canUseFullAi) {
+      return NextResponse.json(
+        { error: "Plan requis pour les fonctions IA avancees." },
+        { status: 403 }
+      );
+    }
 
     if (
       payload.action === "improve" &&

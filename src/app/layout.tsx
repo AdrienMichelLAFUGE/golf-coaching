@@ -13,7 +13,7 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "Golf Coaching",
+  title: "SwingFlow",
   description: "Plateforme de coaching golf",
 };
 

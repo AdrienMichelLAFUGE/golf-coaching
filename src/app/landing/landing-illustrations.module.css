@@ -1,0 +1,463 @@
+.illustration {
+  width: 100%;
+  height: 100%;
+  color: var(--text);
+}
+
+.outline {
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
+.fillSoft {
+  fill: currentColor;
+  fill-opacity: 0.14;
+}
+
+.fillPanel {
+  fill: var(--panel);
+  fill-opacity: 1;
+}
+
+.accent1 {
+  color: var(--accent);
+}
+
+.accent2 {
+  color: var(--accent-2);
+}
+
+.draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: sf-draw 6s ease-in-out infinite;
+}
+
+.drawDelay1 {
+  animation-delay: 0.2s;
+}
+
+.drawDelay2 {
+  animation-delay: 0.4s;
+}
+
+.drawDelay3 {
+  animation-delay: 0.6s;
+}
+
+.cursor {
+  animation: sf-blink 9s ease-in-out infinite;
+  opacity: 0.2;
+}
+
+.swapA {
+  animation: sf-swap-a 9s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.swapB {
+  animation: sf-swap-b 9s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.swapDot {
+  animation: sf-dot 9s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.moduleA {
+  animation: sf-module-a 8s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.moduleB {
+  animation: sf-module-b 8s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.moduleC {
+  animation: sf-module-c 8s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.moduleD {
+  animation: sf-module-d 8s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.swapInLeft {
+  animation: sf-enter-left 8s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.swapInRight {
+  animation: sf-enter-right 8s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.pulse {
+  animation: sf-pulse 8s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.badgePulse1 {
+  animation: sf-badge 9s ease-in-out infinite;
+}
+
+.badgePulse2 {
+  animation: sf-badge 9s ease-in-out infinite;
+  animation-delay: 2s;
+}
+
+.fillCell {
+  fill: currentColor;
+  fill-opacity: 0.4;
+  animation: sf-fill 9s ease-in-out infinite;
+}
+
+.fillDelay1 {
+  animation-delay: 0.2s;
+}
+
+.fillDelay2 {
+  animation-delay: 0.4s;
+}
+
+.fillDelay3 {
+  animation-delay: 0.6s;
+}
+
+.fillDelay4 {
+  animation-delay: 0.8s;
+}
+
+.fillDelay5 {
+  animation-delay: 1s;
+}
+
+.fillDelay6 {
+  animation-delay: 1.2s;
+}
+
+.fillDelay7 {
+  animation-delay: 1.4s;
+}
+
+@keyframes sf-draw {
+  0% {
+    stroke-dashoffset: 1;
+    opacity: 0;
+  }
+  20% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  70% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 1;
+    opacity: 0;
+  }
+}
+
+@keyframes sf-blink {
+  0%,
+  45%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+@keyframes sf-swap-a {
+  0%,
+  35% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  55%,
+  70% {
+    transform: translateY(10px);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes sf-swap-b {
+  0%,
+  35% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  55%,
+  70% {
+    transform: translateY(-10px);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes sf-dot {
+  0%,
+  15% {
+    transform: translate(0, -8px);
+    opacity: 0;
+  }
+  25%,
+  45% {
+    transform: translate(0, 0);
+    opacity: 0.6;
+  }
+  55%,
+  70% {
+    transform: translate(0, 12px);
+    opacity: 1;
+  }
+  85% {
+    transform: translate(0, 0);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate(0, -8px);
+    opacity: 0;
+  }
+}
+
+@keyframes sf-module-a {
+  0%,
+  10% {
+    transform: translateX(-18px);
+    opacity: 0;
+  }
+  20%,
+  45% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  55%,
+  70% {
+    transform: translateY(34px);
+    opacity: 1;
+  }
+  85%,
+  90% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(-18px);
+    opacity: 0;
+  }
+}
+
+@keyframes sf-module-b {
+  0%,
+  10% {
+    transform: translateX(18px);
+    opacity: 0;
+  }
+  20%,
+  45% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  55%,
+  70% {
+    transform: translateY(18px);
+    opacity: 1;
+  }
+  85%,
+  90% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(18px);
+    opacity: 0;
+  }
+}
+
+@keyframes sf-module-c {
+  0%,
+  10% {
+    transform: translateY(-14px);
+    opacity: 0;
+  }
+  20%,
+  45% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  55%,
+  70% {
+    transform: translateY(-34px);
+    opacity: 1;
+  }
+  85%,
+  90% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-14px);
+    opacity: 0;
+  }
+}
+
+@keyframes sf-module-d {
+  0%,
+  10% {
+    transform: translateY(14px);
+    opacity: 0;
+  }
+  20%,
+  45% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  55%,
+  70% {
+    transform: translateY(-18px);
+    opacity: 1;
+  }
+  85%,
+  90% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(14px);
+    opacity: 0;
+  }
+}
+
+@keyframes sf-enter-left {
+  0%,
+  35% {
+    transform: translateX(-16px);
+    opacity: 0;
+  }
+  55%,
+  75% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(-16px);
+    opacity: 0;
+  }
+}
+
+@keyframes sf-enter-right {
+  0%,
+  35% {
+    transform: translateX(16px);
+    opacity: 0;
+  }
+  55%,
+  75% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(16px);
+    opacity: 0;
+  }
+}
+
+@keyframes sf-pulse {
+  0%,
+  55%,
+  100% {
+    transform: scale(1);
+  }
+  65% {
+    transform: scale(1.03);
+  }
+}
+
+@keyframes sf-badge {
+  0%,
+  40%,
+  100% {
+    opacity: 0.45;
+  }
+  60% {
+    opacity: 1;
+  }
+}
+
+@keyframes sf-fill {
+  0%,
+  35%,
+  100% {
+    opacity: 0.4;
+  }
+  55%,
+  70% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .draw {
+    animation: none !important;
+    transform: none !important;
+    stroke-dashoffset: 0 !important;
+    opacity: 1 !important;
+  }
+
+  .cursor {
+    animation: none !important;
+    opacity: 0 !important;
+  }
+
+  .swapA,
+  .swapB,
+  .moduleA,
+  .moduleB,
+  .moduleC,
+  .moduleD,
+  .swapInLeft,
+  .swapInRight,
+  .swapDot,
+  .pulse {
+    animation: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+  }
+
+  .badgePulse1,
+  .badgePulse2 {
+    animation: none !important;
+    opacity: 0.7 !important;
+  }
+
+  .fillCell {
+    animation: none !important;
+    opacity: 0.85 !important;
+  }
+}

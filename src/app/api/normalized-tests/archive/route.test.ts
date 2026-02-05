@@ -84,7 +84,7 @@ describe("POST /api/normalized-tests/archive", () => {
       from: (table: string) => {
         if (table === "organizations") {
           return buildSelectMaybeSingle({
-            data: { plan_tier: "standard" },
+            data: { plan_tier: "pro" },
             error: null,
           });
         }

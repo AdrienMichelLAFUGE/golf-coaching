@@ -591,11 +591,19 @@ export default function CoachReportBuilderPage() {
     workspaceType === "org" &&
     (!isWorkspacePremium || (assignmentChecked && !isAssignedCoach && !isOrgAdmin));
   const entitlements = PLAN_ENTITLEMENTS[planTier];
+  const aiProofreadEnabled = entitlements.aiProofreadEnabled;
   const aiEnabled = entitlements.aiEnabled;
   const radarAddonEnabled = isAdmin || entitlements.dataExtractEnabled;
   const tpiAddonEnabled = isAdmin || entitlements.tpiEnabled;
-  const aiLocked = !aiEnabled;
-  const canUseAi = aiEnabled && !aiBusyId;
+  const aiProofreadLocked = !aiProofreadEnabled;
+  const aiFullLocked = !aiEnabled;
+  const canUseAiProofread = aiProofreadEnabled && !aiBusyId;
+  const canUseAiFull = aiEnabled && !aiBusyId;
+  const aiStatusLabel = aiEnabled
+    ? "Actif"
+    : aiProofreadEnabled
+      ? "Relecture uniquement"
+      : "Plan requis";
   const isDraft = !sentAt;
   const showPublish = isDraft;
   const sendLabel = "Publier le rapport";
@@ -629,7 +637,7 @@ export default function CoachReportBuilderPage() {
       title: "Acces datas bloque",
       description:
         planTier === "free"
-          ? "Disponible des le plan Standard."
+          ? "Disponible des le plan Pro."
           : "Ton plan actuel ne permet pas l extraction de datas.",
       tags: [`Plan ${planLabel}`],
       status: [
@@ -647,7 +655,7 @@ export default function CoachReportBuilderPage() {
       title: "Acces TPI bloque",
       description:
         planTier === "free"
-          ? "Disponible des le plan Standard."
+          ? "Disponible des le plan Pro."
           : "Ton plan actuel ne permet pas le profil TPI.",
       tags: [`Plan ${planLabel}`],
       status: [
@@ -1200,7 +1208,7 @@ export default function CoachReportBuilderPage() {
       return;
     }
     if (customType === "radar" && !radarAddonEnabled) {
-      setSectionsNotice("Plan Standard requis pour cette section.", "error");
+      setSectionsNotice("Plan Pro requis pour cette section.", "error");
       openRadarAddonModal();
       return;
     }
@@ -1695,7 +1703,7 @@ export default function CoachReportBuilderPage() {
 
   const processRadarFile = async (file: File) => {
     if (!radarAddonEnabled) {
-      setRadarError("Plan Standard requis pour importer un fichier datas.");
+      setRadarError("Plan Pro requis pour importer un fichier datas.");
       openRadarAddonModal();
       return false;
     }
@@ -2337,7 +2345,7 @@ export default function CoachReportBuilderPage() {
   };
 
   const handleAiLayoutClick = () => {
-    if (aiLocked) {
+    if (aiFullLocked) {
       openPremiumModal();
       return;
     }
@@ -2436,7 +2444,7 @@ export default function CoachReportBuilderPage() {
       return;
     }
     if (layoutCustomType === "radar" && !radarAddonEnabled) {
-      setLayoutNotice("Plan Standard requis pour cette section.", "error");
+      setLayoutNotice("Plan Pro requis pour cette section.", "error");
       openRadarAddonModal();
       return;
     }
@@ -2768,7 +2776,7 @@ export default function CoachReportBuilderPage() {
   };
 
   const handleAutoDetectRadarGraphs = async (answers: Record<string, string> = {}) => {
-    if (aiLocked) {
+    if (aiFullLocked) {
       openPremiumModal();
       return;
     }
@@ -3031,7 +3039,7 @@ export default function CoachReportBuilderPage() {
 
     if (workspaceType === "org") {
       if (!isWorkspacePremium) {
-        setStatusMessage("Plan requis (Standard/Pro) pour publier en organisation.");
+        setStatusMessage("Plan requis (Pro/Entreprise) pour publier en organisation.");
         setStatusType("error");
         return;
       }
@@ -3542,7 +3550,7 @@ export default function CoachReportBuilderPage() {
   };
 
   const handleAiImprove = async (section: ReportSection) => {
-    if (!canUseAi) return;
+    if (!canUseAiProofread) return;
     setAiBusyId(section.id);
     const text = await callAi({
       action: "improve",
@@ -3559,7 +3567,7 @@ export default function CoachReportBuilderPage() {
   };
 
   const handleAiWrite = async (section: ReportSection) => {
-    if (!canUseAi) return;
+    if (!canUseAiFull) return;
     if (!section.content.trim()) {
       const hasContext = reportSections.some(
         (item) => item.id !== section.id && item.type === "text" && item.content.trim()
@@ -3740,7 +3748,7 @@ export default function CoachReportBuilderPage() {
   };
 
   const handleAiPropagateFromWorking = async () => {
-    if (!canUseAi) return;
+    if (!canUseAiFull) return;
     if (!studentId) {
       setAiError("Choisis un eleve avant de lancer la propagation.");
       return;
@@ -3880,7 +3888,7 @@ export default function CoachReportBuilderPage() {
   };
 
   const handleAiFinalize = async () => {
-    if (!canUseAi) return;
+    if (!canUseAiFull) return;
     const summaryTargets = reportSections.filter(
       (item) => item.type === "text" && isSummaryTitle(item.title)
     );
@@ -3962,7 +3970,7 @@ export default function CoachReportBuilderPage() {
   };
 
   const handleAiSummary = async () => {
-    if (!canUseAi) return;
+    if (!canUseAiFull) return;
     setAiBusyId("summary");
     const summarySections = reportSections
       .filter((item) => item.type === "text")
@@ -4428,15 +4436,15 @@ export default function CoachReportBuilderPage() {
                   <button
                     type="button"
                     onClick={handleAiLayoutClick}
-                    aria-disabled={aiLocked}
+                    aria-disabled={aiFullLocked}
                     className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
-                      aiLocked
+                      aiFullLocked
                         ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
                         : "border-emerald-300/30 bg-emerald-400/10 text-emerald-100 hover:bg-emerald-400/20"
                     }`}
                   >
                     <span className="flex items-center gap-2">
-                      {aiLocked ? (
+                      {aiFullLocked ? (
                         <svg
                           viewBox="0 0 24 24"
                           className="h-3.5 w-3.5"
@@ -5912,7 +5920,7 @@ export default function CoachReportBuilderPage() {
                     ) : null}
                   </div>
                   <div className="relative mt-5 -mx-6 border-y border-white/10 bg-gradient-to-r from-white/5 via-white/5 to-emerald-400/10 px-6 py-4">
-                    {aiLocked ? (
+                    {aiFullLocked ? (
                       <button
                         type="button"
                         onClick={() => openPremiumModal()}
@@ -5940,7 +5948,7 @@ export default function CoachReportBuilderPage() {
                                 Assistant IA
                               </p>
                               <p className="text-sm text-amber-100/80">
-                                Debloque le mode IA (Standard/Pro)
+                                Debloque l IA complete (Pro/Entreprise)
                               </p>
                             </div>
                           </div>
@@ -5964,7 +5972,7 @@ export default function CoachReportBuilderPage() {
                         role={!aiEnabled ? "button" : undefined}
                         aria-label={!aiEnabled ? "Voir les offres" : undefined}
                       >
-                        {aiEnabled ? "Actif" : "Plan requis"}
+                        {aiStatusLabel}
                       </span>
                     </div>
                     <p className="mt-2 text-xs text-[var(--muted)]">
@@ -5988,9 +5996,9 @@ export default function CoachReportBuilderPage() {
                         aria-checked={aiPropagationReview}
                         aria-label="Basculer la validation apres propagation"
                         onClick={() => setAiPropagationReview((prev) => !prev)}
-                        disabled={aiLocked}
+                        disabled={aiFullLocked}
                         className={`relative inline-flex h-8 w-14 items-center rounded-full border px-1 transition ${
-                          aiLocked
+                          aiFullLocked
                             ? "cursor-not-allowed border-white/10 bg-white/5 opacity-60"
                             : "border-white/10 bg-white/10 hover:border-white/30"
                         }`}
@@ -6011,20 +6019,20 @@ export default function CoachReportBuilderPage() {
                         type="button"
                         disabled={!!aiBusyId}
                         onClick={() => {
-                          if (aiLocked) {
+                          if (aiFullLocked) {
                             openPremiumModal();
                             return;
                           }
                           handleAiSummary();
                         }}
                         className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
-                          aiLocked
+                          aiFullLocked
                             ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
                             : "border-white/10 bg-white/10 text-[var(--text)]"
                         }`}
                       >
                         <span className="flex items-center gap-2">
-                          {aiLocked ? (
+                          {aiFullLocked ? (
                             <svg
                               viewBox="0 0 24 24"
                               className="h-3.5 w-3.5"
@@ -6045,7 +6053,7 @@ export default function CoachReportBuilderPage() {
                         type="button"
                         disabled={radarAiAutoBusy}
                         onClick={() => {
-                          if (aiLocked) {
+                          if (aiFullLocked) {
                             openPremiumModal();
                             return;
                           }
@@ -6056,13 +6064,13 @@ export default function CoachReportBuilderPage() {
                           void loadRadarAiQuestions();
                         }}
                         className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
-                          aiLocked
+                          aiFullLocked
                             ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
                             : "border-violet-300/40 bg-violet-400/15 text-violet-100"
                         }`}
                       >
                         <span className="flex items-center gap-2">
-                          {aiLocked ? (
+                          {aiFullLocked ? (
                             <svg
                               viewBox="0 0 24 24"
                               className="h-3.5 w-3.5"
@@ -6083,20 +6091,20 @@ export default function CoachReportBuilderPage() {
                         type="button"
                         disabled={!!aiBusyId}
                         onClick={() => {
-                          if (aiLocked) {
+                          if (aiFullLocked) {
                             openPremiumModal();
                             return;
                           }
                           handleAiFinalize();
                         }}
                         className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
-                          aiLocked
+                          aiFullLocked
                             ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
                             : "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
                         }`}
                       >
                         <span className="flex items-center gap-2">
-                          {aiLocked ? (
+                          {aiFullLocked ? (
                             <svg
                               viewBox="0 0 24 24"
                               className="h-3.5 w-3.5"
@@ -6257,7 +6265,7 @@ export default function CoachReportBuilderPage() {
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            disabled={aiLocked || !!aiBusyId}
+                            disabled={aiFullLocked || !!aiBusyId}
                             onClick={resetWorkingContext}
                             className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-60"
                           >
@@ -6267,20 +6275,20 @@ export default function CoachReportBuilderPage() {
                             type="button"
                             disabled={!!aiBusyId}
                             onClick={() => {
-                              if (aiLocked) {
+                              if (aiFullLocked) {
                                 openPremiumModal();
                                 return;
                               }
                               handleAiPropagateFromWorking();
                             }}
                             className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
-                              aiLocked
+                              aiFullLocked
                                 ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
                                 : "border-white/10 bg-white/10 text-[var(--text)]"
                             }`}
                           >
                             <span className="flex items-center gap-2">
-                              {aiLocked ? (
+                              {aiFullLocked ? (
                                 <svg
                                   viewBox="0 0 24 24"
                                   className="h-3.5 w-3.5"
@@ -6661,20 +6669,20 @@ export default function CoachReportBuilderPage() {
                                     type="button"
                                     disabled={!!aiBusyId}
                                     onClick={() => {
-                                      if (aiLocked) {
+                                      if (aiProofreadLocked) {
                                         openPremiumModal();
                                         return;
                                       }
                                       handleAiImprove(section);
                                     }}
                                     className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
-                                      aiLocked
+                                      aiProofreadLocked
                                         ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
                                         : "border-white/10 bg-white/10 text-[var(--text)]"
                                     }`}
                                   >
                                     <span className="flex items-center gap-2">
-                                      {aiLocked ? (
+                                      {aiProofreadLocked ? (
                                         <svg
                                           viewBox="0 0 24 24"
                                           className="h-3.5 w-3.5"
@@ -6701,20 +6709,20 @@ export default function CoachReportBuilderPage() {
                                     type="button"
                                     disabled={!!aiBusyId}
                                     onClick={() => {
-                                      if (aiLocked) {
+                                      if (aiFullLocked) {
                                         openPremiumModal();
                                         return;
                                       }
                                       handleAiWrite(section);
                                     }}
                                     className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
-                                      aiLocked
+                                      aiFullLocked
                                         ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
                                         : "border-white/10 bg-white/10 text-[var(--text)]"
                                     }`}
                                   >
                                     <span className="flex items-center gap-2">
-                                      {aiLocked ? (
+                                      {aiFullLocked ? (
                                         <svg
                                           viewBox="0 0 24 24"
                                           className="h-3.5 w-3.5"
@@ -6775,7 +6783,7 @@ export default function CoachReportBuilderPage() {
                                           />
                                           <path d="M8 11V8a4 4 0 0 1 8 0v3" />
                                         </svg>
-                                        Plan requis (Standard+)
+                                        Plan requis (Pro+)
                                       </span>
                                       <button
                                         type="button"
@@ -7166,7 +7174,7 @@ export default function CoachReportBuilderPage() {
                   </div>
                   {isOrgPublishLocked ? (
                     <p className="mt-3 text-xs text-amber-300">
-                      Plan requis (Standard/Pro) et assignation pour publier en
+                      Plan requis (Pro/Entreprise) et assignation pour publier en
                       organisation.
                     </p>
                   ) : null}

@@ -71,7 +71,7 @@ describe("POST /api/orgs/assignments", () => {
       },
     };
 
-    planMocks.loadPersonalPlanTier.mockResolvedValue("standard");
+    planMocks.loadPersonalPlanTier.mockResolvedValue("pro");
 
     const deleteAssignments = jest.fn(() => ({
       eq: async () => ({ error: null }),

@@ -80,10 +80,7 @@ export async function POST(request: Request) {
     const planTier = await loadPersonalPlanTier(admin, profile.id);
     const testAccess = PLAN_ENTITLEMENTS[planTier].tests;
     if (testAccess.scope === "pelz" && !isPelzSlug(assignment.test_slug)) {
-      return NextResponse.json(
-        { error: "Plan Standard requis pour ce test." },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Plan Pro requis pour ce test." }, { status: 403 });
     }
   }
 

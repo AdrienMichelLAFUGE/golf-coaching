@@ -141,7 +141,7 @@ describe("POST /api/reports/publish", () => {
               },
               error: null,
             },
-            { data: { plan_tier: "standard" }, error: null }
+            { data: { plan_tier: "pro" }, error: null }
           );
         }
         return {};
@@ -198,7 +198,7 @@ describe("POST /api/reports/publish", () => {
               },
               error: null,
             },
-            { data: { plan_tier: "standard" }, error: null }
+            { data: { plan_tier: "pro" }, error: null }
           );
         }
         if (table === "report_sections") {
@@ -341,7 +341,7 @@ describe("POST /api/reports/publish", () => {
               },
               error: null,
             },
-            { data: { plan_tier: "standard" }, error: null }
+            { data: { plan_tier: "pro" }, error: null }
           );
         }
         if (table === "org_memberships") {

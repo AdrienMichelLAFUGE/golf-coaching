@@ -84,7 +84,7 @@ describe("POST /api/normalized-tests/unassign", () => {
       from: (table: string) => {
         if (table === "organizations") {
           return buildSelectMaybeSingle({
-            data: { plan_tier: "standard" },
+            data: { plan_tier: "pro" },
             error: null,
           });
         }
@@ -141,7 +141,7 @@ describe("POST /api/normalized-tests/unassign", () => {
       from: (table: string) => {
         if (table === "organizations") {
           return buildSelectMaybeSingle({
-            data: { plan_tier: "standard" },
+            data: { plan_tier: "pro" },
             error: null,
           });
         }
@@ -201,7 +201,7 @@ describe("POST /api/normalized-tests/unassign", () => {
       from: (table: string) => {
         if (table === "organizations") {
           return buildSelectMaybeSingle({
-            data: { plan_tier: "standard" },
+            data: { plan_tier: "pro" },
             error: null,
           });
         }

@@ -211,7 +211,7 @@ describe("GET /api/admin/coaches", () => {
                   name: "Espace personnel",
                   workspace_type: "personal",
                   owner_profile_id: "coach-1",
-                  plan_tier: "standard",
+                  plan_tier: "pro",
                   ai_enabled: true,
                   tpi_enabled: false,
                   radar_enabled: false,
@@ -362,7 +362,7 @@ describe("PATCH /api/admin/coaches", () => {
     serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
 
     const response = await PATCH(
-      buildRequest({ orgId: "org-personal", plan_tier: "standard" })
+      buildRequest({ orgId: "org-personal", plan_tier: "pro" })
     );
 
     if (!response) {
@@ -371,7 +371,7 @@ describe("PATCH /api/admin/coaches", () => {
     expect(response.status).toBe(200);
     expect(orgSelect).toHaveBeenCalled();
     expect(orgUpdate).toHaveBeenCalledWith({
-      plan_tier: "standard",
+      plan_tier: "pro",
       ai_enabled: true,
       tpi_enabled: true,
       radar_enabled: true,

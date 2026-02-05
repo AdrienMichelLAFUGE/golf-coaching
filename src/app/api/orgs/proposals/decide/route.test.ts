@@ -69,7 +69,7 @@ describe("POST /api/orgs/proposals/decide", () => {
         }
         if (table === "organizations") {
           return buildSelectMaybeSingle({
-            data: { plan_tier: "standard" },
+            data: { plan_tier: "pro" },
             error: null,
           });
         }

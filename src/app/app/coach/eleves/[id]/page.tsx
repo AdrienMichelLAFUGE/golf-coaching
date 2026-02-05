@@ -323,7 +323,7 @@ export default function CoachStudentDetailPage() {
       title: "Acces datas bloque",
       description:
         planTier === "free"
-          ? "Disponible des le plan Standard."
+          ? "Disponible des le plan Pro."
           : "Ton plan actuel ne permet pas l extraction de datas.",
       tags: [`Plan ${planLabel}`],
       status: [{ label: "Plan", value: planLabel }],
@@ -336,7 +336,7 @@ export default function CoachStudentDetailPage() {
       title: "Acces TPI bloque",
       description:
         planTier === "free"
-          ? "Disponible des le plan Standard."
+          ? "Disponible des le plan Pro."
           : "Ton plan actuel ne permet pas le profil TPI.",
       tags: [`Plan ${planLabel}`],
       status: [{ label: "Plan", value: planLabel }],
@@ -565,7 +565,7 @@ export default function CoachStudentDetailPage() {
       return;
     }
     if (tpiLocked) {
-      setTpiError("Plan Standard requis pour importer un rapport TPI.");
+      setTpiError("Plan Pro requis pour importer un rapport TPI.");
       openTpiAddonModal();
       return;
     }
@@ -682,7 +682,7 @@ export default function CoachStudentDetailPage() {
       return;
     }
     if (radarLocked) {
-      setRadarError("Plan Standard requis pour importer un fichier datas.");
+      setRadarError("Plan Pro requis pour importer un fichier datas.");
       openRadarAddonModal();
       return;
     }
@@ -756,7 +756,7 @@ export default function CoachStudentDetailPage() {
     if (insertError || !radarRow) {
       const message =
         (insertError?.message?.includes("row-level security") ?? false)
-          ? "Plan Standard requis pour importer des datas."
+          ? "Plan Pro requis pour importer des datas."
           : (insertError?.message ?? "Erreur d enregistrement datas.");
       setRadarError(message);
       stopRadarProgress();
@@ -1657,7 +1657,7 @@ export default function CoachStudentDetailPage() {
               </div>
               {tpiLocked ? (
                 <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-rose-300/30 bg-rose-400/10 px-3 py-2 text-xs text-rose-100">
-                  <span>Plan Standard requis pour importer. Lecture seule.</span>
+                  <span>Plan Pro requis pour importer. Lecture seule.</span>
                   <button
                     type="button"
                     onClick={openTpiAddonModal}
@@ -1681,7 +1681,7 @@ export default function CoachStudentDetailPage() {
                 onDragLeave={() => setTpiDragging(false)}
                 onDrop={(event) => {
                   if (tpiLocked) {
-                    setTpiError("Plan Standard requis pour importer un rapport TPI.");
+                    setTpiError("Plan Pro requis pour importer un rapport TPI.");
                     openTpiAddonModal();
                     return;
                   }
@@ -1978,7 +1978,7 @@ export default function CoachStudentDetailPage() {
               </div>
               {radarLocked ? (
                 <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-violet-300/30 bg-violet-400/10 px-3 py-2 text-xs text-violet-100">
-                  <span>Plan Standard requis pour importer. Lecture seule.</span>
+                  <span>Plan Pro requis pour importer. Lecture seule.</span>
                   <button
                     type="button"
                     onClick={openRadarAddonModal}
@@ -2001,7 +2001,7 @@ export default function CoachStudentDetailPage() {
                 onDrop={(event) => {
                   if (isReadOnly) return;
                   if (radarLocked) {
-                    setRadarError("Plan Standard requis pour importer un fichier datas.");
+                    setRadarError("Plan Pro requis pour importer un fichier datas.");
                     openRadarAddonModal();
                     return;
                   }

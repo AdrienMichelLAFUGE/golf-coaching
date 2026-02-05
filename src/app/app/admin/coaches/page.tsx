@@ -10,7 +10,7 @@ type WorkspaceRow = {
   id: string;
   name: string;
   workspace_type: "personal" | "org";
-  plan_tier: "free" | "standard" | "pro" | "enterprise";
+  plan_tier: "free" | "pro" | "enterprise";
   ai_enabled: boolean;
   tpi_enabled: boolean;
   radar_enabled: boolean;
@@ -27,7 +27,6 @@ type DisplayWorkspace = WorkspaceRow & { isPlaceholder?: boolean };
 const MODEL_OPTIONS = ["gpt-5-mini", "gpt-5", "gpt-5.2"];
 const PLAN_TIER_OPTIONS = [
   { value: "free", label: "Free" },
-  { value: "standard", label: "Standard" },
   { value: "pro", label: "Pro" },
   { value: "enterprise", label: "Entreprise" },
 ] as const;
