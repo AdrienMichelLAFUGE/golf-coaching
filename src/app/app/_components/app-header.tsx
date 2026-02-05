@@ -35,8 +35,14 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
     !!profile && profile.role !== "student" && !(profile.full_name ?? "").trim();
   const avatarFallback = (profile?.full_name || email || "Coach").charAt(0).toUpperCase();
   const logoFallback = (organization?.name || "SwingFlow").charAt(0).toUpperCase();
-  const mobileIdentityUrl = profile?.avatar_url ?? organization?.logo_url ?? null;
-  const mobileIdentityAlt = profile?.avatar_url ? "Photo de profil" : "Logo";
+  const brandLogoUrl = "/branding/swingflow-logov2.png";
+  const mobileIdentityUrl =
+    profile?.avatar_url ?? organization?.logo_url ?? brandLogoUrl ?? null;
+  const mobileIdentityAlt = profile?.avatar_url
+    ? "Photo de profil"
+    : organization?.logo_url
+      ? "Logo"
+      : "Logo SwingFlow";
   const mobileIdentityFallback = profile?.avatar_url ? avatarFallback : logoFallback;
 
   useEffect(() => {
@@ -127,9 +133,11 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
           )}
         </div>
         <div className="hidden min-w-0 md:block">
-          <p className="text-[0.6rem] uppercase tracking-[0.2em] text-[var(--muted)] md:text-xs">
-            SwingFlow
-          </p>
+          <img
+            src={brandLogoUrl}
+            alt="SwingFlow"
+            className="h-15 w-auto object-contain"
+          />
         </div>
         {profile ? (
           <div className="flex items-center gap-2 md:hidden">

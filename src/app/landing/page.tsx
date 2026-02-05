@@ -55,17 +55,15 @@ export default function LandingPage() {
 
       <div className="mx-auto max-w-6xl space-y-24 md:space-y-32">
         <div className="reveal snap-start landing-snap-section" data-reveal-stagger>
-          <p
-            className="text-[0.65rem] uppercase tracking-[0.5em] text-[var(--muted)]"
-            data-reveal-item
-          >
-            SwingFlow
-          </p>
-          <div
-            className="mt-2 text-5xl font-semibold tracking-tight text-[var(--text)] md:text-7xl"
-            data-reveal-item
-          >
-            SwingFlow
+          <div className="flex items-center gap-3" data-reveal-item>
+            <Image
+              src="/branding/swingflow-logov2.png"
+              alt="SwingFlow"
+              width={600}
+              height={300}
+              priority
+              className="h-auto w-[600px] max-w-full"
+            />
           </div>
         </div>
 
@@ -94,7 +92,7 @@ export default function LandingPage() {
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-3" data-reveal-item>
               <Link
-                href="/"
+                href="/login"
                 className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-6 py-2.5 text-xs font-semibold uppercase tracking-wide text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.25)] transition hover:opacity-90 active:scale-[0.98]"
               >
                 Creer un compte coach
@@ -610,7 +608,7 @@ export default function LandingPage() {
           </div>
           <div className="mt-4">
             <Link
-              href="/"
+              href="/login"
               className="text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
             >
               Voir les plans dans l app
@@ -628,7 +626,7 @@ export default function LandingPage() {
             </p>
           </div>
           <Link
-            href="/"
+            href="/login"
             className="inline-flex rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 active:scale-[0.98]"
           >
             Creer un compte coach

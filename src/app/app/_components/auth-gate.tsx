@@ -20,7 +20,7 @@ export default function AuthGate({ children }: AuthGateProps) {
       const { data } = await supabase.auth.getSession();
       if (!active) return;
       if (!data.session) {
-        router.replace("/");
+        router.replace("/login");
         return;
       }
       setChecking(false);
