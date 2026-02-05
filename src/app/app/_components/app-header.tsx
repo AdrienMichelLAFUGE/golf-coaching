@@ -36,13 +36,8 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
   const avatarFallback = (profile?.full_name || email || "Coach").charAt(0).toUpperCase();
   const logoFallback = (organization?.name || "SwingFlow").charAt(0).toUpperCase();
   const brandLogoUrl = "/branding/swingflow-logov2.png";
-  const mobileIdentityUrl =
-    profile?.avatar_url ?? organization?.logo_url ?? brandLogoUrl ?? null;
-  const mobileIdentityAlt = profile?.avatar_url
-    ? "Photo de profil"
-    : organization?.logo_url
-      ? "Logo"
-      : "Logo SwingFlow";
+  const mobileIdentityUrl = profile?.avatar_url ?? organization?.logo_url ?? null;
+  const mobileIdentityAlt = profile?.avatar_url ? "Photo de profil" : "Logo";
   const mobileIdentityFallback = profile?.avatar_url ? avatarFallback : logoFallback;
 
   useEffect(() => {
@@ -119,6 +114,13 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
             </div>
           )}
         </div>
+        <div className="md:hidden">
+          <img
+            src={brandLogoUrl}
+            alt="SwingFlow"
+            className="h-10 w-auto object-contain"
+          />
+        </div>
         <div className="hidden md:block">
           {organization?.logo_url ? (
             <img
@@ -139,13 +141,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
             className="h-15 w-auto object-contain"
           />
         </div>
-        {profile ? (
-          <div className="flex items-center gap-2 md:hidden">
-            <div className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] text-[var(--muted)]">
-              {roleLabel}
-            </div>
-          </div>
-        ) : null}
+        {profile ? <div className="md:hidden"></div> : null}
       </div>
       <div className="flex items-center gap-2 pr-16 md:gap-3 md:pr-0">
         <WorkspaceSwitcher />

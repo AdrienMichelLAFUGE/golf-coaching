@@ -78,6 +78,24 @@ type Database = {
         }>;
         Relationships: [];
       };
+      org_groups: {
+        Row: {
+          id: string;
+          org_id: string;
+          name: string;
+          description: string | null;
+        };
+        Insert: {
+          org_id: string;
+          name: string;
+          description?: string | null;
+        };
+        Update: Partial<{
+          name: string;
+          description: string | null;
+        }>;
+        Relationships: [];
+      };
       students: {
         Row: {
           id: string;
@@ -206,6 +224,9 @@ describeIf("RLS integration: freemium org", () => {
       }
       if (orgId) {
         try {
+          await admin.from("org_groups").delete().eq("org_id", orgId);
+        } catch {}
+        try {
           await admin.from("organizations").delete().eq("id", orgId);
         } catch {}
       }
@@ -276,6 +297,17 @@ describeIf("RLS integration: freemium org", () => {
         password,
       });
       if (signInError) throw signInError;
+
+      const { data: groupInsertData, error: groupInsertError } = await coachClient
+        .from("org_groups")
+        .insert({
+          org_id: orgId,
+          name: "Groupe Free",
+        })
+        .select("id");
+
+      expect(groupInsertError).not.toBeNull();
+      expect(groupInsertData ?? []).toHaveLength(0);
 
       const { data: studentInsertData, error: studentInsertError } = await coachClient
         .from("students")

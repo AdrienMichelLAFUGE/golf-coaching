@@ -126,11 +126,10 @@ export default function WorkspaceSwitcher() {
   if (!profile || profile.role === "student") return null;
 
   const workspaceType = organization?.workspace_type ?? "personal";
-  const modeLabel = workspaceType === "org" ? "MODE ORGANISATION" : "MODE PERSO";
   const modeClass =
     workspaceType === "org"
       ? "border-emerald-400/30 bg-emerald-400/15 text-emerald-200"
-      : "border-sky-400/30 bg-sky-400/15 text-sky-200";
+      : "border-sky-400/30 bg-sky-400/15 text-sky-100";
   const activeWorkspaceId = organization?.id ?? null;
   const activeName =
     workspaceType === "org" ? (organization?.name ?? "Organisation") : "Perso";
@@ -205,7 +204,6 @@ export default function WorkspaceSwitcher() {
           className={`inline-flex items-center gap-2 rounded-full border px-2 py-1 ${modeClass}`}
         >
           {workspaceType === "org" ? <BuildingIcon /> : <UserIcon />}
-          {modeLabel}
         </span>
         <span className="hidden max-w-[200px] truncate text-[0.65rem] text-[var(--muted)] md:inline">
           {activeName}

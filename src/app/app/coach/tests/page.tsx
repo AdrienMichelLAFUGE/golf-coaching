@@ -36,6 +36,14 @@ type StudentOption = StudentRow & {
   isShared: boolean;
 };
 
+type GroupRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  studentCount: number;
+  coachCount: number;
+};
+
 type AssignmentRow = {
   id: string;
   test_slug:
@@ -104,17 +112,30 @@ export default function CoachTestsPage() {
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [archivingId, setArchivingId] = useState<string | null>(null);
   const [premiumModalOpen, setPremiumModalOpen] = useState(false);
+  const [groups, setGroups] = useState<GroupRow[]>([]);
+  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [groupAssignModalOpen, setGroupAssignModalOpen] = useState(false);
+  const [groupAssignTestSlug, setGroupAssignTestSlug] = useState<
+    | typeof PELZ_PUTTING_SLUG
+    | typeof PELZ_APPROCHES_SLUG
+    | typeof WEDGING_DRAPEAU_LONG_SLUG
+    | typeof WEDGING_DRAPEAU_COURT_SLUG
+  >(PELZ_PUTTING_SLUG);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [groupAssignError, setGroupAssignError] = useState("");
+  const [groupAssigning, setGroupAssigning] = useState(false);
   const isAdmin = isAdminEmail(userEmail);
   const testAccess = PLAN_ENTITLEMENTS[planTier].tests;
+  const isOrgWorkspace = (organization?.workspace_type ?? "personal") === "org";
   const isOrgReadOnly =
-    (organization?.workspace_type ?? "personal") === "org" && planTier === "free";
+    isOrgWorkspace && planTier === "free";
   const readOnlyMessage = "Lecture seule: plan Free en organisation.";
   const modeLabel =
-    (organization?.workspace_type ?? "personal") === "org"
+    isOrgWorkspace
       ? `Organisation : ${organization?.name ?? "Organisation"}`
       : "Espace personnel";
   const modeBadgeTone =
-    (organization?.workspace_type ?? "personal") === "org"
+    isOrgWorkspace
       ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
       : "border-sky-300/30 bg-sky-400/10 text-sky-100";
   const showUpgradeNotice = planTier === "free" && !isAdmin;
@@ -271,19 +292,52 @@ export default function CoachTestsPage() {
     setAssignments((data ?? []) as AssignmentRow[]);
   }, []);
 
+  const loadGroups = useCallback(async () => {
+    if (!isOrgWorkspace) {
+      setGroups([]);
+      setGroupsLoading(false);
+      return;
+    }
+    setGroupsLoading(true);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setGroupsLoading(false);
+      return;
+    }
+    const response = await fetch("/api/orgs/groups", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setGroups([]);
+      setGroupAssignError(payload.error ?? "Chargement des groupes impossible.");
+      setGroupsLoading(false);
+      return;
+    }
+    setGroups(payload.groups ?? []);
+    setGroupsLoading(false);
+  }, [isOrgWorkspace]);
+
   useEffect(() => {
     let cancelled = false;
     const loadAll = async () => {
       setLoading(true);
       setError("");
-      await Promise.all([loadStudents(), loadAssignments()]);
+      const jobs = [loadStudents(), loadAssignments()];
+      if (isOrgWorkspace) {
+        jobs.push(loadGroups());
+      }
+      await Promise.all(jobs);
       if (!cancelled) setLoading(false);
     };
     loadAll();
     return () => {
       cancelled = true;
     };
-  }, [loadAssignments, loadStudents]);
+  }, [isOrgWorkspace, loadAssignments, loadGroups, loadStudents]);
 
   const toggleSelected = (studentId: string) => {
     setSelectedIds((prev) =>
@@ -311,10 +365,34 @@ export default function CoachTestsPage() {
     setAssignModalOpen(true);
   };
 
+  const openGroupAssignModal = (
+    slug:
+      | typeof PELZ_PUTTING_SLUG
+      | typeof PELZ_APPROCHES_SLUG
+      | typeof WEDGING_DRAPEAU_LONG_SLUG
+      | typeof WEDGING_DRAPEAU_COURT_SLUG
+  ) => {
+    if (isOrgReadOnly) {
+      setAssignmentError(readOnlyMessage);
+      return;
+    }
+    setGroupAssignError("");
+    setSelectedGroupId(null);
+    setGroupAssignTestSlug(slug);
+    setGroupAssignModalOpen(true);
+    void loadGroups();
+  };
+
   const closeAssignModal = () => {
     setAssignModalOpen(false);
     setAssignError("");
     setSelectedIds([]);
+  };
+
+  const closeGroupAssignModal = () => {
+    setGroupAssignModalOpen(false);
+    setGroupAssignError("");
+    setSelectedGroupId(null);
   };
 
   const handleRemoveAssignment = async (assignmentId: string) => {
@@ -451,6 +529,51 @@ export default function CoachTestsPage() {
     setAssigning(false);
   };
 
+  const handleGroupAssign = async () => {
+    if (isOrgReadOnly) {
+      setGroupAssignError(readOnlyMessage);
+      return;
+    }
+    if (!selectedGroupId) {
+      setGroupAssignError("Selectionne un groupe.");
+      return;
+    }
+    setGroupAssignError("");
+    setGroupAssigning(true);
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setGroupAssignError("Session invalide.");
+      setGroupAssigning(false);
+      return;
+    }
+
+    const response = await fetch("/api/normalized-tests/assign-group", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        testSlug: groupAssignTestSlug,
+        groupId: selectedGroupId,
+      }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setGroupAssignError(payload.error ?? "Assignation impossible.");
+      setGroupAssigning(false);
+      return;
+    }
+
+    closeGroupAssignModal();
+    await loadAssignments();
+    setGroupAssigning(false);
+  };
+
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       <div className="space-y-6">
@@ -561,6 +684,18 @@ export default function CoachTestsPage() {
                       >
                         Assigner a des eleves
                       </button>
+                      {isOrgWorkspace ? (
+                        <button
+                          type="button"
+                          onClick={() => openGroupAssignModal(test.slug)}
+                          disabled={isOrgReadOnly}
+                          className={`rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20 ${
+                            isOrgReadOnly ? "cursor-not-allowed opacity-60" : ""
+                          }`}
+                        >
+                          Assigner a un groupe
+                        </button>
+                      ) : null}
                     </div>
                   </div>
                 ))}
@@ -864,6 +999,110 @@ export default function CoachTestsPage() {
                   className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-4 py-2 text-xs uppercase tracking-wide text-emerald-100 transition hover:bg-emerald-400/20 disabled:opacity-60"
                 >
                   {assigning ? "Envoi..." : "Envoyer"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {groupAssignModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-8">
+          <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-[var(--bg-elevated)] p-6 shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                  Assigner le test au groupe
+                </p>
+                <h4 className="mt-2 text-lg font-semibold text-[var(--text)]">
+                  {testBySlug[groupAssignTestSlug]?.title ?? PELZ_PUTTING_TEST.title}
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={closeGroupAssignModal}
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                aria-label="Fermer"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M18 6L6 18" />
+                  <path d="M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {groupsLoading ? (
+                <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
+                  Chargement des groupes...
+                </div>
+              ) : groups.length === 0 ? (
+                <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
+                  Aucun groupe disponible.
+                </div>
+              ) : (
+                <div className="max-h-72 space-y-2 overflow-y-auto">
+                  {groups.map((group) => (
+                    <label
+                      key={group.id}
+                      className="flex items-start justify-between gap-3 rounded-xl border border-white/10 bg-white/10 px-4 py-3 text-sm text-[var(--text)]"
+                    >
+                      <span className="flex items-start gap-3">
+                        <input
+                          type="radio"
+                          name="groupId"
+                          checked={selectedGroupId === group.id}
+                          onChange={() => setSelectedGroupId(group.id)}
+                          className="mt-1 h-4 w-4 rounded border border-white/10 bg-[var(--bg-elevated)]"
+                        />
+                        <span>
+                          <span className="font-medium">{group.name}</span>
+                          {group.description ? (
+                            <span className="mt-1 block text-xs text-[var(--muted)]">
+                              {group.description}
+                            </span>
+                          ) : null}
+                          <span className="mt-2 block text-[0.65rem] uppercase tracking-[0.2em] text-[var(--muted)]">
+                            {group.studentCount} eleves · {group.coachCount} coachs
+                          </span>
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+              {groupAssignError ? (
+                <p className="text-sm text-red-400">{groupAssignError}</p>
+              ) : null}
+            </div>
+
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-[var(--muted)]">
+                {selectedGroupId ? "Groupe selectionne" : "Aucun groupe selectionne"}
+              </p>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={closeGroupAssignModal}
+                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGroupAssign}
+                  disabled={groupAssigning || isOrgReadOnly}
+                  className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-4 py-2 text-xs uppercase tracking-wide text-emerald-100 transition hover:bg-emerald-400/20 disabled:opacity-60"
+                >
+                  {groupAssigning ? "Envoi..." : "Envoyer"}
                 </button>
               </div>
             </div>
