@@ -1980,6 +1980,12 @@ export default function CoachStudentDetailPage() {
                                 : test.result_color === "orange"
                                   ? "bg-amber-400"
                                   : "bg-rose-400";
+                            const selectedTone =
+                              test.result_color === "green"
+                                ? "border-emerald-300/40 bg-emerald-400/10"
+                                : test.result_color === "orange"
+                                  ? "border-amber-300/40 bg-amber-400/10"
+                                  : "border-rose-300/40 bg-rose-400/10";
                             const isSelected = selectedTpi?.id === test.id;
                             return (
                               <button
@@ -1989,7 +1995,7 @@ export default function CoachStudentDetailPage() {
                                 aria-pressed={isSelected}
                                 className={`flex h-20 items-start gap-2 overflow-hidden rounded-xl border px-4 py-3 text-left transition ${
                                   isSelected
-                                    ? "border-rose-300/40 bg-rose-400/10"
+                                    ? selectedTone
                                     : "border-white/10 bg-white/5 hover:border-white/20"
                                 }`}
                               >
