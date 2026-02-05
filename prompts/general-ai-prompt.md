@@ -293,6 +293,8 @@ Lis le tableau et renvoie un JSON strict (pas de markdown).
 Les colonnes sont regroupees (Distance, Speed, Spin, etc).
 Conserve l ordre exact des colonnes.
 Chaque ligne correspond a un coup.
+La premiere colonne de donnees ne doit jamais etre un simple "#" isole.
+Si l image affiche "#" pour le numero de coup, renomme la colonne en "Shot" ou "Shot#" (au choix) et aligne toutes les valeurs sur cette colonne. Il ne peut pas y avoir deux colonne "shot" ou "shot#".
 Ignore les lignes vides.
 Si tu identifies les lignes AVG et DEV, renvoie-les dans avg et dev.
 Le club de la session est affiche en haut a droite de l image (ex: Driver, 7 Iron, Wedge).
@@ -308,6 +310,7 @@ Tu dois:
 
 - comparer les colonnes (groupe, label, unite) et l ordre.
 - verifier que les valeurs des coups sont coherentes avec l image.
+- si la premiere colonne est nommee "#" dans l extraction, considere cela comme une erreur de colonne: elle doit etre nommee "Shot" ou "Shot#". Dans ce cas, retourne is_valid=false et explique le probleme.
 - signaler toute incoherence critique ou valeur manquante.
   Ne considere PAS comme incoherences critiques:
 - des icones ou indicateurs (ex: ✓ 7 Iron, ● Ball) utilises comme metadonnees; cela reste valide si l extraction indique club/ball coherents.
