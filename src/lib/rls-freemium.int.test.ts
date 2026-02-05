@@ -117,6 +117,22 @@ type Database = {
         }>;
         Relationships: [];
       };
+      student_accounts: {
+        Row: {
+          id: string;
+          student_id: string;
+          user_id: string;
+        };
+        Insert: {
+          student_id: string;
+          user_id: string;
+        };
+        Update: Partial<{
+          student_id: string;
+          user_id: string;
+        }>;
+        Relationships: [];
+      };
       tpi_reports: {
         Row: {
           id: string;
@@ -180,6 +196,7 @@ describeIf("RLS integration: freemium org", () => {
   const stamp = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const orgName = `rls-org-free-${stamp}`;
   const coachEmail = `coach-free+${stamp}@example.com`;
+  const studentEmail = `student-linked+${stamp}@example.com`;
 
   it("blocks student + TPI + radar inserts for free org member", async () => {
     const admin = createClient<Database>(testEnv.url!, testEnv.serviceKey!, {
@@ -350,6 +367,243 @@ describeIf("RLS integration: freemium org", () => {
 
       expect(radarInsertError).not.toBeNull();
       expect(radarInsertData ?? []).toHaveLength(0);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("allows org coach to read linked TPI/radar from another workspace", async () => {
+    const admin = createClient<Database>(testEnv.url!, testEnv.serviceKey!, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const coachClient = createClient<Database>(testEnv.url!, testEnv.anonKey!, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    let orgId = "";
+    let personalOrgId = "";
+    let coachId = "";
+    let studentUserId = "";
+    let studentOrgId = "";
+    let studentPersonalId = "";
+
+    const cleanup = async () => {
+      if (studentPersonalId) {
+        try {
+          await admin.from("radar_files").delete().eq("student_id", studentPersonalId);
+        } catch {}
+        try {
+          await admin.from("tpi_reports").delete().eq("student_id", studentPersonalId);
+        } catch {}
+      }
+      if (studentOrgId || studentPersonalId) {
+        try {
+          await admin
+            .from("student_accounts")
+            .delete()
+            .in("student_id", [studentOrgId, studentPersonalId].filter(Boolean));
+        } catch {}
+        try {
+          await admin
+            .from("students")
+            .delete()
+            .in("id", [studentOrgId, studentPersonalId].filter(Boolean));
+        } catch {}
+      }
+      if (studentUserId) {
+        try {
+          await admin.from("profiles").delete().eq("id", studentUserId);
+        } catch {}
+        try {
+          await admin.auth.admin.deleteUser(studentUserId);
+        } catch {}
+      }
+      if (coachId || orgId) {
+        try {
+          await admin
+            .from("org_memberships")
+            .delete()
+            .eq("org_id", orgId)
+            .eq("user_id", coachId);
+        } catch {}
+      }
+      if (coachId) {
+        try {
+          await admin.from("profiles").delete().eq("id", coachId);
+        } catch {}
+        try {
+          await admin.auth.admin.deleteUser(coachId);
+        } catch {}
+      }
+      if (orgId) {
+        try {
+          await admin.from("organizations").delete().eq("id", orgId);
+        } catch {}
+      }
+      if (personalOrgId) {
+        try {
+          await admin.from("organizations").delete().eq("id", personalOrgId);
+        } catch {}
+      }
+    };
+
+    try {
+      const { data: org, error: orgError } = await admin
+        .from("organizations")
+        .insert({
+          name: `${orgName}-linked`,
+          workspace_type: "org",
+          plan_tier: "free",
+          ai_enabled: true,
+        })
+        .select("id")
+        .single();
+      if (orgError || !org) throw orgError ?? new Error("Org creation failed.");
+      orgId = org.id;
+
+      const { data: personalOrg, error: personalOrgError } = await admin
+        .from("organizations")
+        .insert({
+          name: `${orgName}-personal`,
+          workspace_type: "personal",
+          ai_enabled: true,
+        })
+        .select("id")
+        .single();
+      if (personalOrgError || !personalOrg)
+        throw personalOrgError ?? new Error("Personal org creation failed.");
+      personalOrgId = personalOrg.id;
+
+      const { data: coachUser, error: coachError } = await admin.auth.admin.createUser({
+        email: coachEmail,
+        password,
+        email_confirm: true,
+      });
+      if (coachError || !coachUser?.user) {
+        throw coachError ?? new Error("Coach creation failed.");
+      }
+      coachId = coachUser.user.id;
+
+      const { error: profileError } = await admin.from("profiles").upsert(
+        {
+          id: coachId,
+          org_id: orgId,
+          active_workspace_id: orgId,
+          role: "coach",
+          full_name: "Coach Linked",
+        },
+        { onConflict: "id" }
+      );
+      if (profileError) throw profileError;
+
+      const { error: membershipError } = await admin.from("org_memberships").insert({
+        org_id: orgId,
+        user_id: coachId,
+        role: "coach",
+        status: "active",
+        premium_active: true,
+      });
+      if (membershipError) throw membershipError;
+
+      const { data: studentUser, error: studentUserError } =
+        await admin.auth.admin.createUser({
+          email: studentEmail,
+          password,
+          email_confirm: true,
+        });
+      if (studentUserError || !studentUser?.user) {
+        throw studentUserError ?? new Error("Student user creation failed.");
+      }
+      studentUserId = studentUser.user.id;
+
+      const { error: studentProfileError } = await admin.from("profiles").upsert(
+        {
+          id: studentUserId,
+          org_id: orgId,
+          active_workspace_id: orgId,
+          role: "student",
+          full_name: "Student Linked",
+        },
+        { onConflict: "id" }
+      );
+      if (studentProfileError) throw studentProfileError;
+
+      const { data: studentOrg, error: studentOrgError } = await admin
+        .from("students")
+        .insert({
+          org_id: orgId,
+          first_name: "Eleve",
+          last_name: "Org",
+          email: studentEmail,
+        })
+        .select("id")
+        .single();
+      if (studentOrgError || !studentOrg) {
+        throw studentOrgError ?? new Error("Org student creation failed.");
+      }
+      studentOrgId = studentOrg.id;
+
+      const { data: studentPersonal, error: studentPersonalError } = await admin
+        .from("students")
+        .insert({
+          org_id: personalOrgId,
+          first_name: "Eleve",
+          last_name: "Perso",
+          email: studentEmail,
+        })
+        .select("id")
+        .single();
+      if (studentPersonalError || !studentPersonal) {
+        throw studentPersonalError ?? new Error("Personal student creation failed.");
+      }
+      studentPersonalId = studentPersonal.id;
+
+      const { error: linkError } = await admin.from("student_accounts").insert([
+        { student_id: studentOrgId, user_id: studentUserId },
+        { student_id: studentPersonalId, user_id: studentUserId },
+      ]);
+      if (linkError) throw linkError;
+
+      const { error: tpiError } = await admin.from("tpi_reports").insert({
+        org_id: personalOrgId,
+        student_id: studentPersonalId,
+        uploaded_by: coachId,
+        file_url: `linked-${stamp}.pdf`,
+        file_type: "pdf",
+        original_name: "tpi.pdf",
+        status: "ready",
+      });
+      if (tpiError) throw tpiError;
+
+      const { error: radarError } = await admin.from("radar_files").insert({
+        org_id: personalOrgId,
+        student_id: studentPersonalId,
+        file_url: `linked-${stamp}.png`,
+        file_mime: "image/png",
+        original_name: "radar.png",
+        status: "ready",
+      });
+      if (radarError) throw radarError;
+
+      const { error: signInError } = await coachClient.auth.signInWithPassword({
+        email: coachEmail,
+        password,
+      });
+      if (signInError) throw signInError;
+
+      const { data: tpiRead, error: tpiReadError } = await coachClient
+        .from("tpi_reports")
+        .select("id")
+        .eq("student_id", studentPersonalId);
+      expect(tpiReadError).toBeNull();
+      expect(tpiRead ?? []).toHaveLength(1);
+
+      const { data: radarRead, error: radarReadError } = await coachClient
+        .from("radar_files")
+        .select("id")
+        .eq("student_id", studentPersonalId);
+      expect(radarReadError).toBeNull();
+      expect(radarRead ?? []).toHaveLength(1);
     } finally {
       await cleanup();
     }

@@ -82,6 +82,8 @@ type RadarFile = {
   analytics?: RadarAnalytics | null;
   created_at: string;
   error: string | null;
+  org_id: string;
+  organizations?: { name: string | null } | { name: string | null }[] | null;
 };
 
 type StudentOption = {
@@ -685,6 +687,57 @@ export default function CoachReportBuilderPage() {
       }
     },
     [openRadarAddonModal, openTpiAddonModal]
+  );
+
+  const formatSourceLabel = useCallback(
+    (orgId?: string | null, orgName?: string | null) => {
+      if (orgName) return orgName;
+      if (!orgId) return null;
+      if (orgId === organization?.id) return "Workspace actuel";
+      return "Autre workspace";
+    },
+    [organization?.id]
+  );
+
+  const resolveLinkedStudentIds = useCallback(
+    async (targetStudentId?: string | null) => {
+      if (!targetStudentId) return [];
+      const { data, error } = await supabase.rpc("get_linked_student_ids", {
+        _student_id: targetStudentId,
+      });
+      if (error) return [targetStudentId];
+      const ids = Array.isArray(data) ? data.filter(Boolean) : [];
+      return ids.length > 0 ? (ids as string[]) : [targetStudentId];
+    },
+    []
+  );
+
+  const resolveLatestTpiReportId = useCallback(
+    async (targetStudentId?: string | null) => {
+      if (!targetStudentId) return null;
+      const linkedIds = await resolveLinkedStudentIds(targetStudentId);
+      if (linkedIds.length === 0) return null;
+      const baseQuery = supabase
+        .from("tpi_reports")
+        .select("id, status, created_at")
+        .in("student_id", linkedIds)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      const { data } = await baseQuery.maybeSingle();
+      if (data && data.status !== "ready") {
+        const { data: readyData } = await supabase
+          .from("tpi_reports")
+          .select("id, status, created_at")
+          .in("student_id", linkedIds)
+          .eq("status", "ready")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        return readyData?.id ?? data.id;
+      }
+      return data?.id ?? null;
+    },
+    [resolveLinkedStudentIds]
   );
 
   const availableSections = useMemo(() => {
@@ -1608,12 +1661,19 @@ export default function CoachReportBuilderPage() {
       setRadarLoading(true);
       setRadarError("");
 
+      const linkedIds = await resolveLinkedStudentIds(targetStudentId);
+      if (linkedIds.length === 0) {
+        setRadarFiles([]);
+        setRadarLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from("radar_files")
         .select(
-          "id, status, original_name, columns, shots, stats, summary, config, analytics, created_at, error"
+          "id, status, original_name, columns, shots, stats, summary, config, analytics, created_at, error, org_id, organizations(name)"
         )
-        .eq("student_id", targetStudentId)
+        .in("student_id", linkedIds)
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -1637,7 +1697,7 @@ export default function CoachReportBuilderPage() {
       setRadarFiles(normalized as RadarFile[]);
       setRadarLoading(false);
     },
-    [studentId]
+    [studentId, resolveLinkedStudentIds]
   );
 
   const stopRadarUploadProgress = () => {
@@ -4297,13 +4357,16 @@ export default function CoachReportBuilderPage() {
       setTpiContext("");
       return;
     }
-    const match = students.find((student) => student.id === studentId);
-    if (!match) {
-      setTpiContext("");
-      return;
-    }
-    loadTpiContext(match.tpi_report_id);
-  }, [studentId, students]);
+    let cancelled = false;
+    Promise.resolve().then(async () => {
+      const reportId = await resolveLatestTpiReportId(studentId);
+      if (cancelled) return;
+      loadTpiContext(reportId);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [studentId, resolveLatestTpiReportId]);
 
   const selectedStudent = useMemo(
     () => students.find((student) => student.id === studentId) ?? null,
@@ -6843,12 +6906,21 @@ export default function CoachReportBuilderPage() {
                                         ? "Choisir un fichier datas"
                                         : "Importer un fichier datas pour cette section"}
                                     </option>
-                                    {radarVisibleFiles.map((file) => (
-                                      <option key={file.id} value={file.id}>
-                                        {file.original_name || "Export datas"}{" "}
-                                        {file.status === "ready" ? "" : "(analyse)"}
-                                      </option>
-                                    ))}
+                                    {radarVisibleFiles.map((file) => {
+                                      const sourceLabel = formatSourceLabel(
+                                        file.org_id,
+                                        Array.isArray(file.organizations)
+                                          ? file.organizations?.[0]?.name ?? null
+                                          : file.organizations?.name ?? null
+                                      );
+                                      return (
+                                        <option key={file.id} value={file.id}>
+                                          {file.original_name || "Export datas"}
+                                          {sourceLabel ? ` • ${sourceLabel}` : ""}{" "}
+                                          {file.status === "ready" ? "" : "(analyse)"}
+                                        </option>
+                                      );
+                                    })}
                                   </select>
                                   <div className="flex flex-wrap items-center gap-2 rounded-full border border-white/10 bg-white/5 px-2 py-1">
                                     <select

@@ -29,6 +29,8 @@ type TpiReport = {
   id: string;
   status: "processing" | "ready" | "error";
   created_at?: string;
+  org_id: string;
+  organizations?: { name: string | null }[] | { name: string | null } | null;
 };
 
 type TpiTest = {
@@ -75,6 +77,20 @@ export default function StudentDashboardPage() {
   const [noStudent, setNoStudent] = useState(false);
   const locale = organization?.locale ?? "fr-FR";
   const timezone = organization?.timezone ?? "Europe/Paris";
+  const formatSourceLabel = useMemo(() => {
+    return (orgId?: string | null, orgName?: string | null) => {
+      if (orgName) return orgName;
+      if (!orgId) return null;
+      if (orgId === organization?.id) return "Workspace actuel";
+      return "Autre workspace";
+    };
+  }, [organization?.id]);
+  const tpiSourceLabel = formatSourceLabel(
+    tpiReport?.org_id,
+    Array.isArray(tpiReport?.organizations)
+      ? tpiReport?.organizations?.[0]?.name ?? null
+      : (tpiReport?.organizations as { name: string | null } | null)?.name ?? null
+  );
 
   const latestReport = useMemo(() => reports[0], [reports]);
   const studentName = useMemo(() => {
@@ -145,36 +161,25 @@ export default function StudentDashboardPage() {
 
       let reportData: TpiReport | null = null;
 
-      if (primaryStudent.tpi_report_id) {
-        const { data } = await supabase
-          .from("tpi_reports")
-          .select("id, status, created_at")
-          .eq("id", primaryStudent.tpi_report_id)
-          .single();
-        if (data) reportData = data as TpiReport;
-      }
-
-      if (!reportData) {
-        const { data } = await supabase
-          .from("tpi_reports")
-          .select("id, status, created_at")
-          .eq("student_id", primaryStudent.id)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (data) reportData = data as TpiReport;
-      }
+      const { data: latestData } = await supabase
+        .from("tpi_reports")
+        .select("id, status, created_at, org_id, organizations(name)")
+        .in("student_id", studentIds)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (latestData) reportData = latestData as TpiReport;
 
       if (reportData && reportData.status !== "ready") {
-        const { data } = await supabase
+        const { data: readyData } = await supabase
           .from("tpi_reports")
-          .select("id, status, created_at")
-          .eq("student_id", primaryStudent.id)
+          .select("id, status, created_at, org_id, organizations(name)")
+          .in("student_id", studentIds)
           .eq("status", "ready")
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
-        if (data) reportData = data as TpiReport;
+        if (readyData) reportData = readyData as TpiReport;
       }
 
       if (reportData) {
@@ -435,6 +440,12 @@ export default function StudentDashboardPage() {
                 <p className="mt-1 text-sm text-[var(--muted)]">
                   Resume visuel de ton screening physique pour suivre tes progres.
                 </p>
+                {tpiSourceLabel ? (
+                  <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-white/30" />
+                    Source: {tpiSourceLabel}
+                  </div>
+                ) : null}
               </div>
               {tpiReport ? (
                 <span className="rounded-full border border-rose-300/30 bg-rose-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-rose-200">

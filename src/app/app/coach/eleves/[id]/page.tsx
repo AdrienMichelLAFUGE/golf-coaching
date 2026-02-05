@@ -50,6 +50,13 @@ type Report = {
   sent_at: string | null;
 };
 
+type OrganizationRef =
+  | {
+      name: string | null;
+    }
+  | { name: string | null }[]
+  | null;
+
 type TpiReport = {
   id: string;
   status: "processing" | "ready" | "error";
@@ -57,6 +64,8 @@ type TpiReport = {
   file_type: "pdf" | "image";
   original_name: string | null;
   created_at: string;
+  org_id: string;
+  organizations?: OrganizationRef;
 };
 
 type TpiTest = {
@@ -85,6 +94,8 @@ type RadarFile = {
   created_at: string;
   extracted_at: string | null;
   error: string | null;
+  org_id: string;
+  organizations?: OrganizationRef;
 };
 
 type ShareEntry = {
@@ -250,6 +261,36 @@ export default function CoachStudentDetailPage() {
     workspaceType === "org" && isWorkspacePremium && (isAssigned || isWorkspaceAdmin);
   const canProposeInOrg = workspaceType === "org" && isWorkspacePremium && !isAssigned;
   const shareAccess = getViewerShareAccess(shareStatus);
+  const getOrgName = useCallback((value?: OrganizationRef) => {
+    if (!value) return null;
+    if (Array.isArray(value)) return value[0]?.name ?? null;
+    return value.name ?? null;
+  }, []);
+  const formatSourceLabel = useCallback(
+    (orgId?: string | null, orgName?: string | null) => {
+      if (orgName) return orgName;
+      if (!orgId) return null;
+      if (orgId === organization?.id) return "Workspace actuel";
+      return "Autre workspace";
+    },
+    [organization?.id]
+  );
+  const tpiSourceLabel = formatSourceLabel(
+    tpiReport?.org_id,
+    getOrgName(tpiReport?.organizations)
+  );
+  const resolveLinkedStudentIds = useCallback(
+    async (targetStudentId?: string | null) => {
+      if (!targetStudentId) return [];
+      const { data, error } = await supabase.rpc("get_linked_student_ids", {
+        _student_id: targetStudentId,
+      });
+      if (error) return [targetStudentId];
+      const ids = Array.isArray(data) ? data.filter(Boolean) : [];
+      return ids.length > 0 ? (ids as string[]) : [targetStudentId];
+    },
+    []
+  );
   const isOrgReadOnly = workspaceType === "org" && !isWorkspacePremium;
   const isReadOnly = shareAccess.canRead || isOrgReadOnly;
   const canWriteReports = workspaceType === "org" ? canPublishInOrg : !isReadOnly;
@@ -375,28 +416,30 @@ export default function CoachStudentDetailPage() {
   };
 
   const loadTpi = useCallback(
-    async (reportId?: string | null) => {
+    async () => {
       if (!studentId) return;
 
       setTpiLoading(true);
       setTpiError("");
 
-      let reportData: TpiReport | null = null;
-
-      if (reportId) {
-        const { data, error } = await supabase
-          .from("tpi_reports")
-          .select("id, status, file_url, file_type, original_name, created_at")
-          .eq("id", reportId)
-          .single();
-        if (!error && data) reportData = data as TpiReport;
+      const linkedIds = await resolveLinkedStudentIds(studentId);
+      if (linkedIds.length === 0) {
+        setTpiReport(null);
+        setTpiTests([]);
+        setSelectedTpi(null);
+        setTpiLoading(false);
+        return;
       }
+
+      let reportData: TpiReport | null = null;
 
       if (!reportData) {
         const { data, error } = await supabase
           .from("tpi_reports")
-          .select("id, status, file_url, file_type, original_name, created_at")
-          .eq("student_id", studentId)
+          .select(
+            "id, status, file_url, file_type, original_name, created_at, org_id, organizations(name)"
+          )
+          .in("student_id", linkedIds)
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
@@ -406,8 +449,10 @@ export default function CoachStudentDetailPage() {
       if (reportData && reportData.status !== "ready") {
         const { data, error } = await supabase
           .from("tpi_reports")
-          .select("id, status, file_url, file_type, original_name, created_at")
-          .eq("student_id", studentId)
+          .select(
+            "id, status, file_url, file_type, original_name, created_at, org_id, organizations(name)"
+          )
+          .in("student_id", linkedIds)
           .eq("status", "ready")
           .order("created_at", { ascending: false })
           .limit(1)
@@ -457,7 +502,7 @@ export default function CoachStudentDetailPage() {
       });
       setTpiLoading(false);
     },
-    [studentId]
+    [studentId, resolveLinkedStudentIds]
   );
 
   const loadRadars = useCallback(async () => {
@@ -465,12 +510,19 @@ export default function CoachStudentDetailPage() {
     setRadarLoading(true);
     setRadarError("");
 
+    const linkedIds = await resolveLinkedStudentIds(studentId);
+    if (linkedIds.length === 0) {
+      setRadarFiles([]);
+      setRadarLoading(false);
+      return;
+    }
+
     const { data, error } = await supabase
       .from("radar_files")
       .select(
-        "id, status, source, original_name, file_url, file_mime, columns, shots, stats, config, summary, analytics, created_at, extracted_at, error"
+        "id, status, source, original_name, file_url, file_mime, columns, shots, stats, config, summary, analytics, created_at, extracted_at, error, org_id, organizations(name)"
       )
-      .eq("student_id", studentId)
+      .in("student_id", linkedIds)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -493,7 +545,7 @@ export default function CoachStudentDetailPage() {
 
     setRadarFiles(normalized as RadarFile[]);
     setRadarLoading(false);
-  }, [studentId]);
+  }, [studentId, resolveLinkedStudentIds]);
 
   const stopTpiProgress = () => {
     if (tpiProgressTimer.current) {
@@ -670,7 +722,7 @@ export default function CoachStudentDetailPage() {
       return;
     }
 
-    await loadTpi(reportData.id);
+    await loadTpi();
     stopTpiProgress();
     setTpiProgress(100);
     setTpiUploading(false);
@@ -828,7 +880,7 @@ export default function CoachStudentDetailPage() {
       }
 
       setStudent(studentData);
-      await loadTpi(studentData.tpi_report_id);
+      await loadTpi();
 
       if (userEmail) {
         const { data: shareData, error: shareError } = await supabase
@@ -1649,6 +1701,12 @@ export default function CoachStudentDetailPage() {
                     Ajoute un screening TPI pour obtenir une synthese claire des points a
                     travailler et des points forts.
                   </p>
+                  {tpiSourceLabel ? (
+                    <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                      <span className="h-1.5 w-1.5 rounded-full bg-white/30" />
+                      Source: {tpiSourceLabel}
+                    </div>
+                  ) : null}
                   <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-emerald-100">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />L
                     assistant IA s appuie sur ce profil pour ses analyses.
@@ -2110,8 +2168,15 @@ export default function CoachStudentDetailPage() {
                         : file.status === "error"
                           ? "border-rose-300/30 bg-rose-400/10 text-rose-100"
                           : "border-amber-300/30 bg-amber-400/10 text-amber-100";
-                    const configDisabled = !isReady || isReadOnly;
-                    const deleteDisabled = radarDeletingId === file.id || isReadOnly;
+                    const isExternalFile =
+                      Boolean(organization?.id) && file.org_id !== organization?.id;
+                    const configDisabled = !isReady || isReadOnly || isExternalFile;
+                    const deleteDisabled =
+                      radarDeletingId === file.id || isReadOnly || isExternalFile;
+                    const sourceLabel = formatSourceLabel(
+                      file.org_id,
+                      getOrgName(file.organizations)
+                    );
                     return (
                       <div
                         key={file.id}
@@ -2142,6 +2207,11 @@ export default function CoachStudentDetailPage() {
                                   : "Analyse"}
                               {file.status === "processing" ? <LoadingDots /> : null}
                             </span>
+                            {sourceLabel ? (
+                              <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                                {sourceLabel}
+                              </span>
+                            ) : null}
                           </div>
                           <p className="mt-1 text-xs text-[var(--muted)]">
                             {formatDate(file.created_at, locale, timezone)} • {shotCount}{" "}
