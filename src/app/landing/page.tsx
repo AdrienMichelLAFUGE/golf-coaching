@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import LandingReveal from "./landing-reveal";
 import ReportsFeatureShowcase from "./reports-feature-showcase";
+import HeroOrbitVisual from "./HeroOrbitVisual";
 
 const IconUser = ({ className = "h-5 w-5" }: { className?: string }) => (
   <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -55,7 +56,10 @@ export default function LandingPage() {
 
       <div className="mx-auto max-w-6xl space-y-24 md:space-y-32">
         <div className="reveal snap-start landing-snap-section" data-reveal-stagger>
-          <div className="flex items-center gap-3" data-reveal-item>
+          <div
+            className="flex flex-wrap items-center justify-between gap-4"
+            data-reveal-item
+          >
             <Image
               src="/branding/swingflow-logov2.png"
               alt="SwingFlow"
@@ -64,11 +68,17 @@ export default function LandingPage() {
               priority
               className="h-auto w-[600px] max-w-full"
             />
+            <Link
+              href="/login"
+              className="rounded-full border border-white/15 bg-white/5 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10 active:scale-[0.98]"
+            >
+              Login
+            </Link>
           </div>
         </div>
 
         <section
-          className="reveal snap-start landing-snap-section rounded-3xl p-8 md:p-10 lg:mr-auto lg:max-w-[92%] grid gap-12 lg:grid-cols-[1.05fr_0.95fr]"
+          className="reveal snap-start landing-snap-section rounded-3xl p-8 md:p-10 lg:mr-auto lg:max-w-[92%] grid gap-12 lg:gap-8 lg:grid-cols-[1.05fr_0.95fr]"
           data-reveal-stagger
         >
           <div>
@@ -82,20 +92,20 @@ export default function LandingPage() {
               className="mt-5 text-4xl font-semibold leading-tight text-[var(--text)] md:text-6xl"
               data-reveal-item
             >
-              Tout votre coaching,
+              <span className="block">Votre coaching,</span>
               <span className="block">au meme endroit.</span>
             </h1>
             <p className="mt-4 max-w-xl text-base text-[var(--muted)]" data-reveal-item>
-              Une plateforme pour coachs de golf, pensee pour structurer le suivi et
-              partager des rapports clairs. Centralisez eleves, tests et donnees TPI et
-              radar pour publier des rapports accessibles aux eleves.
+              Centralisez vos eleves, vos tests, vos datas (TPI, radar) et vos rapports
+              dans un seul espace. Moins d outils disperses, plus de clarté, et un
+              coaching plus pro, plus constant, plus simple a vendre.
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-3" data-reveal-item>
               <Link
                 href="/login"
                 className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-6 py-2.5 text-xs font-semibold uppercase tracking-wide text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.25)] transition hover:opacity-90 active:scale-[0.98]"
               >
-                Creer un compte coach
+                Acceder a la plateforme
               </Link>
             </div>
             <div
@@ -122,36 +132,14 @@ export default function LandingPage() {
           </div>
 
           <div
-            className="relative min-h-[640px] md:min-h-[720px] lg:min-h-[760px]"
+            className="mt-10 flex items-center justify-center lg:mt-0 lg:-ml-6 lg:justify-center"
             data-reveal-item
           >
-            <div className="absolute right-2 top-0 w-[92%] max-w-[520px] rotate-[-2deg]">
-              <Image
-                src="/landing/graphs/tpi-exemple.png"
-                alt="Profil TPI"
-                width={857}
-                height={607}
-                priority
-                className="h-auto w-full rounded-3xl object-contain shadow-[0_30px_80px_rgba(0,0,0,0.35)]"
-              />
+            <div className="lg:hidden">
+              <HeroOrbitVisual size="sm" />
             </div>
-            <div className="absolute left-0 top-[55%] w-[52%] -rotate-2">
-              <Image
-                src="/landing/graphs/spin-vs-carry.png"
-                alt="Spin vs carry"
-                width={457}
-                height={611}
-                className="h-auto w-full rounded-2xl object-contain shadow-[0_24px_60px_rgba(0,0,0,0.35)]"
-              />
-            </div>
-            <div className="absolute right-0 top-[62%] w-[48%] rotate-2">
-              <Image
-                src="/landing/graphs/vitesse-club-balle.png"
-                alt="Vitesse club / balle"
-                width={455}
-                height={608}
-                className="h-auto w-full rounded-2xl object-contain shadow-[0_24px_60px_rgba(0,0,0,0.35)]"
-              />
+            <div className="hidden lg:block">
+              <HeroOrbitVisual size="md" />
             </div>
           </div>
         </section>

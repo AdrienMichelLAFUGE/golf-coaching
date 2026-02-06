@@ -1,0 +1,356 @@
+.root {
+  position: relative;
+  overflow: visible;
+}
+
+.halo {
+  position: absolute;
+  inset: -18%;
+  background:
+    radial-gradient(circle at 30% 25%, rgba(52, 211, 153, 0.26), transparent 55%),
+    radial-gradient(circle at 70% 70%, rgba(56, 189, 248, 0.22), transparent 60%),
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.06), transparent 65%);
+  filter: blur(52px);
+  opacity: 0.9;
+}
+
+.blob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 88%;
+  height: 86%;
+  transform: translate(-50%, -50%);
+  border-radius: 45% 55% 60% 40% / 40% 45% 55% 60%;
+  background: linear-gradient(
+    135deg,
+    rgba(52, 211, 153, 0.22),
+    rgba(56, 189, 248, 0.16),
+    rgba(16, 185, 129, 0.14)
+  );
+  background-size: 220% 220%;
+  filter: blur(1px);
+  opacity: 0.7;
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.28);
+  animation: hero-shimmer 26s ease-in-out infinite;
+}
+
+.blob::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 25% 30%, rgba(255, 255, 255, 0.28), transparent 55%),
+    radial-gradient(circle at 70% 75%, rgba(255, 255, 255, 0.18), transparent 60%);
+  opacity: 0.18;
+  filter: blur(18px);
+  mix-blend-mode: overlay;
+}
+
+.blob::after {
+  content: "";
+  position: absolute;
+  inset: -14px;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 50% 60%, rgba(255, 255, 255, 0.08), transparent 55%),
+    radial-gradient(circle at 50% 40%, rgba(255, 255, 255, 0.06), transparent 55%);
+  filter: blur(24px);
+  opacity: 0.75;
+}
+
+.mesh {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 52%;
+  height: 48%;
+  transform: translate(-50%, -50%) translateY(10px) rotate(-8deg);
+  border-radius: 55% 45% 52% 48% / 45% 55% 45% 55%;
+  background: radial-gradient(circle at 40% 40%, rgba(255, 255, 255, 0.22), transparent 62%),
+    radial-gradient(circle at 70% 65%, rgba(56, 189, 248, 0.16), transparent 68%),
+    radial-gradient(circle at 30% 70%, rgba(52, 211, 153, 0.16), transparent 65%);
+  filter: blur(50px);
+  opacity: 0.33;
+  pointer-events: none;
+}
+
+.ringOuter {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  pointer-events: none;
+}
+
+.ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 9999px;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  pointer-events: none;
+}
+
+.core {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: var(--coreSize, 184px);
+  height: var(--coreSize, 184px);
+  border-radius: 28px;
+  /* Slightly more opaque so spokes sit "behind" (no lines showing through). */
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.72));
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  box-shadow:
+    0 18px 54px rgba(0, 0, 0, 0.18),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(18px);
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 10px;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.core::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.55), transparent 55%),
+    radial-gradient(circle at 70% 80%, rgba(56, 189, 248, 0.12), transparent 62%);
+  opacity: 0.22;
+  pointer-events: none;
+}
+
+.core > * {
+  position: relative;
+  z-index: 1;
+}
+
+.coreBadge {
+  width: 44px;
+  height: 44px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  font-size: 0.95rem;
+  color: rgba(15, 23, 42, 0.86);
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.12);
+}
+
+.coreText {
+  text-align: center;
+  line-height: 1.1;
+}
+
+.coreTitle {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: rgba(15, 23, 42, 0.82);
+}
+
+.coreSubtitle {
+  margin-top: 2px;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(15, 23, 42, 0.45);
+}
+
+.corePills {
+  display: flex;
+  gap: 8px;
+  opacity: 0.65;
+}
+
+.corePill {
+  width: 24px;
+  height: 10px;
+  border-radius: 9999px;
+  background: rgba(15, 23, 42, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+
+.orbitGroup {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 9999px;
+  animation: hero-orbit-rotate var(--orbitDuration, 16s) linear infinite;
+  will-change: transform;
+  z-index: 3;
+}
+
+.orbitReverse {
+  animation-direction: reverse;
+}
+
+.orbitReverse .counterRotate {
+  /* Parent rotates reverse, so counter-rotation must reverse as well to stay upright. */
+  animation-direction: reverse;
+}
+
+.orbitSpokes {
+  /* Lines go behind the core to feel like an "orbit system". */
+  z-index: 2;
+  pointer-events: none;
+}
+
+.orbitNodes {
+  /* Nodes stay above the core for a finished, layered look. */
+  z-index: 6;
+}
+
+.center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.positioner {
+  transform: rotate(var(--angle)) translateX(var(--radius)) rotate(var(--angleNeg));
+}
+
+.counterRotate {
+  animation: hero-orbit-counter var(--orbitDuration, 16s) linear infinite;
+  will-change: transform;
+}
+
+.float {
+  animation: hero-float var(--floatDuration, 5.2s) ease-in-out infinite;
+  animation-delay: var(--floatDelay, 0s);
+  will-change: transform;
+}
+
+.spoke {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  height: 2px;
+  width: var(--lineLength, 140px);
+  /* Anchor the line at the center and extend outward. */
+  transform: translate(0, -50%) rotate(var(--angle));
+  transform-origin: 0 50%;
+  background: linear-gradient(
+    90deg,
+    rgba(15, 23, 42, 0.2),
+    rgba(15, 23, 42, 0.08),
+    rgba(15, 23, 42, 0)
+  );
+  opacity: 0.75;
+  pointer-events: none;
+  filter: none;
+  z-index: 1;
+}
+
+.pill {
+  position: relative;
+  width: var(--pillSize, 48px);
+  height: var(--pillSize, 48px);
+  border-radius: 9999px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.44);
+  box-shadow:
+    0 10px 22px rgba(0, 0, 0, 0.14),
+    0 0 0 1px rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(14px);
+  color: rgba(15, 23, 42, 0.72);
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    background 180ms ease;
+  z-index: 2;
+}
+
+.pill::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.5), transparent 60%);
+  opacity: 0.22;
+  pointer-events: none;
+}
+
+.pill:hover {
+  transform: scale(1.04);
+  box-shadow:
+    0 14px 28px rgba(0, 0, 0, 0.18),
+    0 0 0 1px rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.pillHero {
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.18),
+    0 0 0 1px rgba(0, 0, 0, 0.05);
+  color: rgba(15, 23, 42, 0.78);
+}
+
+@keyframes hero-orbit-rotate {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+@keyframes hero-orbit-counter {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+@keyframes hero-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes hero-shimmer {
+  0% {
+    background-position: 20% 20%;
+  }
+  50% {
+    background-position: 80% 70%;
+  }
+  100% {
+    background-position: 20% 20%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orbitGroup,
+  .counterRotate,
+  .float,
+  .blob {
+    animation: none !important;
+  }
+}
