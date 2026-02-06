@@ -114,6 +114,18 @@ describe("POST /api/billing/checkout", () => {
     expect(stripeMocks.checkout.sessions.create).toHaveBeenCalledWith(
       expect.objectContaining({
         line_items: [{ price: "price_month_test", quantity: 1 }],
+        subscription_data: {
+          metadata: {
+            org_id: "org-1",
+            owner_id: "user-1",
+            plan: "pro",
+          },
+        },
+        metadata: {
+          org_id: "org-1",
+          owner_id: "user-1",
+          plan: "pro",
+        },
       })
     );
   });

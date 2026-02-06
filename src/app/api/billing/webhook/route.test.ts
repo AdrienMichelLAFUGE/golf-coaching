@@ -165,4 +165,103 @@ describe("POST /api/billing/webhook", () => {
     );
     expect(orgUpdateEq).toHaveBeenCalledWith("id", "org-1");
   });
+
+  it("upgrades plan on checkout completion when subscription is present", async () => {
+    const subscription = {
+      id: "sub_checkout_1",
+      status: "active",
+      current_period_end: Math.floor(Date.now() / 1000) + 3600,
+      cancel_at_period_end: false,
+      customer: "cus_123",
+      items: {
+        data: [{ price: { id: "price_month_test" } }],
+      },
+      metadata: {},
+    };
+
+    const session = {
+      customer: "cus_123",
+      subscription: "sub_checkout_1",
+      metadata: { org_id: "org-1" },
+    };
+
+    const event = {
+      id: "evt_3",
+      type: "checkout.session.completed",
+      created: 1700000000,
+      data: { object: session },
+    };
+    stripeMocks.webhooks.constructEvent.mockReturnValue(event);
+    stripeMocks.subscriptions.retrieve.mockResolvedValue(subscription);
+
+    const stripeEventsSelect = jest.fn(async () => ({ data: null, error: null }));
+    const stripeEventsInsert = jest.fn(async () => ({ error: null }));
+
+    const orgUpdateEq = jest.fn(async () => ({ error: null }));
+    const orgUpdate = jest.fn(() => ({ eq: orgUpdateEq }));
+
+    const admin = {
+      from: jest.fn((table: string) => {
+        if (table === "stripe_events") {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: stripeEventsSelect,
+              }),
+            }),
+            insert: stripeEventsInsert,
+            delete: () => ({ eq: jest.fn() }),
+          };
+        }
+        if (table === "organizations") {
+          return {
+            select: () => ({
+              eq: (column: string, value: string) => ({
+                maybeSingle: async () => {
+                  if (column === "stripe_customer_id") {
+                    return { data: null, error: null };
+                  }
+                  if (column === "stripe_subscription_id") {
+                    return { data: null, error: null };
+                  }
+                  if (column === "id" && value === "org-1") {
+                    return {
+                      data: {
+                        id: "org-1",
+                        plan_tier: "free",
+                        workspace_type: "personal",
+                        owner_profile_id: "owner-1",
+                        stripe_customer_id: null,
+                        stripe_subscription_id: null,
+                        stripe_price_id: null,
+                        stripe_status: null,
+                        stripe_current_period_end: null,
+                        stripe_cancel_at_period_end: false,
+                      },
+                      error: null,
+                    };
+                  }
+                  return { data: null, error: null };
+                },
+              }),
+            }),
+            update: orgUpdate,
+          };
+        }
+        return {};
+      }),
+    };
+
+    serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
+
+    const response = await POST(buildRequest("{}"));
+
+    expect(response.status).toBe(200);
+    expect(stripeMocks.customers.update).toHaveBeenCalledWith("cus_123", {
+      metadata: { org_id: "org-1", owner_id: "owner-1" },
+    });
+    expect(stripeMocks.subscriptions.retrieve).toHaveBeenCalledWith("sub_checkout_1");
+    expect(orgUpdate).toHaveBeenCalledWith(expect.objectContaining({ plan_tier: "pro" }));
+    expect(orgUpdateEq).toHaveBeenCalledWith("id", "org-1");
+  });
 });

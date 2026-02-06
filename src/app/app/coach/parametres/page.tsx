@@ -160,10 +160,19 @@ export default function CoachSettingsPage() {
       setLoading(true);
       setError("");
 
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      const userId = userData.user?.id;
+      if (userError || !userId) {
+        setError("Session invalide. Reconnecte toi.");
+        setLoading(false);
+        return;
+      }
+
       const { data: profileData, error: profileError } = await supabase
         .from("profiles")
         .select("id, org_id, full_name, avatar_url, bio")
-        .single();
+        .eq("id", userId)
+        .maybeSingle();
 
       if (profileError || !profileData) {
         setError(profileError?.message ?? "Profil introuvable.");
@@ -177,7 +186,7 @@ export default function CoachSettingsPage() {
           "id, name, logo_url, accent_color, email_sender_name, email_reply_to, report_title_template, report_signature, report_default_sections, locale, timezone, plan_tier, ai_enabled, ai_model, ai_tone, ai_tech_level, ai_style, ai_length, ai_imagery, ai_focus, stripe_status, stripe_current_period_end, stripe_cancel_at_period_end, stripe_customer_id"
         )
         .eq("id", profileData.org_id)
-        .single();
+        .maybeSingle();
 
       if (orgError || !orgData) {
         setError(orgError?.message ?? "Organisation introuvable.");

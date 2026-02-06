@@ -115,6 +115,14 @@ export async function POST(request: Request) {
     customer_email: org.stripe_customer_id ? undefined : userEmail ?? undefined,
     success_url: resolveSuccessUrl(),
     cancel_url: resolveCancelUrl(),
+    // Ensure subscription lifecycle events can be reliably mapped back to the org.
+    subscription_data: {
+      metadata: {
+        org_id: org.id,
+        owner_id: profile.id,
+        plan: "pro",
+      },
+    },
     metadata: {
       org_id: org.id,
       owner_id: profile.id,

@@ -200,6 +200,13 @@ export async function POST(request: Request) {
             updates.stripe_subscription_id = subscriptionId;
           }
           await admin.from("organizations").update(updates).eq("id", org.id);
+
+          // In local/dev setups it's common to only forward checkout events.
+          // Sync here so a successful checkout immediately upgrades the plan.
+          if (subscriptionId) {
+            const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+            await syncSubscriptionToOrg(admin, org, subscription);
+          }
           logStripeEvent(event.id, event.type, org.id);
         } else {
           logStripeEvent(event.id, event.type);
