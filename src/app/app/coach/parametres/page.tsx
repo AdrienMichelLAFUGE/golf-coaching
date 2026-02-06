@@ -9,6 +9,7 @@ import RoleGuard from "../../_components/role-guard";
 import { useProfile } from "../../_components/profile-context";
 import PageBack from "../../_components/page-back";
 import PremiumOfferModal from "../../_components/premium-offer-modal";
+import { z } from "zod";
 
 type ProfileSettings = {
   id: string;
@@ -102,11 +103,10 @@ export default function CoachSettingsPage() {
   const [logoDragging, setLogoDragging] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
-  const [password, setPassword] = useState("");
-  const [passwordConfirm, setPasswordConfirm] = useState("");
-  const [passwordSaving, setPasswordSaving] = useState(false);
-  const [passwordError, setPasswordError] = useState("");
-  const [passwordSuccess, setPasswordSuccess] = useState("");
+  const [resetStatus, setResetStatus] = useState<"idle" | "sending" | "sent" | "error">(
+    "idle"
+  );
+  const [resetMessage, setResetMessage] = useState("");
 
   const previewSections = useMemo(
     () => normalizeSections(reportDefaultSections),
@@ -350,40 +350,32 @@ export default function CoachSettingsPage() {
     setSaving(false);
   };
 
-  const handleUpdatePassword = async () => {
-    setPasswordError("");
-    setPasswordSuccess("");
+  const handleSendPasswordReset = async () => {
+    setResetStatus("sending");
+    setResetMessage("");
 
-    if (!password || !passwordConfirm) {
-      setPasswordError("Renseigne les deux champs.");
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    const email = userData.user?.email ?? "";
+    const parsedEmail = z.string().email().safeParse(email);
+
+    if (userError || !parsedEmail.success) {
+      setResetStatus("error");
+      setResetMessage("Email du compte introuvable. Reconnecte toi.");
       return;
     }
 
-    if (password.length < 8) {
-      setPasswordError("Minimum 8 caracteres.");
-      return;
-    }
-
-    if (password !== passwordConfirm) {
-      setPasswordError("Les mots de passe ne correspondent pas.");
-      return;
-    }
-
-    setPasswordSaving(true);
-    const { error: updateError } = await supabase.auth.updateUser({
-      password,
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(parsedEmail.data, {
+      redirectTo: `${window.location.origin}/auth/reset`,
     });
 
-    if (updateError) {
-      setPasswordError(updateError.message);
-      setPasswordSaving(false);
+    if (resetError) {
+      setResetStatus("error");
+      setResetMessage(resetError.message);
       return;
     }
 
-    setPassword("");
-    setPasswordConfirm("");
-    setPasswordSuccess("Mot de passe mis a jour.");
-    setPasswordSaving(false);
+    setResetStatus("sent");
+    setResetMessage("Email de reinitialisation envoye.");
   };
 
   return (
@@ -974,47 +966,29 @@ export default function CoachSettingsPage() {
           <section className="panel rounded-2xl p-6">
             <h3 className="text-lg font-semibold text-[var(--text)]">Mot de passe</h3>
             <p className="mt-2 text-xs text-[var(--muted)]">
-              Cree ou modifie ton mot de passe pour te connecter.
+              Reinitialise ton mot de passe via un email (procedure classique).
             </p>
-            <div className="mt-4 grid gap-4 md:grid-cols-[1fr_1fr_auto]">
-              <div>
-                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                  Nouveau mot de passe
-                </label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder="********"
-                  className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
-                />
-              </div>
-              <div>
-                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                  Confirmation
-                </label>
-                <input
-                  type="password"
-                  value={passwordConfirm}
-                  onChange={(event) => setPasswordConfirm(event.target.value)}
-                  placeholder="********"
-                  className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
-                />
-              </div>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
               <button
                 type="button"
-                onClick={handleUpdatePassword}
-                disabled={passwordSaving}
-                className="self-end rounded-full border border-white/10 bg-white/10 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20 disabled:opacity-60"
+                onClick={handleSendPasswordReset}
+                disabled={resetStatus === "sending"}
+                className="rounded-full border border-white/10 bg-white/10 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20 disabled:opacity-60"
               >
-                {passwordSaving ? "Mise a jour..." : "Mettre a jour"}
+                {resetStatus === "sending" ? "Envoi..." : "Reinitialiser"}
               </button>
+              <span className="text-xs text-[var(--muted)]">
+                Un email sera envoye a l adresse de votre compte.
+              </span>
             </div>
-            {passwordError ? (
-              <p className="mt-3 text-sm text-red-400">{passwordError}</p>
-            ) : null}
-            {passwordSuccess ? (
-              <p className="mt-3 text-sm text-emerald-200">{passwordSuccess}</p>
+            {resetMessage ? (
+              <p
+                className={`mt-3 text-sm ${
+                  resetStatus === "error" ? "text-red-400" : "text-emerald-200"
+                }`}
+              >
+                {resetMessage}
+              </p>
             ) : null}
           </section>
 

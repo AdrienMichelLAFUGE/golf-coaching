@@ -15,7 +15,7 @@ function ResetPasswordContent() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [status, setStatus] = useState<"idle" | "saving" | "error" | "success">("idle");
+  const [status, setStatus] = useState<"idle" | "saving" | "redirecting" | "error">("idle");
   const [message, setMessage] = useState("");
   const [ready, setReady] = useState(false);
   const flowParam = searchParams.get("flow");
@@ -82,8 +82,16 @@ function ResetPasswordContent() {
       return;
     }
 
-    setStatus("success");
-    setMessage("Mot de passe mis a jour.");
+    // Recovery flow authenticates the user. Sign out so /login doesn't immediately redirect to /app.
+    setStatus("redirecting");
+    setMessage("Mot de passe mis a jour. Redirection...");
+    const { error: signOutError } = await supabase.auth.signOut();
+    if (signOutError) {
+      setStatus("error");
+      setMessage(signOutError.message);
+      return;
+    }
+    router.replace("/login?reset=success");
   };
 
   if (!ready) {
@@ -140,10 +148,14 @@ function ResetPasswordContent() {
           </label>
           <button
             type="submit"
-            disabled={status === "saving"}
+            disabled={status === "saving" || status === "redirecting"}
             className="w-full rounded-xl bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-3 text-sm font-semibold text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
           >
-            {status === "saving" ? "Enregistrement..." : "Mettre a jour"}
+            {status === "saving"
+              ? "Enregistrement..."
+              : status === "redirecting"
+                ? "Redirection..."
+                : "Mettre a jour"}
           </button>
         </form>
         {message ? (
@@ -154,15 +166,6 @@ function ResetPasswordContent() {
           >
             {message}
           </p>
-        ) : null}
-        {status === "success" ? (
-          <button
-            type="button"
-            onClick={() => router.replace("/app")}
-            className="mt-4 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)]"
-          >
-            Continuer
-          </button>
         ) : null}
       </div>
     </main>
