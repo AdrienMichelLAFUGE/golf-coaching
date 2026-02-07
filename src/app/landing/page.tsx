@@ -511,6 +511,37 @@ export default function LandingPage() {
             La plateforme arrive bientôt...
           </Link>
         </section>
+
+        <footer className="pt-10 text-xs text-[var(--muted)]">
+          <div className="mx-auto max-w-6xl border-t border-white/10 pt-6">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <p>©2026 SwingFlow – Tous droits réservés</p>
+              <nav aria-label="Liens légaux" className="flex flex-wrap gap-x-2 gap-y-1">
+                <Link
+                  href="/mentions-legales"
+                  className="transition hover:text-[var(--text)]"
+                >
+                  Mentions légales
+                </Link>
+                <span aria-hidden="true">·</span>
+                <Link href="/cgv" className="transition hover:text-[var(--text)]">
+                  CGV
+                </Link>
+                <span aria-hidden="true">·</span>
+                <Link href="/cgu" className="transition hover:text-[var(--text)]">
+                  CGU
+                </Link>
+                <span aria-hidden="true">·</span>
+                <Link
+                  href="/politique-de-confidentialite"
+                  className="transition hover:text-[var(--text)]"
+                >
+                  Politique de confidentialité
+                </Link>
+              </nav>
+            </div>
+          </div>
+        </footer>
       </div>
     </main>
   );
