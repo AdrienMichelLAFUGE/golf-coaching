@@ -15,15 +15,14 @@ export default function DemoPage() {
             Demo SwingFlow
           </h1>
           <p className="mt-3 text-sm text-[var(--muted)]">
-            Une courte demo arrive bientot. En attendant, vous pouvez acceder a la
-            plateforme.
+            Une courte demo arrive bientot.
           </p>
           <div className="mt-6">
             <Link
-              href="/login"
+              href="/"
               className="inline-flex rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 active:scale-[0.98]"
             >
-              Acceder a la plateforme
+              La plateforme arrive bientôt...
             </Link>
           </div>
         </section>
@@ -31,7 +30,7 @@ export default function DemoPage() {
         <section className="reveal panel rounded-3xl p-6 md:p-8" data-reveal-item>
           <div className="aspect-video w-full rounded-2xl border border-white/10 bg-white/5 shadow-[0_24px_60px_rgba(0,0,0,0.25)]" />
           <p className="mt-3 text-xs uppercase tracking-[0.25em] text-[var(--muted)]">
-            Placeholder video
+            
           </p>
         </section>
       </div>

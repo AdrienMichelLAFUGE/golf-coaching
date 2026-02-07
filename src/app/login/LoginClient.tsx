@@ -5,10 +5,13 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 
 type Status = "idle" | "sending" | "sent" | "error";
+type ResetStatus = "idle" | "sending" | "sent" | "error";
 type AccountType = "coach" | "student";
 type CoachFlow = "signin" | "signup";
 
 const rememberStorageKey = "gc.rememberMe";
+
+const isLikelyEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
 export default function LoginClient({ resetSuccess }: { resetSuccess: boolean }) {
   const router = useRouter();
@@ -25,6 +28,11 @@ export default function LoginClient({ resetSuccess }: { resetSuccess: boolean })
   const [message, setMessage] = useState(() =>
     resetSuccess ? "Mot de passe mis a jour. Connectez-vous." : ""
   );
+
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetStatus, setResetStatus] = useState<ResetStatus>("idle");
+  const [resetMessage, setResetMessage] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -172,33 +180,55 @@ export default function LoginClient({ resetSuccess }: { resetSuccess: boolean })
       setStatus("error");
       setMessage("Ajoute un mot de passe.");
       return;
-    }
-    await signInWithPassword(trimmedEmail, trimmedPassword);
+      }
+      await signInWithPassword(trimmedEmail, trimmedPassword);
   };
 
-  const handlePasswordReset = async () => {
-    const trimmedEmail = email.trim();
+  const openResetModal = () => {
+    setResetEmail(email.trim());
+    setResetStatus("idle");
+    setResetMessage("");
+    setResetOpen(true);
+  };
+
+  const closeResetModal = () => {
+    setResetOpen(false);
+    setResetStatus("idle");
+    setResetMessage("");
+    setResetEmail("");
+  };
+
+  const handleResetSubmit = async () => {
+    const trimmedEmail = resetEmail.trim();
     if (!trimmedEmail) {
-      setStatus("error");
-      setMessage("Ajoute un email pour reinitialiser le mot de passe.");
+      setResetStatus("error");
+      setResetMessage("Ajoutez un email pour reinitialiser le mot de passe.");
+      return;
+    }
+    if (!isLikelyEmail(trimmedEmail)) {
+      setResetStatus("error");
+      setResetMessage("Email invalide.");
       return;
     }
 
-    setStatus("sending");
-    setMessage("");
+    setResetStatus("sending");
+    setResetMessage("");
 
     const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
       redirectTo: `${window.location.origin}/auth/reset`,
     });
 
     if (error) {
-      setStatus("error");
-      setMessage(error.message);
+      setResetStatus("error");
+      setResetMessage(error.message);
       return;
     }
 
-    setStatus("sent");
-    setMessage("Email de reinitialisation envoye.");
+    // Always show a non-enumerating success message.
+    setResetStatus("sent");
+    setResetMessage(
+      "Si un compte existe pour cet email, un lien de reinitialisation vient d etre envoye."
+    );
   };
 
   return (
@@ -348,7 +378,7 @@ export default function LoginClient({ resetSuccess }: { resetSuccess: boolean })
           </form>
           <button
             type="button"
-            onClick={handlePasswordReset}
+            onClick={openResetModal}
             className="mt-3 text-left text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
           >
             Mot de passe oublie ?
@@ -369,6 +399,159 @@ export default function LoginClient({ resetSuccess }: { resetSuccess: boolean })
             : "Creer un compte coach pour demarrer en freemium."}
         </div>
       </div>
+
+      {resetOpen ? (
+        <ForgotPasswordModal
+          email={resetEmail}
+          status={resetStatus}
+          message={resetMessage}
+          onChangeEmail={setResetEmail}
+          onClose={closeResetModal}
+          onSubmit={handleResetSubmit}
+        />
+      ) : null}
     </main>
+  );
+}
+
+function ForgotPasswordModal({
+  email,
+  status,
+  message,
+  onChangeEmail,
+  onClose,
+  onSubmit,
+}: {
+  email: string;
+  status: ResetStatus;
+  message: string;
+  onChangeEmail: (value: string) => void;
+  onClose: () => void;
+  onSubmit: () => Promise<void>;
+}) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  useEffect(() => {
+    // Focus the email field when the modal opens.
+    const handle = window.setTimeout(() => {
+      const input = document.getElementById("resetEmail") as HTMLInputElement | null;
+      input?.focus();
+      input?.select();
+    }, 0);
+    return () => window.clearTimeout(handle);
+  }, []);
+
+  const isSending = status === "sending";
+  const isSent = status === "sent";
+  const isError = status === "error";
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center px-6"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="reset-title"
+      onMouseDown={(event) => {
+        // Close only when clicking the backdrop, not the modal content.
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="absolute inset-0 bg-black/55 backdrop-blur-[2px]" />
+
+      <div className="relative z-10 w-full max-w-md rounded-3xl border border-white/10 bg-[var(--bg-elevated)] p-6 shadow-[0_30px_90px_rgba(0,0,0,0.45)]">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+              Mot de passe
+            </p>
+            <h2 id="reset-title" className="mt-2 text-xl font-semibold text-[var(--text)]">
+              Reinitialiser votre mot de passe
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+            aria-label="Fermer"
+          >
+            Fermer
+          </button>
+        </div>
+
+        {isSent ? (
+          <div className="mt-5 space-y-3 text-sm text-[var(--muted)]">
+            <p>{message}</p>
+            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
+              <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                Marche a suivre
+              </p>
+              <ol className="mt-3 list-decimal space-y-2 pl-5">
+                <li>Ouvrez votre boite mail (et verifiez les spams).</li>
+                <li>Cliquez sur le lien de reinitialisation.</li>
+                <li>Choisissez votre nouveau mot de passe.</li>
+              </ol>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-5 space-y-4">
+            <p className="text-sm text-[var(--muted)]">
+              Entrez l&apos;email du compte. Vous recevrez un lien pour reinitialiser votre
+              mot de passe.
+            </p>
+
+            <div>
+              <label
+                className="block text-xs uppercase tracking-wide text-[var(--muted)]"
+                htmlFor="resetEmail"
+              >
+                Email
+              </label>
+              <input
+                id="resetEmail"
+                name="resetEmail"
+                type="email"
+                autoComplete="email"
+                placeholder="toi@email.com"
+                value={email}
+                onChange={(event) => onChangeEmail(event.target.value)}
+                disabled={isSending}
+                className="mt-1 w-full rounded-xl border border-white/10 bg-[var(--bg)] px-3 py-3 text-sm text-[var(--text)] placeholder:text-zinc-500 focus:border-[var(--accent)] focus:outline-none disabled:opacity-70"
+              />
+            </div>
+
+            {message ? (
+              <p className={`text-sm ${isError ? "text-red-400" : "text-[var(--muted)]"}`}>
+                {message}
+              </p>
+            ) : null}
+
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={isSending}
+                className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-[var(--text)] transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={onSubmit}
+                disabled={isSending}
+                className="rounded-xl bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-3 text-sm font-semibold text-zinc-900 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {isSending ? "Envoi..." : "Envoyer le lien"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

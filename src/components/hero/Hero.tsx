@@ -158,9 +158,9 @@ export default function Hero() {
                 <Link href="/" className={styles.ctaPrimary}>
                   La plateforme arrive bientôt...
                 </Link>
-                <Link href="/demo" className={styles.ctaSecondary}>
+                {/*<Link href="/demo" className={styles.ctaSecondary}>
                   Voir une demo
-                </Link>
+                </Link>*/}
               </div>
               <p className={styles.smallLine}>
                 Connectez Trackman, Flightscope, TPI, Smart2Move...
