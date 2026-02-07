@@ -1,0 +1,374 @@
+.hero {
+  /* No "boxed" panel: this section should feel integrated with the page. */
+  border-radius: 0;
+  padding: 2rem 0;
+  /* More scroll runway so sticky + morph can complete before the next section appears. */
+  min-height: 380vh;
+  display: flex;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.grid {
+  flex: 1;
+  width: 100%;
+  display: grid;
+  gap: 3rem;
+  align-items: start;
+}
+
+.left {
+  max-width: 34rem;
+}
+
+.narrative {
+  position: relative;
+  min-height: 520px;
+}
+
+.layer {
+  position: absolute;
+  inset: 0;
+  will-change: opacity, transform;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.layerFinal {
+  pointer-events: auto;
+}
+
+.kicker {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: rgba(15, 23, 42, 0.6);
+}
+
+.title {
+  margin-top: 0.25rem;
+  font-size: clamp(2.25rem, 4vw, 3.75rem);
+  font-weight: 650;
+  line-height: 1.05;
+  color: var(--text);
+  letter-spacing: -0.02em;
+}
+
+.titleBreak {
+  display: block;
+}
+
+.copy {
+  margin-top: 1rem;
+  font-size: 1.05rem;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.ctaRow {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.ctaPrimary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  padding: 0.75rem 1.25rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #0b0f14;
+  background: linear-gradient(90deg, rgba(110, 231, 183, 0.95), rgba(186, 230, 253, 0.95));
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.18);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.ctaPrimary:hover {
+  opacity: 0.92;
+}
+
+.ctaPrimary:active {
+  transform: scale(0.98);
+}
+
+.ctaSecondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  padding: 0.75rem 1.1rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.ctaSecondary:hover {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.ctaSecondary:active {
+  transform: scale(0.98);
+}
+
+.smallLine {
+  margin-top: 1rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: rgba(15, 23, 42, 0.6);
+}
+
+.storyKicker {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: rgba(15, 23, 42, 0.65);
+}
+
+.storyList {
+  margin-top: 0.5rem;
+  padding-left: 1.1rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.storyList li + li {
+  margin-top: 0.35rem;
+}
+
+.sceneCol {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  align-self: stretch;
+}
+
+.sticky {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stageWrap {
+  width: 100%;
+  max-width: 640px;
+  height: 82vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 675 / 770;
+  border-radius: 28px;
+  isolation: isolate;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.stage::before {
+  content: none;
+  position: absolute;
+  inset: -18%;
+  background:
+    radial-gradient(circle at 25% 25%, rgba(56, 189, 248, 0.22), transparent 55%),
+    radial-gradient(circle at 70% 70%, rgba(52, 211, 153, 0.2), transparent 58%);
+  filter: blur(46px);
+  opacity: 0.7;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.coach {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  z-index: 2;
+  pointer-events: none;
+  transform: translateZ(0);
+}
+
+.tabletOverlay {
+  position: absolute;
+  left: 32.89%;
+  top: 49.61%;
+  width: 46.37%;
+  height: 29.22%;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  box-shadow:
+    inset 0 0 0 1px rgba(15, 23, 42, 0.05),
+    inset 0 18px 40px rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(10px);
+  opacity: 0;
+  transform: scale(0.98);
+  transform-origin: center;
+  overflow: hidden;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.tabletOverlayStatic {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.tabletGrid {
+  height: 100%;
+  width: 100%;
+  display: none;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 10px;
+  padding: 14px;
+  align-items: center;
+  justify-items: center;
+}
+
+.chip {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  box-shadow:
+    0 14px 28px rgba(15, 23, 42, 0.12),
+    0 2px 8px rgba(15, 23, 42, 0.08);
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.chipOrbit {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  will-change: transform, opacity, filter;
+}
+
+.chipLogo {
+  width: 70%;
+  height: 70%;
+  object-fit: contain;
+  filter: saturate(0.95) contrast(0.98);
+  opacity: 0.98;
+}
+
+@media (min-width: 900px) {
+  .grid {
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: 2.5rem;
+    align-items: start;
+  }
+
+  .sceneCol {
+    justify-content: flex-end;
+  }
+
+  /* Keep the narrative visible while the scene sticks on the right. */
+  .left {
+    position: sticky;
+    top: 96px;
+    align-self: start;
+    height: 82vh;
+    display: flex;
+  }
+
+  .narrative {
+    flex: 1;
+    height: 82vh;
+    min-height: 0;
+  }
+
+  /* Slight nudge down so the text aligns visually with the coach center. */
+  .layer {
+    padding-top: 0.5rem;
+  }
+}
+
+@media (min-width: 900px) {
+  .sticky {
+    position: sticky;
+    top: 96px;
+  }
+}
+
+@media (max-width: 899px) {
+  .hero {
+    min-height: auto;
+  }
+
+  .narrative {
+    min-height: auto;
+  }
+
+  .layer {
+    position: static;
+    inset: auto;
+    pointer-events: auto;
+  }
+
+  .stageWrap {
+    height: auto;
+    max-width: 520px;
+  }
+
+  .stage {
+    border-radius: 24px;
+  }
+
+  /* Mobile: always show the organized tablet grid, no orbit layer. */
+  .tabletOverlay {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .tabletGrid {
+    display: grid;
+  }
+
+  .chipOrbit {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Reduced motion: render the final organized state. */
+  .tabletOverlay {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .tabletGrid {
+    display: grid;
+  }
+
+  .chipOrbit {
+    display: none;
+  }
+}

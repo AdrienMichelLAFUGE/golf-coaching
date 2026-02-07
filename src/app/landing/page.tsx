@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import LandingReveal from "./landing-reveal";
 import ReportsFeatureShowcase from "./reports-feature-showcase";
-import HeroOrbitVisual from "./HeroOrbitVisual";
+import Hero from "@/components/hero/Hero";
 
 const IconUser = ({ className = "h-5 w-5" }: { className?: string }) => (
   <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -31,15 +31,6 @@ const IconDoc = () => (
   </svg>
 );
 
-const IconTest = ({ className = "h-5 w-5" }: { className?: string }) => (
-  <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.6">
-    <path d="M6 5.5h12" />
-    <path d="M6 10.5h8" />
-    <path d="M6 15.5h10" />
-    <circle cx="18" cy="10.5" r="2" />
-  </svg>
-);
-
 const IconCheck = () => (
   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
     <path d="M5.5 12.5l4 4 9-9" />
@@ -48,7 +39,7 @@ const IconCheck = () => (
 
 export default function LandingPage() {
   return (
-    <main className="relative min-h-screen overflow-hidden px-4 pb-28 pt-12 md:px-8 md:pb-36 md:pt-16">
+    <main className="relative min-h-screen px-4 pb-28 pt-12 md:px-8 md:pb-36 md:pt-16">
       <LandingReveal />
       <div className="pointer-events-none absolute -left-40 top-[-160px] h-[360px] w-[360px] rounded-full bg-emerald-400/15 blur-[120px]" />
       <div className="pointer-events-none absolute -right-32 top-[80px] h-[320px] w-[320px] rounded-full bg-sky-400/15 blur-[120px]" />
@@ -77,72 +68,7 @@ export default function LandingPage() {
           </div>
         </div>
 
-        <section
-          className="reveal snap-start landing-snap-section rounded-3xl p-8 md:p-10 lg:mr-auto lg:max-w-[92%] grid gap-12 lg:gap-8 lg:grid-cols-[1.05fr_0.95fr]"
-          data-reveal-stagger
-        >
-          <div>
-            <span
-              className="inline-flex items-center gap-2 rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-[0.65rem] uppercase tracking-[0.3em] text-emerald-200"
-              data-reveal-item
-            >
-              plateforme coach
-            </span>
-            <h1
-              className="mt-5 text-4xl font-semibold leading-tight text-[var(--text)] md:text-6xl"
-              data-reveal-item
-            >
-              <span className="block">Votre coaching,</span>
-              <span className="block">au meme endroit.</span>
-            </h1>
-            <p className="mt-4 max-w-xl text-base text-[var(--muted)]" data-reveal-item>
-              Centralisez vos eleves, vos tests, vos datas (TPI, radar) et vos rapports
-              dans un seul espace. Moins d outils disperses, plus de clarté, et un
-              coaching plus pro, plus constant, plus simple a vendre.
-            </p>
-            <div className="mt-7 flex flex-wrap items-center gap-3" data-reveal-item>
-              <Link
-                href="/login"
-                className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-6 py-2.5 text-xs font-semibold uppercase tracking-wide text-zinc-900 shadow-[0_20px_50px_rgba(0,0,0,0.25)] transition hover:opacity-90 active:scale-[0.98]"
-              >
-                Acceder a la plateforme
-              </Link>
-            </div>
-            <div
-              className="mt-7 flex flex-wrap items-center gap-4 text-[0.65rem] uppercase tracking-[0.25em] text-[var(--muted)]"
-              data-reveal-item
-            >
-              <span className="inline-flex items-center gap-2">
-                <IconUser />
-                Eleves
-              </span>
-              <span className="inline-flex items-center gap-2">
-                <IconChart />
-                Datas
-              </span>
-              <span className="inline-flex items-center gap-2">
-                <IconDoc />
-                Rapports
-              </span>
-              <span className="inline-flex items-center gap-2">
-                <IconTest />
-                Tests
-              </span>
-            </div>
-          </div>
-
-          <div
-            className="mt-10 flex items-center justify-center lg:mt-0 lg:-ml-6 lg:justify-center"
-            data-reveal-item
-          >
-            <div className="lg:hidden">
-              <HeroOrbitVisual size="sm" />
-            </div>
-            <div className="hidden lg:block">
-              <HeroOrbitVisual size="md" />
-            </div>
-          </div>
-        </section>
+        <Hero />
 
         <section
           className="reveal snap-start landing-snap-section panel-soft rounded-3xl p-8 md:p-10 lg:ml-auto lg:max-w-[90%]"

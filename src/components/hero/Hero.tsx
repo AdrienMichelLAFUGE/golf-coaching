@@ -1,0 +1,212 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { motion, useReducedMotion, useScroll, useTransform } from "framer-motion";
+
+import styles from "./hero.module.css";
+import OrbitScene from "./OrbitScene";
+import { smoothstep } from "./orbitMath";
+import { MORPH_END, MORPH_START } from "./timings";
+
+export default function Hero() {
+  const heroRef = useRef<HTMLElement>(null);
+  const reducedMotion = useReducedMotion();
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(max-width: 899px)");
+    const update = () => setIsMobile(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  const isStatic = Boolean(reducedMotion) || isMobile;
+
+  const { scrollYProgress } = useScroll({
+    target: heroRef,
+    offset: ["start start", "end start"],
+  });
+
+  useEffect(() => {
+    if (isStatic) return;
+    if (typeof document === "undefined") return;
+
+    // Landing uses scroll-snap (via LandingReveal). For the hero narrative we want
+    // continuous scroll so progress can settle mid-way and the final state can "hold"
+    // instead of snapping to the next section.
+    const root = document.documentElement;
+    const body = document.body;
+    const snapClass = "landing-snap";
+
+    const updateSnap = (p: number) => {
+      const done = p >= 0.98; // only re-enable snap once the hero has fully completed
+      if (done) {
+        root.classList.add(snapClass);
+        body.classList.add(snapClass);
+      } else {
+        root.classList.remove(snapClass);
+        body.classList.remove(snapClass);
+      }
+    };
+
+    updateSnap(scrollYProgress.get());
+    const unsub = scrollYProgress.on("change", updateSnap);
+    return () => {
+      unsub();
+      // Ensure we restore snap behavior when leaving the page/component.
+      root.classList.add(snapClass);
+      body.classList.add(snapClass);
+    };
+  }, [isStatic, scrollYProgress]);
+
+  const introOpacity = useTransform(scrollYProgress, (p) =>
+    isStatic ? 0 : 1 - smoothstep(0.02, MORPH_START - 0.04, p)
+  );
+  const introY = useTransform(scrollYProgress, (p) =>
+    isStatic ? 0 : -8 * smoothstep(0.02, MORPH_START - 0.04, p)
+  );
+
+  const avantOpacity = useTransform(scrollYProgress, (p) => {
+    if (isStatic) return 0;
+    const enter = smoothstep(MORPH_START - 0.07, MORPH_START + 0.03, p);
+    const exit = smoothstep(MORPH_START + 0.10, MORPH_END - 0.10, p);
+    return enter * (1 - exit);
+  });
+  const avantY = useTransform(scrollYProgress, (p) => {
+    if (isStatic) return 0;
+    const enter = smoothstep(MORPH_START - 0.07, MORPH_START + 0.03, p);
+    const exit = smoothstep(MORPH_START + 0.10, MORPH_END - 0.10, p);
+    return 10 * (1 - enter) + -8 * exit;
+  });
+
+  const apresOpacity = useTransform(scrollYProgress, (p) => {
+    if (isStatic) return 0;
+    // Keep the "Apres" message visible longer before the final CTA lands.
+    // Shorter "Apres" presence: earlier exit and slightly later enter.
+    const enter = smoothstep(MORPH_START + 0.10, MORPH_END - 0.24, p);
+    const exit = smoothstep(MORPH_END - 0.02, MORPH_END + 0.10, p);
+    return enter * (1 - exit);
+  });
+  const apresY = useTransform(scrollYProgress, (p) => {
+    if (isStatic) return 0;
+    const enter = smoothstep(MORPH_START + 0.10, MORPH_END - 0.24, p);
+    const exit = smoothstep(MORPH_END - 0.02, MORPH_END + 0.10, p);
+    return 10 * (1 - enter) + -8 * exit;
+  });
+
+  const finalOpacity = useTransform(scrollYProgress, (p) =>
+    // Make the final CTA land earlier so it remains visible longer before leaving sticky.
+    isStatic ? 1 : smoothstep(MORPH_END + 0.02, MORPH_END + 0.10, p)
+  );
+  const finalY = useTransform(scrollYProgress, (p) =>
+    isStatic ? 0 : 10 * (1 - smoothstep(MORPH_END + 0.02, MORPH_END + 0.10, p))
+  );
+
+  // Static modes: show only the final message.
+  if (isStatic) {
+    return (
+      <section ref={heroRef} className={styles.hero}>
+        <div className={styles.grid}>
+          <div className={styles.left}>
+            <div className={styles.narrative}>
+              <div className={`${styles.layer} ${styles.layerFinal}`} style={{ opacity: 1, transform: "none" }}>
+                <p className={styles.kicker}>SwingFlow</p>
+                <h1 className={styles.title}>
+                  Decouvrez SwingFlow,{" "}
+                  <span className={styles.titleBreak}>votre coaching, centralisé.</span>
+                </h1>
+                <p className={styles.copy}>
+                  Centralisez eleves, tests et donnees (TPI, Trackman...) pour un coaching plus clair et plus constant.
+                </p>
+                <div className={styles.ctaRow}>
+                  <Link href="/login" className={styles.ctaPrimary}>
+                    Acceder a la plateforme
+                  </Link>
+                  <Link href="/demo" className={styles.ctaSecondary}>
+                    Voir une demo
+                  </Link>
+                </div>
+                <p className={styles.smallLine}>
+                  Connectez Trackman, Flightscope, TPI, Smart2Move...
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className={styles.sceneCol}>
+            <div className={styles.sticky}>
+              <OrbitScene heroRef={heroRef} />
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section
+      ref={heroRef}
+      className={styles.hero}
+    >
+      <div className={styles.grid}>
+        <div className={styles.left}>
+          <div className={styles.narrative}>
+            <motion.div className={styles.layer} style={{ opacity: introOpacity, y: introY }}>
+              <p className={styles.kicker}>le chaos</p>
+              <h1 className={styles.title}>
+                Vous ne savez plus où donner de la tête pour suivre vos élèves et organiser vos cours ?
+              </h1>
+              <p className={styles.copy}>
+  
+              </p>
+            </motion.div>
+
+            <motion.div className={styles.layer} style={{ opacity: avantOpacity, y: avantY }}>
+              <p className={styles.storyKicker}>Avant</p>
+              <ul className={styles.storyList}>
+                <li>Outils dispersés, exports dans tous les sens, des notes et des fichiers partout.</li>
+                <li>Du temps perdu et un suivi eleve moins lisible.</li>
+                <li>Difficile de garder une methode constante.</li>
+              </ul>
+            </motion.div>
+
+            <motion.div className={styles.layer} style={{ opacity: apresOpacity, y: apresY }}>
+              <p className={styles.storyKicker}>Imaginez tout cela au même endroit...</p>
+            
+            </motion.div>
+
+            <motion.div className={`${styles.layer} ${styles.layerFinal}`} style={{ opacity: finalOpacity, y: finalY }}>
+              <p className={styles.kicker}>SwingFlow</p>
+              <h1 className={styles.title}>
+                Bienvenu sur SwingFlow, <span className={styles.titleBreak}>votre coaching, centralisé.</span>
+              </h1>
+              <p className={styles.copy}>
+                Centralisez eleves, tests et donnees (TPI, Trackman...) pour un coaching plus clair et plus constant.
+              </p>
+              <div className={styles.ctaRow}>
+                <Link href="/login" className={styles.ctaPrimary}>
+                  Acceder a la plateforme
+                </Link>
+                <Link href="/demo" className={styles.ctaSecondary}>
+                  Voir une demo
+                </Link>
+              </div>
+              <p className={styles.smallLine}>
+                Connectez Trackman, Flightscope, TPI, Smart2Move...
+              </p>
+            </motion.div>
+          </div>
+        </div>
+
+        <div className={styles.sceneCol}>
+          <div className={styles.sticky}>
+            <OrbitScene heroRef={heroRef} />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
