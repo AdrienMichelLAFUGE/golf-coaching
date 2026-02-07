@@ -181,7 +181,7 @@ export default function Hero() {
             <motion.div className={`${styles.layer} ${styles.layerFinal}`} style={{ opacity: finalOpacity, y: finalY }}>
               <p className={styles.kicker}>SwingFlow</p>
               <h1 className={styles.title}>
-                Bienvenu sur SwingFlow, <span className={styles.titleBreak}>votre coaching, centralisé.</span>
+                Bienvenue sur SwingFlow, <span className={styles.titleBreak}>votre coaching centralisé.</span>
               </h1>
               <p className={styles.copy}>
                 Centralisez eleves, tests et donnees (TPI, Trackman...) pour un coaching plus clair et plus constant.
