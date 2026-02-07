@@ -30,38 +30,6 @@ export default function Hero() {
     offset: ["start start", "end start"],
   });
 
-  useEffect(() => {
-    if (isStatic) return;
-    if (typeof document === "undefined") return;
-
-    // Landing uses scroll-snap (via LandingReveal). For the hero narrative we want
-    // continuous scroll so progress can settle mid-way and the final state can "hold"
-    // instead of snapping to the next section.
-    const root = document.documentElement;
-    const body = document.body;
-    const snapClass = "landing-snap";
-
-    const updateSnap = (p: number) => {
-      const done = p >= 0.98; // only re-enable snap once the hero has fully completed
-      if (done) {
-        root.classList.add(snapClass);
-        body.classList.add(snapClass);
-      } else {
-        root.classList.remove(snapClass);
-        body.classList.remove(snapClass);
-      }
-    };
-
-    updateSnap(scrollYProgress.get());
-    const unsub = scrollYProgress.on("change", updateSnap);
-    return () => {
-      unsub();
-      // Ensure we restore snap behavior when leaving the page/component.
-      root.classList.add(snapClass);
-      body.classList.add(snapClass);
-    };
-  }, [isStatic, scrollYProgress]);
-
   const introOpacity = useTransform(scrollYProgress, (p) =>
     isStatic ? 0 : 1 - smoothstep(0.02, MORPH_START - 0.04, p)
   );
@@ -187,8 +155,8 @@ export default function Hero() {
                 Centralisez eleves, tests et donnees (TPI, Trackman...) pour un coaching plus clair et plus constant.
               </p>
               <div className={styles.ctaRow}>
-                <Link href="/login" className={styles.ctaPrimary}>
-                  Acceder a la plateforme
+                <Link href="/" className={styles.ctaPrimary}>
+                  La plateforme arrive bientôt...
                 </Link>
                 <Link href="/demo" className={styles.ctaSecondary}>
                   Voir une demo

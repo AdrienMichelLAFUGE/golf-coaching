@@ -13,7 +13,8 @@ const cards = [
   },
   {
     title: "Contenu personnalisable",
-    description: "Adaptez chaque section à votre methode, à chaque séance et à chaque eleve.",
+    description:
+      "Adaptez chaque section à votre méthode, à chaque séance et à chaque élève.",
     Illustration: ContentCustomizableIllustration,
   },
   {
@@ -23,15 +24,15 @@ const cards = [
     Illustration: SectionAwareAiIllustration,
   },
   {
-    title: "IA basée sur vos donnees",
+    title: "IA basée sur vos données",
     description:
       "L'IA s'appuie sur le profil TPI et les données radar pour recommander.",
     Illustration: DataDrivenAiIllustration,
   },
   {
-    title: "Plan d'entrainement personnalisé",
+    title: "Plan d'entraînement personnalisé",
     description:
-      "Ajoutez une section de planification pour générer un plan adapte a l'élève.",
+      "Ajoutez une section de planification pour générer un plan adapté à l'élève.",
     Illustration: TrainingPlanIllustration,
   },
 ] as const;
@@ -39,7 +40,7 @@ const cards = [
 export default function ReportsFeatureShowcase() {
   return (
     <section
-      className="reveal snap-start landing-snap-section rounded-3xl p-8 md:p-10 lg:ml-auto lg:max-w-[100%]"
+      className="reveal rounded-3xl p-8 md:p-10 lg:ml-auto lg:max-w-[100%]"
       data-reveal-stagger
     >
       <div className="max-w-2xl" data-reveal-item>
@@ -47,7 +48,7 @@ export default function ReportsFeatureShowcase() {
           Rapports & IA
         </h2>
         <p className="mt-3 text-sm text-[var(--muted)]">
-          Des rapports clairs, relus et enrichis par l IA, sans perdre votre methode.
+          Des rapports clairs, relus et enrichis par l&apos;IA, sans perdre votre méthode.
         </p>
       </div>
 

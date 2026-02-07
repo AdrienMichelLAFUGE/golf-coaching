@@ -3,7 +3,7 @@
   border-radius: 0;
   padding: 2rem 0;
   /* More scroll runway so sticky + morph can complete before the next section appears. */
-  min-height: 380vh;
+  min-height: 400vh;
   display: flex;
   background: transparent;
   border: none;

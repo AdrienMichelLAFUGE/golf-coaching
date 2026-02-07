@@ -392,15 +392,6 @@
   }
 }
 
-.landing-snap {
-  scroll-snap-type: y proximity;
-  scroll-behavior: smooth;
-}
-
-.landing-snap-section {
-  scroll-snap-stop: always;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .reveal {
     opacity: 1;

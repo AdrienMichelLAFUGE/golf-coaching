@@ -3,6 +3,7 @@ import Link from "next/link";
 import LandingReveal from "./landing-reveal";
 import ReportsFeatureShowcase from "./reports-feature-showcase";
 import Hero from "@/components/hero/Hero";
+import CentralizationSection from "./CentralizationSection";
 
 const IconUser = ({ className = "h-5 w-5" }: { className?: string }) => (
   <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -46,7 +47,7 @@ export default function LandingPage() {
       <div className="pointer-events-none absolute left-1/2 top-[520px] h-[260px] w-[520px] -translate-x-1/2 rounded-[999px] bg-white/5 blur-[80px]" />
 
       <div className="mx-auto max-w-6xl space-y-24 md:space-y-32">
-        <div className="reveal snap-start landing-snap-section" data-reveal-stagger>
+        <div className="reveal" data-reveal-stagger>
           <div
             className="flex flex-wrap items-center justify-between gap-4"
             data-reveal-item
@@ -63,68 +64,35 @@ export default function LandingPage() {
               href="/login"
               className="rounded-full border border-white/15 bg-white/5 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10 active:scale-[0.98]"
             >
-              Login
+              Se connecter
             </Link>
           </div>
         </div>
 
         <Hero />
 
-        <section
-          className="reveal snap-start landing-snap-section panel-soft rounded-3xl p-8 md:p-10 lg:ml-auto lg:max-w-[90%]"
-          data-reveal-stagger
-        >
-          <div className="grid gap-10 lg:grid-cols-[1fr_1fr]">
-            <div className="lg:order-2" data-reveal-item>
-              <h2 className="text-2xl font-semibold text-[var(--text)] md:text-3xl">
-                Ce que le produit simplifie
-              </h2>
-              <p className="mt-3 text-sm text-[var(--muted)]">
-                Plus besoin de jongler entre notes, exports et documents separes. Tout
-                le suivi eleve est regroupe et lisible.
-              </p>
-            </div>
-            <div className="space-y-4 text-sm text-[var(--muted)] lg:order-1">
-              <div className="panel-outline rounded-2xl px-4 py-4" data-reveal-item>
-                <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Avant
-                </p>
-                <p className="mt-2">
-                  Notes dispersees, fichiers radar isoles, rapports a part.
-                </p>
-              </div>
-              <div className="panel-outline rounded-2xl px-4 py-4" data-reveal-item>
-                <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Apres
-                </p>
-                <p className="mt-2">
-                  Un espace unique pour suivre, analyser et publier.
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
+        <CentralizationSection />
 
         <section
-          className="reveal snap-start landing-snap-section panel-outline relative overflow-hidden rounded-3xl p-8 md:p-10 lg:mr-auto lg:max-w-[90%]"
+          className="reveal panel-outline relative overflow-hidden rounded-3xl p-8 md:p-10 lg:mr-auto lg:max-w-[90%]"
           data-reveal-stagger
         >
           <div className="pointer-events-none absolute -right-24 top-6 h-40 w-40 rounded-full bg-emerald-400/10 blur-[60px]" />
           <div className="pointer-events-none absolute -left-24 bottom-6 h-36 w-36 rounded-full bg-sky-400/10 blur-[60px]" />
           <div className="max-w-2xl" data-reveal-item>
             <h2 className="text-2xl font-semibold text-[var(--text)] md:text-3xl">
-              Le parcours en 4 etapes
+              Le parcours en 4 étapes
             </h2>
             <p className="mt-3 text-sm text-[var(--muted)]">
-              Ajoutez un eleve, importez vos donnees, construisez le rapport, publiez-le.
-              L eleve le consulte dans son espace.
+              Ajoutez un élève, importez vos données, construisez le rapport, publiez-le.
+              L&apos;élève le consulte dans son espace.
             </p>
           </div>
           <div className="mt-10">
             <div className="relative space-y-4 lg:hidden">
               <span className="absolute left-4 top-0 h-full w-px bg-white/15" />
               {[
-                { label: "Eleve", icon: <IconUser /> },
+                { label: "Élève", icon: <IconUser /> },
                 { label: "TPI et radar", icon: <IconChart /> },
                 { label: "Rapport", icon: <IconDoc /> },
                 { label: "Publication", icon: <IconCheck /> },
@@ -137,7 +105,7 @@ export default function LandingPage() {
                     </span>
                     <div>
                       <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                        Etape {index + 1}
+                        Étape {index + 1}
                       </p>
                       <p className="mt-1 text-sm text-[var(--text)]">{step.label}</p>
                     </div>
@@ -153,9 +121,9 @@ export default function LandingPage() {
                   </span>
                   <div>
                     <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                      Etape 1
+                      Étape 1
                     </p>
-                    <p className="mt-1 text-sm text-[var(--text)]">Eleve</p>
+                    <p className="mt-1 text-sm text-[var(--text)]">Élève</p>
                   </div>
                 </div>
                 <span className="absolute left-1/2 top-full hidden h-4 w-px -translate-x-1/2 bg-white/20 lg:block" />
@@ -168,7 +136,7 @@ export default function LandingPage() {
                   </span>
                   <div>
                     <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                      Etape 2
+                      Étape 2
                     </p>
                     <p className="mt-1 text-sm text-[var(--text)]">TPI et radar</p>
                   </div>
@@ -181,7 +149,7 @@ export default function LandingPage() {
                   </span>
                   <div>
                     <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                      Etape 3
+                      Étape 3
                     </p>
                     <p className="mt-1 text-sm text-[var(--text)]">Rapport</p>
                   </div>
@@ -196,7 +164,7 @@ export default function LandingPage() {
                   </span>
                   <div>
                     <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                      Etape 4
+                      Étape 4
                     </p>
                     <p className="mt-1 text-sm text-[var(--text)]">Publication</p>
                   </div>
@@ -211,28 +179,25 @@ export default function LandingPage() {
 
         <ReportsFeatureShowcase />
 
-        <section
-          className="reveal snap-start landing-snap-section rounded-3xl p-8 md:p-10 lg:mr-auto lg:max-w-[92%]"
-          data-reveal-stagger
-        >
+        <section className="reveal rounded-3xl p-8 md:p-10 lg:mr-auto lg:max-w-[92%]" data-reveal-stagger>
           <h2 className="text-2xl font-semibold text-[var(--text)] md:text-3xl">
-            Donnees TPI et radar integrees
+            Données TPI et radar intégrées
           </h2>
           <p className="mt-3 text-sm text-[var(--muted)]">
             <span className="block">
-              Importez rapport TPI et vos exports radar (Flightscope).
+              Importez le rapport TPI et vos exports radar (Flightscope).
             </span>
             <span className="mt-2 block">40+ graphiques disponibles.</span>
             <span className="mt-2 block">
-              L&apos;IA peut en selectionner automatiquement pour appuyer les notions vues en
-              seance et expliquer clairement les points a l eleve.
+              L&apos;IA peut en sélectionner automatiquement pour appuyer les notions vues en
+              séance et expliquer clairement les points à l&apos;élève.
             </span>
           </p>
           <div className="mt-6 flex flex-wrap gap-3 text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
             <span>TPI</span>
             <span>Flightscope</span>
             <span>Radar</span>
-            <span>Synthese</span>
+            <span>Synthèse</span>
           </div>
           <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {[
@@ -315,7 +280,7 @@ export default function LandingPage() {
         </section>
 
         <section
-          className="reveal snap-start landing-snap-section panel-soft rounded-3xl p-8 md:p-10 lg:ml-auto lg:max-w-[90%]"
+          className="reveal panel-soft rounded-3xl p-8 md:p-10 lg:ml-auto lg:max-w-[90%]"
           data-reveal-stagger
         >
           <div className="grid gap-12 lg:grid-cols-[1fr_1fr] lg:gap-16">
@@ -323,11 +288,11 @@ export default function LandingPage() {
               <div className="flex items-start gap-4 text-[var(--muted)]">
                 <div>
                   <h2 className="text-2xl font-semibold text-[var(--text)] md:text-3xl">
-                    Tests standardisés pour vos eleves
+                    Tests standardisés pour vos élèves
                   </h2>
                   <p className="mt-3 text-sm text-[var(--muted)]">
                     - Assignez des tests normalisés et suivez leur statut.<br />
-                    - L&apos;eleve les complete directement depuis son espace.<br />
+                    - L&apos;élève les complète directement depuis son espace.<br />
                     - Créez vos propres tests personnalisés.
                   </p>
                 </div>
@@ -340,12 +305,12 @@ export default function LandingPage() {
                         Pelz putting
                       </p>
                       <p className="mt-1 text-xs text-[var(--muted)]">
-                        Controle precision courte distance
+                        Contrôle précision courte distance
                       </p>
                     </div>
                     <div className="text-right">
                       <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                        A faire
+                        À faire
                       </p>
                       <p className="mt-1 text-xs text-[var(--muted)]">12/03</p>
                     </div>
@@ -361,7 +326,7 @@ export default function LandingPage() {
                         Wedging drapeau
                       </p>
                       <p className="mt-1 text-xs text-[var(--muted)]">
-                        Regularite distance cible
+                        Régularité distance cible
                       </p>
                     </div>
                     <div className="text-right">
@@ -382,13 +347,13 @@ export default function LandingPage() {
               <div className="flex items-start gap-4 text-[var(--muted)]">
                 <div>
                   <h2 className="text-2xl font-semibold text-[var(--text)] md:text-3xl">
-                    Travailler a plusieurs
+                    Travailler à plusieurs
                   </h2>
                   <p className="mt-3 text-sm text-[var(--muted)]">
-                    - Partage élève entre coachs <br/>
-                    - Systeme d&apos;assignation coach/eleve en mode Structure. <br />
+                    - Partage d&apos;élève entre coachs <br />
+                    - Système d&apos;assignation coach/élève en mode structure. <br />
                     <br />
-                    Idéal pour les structures avec plusieurs coaches.
+                    Idéal pour les structures avec plusieurs coachs.
                   </p>
                 </div>
               </div>
@@ -398,7 +363,7 @@ export default function LandingPage() {
                     Workspace perso
                   </div>
                   <p className="mt-3 text-sm text-[var(--text)]">
-                    Partage d eleve entre coachs.
+                    Partage d&apos;élève entre coachs.
                   </p>
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
                     <span className="rounded-full border border-white/20 px-3 py-1">
@@ -406,7 +371,7 @@ export default function LandingPage() {
                     </span>
                     <span>-</span>
                     <span className="rounded-full border border-white/20 px-3 py-1">
-                      Eleve
+                      Élève
                     </span>
                   </div>
                 </div>
@@ -415,7 +380,7 @@ export default function LandingPage() {
                     Workspace orga
                   </div>
                   <p className="mt-3 text-sm text-[var(--text)]">
-                    Assignation specifique pour un travail robuste en équipe.
+                    Assignation spécifique pour un travail robuste en équipe.
                   </p>
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
                     <span className="rounded-full border border-white/20 px-3 py-1">
@@ -423,7 +388,7 @@ export default function LandingPage() {
                     </span>
                     <span>-</span>
                     <span className="rounded-full border border-white/20 px-3 py-1">
-                      Eleve
+                      Élève
                     </span>
                     <span>-</span>
                     <span className="rounded-full border border-white/20 px-3 py-1">
@@ -436,15 +401,15 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section className="reveal snap-start landing-snap-section panel-outline rounded-3xl p-8 md:p-10 lg:mr-auto lg:max-w-[92%]">
+        <section className="reveal panel-outline rounded-3xl p-8 md:p-10 lg:mr-auto lg:max-w-[92%]">
           <div className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr]">
             <div>
               <h2 className="text-2xl font-semibold text-[var(--text)] md:text-3xl">
                 Un espace élève clair
               </h2>
               <p className="mt-3 text-sm text-[var(--muted)]">
-                Chaque eleve retrouve ses rapports publies et ses tests a completer.<br />
-                Pas d&apos;outil externe a fournir.
+                Chaque élève retrouve ses rapports publiés et ses tests à compléter.<br />
+                Pas d&apos;outil externe à fournir.
               </p>
             </div>
             <div className="panel-outline rounded-2xl px-4 py-4 text-sm text-[var(--muted)]">
@@ -457,20 +422,20 @@ export default function LandingPage() {
                 <span>Lire</span>
               </div>
               <div className="mt-2 flex items-center justify-between">
-                <span>Test putting à completer</span>
+                <span>Test putting à compléter</span>
                 <span>Voir</span>
               </div>
             </div>
           </div>
         </section>
 
-        <section className="snap-start landing-snap-section panel-soft rounded-3xl p-8 md:p-10 lg:ml-auto lg:max-w-[92%]">
+        <section className="panel-soft rounded-3xl p-8 md:p-10 lg:ml-auto lg:max-w-[92%]">
           <div className="max-w-2xl">
             <h2 className="text-2xl font-semibold text-[var(--text)] md:text-3xl">
               Plans & limites
             </h2>
             <p className="mt-3 text-sm text-[var(--muted)]">
-              Choisissez le niveau adapte a votre usage et a votre organisation.
+              Choisissez le niveau adapté à votre usage et à votre organisation.
             </p>
           </div>
           <div className="mt-6 grid gap-4 text-sm text-[var(--muted)] lg:grid-cols-3">
@@ -482,7 +447,7 @@ export default function LandingPage() {
                 <span className="text-sm font-semibold">Free</span>
               </div>
               <div className="mt-3 space-y-2">
-                <div>Decouvrir SwingFlow</div>
+                <div>Découvrir SwingFlow</div>
                 <div>Relecture IA basique</div>
                 <div>Usage leger</div>
               </div>
@@ -498,9 +463,9 @@ export default function LandingPage() {
                 </span>
               </div>
               <div className="mt-3 space-y-2">
-                <div>Toutes les fonctionnalites SwingFlow</div>
-                <div>IA avancee</div>
-                <div>Datas, rapports, tests</div>
+                <div>Toutes les fonctionnalités SwingFlow</div>
+                <div>IA avancée</div>
+                <div>Données, rapports, tests</div>
                 <div>Pour coachs professionnels</div>
               </div>
             </div>
@@ -512,7 +477,7 @@ export default function LandingPage() {
                 <span className="text-sm font-semibold">Enterprise</span>
               </div>
               <div className="mt-3 space-y-2">
-                <div>Organisations & academies</div>
+                <div>Organisations & académies</div>
                 <div>Gestion multi-comptes</div>
                 <div>Collaboration</div>
                 <div>CRM / gouvernance</div>
@@ -525,25 +490,25 @@ export default function LandingPage() {
               href="/login"
               className="text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
             >
-              Voir les plans dans l app
+              Voir les plans dans l&apos;app
             </Link>
           </div>
         </section>
 
-        <section className="reveal snap-start landing-snap-section panel-outline rounded-3xl p-8 md:p-10 lg:mr-auto lg:max-w-[92%] flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+        <section className="reveal panel-outline rounded-3xl p-8 md:p-10 lg:mr-auto lg:max-w-[92%] flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="text-2xl font-semibold text-[var(--text)]">
-              Pret a centraliser votre suivi ?
+              Prêt à centraliser votre suivi ?
             </h2>
             <p className="mt-3 text-sm text-[var(--muted)]">
-              Creez un compte coach et decouvrez l espace de travail.
+              Créez un compte coach et découvrez l&apos;espace de travail.
             </p>
           </div>
           <Link
-            href="/login"
+            href="/"
             className="inline-flex rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 active:scale-[0.98]"
           >
-            Creer un compte coach
+            La plateforme arrive bientôt...
           </Link>
         </section>
       </div>

@@ -5,10 +5,7 @@ import { useEffect } from "react";
 export default function LandingReveal() {
   useEffect(() => {
     const root = document.documentElement;
-    const body = document.body;
     const previousTheme = root.getAttribute("data-theme");
-    root.classList.add("landing-snap");
-    body.classList.add("landing-snap");
     root.setAttribute("data-theme", "light");
     const prefersReducedMotion = window.matchMedia(
       "(prefers-reduced-motion: reduce)"
@@ -33,8 +30,6 @@ export default function LandingReveal() {
     if (!("IntersectionObserver" in window)) {
       elements.forEach((el) => el.classList.add("is-visible"));
       return () => {
-        root.classList.remove("landing-snap");
-        body.classList.remove("landing-snap");
         if (previousTheme === null) {
           root.removeAttribute("data-theme");
         } else {
@@ -60,8 +55,6 @@ export default function LandingReveal() {
 
     return () => {
       observer.disconnect();
-      root.classList.remove("landing-snap");
-      body.classList.remove("landing-snap");
       if (previousTheme === null) {
         root.removeAttribute("data-theme");
       } else {
