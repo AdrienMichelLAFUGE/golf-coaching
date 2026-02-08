@@ -4,7 +4,9 @@ import LandingReveal from "./landing-reveal";
 import ReportsFeatureShowcase from "./reports-feature-showcase";
 import Hero from "@/components/hero/Hero";
 import CentralizationSection from "./CentralizationSection";
-import ResumeBanner from "./ResumeBanner";
+import PricingOffersContent from "@/components/pricing/PricingOffersContent";
+import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import { pricingPlansSchema, type PricingPlan } from "@/lib/pricing/types";
 
 const IconUser = ({ className = "h-5 w-5" }: { className?: string }) => (
   <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -39,7 +41,37 @@ const IconCheck = () => (
   </svg>
 );
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  let pricingPlans: PricingPlan[] = [];
+  let pricingPlansError: string | null = null;
+
+  try {
+    const admin = createSupabaseAdminClient();
+    const { data, error } = await admin
+      .from("pricing_plans")
+      .select(
+        "id, slug, label, price_cents, currency, interval, badge, cta_label, features, is_active, is_highlighted, sort_order"
+      )
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true });
+
+    if (error) {
+      console.error("Unable to load pricing plans for landing.", error);
+      pricingPlansError = "Impossible de charger les offres pour le moment.";
+    } else {
+      const parsed = pricingPlansSchema.safeParse(data ?? []);
+      if (!parsed.success) {
+        console.error("Invalid pricing plans payload for landing.", parsed.error);
+        pricingPlansError = "Impossible de charger les offres pour le moment.";
+      } else {
+        pricingPlans = parsed.data;
+      }
+    }
+  } catch (err) {
+    console.error("Unexpected pricing plans load failure.", err);
+    pricingPlansError = "Impossible de charger les offres pour le moment.";
+  }
+
   return (
     <main className="relative min-h-screen px-4 pb-28 pt-12 md:px-8 md:pb-36 md:pt-16">
       <LandingReveal />
@@ -48,20 +80,29 @@ export default function LandingPage() {
       <div className="pointer-events-none absolute left-1/2 top-[520px] h-[260px] w-[520px] -translate-x-1/2 rounded-[999px] bg-white/5 blur-[80px]" />
 
       <div className="mx-auto max-w-6xl space-y-24 md:space-y-32">
-        <ResumeBanner />
         <div className="reveal" data-reveal-stagger>
           <div
             className="flex flex-wrap items-center justify-between gap-4"
             data-reveal-item
           >
-            <Image
-              src="/branding/swingflow-logov2.png"
-              alt="SwingFlow"
-              width={600}
-              height={300}
-              priority
-              className="h-auto w-[600px] max-w-full"
-            />
+            <Link href="/" className="flex items-center gap-3">
+              <Image
+                src="/branding/logo.png"
+                alt="Logo SwingFlow"
+                width={250}
+                height={250}
+                priority
+                className="h-50 w-50 object-contain p-1"
+              />
+              <Image
+                src="/branding/wordmark.png"
+                alt="SwingFlow"
+                width={320}
+                height={96}
+                priority
+                className="h-15 w-auto max-w-[min(420px,70vw)] object-contain"
+              />
+            </Link>
             <Link
               href="/login"
               className="rounded-full border border-white/15 bg-white/5 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10 active:scale-[0.98]"
@@ -281,24 +322,79 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section
-          className="reveal panel-soft rounded-3xl p-8 md:p-10 lg:ml-auto lg:max-w-[90%]"
-          data-reveal-stagger
-        >
-          <div className="grid gap-12 lg:grid-cols-[1fr_1fr] lg:gap-16">
-            <div className="lg:order-2" data-reveal-item>
-              <div className="flex items-start gap-4 text-[var(--muted)]">
-                <div>
-                  <h2 className="text-2xl font-semibold text-[var(--text)] md:text-3xl">
-                    Tests standardisés pour vos élèves
-                  </h2>
-                  <p className="mt-3 text-sm text-[var(--muted)]">
-                    - Assignez des tests normalisés et suivez leur statut.<br />
-                    - L&apos;élève les complète directement depuis son espace.<br />
-                    - Créez vos propres tests personnalisés.
-                  </p>
+        <div className="grid gap-10 lg:grid-cols-2 lg:items-stretch">
+          <section
+            className="reveal panel-soft h-full rounded-3xl p-8 md:p-10"
+            data-reveal-stagger
+          >
+          <div data-reveal-item>
+            <div className="flex items-start gap-4 text-[var(--muted)]">
+              <div>
+                <h2 className="text-2xl font-semibold text-[var(--text)] md:text-3xl">
+                  Travailler à plusieurs
+                </h2>
+                <p className="mt-3 text-sm text-[var(--muted)]">
+                  - Partage d&apos;élève entre coachs <br />
+                  - Système d&apos;assignation coach/élève en mode structure. <br />
+                  <br />
+                  Idéal pour les structures avec plusieurs coachs.
+                </p>
+              </div>
+            </div>
+              <div className="mt-6 grid gap-4 text-sm text-[var(--muted)] sm:grid-cols-2">
+                <div className="rounded-2xl border border-white/15 bg-white/5 px-4 py-4">
+                  <div className="text-xs uppercase tracking-[0.25em] text-[var(--muted)]">
+                    Workspace perso
+                  </div>
+                <p className="mt-3 text-sm text-[var(--text)]">
+                  Partage d&apos;élève entre coachs.
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
+                  <span className="rounded-full border border-white/20 px-3 py-1">
+                    Coach
+                  </span>
+                  <span>-</span>
+                  <span className="rounded-full border border-white/20 px-3 py-1">
+                    Élève
+                  </span>
                 </div>
               </div>
+              <div className="rounded-2xl border border-white/15 bg-white/5 px-4 py-4">
+                <div className="text-xs uppercase tracking-[0.25em] text-[var(--muted)]">
+                  Workspace orga
+                </div>
+                <p className="mt-3 text-sm text-[var(--text)]">
+                  Assignation spécifique pour un travail robuste en équipe.
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
+                  <span className="rounded-full border border-white/20 px-3 py-1">
+                    Coach A
+                  </span>
+                  <span>-</span>
+                  <span className="rounded-full border border-white/20 px-3 py-1">
+                    Élève
+                  </span>
+                  <span>-</span>
+                  <span className="rounded-full border border-white/20 px-3 py-1">
+                    Coach B
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+          </section>
+
+          <section className="reveal panel-outline h-full rounded-3xl p-8 md:p-10">
+          <div className="space-y-10">
+            <div>
+              <h2 className="text-2xl font-semibold text-[var(--text)] md:text-3xl">
+                Tests standardisés pour vos élèves
+              </h2>
+              <p className="mt-3 text-sm text-[var(--muted)]">
+                - Assignez des tests normalisés et suivez leur statut.<br />
+                - L&apos;élève les complète directement depuis son espace.<br />
+                - Créez vos propres tests personnalisés.
+              </p>
               <div className="mt-6 divide-y divide-white/10 text-sm text-[var(--muted)]">
                 <div className="py-3">
                   <div className="flex items-start justify-between gap-4">
@@ -345,66 +441,8 @@ export default function LandingPage() {
               </div>
             </div>
 
-            <div className="lg:order-1" data-reveal-item>
-              <div className="flex items-start gap-4 text-[var(--muted)]">
-                <div>
-                  <h2 className="text-2xl font-semibold text-[var(--text)] md:text-3xl">
-                    Travailler à plusieurs
-                  </h2>
-                  <p className="mt-3 text-sm text-[var(--muted)]">
-                    - Partage d&apos;élève entre coachs <br />
-                    - Système d&apos;assignation coach/élève en mode structure. <br />
-                    <br />
-                    Idéal pour les structures avec plusieurs coachs.
-                  </p>
-                </div>
-              </div>
-              <div className="mt-6 grid gap-4 text-sm text-[var(--muted)] sm:grid-cols-2">
-                <div className="rounded-2xl border border-white/15 bg-white/5 px-4 py-4">
-                  <div className="text-xs uppercase tracking-[0.25em] text-[var(--muted)]">
-                    Workspace perso
-                  </div>
-                  <p className="mt-3 text-sm text-[var(--text)]">
-                    Partage d&apos;élève entre coachs.
-                  </p>
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
-                    <span className="rounded-full border border-white/20 px-3 py-1">
-                      Coach
-                    </span>
-                    <span>-</span>
-                    <span className="rounded-full border border-white/20 px-3 py-1">
-                      Élève
-                    </span>
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-white/15 bg-white/5 px-4 py-4">
-                  <div className="text-xs uppercase tracking-[0.25em] text-[var(--muted)]">
-                    Workspace orga
-                  </div>
-                  <p className="mt-3 text-sm text-[var(--text)]">
-                    Assignation spécifique pour un travail robuste en équipe.
-                  </p>
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
-                    <span className="rounded-full border border-white/20 px-3 py-1">
-                      Coach A
-                    </span>
-                    <span>-</span>
-                    <span className="rounded-full border border-white/20 px-3 py-1">
-                      Élève
-                    </span>
-                    <span>-</span>
-                    <span className="rounded-full border border-white/20 px-3 py-1">
-                      Coach B
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
+            <div className="h-px w-full bg-white/10" aria-hidden="true" />
 
-        <section className="reveal panel-outline rounded-3xl p-8 md:p-10 lg:mr-auto lg:max-w-[92%]">
-          <div className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr]">
             <div>
               <h2 className="text-2xl font-semibold text-[var(--text)] md:text-3xl">
                 Un espace élève clair
@@ -413,87 +451,34 @@ export default function LandingPage() {
                 Chaque élève retrouve ses rapports publiés et ses tests à compléter.<br />
                 Pas d&apos;outil externe à fournir.
               </p>
-            </div>
-            <div className="panel-outline rounded-2xl px-4 py-4 text-sm text-[var(--muted)]">
-              <div className="flex items-center justify-between border-b border-white/10 pb-2">
-                <span>Rapport séance du 10/03</span>
-                <span>Lire</span>
-              </div>
-              <div className="mt-2 flex items-center justify-between border-b border-white/10 pb-2">
-                <span>Rapport séance du 28/02</span>
-                <span>Lire</span>
-              </div>
-              <div className="mt-2 flex items-center justify-between">
-                <span>Test putting à compléter</span>
-                <span>Voir</span>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="panel-soft rounded-3xl p-8 md:p-10 lg:ml-auto lg:max-w-[92%]">
-          <div className="max-w-2xl">
-            <h2 className="text-2xl font-semibold text-[var(--text)] md:text-3xl">
-              Plans & limites
-            </h2>
-            <p className="mt-3 text-sm text-[var(--muted)]">
-              Choisissez le niveau adapté à votre usage et à votre organisation.
-            </p>
-          </div>
-          <div className="mt-6 grid gap-4 text-sm text-[var(--muted)] lg:grid-cols-3">
-            <div className="panel-outline rounded-2xl px-4 py-4">
-              <div className="flex items-center gap-3 text-[var(--text)]">
-                <span className="rounded-full bg-emerald-400/10 p-2 text-emerald-100">
-                  <IconCheck />
-                </span>
-                <span className="text-sm font-semibold">Free</span>
-              </div>
-              <div className="mt-3 space-y-2">
-                <div>Découvrir SwingFlow</div>
-                <div>Relecture IA basique</div>
-                <div>Usage leger</div>
-              </div>
-            </div>
-            <div className="panel-outline rounded-2xl px-4 py-4">
-              <div className="flex items-center gap-3 text-[var(--text)]">
-                <span className="rounded-full bg-emerald-400/10 p-2 text-emerald-100">
-                  <IconCheck />
-                </span>
-                <span className="text-sm font-semibold">Pro</span>
-                <span className="rounded-full bg-emerald-400/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-emerald-100">
-                  Plan principal
-                </span>
-              </div>
-              <div className="mt-3 space-y-2">
-                <div>Toutes les fonctionnalités SwingFlow</div>
-                <div>IA avancée</div>
-                <div>Données, rapports, tests</div>
-                <div>Pour coachs professionnels</div>
-              </div>
-            </div>
-            <div className="panel-outline rounded-2xl px-4 py-4">
-              <div className="flex items-center gap-3 text-[var(--text)]">
-                <span className="rounded-full bg-emerald-400/10 p-2 text-emerald-100">
-                  <IconCheck />
-                </span>
-                <span className="text-sm font-semibold">Enterprise</span>
-              </div>
-              <div className="mt-3 space-y-2">
-                <div>Organisations & académies</div>
-                <div>Gestion multi-comptes</div>
-                <div>Collaboration</div>
-                <div>CRM / gouvernance</div>
-                <div className="text-[var(--text)]">Nous contacter</div>
+              <div className="panel-outline mt-6 rounded-2xl px-4 py-4 text-sm text-[var(--muted)]">
+                <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                  <span>Rapport séance du 10/03</span>
+                  <span>Lire</span>
+                </div>
+                <div className="mt-2 flex items-center justify-between border-b border-white/10 pb-2">
+                  <span>Rapport séance du 28/02</span>
+                  <span>Lire</span>
+                </div>
+                <div className="mt-2 flex items-center justify-between">
+                  <span>Test putting à compléter</span>
+                  <span>Voir</span>
+                </div>
               </div>
             </div>
           </div>
-          <div className="mt-4">
-            <Link
-              href="/login"
-              className="text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
-            >
-              Voir les plans dans l&apos;app
-            </Link>
+          </section>
+        </div>
+        <section className="reveal" data-reveal-stagger>
+          <div
+            data-reveal-item
+            className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-4 md:px-8"
+          >
+            <PricingOffersContent
+              variant="marketing"
+              plans={pricingPlans}
+              error={pricingPlansError ?? ""}
+            />
           </div>
         </section>
 

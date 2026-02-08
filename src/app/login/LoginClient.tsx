@@ -13,7 +13,15 @@ const rememberStorageKey = "gc.rememberMe";
 
 const isLikelyEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
-export default function LoginClient({ resetSuccess }: { resetSuccess: boolean }) {
+export default function LoginClient({
+  resetSuccess,
+  nextPath,
+  initialCoachFlow,
+}: {
+  resetSuccess: boolean;
+  nextPath: string | null;
+  initialCoachFlow: CoachFlow | null;
+}) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -23,7 +31,7 @@ export default function LoginClient({ resetSuccess }: { resetSuccess: boolean })
     return window.sessionStorage.getItem(rememberStorageKey) !== "false";
   });
   const [accountType, setAccountType] = useState<AccountType>("coach");
-  const [coachFlow, setCoachFlow] = useState<CoachFlow>("signin");
+  const [coachFlow, setCoachFlow] = useState<CoachFlow>(initialCoachFlow ?? "signin");
   const [status, setStatus] = useState<Status>(() => (resetSuccess ? "sent" : "idle"));
   const [message, setMessage] = useState(() =>
     resetSuccess ? "Mot de passe mis a jour. Connectez-vous." : ""
@@ -41,7 +49,7 @@ export default function LoginClient({ resetSuccess }: { resetSuccess: boolean })
       const { data } = await supabase.auth.getSession();
       if (!active) return;
       if (data.session) {
-        router.replace("/app");
+        router.replace(nextPath ?? "/app");
       }
     };
 
@@ -50,7 +58,7 @@ export default function LoginClient({ resetSuccess }: { resetSuccess: boolean })
     return () => {
       active = false;
     };
-  }, [router]);
+  }, [router, nextPath]);
 
   const handleAccountTypeChange = (nextType: AccountType) => {
     setAccountType(nextType);
@@ -106,7 +114,7 @@ export default function LoginClient({ resetSuccess }: { resetSuccess: boolean })
       return;
     }
 
-    router.replace("/app");
+    router.replace(nextPath ?? "/app");
   };
 
   const signUpCoach = async (
@@ -129,7 +137,8 @@ export default function LoginClient({ resetSuccess }: { resetSuccess: boolean })
     }
 
     if (!data.session) {
-      router.replace("/auth/account?flow=coach&state=verify");
+      const next = nextPath ? `&next=${encodeURIComponent(nextPath)}` : "";
+      router.replace(`/auth/account?flow=coach&state=verify${next}`);
       return;
     }
 
@@ -141,7 +150,8 @@ export default function LoginClient({ resetSuccess }: { resetSuccess: boolean })
       return;
     }
 
-    router.replace("/auth/account?flow=coach&state=ready");
+    const next = nextPath ? `&next=${encodeURIComponent(nextPath)}` : "";
+    router.replace(`/auth/account?flow=coach&state=ready${next}`);
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {

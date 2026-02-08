@@ -12,6 +12,11 @@ export const metadata: Metadata = {
     template: "%s | SwingFlow",
   },
   description: "Plateforme de coaching golf pour centraliser le suivi eleve.",
+  icons: {
+    icon: [{ url: "/branding/logo.png" }],
+    apple: [{ url: "/branding/logo.png" }],
+    shortcut: [{ url: "/branding/logo.png" }],
+  },
   openGraph: {
     type: "website",
     url: "/",

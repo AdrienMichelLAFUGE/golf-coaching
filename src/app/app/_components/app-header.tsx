@@ -35,7 +35,8 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
     !!profile && profile.role !== "student" && !(profile.full_name ?? "").trim();
   const avatarFallback = (profile?.full_name || email || "Coach").charAt(0).toUpperCase();
   const logoFallback = (organization?.name || "SwingFlow").charAt(0).toUpperCase();
-  const brandLogoUrl = "/branding/swingflow-logov2.png";
+  const brandIconUrl = "/branding/logo.png";
+  const brandWordmarkUrl = "/branding/wordmark.png";
   const mobileIdentityUrl = profile?.avatar_url ?? organization?.logo_url ?? null;
   const mobileIdentityAlt = profile?.avatar_url ? "Photo de profil" : "Logo";
   const mobileIdentityFallback = profile?.avatar_url ? avatarFallback : logoFallback;
@@ -99,9 +100,9 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
   };
 
   return (
-    <header className="relative sticky top-0 z-40 -mx-4 flex w-[calc(100%+2rem)] items-center justify-between gap-3 rounded-none border border-white/5 bg-white/5 px-4 py-2 shadow-[0_18px_45px_rgba(0,0,0,0.35)] backdrop-blur md:px-6 md:py-4">
+    <header className="relative sticky top-0 z-40 -mx-4 flex w-[calc(100%+2rem)] items-center justify-between gap-3 rounded-none border border-white/5 bg-white/5 px-4 py-2 shadow-[0_18px_45px_rgba(0,0,0,0.35)] backdrop-blur min-[880px]:px-6 min-[880px]:py-4">
       <div className="flex min-w-0 items-center gap-3">
-        <div className="md:hidden">
+        <div className="min-[880px]:hidden">
           {mobileIdentityUrl ? (
             <img
               src={mobileIdentityUrl}
@@ -114,14 +115,21 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
             </div>
           )}
         </div>
-        <div className="md:hidden">
-          <img
-            src={brandLogoUrl}
-            alt="SwingFlow"
-            className="h-10 w-auto object-contain"
-          />
+        <div className="min-[880px]:hidden">
+          <div className="flex items-center gap-2">
+            <img
+              src={brandIconUrl}
+              alt="Logo SwingFlow"
+              className="h-11 w-11 object-contain p-1 min-[460px]:hidden min-[530px]:block"
+            />
+            <img
+              src={brandWordmarkUrl}
+              alt="SwingFlow"
+              className="hidden h-9 w-auto max-w-[56vw] object-contain min-[460px]:block"
+            />
+          </div>
         </div>
-        <div className="hidden md:block">
+        <div className="hidden min-[880px]:block">
           {organization?.logo_url ? (
             <img
               src={organization.logo_url}
@@ -134,18 +142,25 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
             </div>
           )}
         </div>
-        <div className="hidden min-w-0 md:block">
-          <img
-            src={brandLogoUrl}
-            alt="SwingFlow"
-            className="h-15 w-auto object-contain"
-          />
+        <div className="hidden min-w-0 min-[880px]:block">
+          <div className="flex items-center gap-3">
+            <img
+              src={brandIconUrl}
+              alt="Logo SwingFlow"
+              className="h-15 w-15 object-contain p-1"
+            />
+            <img
+              src={brandWordmarkUrl}
+              alt="SwingFlow"
+              className="h-10 w-auto object-contain"
+            />
+          </div>
         </div>
-        {profile ? <div className="md:hidden"></div> : null}
+        {profile ? <div className="min-[880px]:hidden"></div> : null}
       </div>
-      <div className="flex items-center gap-2 pr-16 md:gap-3 md:pr-0">
+      <div className="flex items-center gap-2 pr-16 min-[880px]:gap-3 min-[880px]:pr-0">
         <WorkspaceSwitcher />
-        <div className="hidden md:block">
+        <div className="hidden min-[880px]:block">
           {profile?.avatar_url ? (
             <img
               src={profile.avatar_url}
@@ -158,7 +173,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
             </div>
           )}
         </div>
-        <div className="hidden min-w-0 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs text-[var(--muted)] md:block">
+        <div className="hidden min-w-0 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs text-[var(--muted)] min-[1050px]:block">
           <span className="block max-w-[180px] truncate">
             {email ?? "Session active"}
           </span>
@@ -167,19 +182,19 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
           <button
             type="button"
             onClick={() => router.push("/app/coach/parametres")}
-            className="hidden rounded-full border border-amber-300/40 bg-amber-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-amber-100 transition hover:border-amber-300/70 md:block"
+            className="hidden rounded-full border border-amber-300/40 bg-amber-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-amber-100 transition hover:border-amber-300/70 min-[880px]:block"
           >
             Profil incomplet
           </button>
         ) : null}
         {profile ? (
-          <div className="hidden items-center gap-2 md:flex">
+          <div className="hidden items-center gap-2 min-[880px]:flex">
             <div className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs text-[var(--muted)]">
               {roleLabel}
             </div>
           </div>
         ) : null}
-        <div className="hidden md:flex items-center gap-3">
+        <div className="hidden min-[880px]:flex items-center gap-3">
           <button
             type="button"
             onClick={toggleTheme}
@@ -236,7 +251,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
             Se deconnecter
           </button>
         </div>
-        <div className="relative md:hidden" ref={mobileMenuRef}>
+        <div className="relative min-[880px]:hidden" ref={mobileMenuRef}>
           <button
             type="button"
             onClick={() => setMobileMenuOpen((prev) => !prev)}
@@ -289,7 +304,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
         onClick={onToggleNav}
         aria-label={isNavOpen ? "Fermer la navigation" : "Ouvrir la navigation"}
         aria-expanded={isNavOpen ?? false}
-        className="absolute right-4 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] md:hidden"
+        className="absolute right-4 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] min-[880px]:hidden"
       >
         <svg
           viewBox="0 0 24 24"

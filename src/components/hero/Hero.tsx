@@ -125,7 +125,7 @@ export default function Hero() {
             <motion.div className={styles.layer} style={{ opacity: introOpacity, y: introY }}>
               <p className={styles.kicker}>le chaos</p>
               <h1 className={styles.title}>
-                Vous ne savez plus où donner de la tête pour suivre vos élèves et organiser vos cours ?
+                Trop de données, pas assez de clarté ?
               </h1>
               <p className={styles.copy}>
   
@@ -136,8 +136,8 @@ export default function Hero() {
               <p className={styles.storyKicker}>Avant</p>
               <ul className={styles.storyList}>
                 <li>Outils dispersés, exports dans tous les sens, des notes et des fichiers partout.</li>
-                <li>Du temps perdu et un suivi eleve moins lisible.</li>
-                <li>Difficile de garder une methode constante.</li>
+                <li>Du temps perdu et un suivi élève moins lisible.</li>
+                <li>Difficile de garder une méthode constante.</li>
               </ul>
             </motion.div>
 
@@ -149,18 +149,18 @@ export default function Hero() {
             <motion.div className={`${styles.layer} ${styles.layerFinal}`} style={{ opacity: finalOpacity, y: finalY }}>
               <p className={styles.kicker}>SwingFlow</p>
               <h1 className={styles.title}>
-                Bienvenue sur SwingFlow, <span className={styles.titleBreak}>votre coaching centralisé.</span>
+                Bienvenue sur SwingFlow, <span className={styles.titleBreak}>votre coaching enfin centralisé.</span>
               </h1>
               <p className={styles.copy}>
-                Centralisez eleves, tests et donnees (TPI, Trackman...) pour un coaching plus clair et plus constant.
+                Centralisez : élèves, tests, fiches d&apos;entraînement et données (TPI, Trackman...) pour un coaching plus clair et plus constant.
               </p>
               <div className={styles.ctaRow}>
-                <Link href="/" className={styles.ctaPrimary}>
-                  La plateforme arrive bientôt...
+                <Link href="/login" className={styles.ctaPrimary}>
+                  Accéder à la plateforme
                 </Link>
-                {/*<Link href="/demo" className={styles.ctaSecondary}>
-                  Voir une demo
-                </Link>*/}
+                <Link href="/demo" className={styles.ctaSecondary}>
+                  Voir une démo
+                </Link>
               </div>
               <p className={styles.smallLine}>
                 Connectez Trackman, Flightscope, TPI, Smart2Move...

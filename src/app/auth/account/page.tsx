@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase/client";
 const paramsSchema = z.object({
   flow: z.enum(["coach", "student"]).optional(),
   state: z.enum(["ready", "verify"]).optional(),
+  next: z.string().optional(),
 });
 
 function AccountStatusContent() {
@@ -22,6 +23,7 @@ function AccountStatusContent() {
       paramsSchema.safeParse({
         flow: searchParams.get("flow") ?? undefined,
         state: searchParams.get("state") ?? undefined,
+        next: searchParams.get("next") ?? undefined,
       }),
     [searchParams]
   );
@@ -29,6 +31,14 @@ function AccountStatusContent() {
   const flow = parsed.success ? (parsed.data.flow ?? "coach") : "coach";
   const state = parsed.success ? (parsed.data.state ?? "ready") : "ready";
   const flowLabel = flow === "student" ? "eleve" : "coach";
+  const nextPath = (() => {
+    if (!parsed.success) return null;
+    const raw = parsed.data.next;
+    if (!raw) return null;
+    if (!raw.startsWith("/") || raw.startsWith("//")) return null;
+    if (raw.includes("\\")) return null;
+    return raw;
+  })();
 
   useEffect(() => {
     if (state !== "ready") return;
@@ -41,7 +51,7 @@ function AccountStatusContent() {
       if (!active) return;
       if (data.session) {
         setSessionStatus("ready");
-        timer = setTimeout(() => router.replace("/app"), 1200);
+        timer = setTimeout(() => router.replace(nextPath ?? "/app"), 1200);
         return;
       }
       setSessionStatus("missing");
@@ -53,7 +63,7 @@ function AccountStatusContent() {
       active = false;
       if (timer) clearTimeout(timer);
     };
-  }, [router, state]);
+  }, [router, state, nextPath]);
 
   const headline = state === "verify" ? "Compte cree" : "Compte pret, connexion en cours";
   const description =
@@ -80,7 +90,10 @@ function AccountStatusContent() {
           {state === "verify" || sessionStatus === "missing" ? (
             <button
               type="button"
-              onClick={() => router.replace("/")}
+              onClick={() => {
+                const next = nextPath ? `?next=${encodeURIComponent(nextPath)}` : "";
+                router.replace(`/login${next}`);
+              }}
               className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)]"
             >
               Retour a la connexion
@@ -88,7 +101,7 @@ function AccountStatusContent() {
           ) : (
             <button
               type="button"
-              onClick={() => router.replace("/app")}
+              onClick={() => router.replace(nextPath ?? "/app")}
               className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)]"
             >
               Acceder a l app

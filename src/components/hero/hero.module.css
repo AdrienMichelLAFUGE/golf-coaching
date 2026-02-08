@@ -133,7 +133,7 @@
 }
 
 .storyKicker {
-  font-size: 0.7rem;
+  font-size: 0.85rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.22em;
@@ -144,7 +144,7 @@
   margin-top: 0.5rem;
   padding-left: 1.1rem;
   color: var(--muted);
-  font-size: 0.95rem;
+  font-size: 1.12rem;
   line-height: 1.55;
 }
 

@@ -7,7 +7,11 @@ import {
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { resolveEffectivePlanTier } from "@/lib/plans";
 import { stripe } from "@/lib/stripe";
-import { resolveCancelUrl, resolveProPriceId, resolveSuccessUrl } from "@/lib/billing";
+import {
+  resolveAbsoluteUrl,
+  resolveProPriceId,
+  resolveSuccessUrl,
+} from "@/lib/billing";
 
 export const runtime = "nodejs";
 
@@ -113,8 +117,10 @@ export async function POST(request: Request) {
     line_items: [{ price: priceId, quantity: 1 }],
     customer: org.stripe_customer_id ?? undefined,
     customer_email: org.stripe_customer_id ? undefined : userEmail ?? undefined,
-    success_url: resolveSuccessUrl(),
-    cancel_url: resolveCancelUrl(),
+    success_url: resolveAbsoluteUrl("/app?billing=success"),
+    cancel_url: resolveAbsoluteUrl(
+      `/app/pricing?plan=pro&interval=${encodeURIComponent(parsed.data.interval)}&canceled=1`
+    ),
     // Ensure subscription lifecycle events can be reliably mapped back to the org.
     subscription_data: {
       metadata: {

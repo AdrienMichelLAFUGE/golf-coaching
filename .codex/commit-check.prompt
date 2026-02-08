@@ -6,35 +6,24 @@ Ce prompt s’applique à chaque commit.
 RÈGLES (NON NÉGOCIABLES)
 
 Ne committe pas tant que la qualité n’est pas verte
-
 Qualité verte = aucun test en échec, aucun warning bloquant, aucun contournement.
-
 Changements minimaux, pas de refacto cosmétique.
-
 Aucun secret dans le repo.
-
 Si détecté → STOP, expliquer le risque et proposer une remédiation.
 
 Aucune modification DB non versionnée :
 
 toute évolution DB doit être dans supabase/migrations/*.sql
-
 aucune modification via SQL Editor non reflétée en migration
-
 MCP Supabase
-
 STAGING uniquement
-
 lecture seule
-
 ne jamais proposer ni exécuter d’action destructive via MCP
 
 Le message de commit doit être :
 
 clair
-
 factuel
-
 orienté impact
 
 PROCESS OBLIGATOIRE
@@ -43,19 +32,14 @@ PROCESS OBLIGATOIRE
 Exécuter :
 
 git status
-
 git diff
 
 Résumer en 5 lignes max :
 
 ce qui a été changé
-
 pourquoi
-
 impact fonctionnel
-
 impact technique
-
 risque potentiel (s’il existe)
 
 2) Vérifications spécifiques DB / Supabase
@@ -63,29 +47,20 @@ risque potentiel (s’il existe)
 Si des fichiers DB sont modifiés :
 
 vérifier qu’ils sont uniquement dans supabase/migrations/
-
 refuser tout INSERT INTO hors fonctions SQL (CREATE FUNCTION ... $$ ... $$)
-
 signaler explicitement si une migration est :
-
 destructive
-
 sensible (RLS / permissions / auth)
-
 Ne jamais supposer que “ça ira en prod”.
 
 3) Qualité locale
 
 Si npm run ci existe → l’exécuter
-
 Sinon, exécuter dans l’ordre :
 
 npm run lint
-
 npm run typecheck
-
 npm test
-
 npm run build (si présent)
 
 Corriger jusqu’à tout vert.
@@ -95,21 +70,15 @@ Corriger jusqu’à tout vert.
 Si une logique critique est modifiée :
 
 API
-
 server action
-
 logique RLS / auth
-
 workflow métier
-
 sécurité
 
 Alors :
 
 ajouter au moins un test ciblé si manquant
-
 refuser le commit si aucune couverture n’existe
-
 relancer tous les checks
 
 5) Génération du message de commit
@@ -119,56 +88,31 @@ Générer UN SEUL message.
 Format strict :
 
 type(scope): résumé court
-
 - point clé 1
 - point clé 2
 - point clé 3
-
 
 3 à 6 bullets maximum
 
 Types autorisés :
 
 feat
-
 fix
-
 chore
-
 refactor
-
 test
-
 docs
 
 6) Validation humaine (OBLIGATOIRE)
 
 Afficher le message généré.
-
 Demander explicitement :
-
 “Valides-tu ce message de commit ? (oui / non)”
-
 si la réponse ≠ oui → ne pas committer
-
-7) Commit
-
-Une fois validé explicitement :
-
-git add -p
-
-refuser tout hunk hors scope du commit
-
-git commit -m "<MESSAGE_VALIDÉ>"
-
-Ne jamais push sauf demande explicite.
 
 SORTIE ATTENDUE
 
 Message de commit proposé
-
 Résultat des checks exécutés
-
 Liste des fichiers inclus
-
 Hash du commit (si créé)
