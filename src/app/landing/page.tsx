@@ -4,6 +4,7 @@ import LandingReveal from "./landing-reveal";
 import ReportsFeatureShowcase from "./reports-feature-showcase";
 import Hero from "@/components/hero/Hero";
 import CentralizationSection from "./CentralizationSection";
+import ResumeBanner from "./ResumeBanner";
 
 const IconUser = ({ className = "h-5 w-5" }: { className?: string }) => (
   <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -47,6 +48,7 @@ export default function LandingPage() {
       <div className="pointer-events-none absolute left-1/2 top-[520px] h-[260px] w-[520px] -translate-x-1/2 rounded-[999px] bg-white/5 blur-[80px]" />
 
       <div className="mx-auto max-w-6xl space-y-24 md:space-y-32">
+        <ResumeBanner />
         <div className="reveal" data-reveal-stagger>
           <div
             className="flex flex-wrap items-center justify-between gap-4"

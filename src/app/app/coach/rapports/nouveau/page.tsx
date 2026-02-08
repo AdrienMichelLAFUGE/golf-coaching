@@ -148,7 +148,22 @@ type LocalDraft = {
   workingObservations: string;
   workingNotes: string;
   workingClub: string;
+  builderStep: "layout" | "sections" | "report";
+  selectedLayoutId?: string;
+  selectedLayoutOptionId?: string;
   savedAt: string;
+};
+
+const isLocalDraftMeaningful = (draft: LocalDraft) => {
+  // Only consider "meaningful" when a section actually contains content.
+  // This is used to avoid prompting users to resume empty drafts.
+  return draft.reportSections.some((section) => {
+    if ((section.content ?? "").trim().length > 0) return true;
+    if ((section.contentFormatted ?? "").trim().length > 0) return true;
+    if ((section.mediaUrls ?? []).length > 0) return true;
+    if (section.type === "radar" && section.radarFileId) return true;
+    return false;
+  });
 };
 
 type SectionLayout = {
@@ -424,12 +439,21 @@ export default function CoachReportBuilderPage() {
       : "border-sky-300/30 bg-sky-400/10 text-sky-100";
   const searchParams = useSearchParams();
   const router = useRouter();
+  const requestedStudentId = searchParams.get("studentId") ?? "";
   const [editingReportId, setEditingReportId] = useState<string | null>(null);
   const [loadingReport, setLoadingReport] = useState(false);
   const isEditing = Boolean(editingReportId);
   const isNewReport = !editingReportId;
-  const draftKey = "gc.reportDraft.new";
+  const legacyDraftKey = "gc.reportDraft.new";
+  const draftKey = requestedStudentId
+    ? `gc.reportDraft.new.${requestedStudentId}`
+    : legacyDraftKey;
   const draftTimer = useRef<number | null>(null);
+  const [localDraftPrompt, setLocalDraftPrompt] = useState<{
+    key: string;
+    savedAt: string | null;
+  } | null>(null);
+  const [localDraftHandled, setLocalDraftHandled] = useState(false);
   const [sectionTemplates, setSectionTemplates] =
     useState<SectionTemplate[]>(starterSections);
   const [templatesLoading, setTemplatesLoading] = useState(false);
@@ -2580,52 +2604,106 @@ export default function CoachReportBuilderPage() {
     setLayoutCustomType("text");
   };
 
-  const loadLocalDraft = useCallback(() => {
-    if (typeof window === "undefined") return;
-    if (!isNewReport || loadingReport) return;
-    const raw = window.localStorage.getItem(draftKey);
-    if (!raw) return;
+  const peekLocalDraft = useCallback((): LocalDraft | null => {
+    if (typeof window === "undefined") return null;
+    if (!isNewReport || loadingReport) return null;
     try {
+      const directRaw = window.localStorage.getItem(draftKey);
+      const legacyRaw =
+        // Backwards compat: older sessions wrote a single key. If it's for the requested student, migrate.
+        requestedStudentId ? window.localStorage.getItem(legacyDraftKey) : null;
+      const raw = directRaw ?? legacyRaw;
+      const sourceKey = directRaw ? draftKey : legacyRaw ? legacyDraftKey : null;
+      if (!raw) return null;
       const draft = JSON.parse(raw) as LocalDraft;
-      if (!draft || !Array.isArray(draft.reportSections)) return;
-      setStudentId(draft.studentId ?? "");
-      setTitle(draft.title ?? "");
-      setReportDate(draft.reportDate ?? formatDateInput(new Date()));
-      setReportSections(draft.reportSections);
-      setWorkingObservations(draft.workingObservations ?? "");
-      setWorkingNotes(draft.workingNotes ?? "");
-      setWorkingClub(draft.workingClub ?? "");
+      if (!draft || !Array.isArray(draft.reportSections)) return null;
+
+      if (requestedStudentId && draft.studentId !== requestedStudentId) {
+        // Never restore another student's draft when "New report" is opened from a specific student.
+        return null;
+      }
+
+      if (!isLocalDraftMeaningful(draft)) {
+        if (sourceKey) {
+          window.localStorage.removeItem(sourceKey);
+        }
+        return null;
+      }
+
+      if (requestedStudentId && !window.localStorage.getItem(draftKey)) {
+        window.localStorage.setItem(draftKey, raw);
+        window.localStorage.removeItem(legacyDraftKey);
+      }
+
+      return draft;
     } catch {
       window.localStorage.removeItem(draftKey);
+      return null;
     }
-  }, [draftKey, isNewReport, loadingReport]);
+  }, [draftKey, isNewReport, legacyDraftKey, loadingReport, requestedStudentId]);
+
+  const applyLocalDraft = useCallback((draft: LocalDraft) => {
+    setStudentId(draft.studentId ?? "");
+    setTitle(draft.title ?? "");
+    setReportDate(draft.reportDate ?? formatDateInput(new Date()));
+    setReportSections(draft.reportSections);
+    setWorkingObservations(draft.workingObservations ?? "");
+    setWorkingNotes(draft.workingNotes ?? "");
+    setWorkingClub(draft.workingClub ?? "");
+    setSelectedLayoutId(draft.selectedLayoutId ?? "");
+    setSelectedLayoutOptionId(draft.selectedLayoutOptionId ?? "");
+    // After a restore, show the editor step so the user immediately sees recovered content.
+    setBuilderStep(draft.builderStep ?? "report");
+  }, []);
+
+  const loadLocalDraft = useCallback(() => {
+    const draft = peekLocalDraft();
+    if (!draft) return;
+    applyLocalDraft(draft);
+  }, [applyLocalDraft, peekLocalDraft]);
 
   const persistLocalDraft = useCallback(() => {
     if (typeof window === "undefined") return;
     if (!isNewReport || loadingReport) return;
+    if (localDraftPrompt) return;
+    // If we don't yet know the student, don't persist: it would collide and "steal" drafts.
+    const targetStudentId = studentId || requestedStudentId;
+    if (!targetStudentId) return;
+    const key = `gc.reportDraft.new.${targetStudentId}`;
     const payload: LocalDraft = {
-      studentId,
+      studentId: targetStudentId,
       title,
       reportDate,
       reportSections,
       workingObservations,
       workingNotes,
       workingClub,
+      builderStep,
+      selectedLayoutId: selectedLayoutId || undefined,
+      selectedLayoutOptionId: selectedLayoutOptionId || undefined,
       savedAt: new Date().toISOString(),
     };
-    window.localStorage.setItem(draftKey, JSON.stringify(payload));
+    window.localStorage.setItem(key, JSON.stringify(payload));
+    // Keep a "last draft" pointer for generic entrypoints without studentId.
+    window.localStorage.setItem(legacyDraftKey, JSON.stringify(payload));
   }, [
-    draftKey,
+    builderStep,
     isNewReport,
     loadingReport,
+    localDraftPrompt,
     reportDate,
     reportSections,
+    selectedLayoutId,
+    selectedLayoutOptionId,
     studentId,
+    requestedStudentId,
+    legacyDraftKey,
     title,
     workingClub,
     workingNotes,
     workingObservations,
   ]);
+
 
   const loadReportForEdit = async (reportId: string) => {
     setLoadingReport(true);
@@ -2728,6 +2806,28 @@ export default function CoachReportBuilderPage() {
     setSectionsMessageType("idle");
     setStatusMessage("");
     setStatusType("idle");
+  };
+
+  const handleResumeLocalDraft = () => {
+    loadLocalDraft();
+    setLocalDraftPrompt(null);
+    setLocalDraftHandled(true);
+  };
+
+  const handleStartFreshReport = () => {
+    if (typeof window !== "undefined") {
+      const keyToClear = localDraftPrompt?.key ?? draftKey;
+      window.localStorage.removeItem(keyToClear);
+    }
+    setLocalDraftPrompt(null);
+    setLocalDraftHandled(true);
+    resetBuilderState();
+    if (requestedStudentId) {
+      setStudentId(requestedStudentId);
+    }
+    setSelectedLayoutId("");
+    setSelectedLayoutOptionId("");
+    setBuilderStep("layout");
   };
 
   const resetWorkingContext = () => {
@@ -3337,7 +3437,9 @@ export default function CoachReportBuilderPage() {
     );
     setStatusType("success");
     setSaving(false);
-    clearReportContent(false);
+    if (send) {
+      clearReportContent(false);
+    }
     if (typeof window !== "undefined" && isNewReport) {
       window.localStorage.removeItem(draftKey);
     }
@@ -4296,8 +4398,37 @@ export default function CoachReportBuilderPage() {
   }, []);
 
   useEffect(() => {
+    setLocalDraftPrompt(null);
+    setLocalDraftHandled(false);
+  }, [requestedStudentId]);
+
+  useEffect(() => {
+    if (!isNewReport || loadingReport) return;
+    if (typeof window === "undefined") return;
+    if (localDraftHandled) return;
+    const draft = peekLocalDraft();
+    if (!draft) return;
+
+    if (requestedStudentId) {
+      // When "New report" is opened for a specific student, do not auto-restore.
+      // Show a clear choice: resume existing draft or start fresh.
+      if (!localDraftPrompt) {
+        setLocalDraftPrompt({ key: draftKey, savedAt: draft.savedAt ?? null });
+      }
+      return;
+    }
+
     loadLocalDraft();
-  }, [loadLocalDraft]);
+  }, [
+    draftKey,
+    isNewReport,
+    loadLocalDraft,
+    loadingReport,
+    localDraftHandled,
+    localDraftPrompt,
+    peekLocalDraft,
+    requestedStudentId,
+  ]);
 
   useEffect(() => {
     if (!isNewReport || loadingReport) return;
@@ -4312,6 +4443,28 @@ export default function CoachReportBuilderPage() {
       if (draftTimer.current) {
         window.clearTimeout(draftTimer.current);
       }
+    };
+  }, [isNewReport, loadingReport, persistLocalDraft]);
+
+  useEffect(() => {
+    if (!isNewReport || loadingReport) return;
+    if (typeof window === "undefined") return;
+
+    const handleVisibility = () => {
+      if (document.visibilityState !== "hidden") return;
+      persistLocalDraft();
+    };
+
+    const handlePageHide = () => {
+      persistLocalDraft();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("pagehide", handlePageHide);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("pagehide", handlePageHide);
     };
   }, [isNewReport, loadingReport, persistLocalDraft]);
 
@@ -4504,6 +4657,38 @@ export default function CoachReportBuilderPage() {
                     ? "Selectionne et organise les sections avant la redaction."
                     : "Remplis le contenu et ajuste les sections au fil du rapport."}
             </p>
+            {localDraftPrompt && !isEditing ? (
+              <div className="relative mt-4 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--panel)] p-4 shadow-[var(--shadow-soft)]">
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 bg-gradient-to-r from-amber-400/10 via-transparent to-sky-400/10"
+                />
+                <p className="relative text-sm font-semibold text-[var(--text)]">
+                  Un brouillon existe deja pour cet eleve.
+                </p>
+                <p className="relative mt-1 text-xs text-[var(--muted)]">
+                  {localDraftPrompt.savedAt
+                    ? `Derniere sauvegarde : ${new Date(localDraftPrompt.savedAt).toLocaleString()}`
+                    : "Derniere sauvegarde locale detectee."}
+                </p>
+                <div className="relative mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={handleResumeLocalDraft}
+                    className="rounded-full bg-gradient-to-r from-amber-200 via-amber-100 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90"
+                  >
+                    Reprendre
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleStartFreshReport}
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                  >
+                    Nouveau
+                  </button>
+                </div>
+              </div>
+            ) : null}
             <div
               className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
             >

@@ -4,6 +4,7 @@ import { useState } from "react";
 import AppHeader from "./app-header";
 import AppNav from "./app-nav";
 import ShareInvitesGate from "./share-invites-gate";
+import LastAppPathTracker from "./last-app-path-tracker";
 
 type AppShellProps = {
   children: React.ReactNode;
@@ -14,6 +15,7 @@ export default function AppShell({ children }: AppShellProps) {
 
   return (
     <div className="min-h-screen px-4 pb-6 pt-0 text-[var(--text)]">
+      <LastAppPathTracker />
       <div className="mx-auto w-full max-w-[1400px] space-y-6 2xl:max-w-[1600px]">
         <AppHeader
           onToggleNav={() => setMobileNavOpen((prev) => !prev)}
