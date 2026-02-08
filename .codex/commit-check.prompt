@@ -53,17 +53,20 @@ destructive
 sensible (RLS / permissions / auth)
 Ne jamais supposer que “ça ira en prod”.
 
-3) Qualité locale
+3) Qualite locale
 
-Si npm run ci existe → l’exécuter
-Sinon, exécuter dans l’ordre :
+Executer dans l'ordre :
 
 npm run lint
 npm run typecheck
 npm test
-npm run build (si présent)
 
-Corriger jusqu’à tout vert.
+Build:
+- Dans l'environnement Codex / agent (Windows sandbox), `npm run build` peut echouer avec `spawn EPERM` (limitation de sous-process).
+- Dans ce cas: NE PAS insister, NE PAS tenter de workaround, et marquer "BUILD: a verifier manuellement".
+- Toujours demander a l'humain de lancer `npm run build` en local et de confirmer "build ok" avant le commit.
+- Si l'humain confirme "build ok", alors la qualite est consideree verte.
+
 
 4) Tests
 

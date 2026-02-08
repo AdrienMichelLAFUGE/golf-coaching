@@ -328,6 +328,7 @@ export default function PricingOffersContent({
               const marketingLoginHref = (() => {
                 if (variant !== "marketing") return "/login";
                 if (isEnterprise) return "/login";
+                if (isFree) return "/login";
                 const next = `/app/pricing?plan=${encodeURIComponent(
                   baseSlug
                 )}&interval=${encodeURIComponent(billingInterval)}&autostart=1`;

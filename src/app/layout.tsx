@@ -13,9 +13,14 @@ export const metadata: Metadata = {
   },
   description: "Plateforme de coaching golf pour centraliser le suivi eleve.",
   icons: {
-    icon: [{ url: "/branding/logo.png" }],
-    apple: [{ url: "/branding/logo.png" }],
-    shortcut: [{ url: "/branding/logo.png" }],
+    // Force a PNG favicon (and version it) because browsers aggressively cache /favicon.ico.
+    // `src/app/icon.png` and `src/app/apple-icon.png` are served by Next's App Router file conventions.
+    icon: [
+      { url: "/icon.png?v=1", type: "image/png", sizes: "32x32" },
+      { url: "/icon.png?v=1", type: "image/png", sizes: "192x192" },
+    ],
+    apple: [{ url: "/apple-icon.png?v=1", type: "image/png", sizes: "180x180" }],
+    shortcut: [{ url: "/icon.png?v=1", type: "image/png" }],
   },
   openGraph: {
     type: "website",
