@@ -15,6 +15,8 @@ type Database = {
           ai_enabled: boolean | null;
           owner_profile_id: string | null;
           plan_tier: "free" | "pro" | "enterprise";
+          plan_tier_override: "free" | "pro" | "enterprise" | null;
+          plan_tier_override_expires_at: string | null;
         };
         Insert: Partial<{
           name: string | null;
@@ -22,6 +24,8 @@ type Database = {
           ai_enabled: boolean | null;
           owner_profile_id: string | null;
           plan_tier: "free" | "pro" | "enterprise";
+          plan_tier_override: "free" | "pro" | "enterprise" | null;
+          plan_tier_override_expires_at: string | null;
         }>;
         Update: Partial<{
           name: string | null;
@@ -29,6 +33,8 @@ type Database = {
           ai_enabled: boolean | null;
           owner_profile_id: string | null;
           plan_tier: "free" | "pro" | "enterprise";
+          plan_tier_override: "free" | "pro" | "enterprise" | null;
+          plan_tier_override_expires_at: string | null;
         }>;
         Relationships: [];
       };
@@ -367,6 +373,122 @@ describeIf("RLS integration: freemium org", () => {
 
       expect(radarInsertError).not.toBeNull();
       expect(radarInsertData ?? []).toHaveLength(0);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("allows TPI insert when plan_tier_override is active", async () => {
+    const admin = createClient<Database>(testEnv.url!, testEnv.serviceKey!, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const coachClient = createClient<Database>(testEnv.url!, testEnv.anonKey!, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    let orgId = "";
+    let coachId = "";
+    let studentId = "";
+
+    const cleanup = async () => {
+      if (studentId) {
+        try {
+          await admin.from("tpi_reports").delete().eq("student_id", studentId);
+        } catch {}
+        try {
+          await admin.from("students").delete().eq("id", studentId);
+        } catch {}
+      }
+      if (coachId) {
+        try {
+          await admin.from("profiles").delete().eq("id", coachId);
+        } catch {}
+        try {
+          await admin.auth.admin.deleteUser(coachId);
+        } catch {}
+      }
+      if (orgId) {
+        try {
+          await admin.from("organizations").delete().eq("id", orgId);
+        } catch {}
+      }
+    };
+
+    try {
+      const { data: coachUser, error: coachError } = await admin.auth.admin.createUser({
+        email: `coach-override+${stamp}@example.com`,
+        password,
+        email_confirm: true,
+      });
+      if (coachError || !coachUser?.user) {
+        throw coachError ?? new Error("Coach creation failed.");
+      }
+      coachId = coachUser.user.id;
+
+      const { data: org, error: orgError } = await admin
+        .from("organizations")
+        .insert({
+          name: `rls-personal-override-${stamp}`,
+          workspace_type: "personal",
+          owner_profile_id: coachId,
+          plan_tier: "free",
+          plan_tier_override: "pro",
+          plan_tier_override_expires_at: null,
+          ai_enabled: true,
+        })
+        .select("id")
+        .single();
+      if (orgError || !org) throw orgError ?? new Error("Org creation failed.");
+      orgId = org.id;
+
+      const { error: profileError } = await admin.from("profiles").upsert(
+        {
+          id: coachId,
+          org_id: orgId,
+          active_workspace_id: orgId,
+          role: "owner",
+          full_name: "Coach Override",
+        },
+        { onConflict: "id" }
+      );
+      if (profileError) throw profileError;
+
+      const { data: student, error: studentError } = await admin
+        .from("students")
+        .insert({
+          org_id: orgId,
+          first_name: "Eleve",
+          last_name: "Override",
+          email: `student-override+${stamp}@example.com`,
+        })
+        .select("id")
+        .single();
+      if (studentError || !student) {
+        throw studentError ?? new Error("Student creation failed.");
+      }
+      studentId = student.id;
+
+      const { error: signInError } = await coachClient.auth.signInWithPassword({
+        email: `coach-override+${stamp}@example.com`,
+        password,
+      });
+      if (signInError) throw signInError;
+
+      const { data: tpiInsertData, error: tpiInsertError } = await coachClient
+        .from("tpi_reports")
+        .insert({
+          org_id: orgId,
+          student_id: studentId,
+          uploaded_by: coachId,
+          file_url: `test-${stamp}.pdf`,
+          file_type: "pdf",
+          original_name: "tpi.pdf",
+        })
+        .select("id")
+        .single();
+
+      expect(tpiInsertError).toBeNull();
+      expect(tpiInsertData?.id).toBeTruthy();
     } finally {
       await cleanup();
     }
