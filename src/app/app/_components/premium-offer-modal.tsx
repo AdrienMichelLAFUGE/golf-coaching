@@ -12,16 +12,12 @@ type PremiumOfferModalProps = {
   open: boolean;
   onClose: () => void;
   notice?: PricingNotice | null;
-  initialInterval?: "month" | "year";
-  focusPlanBaseSlug?: string;
 };
 
 export default function PremiumOfferModal({
   open,
   onClose,
   notice = null,
-  initialInterval,
-  focusPlanBaseSlug,
 }: PremiumOfferModalProps) {
   const { planTier, planTierOverrideActive } = useProfile();
   const [plans, setPlans] = useState<PricingPlan[]>([]);
@@ -111,7 +107,7 @@ export default function PremiumOfferModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto px-4 py-10">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/40 px-4 py-10 backdrop-blur-sm">
       <PricingOffersContent
         variant="app"
         plans={plans}
@@ -126,9 +122,8 @@ export default function PremiumOfferModal({
         billingLoading={billingLoading}
         billingError={billingError}
         onClose={onClose}
-        initialInterval={initialInterval}
-        focusPlanBaseSlug={focusPlanBaseSlug}
       />
     </div>
   );
 }
+
