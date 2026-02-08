@@ -110,6 +110,21 @@
   background-color: rgba(15, 23, 42, 0.16) !important;
 }
 
+/* iOS Safari auto-zooms inputs under 16px, which can cause scroll jumps while typing. */
+@supports (-webkit-touch-callout: none) {
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="search"],
+  input[type="tel"],
+  input[type="url"],
+  input[type="number"],
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
 :root[data-theme="light"] .bg-white\/40 {
   background-color: rgba(15, 23, 42, 0.2) !important;
 }

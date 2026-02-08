@@ -1,9 +1,28 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
+import { getSiteBaseUrl } from "@/lib/env/public";
+
+const siteBaseUrl = getSiteBaseUrl();
+
 export const metadata: Metadata = {
-  title: "SwingFlow",
-  description: "Plateforme de coaching golf",
+  metadataBase: new URL(`${siteBaseUrl}/`),
+  title: {
+    default: "SwingFlow",
+    template: "%s | SwingFlow",
+  },
+  description: "Plateforme de coaching golf pour centraliser le suivi eleve.",
+  openGraph: {
+    type: "website",
+    url: "/",
+    siteName: "SwingFlow",
+    title: "SwingFlow",
+    description: "Plateforme de coaching golf pour centraliser le suivi eleve.",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export const viewport: Viewport = {

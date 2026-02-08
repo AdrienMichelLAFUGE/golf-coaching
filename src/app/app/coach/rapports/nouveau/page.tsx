@@ -1630,7 +1630,7 @@ export default function CoachReportBuilderPage() {
   const handleWorkingNotesInput = (event: React.FormEvent<HTMLTextAreaElement>) => {
     const target = event.currentTarget;
     const value = target.value;
-    target.style.height = "auto";
+    // Avoid "shrink -> grow" on every keystroke which can cause Safari/iOS to auto-scroll.
     target.style.height = `${target.scrollHeight}px`;
     setWorkingNotes(value);
   };
@@ -1640,7 +1640,7 @@ export default function CoachReportBuilderPage() {
   ) => {
     const target = event.currentTarget;
     const value = target.value;
-    target.style.height = "auto";
+    // Avoid "shrink -> grow" on every keystroke which can cause Safari/iOS to auto-scroll.
     target.style.height = `${target.scrollHeight}px`;
     setWorkingObservations(value);
   };
@@ -4490,17 +4490,7 @@ export default function CoachReportBuilderPage() {
     });
   }, [reportSections]);
 
-  useLayoutEffect(() => {
-    if (!workingNotesRef.current) return;
-    workingNotesRef.current.style.height = "auto";
-    workingNotesRef.current.style.height = `${workingNotesRef.current.scrollHeight}px`;
-  }, [workingNotes]);
-
-  useLayoutEffect(() => {
-    if (!workingObservationsRef.current) return;
-    workingObservationsRef.current.style.height = "auto";
-    workingObservationsRef.current.style.height = `${workingObservationsRef.current.scrollHeight}px`;
-  }, [workingObservations]);
+  // Note: workingNotes/workingObservations are auto-sized on input to avoid iOS scroll jumps.
 
   useEffect(() => {
     if (!activeTooltip) return;
@@ -6647,6 +6637,9 @@ export default function CoachReportBuilderPage() {
                           <textarea
                             ref={(node) => {
                               workingObservationsRef.current = node;
+                              if (node) {
+                                node.style.height = `${node.scrollHeight}px`;
+                              }
                             }}
                             rows={3}
                             placeholder="Ex: chemin de club trop a gauche, perte de posture..."
@@ -6662,6 +6655,9 @@ export default function CoachReportBuilderPage() {
                           <textarea
                             ref={(node) => {
                               workingNotesRef.current = node;
+                              if (node) {
+                                node.style.height = `${node.scrollHeight}px`;
+                              }
                             }}
                             rows={3}
                             placeholder="Ex: stabiliser l'appui pied droit au backswing."

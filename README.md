@@ -56,6 +56,7 @@ Public (client + server) :
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `NEXT_PUBLIC_SITE_URL` (ex: https://swingflow.fr)
 - `NEXT_PUBLIC_ADMIN_EMAILS` (optionnel, CSV d’emails admin)
 
 Server-only :
