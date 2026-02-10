@@ -482,7 +482,7 @@ export default function CoachDashboardPage() {
                               title={`${bar.value} rapport${bar.value > 1 ? "s" : ""}`}
                             >
                               <div
-                                className={`w-full rounded-full ${
+                                className={`w-full rounded-t-4xl ${
                                   isToday
                                     ? "bg-gradient-to-t from-emerald-300 via-emerald-200 to-sky-200"
                                     : "bg-[var(--border)] opacity-40"
