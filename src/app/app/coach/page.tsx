@@ -463,10 +463,10 @@ export default function CoachDashboardPage() {
                 <Badge tone="muted">Rapports crees</Badge>
               </div>
 
-              <div className="mt-5 justify-self-center">
+              <div className="mt-5">
                 {analyticsBars && analyticsBars.length > 0 ? (
-                  <div className="grid gap-4">
-                    <div className="grid h-40 w-full max-w-full grid-cols-7 items-end overflow-hidden">
+                  <div className="grid gap-4 justify-items-center">
+                    <div className="grid h-40 w-50 grid-cols-7 items-end overflow-hidden">
                       {analyticsBars.map((bar, index) => {
                         const max = analyticsMax || 1;
                         const raw = Math.round((bar.value / max) * 100);
