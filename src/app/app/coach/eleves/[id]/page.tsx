@@ -10,6 +10,7 @@ import { useRotatingPhrase } from "@/lib/use-rotating-phrase";
 import RoleGuard from "../../../_components/role-guard";
 import { useProfile } from "../../../_components/profile-context";
 import PageBack from "../../../_components/page-back";
+import PageHeader from "../../../_components/page-header";
 import PremiumOfferModal from "../../../_components/premium-offer-modal";
 import ShareStudentModal from "../../../_components/share-student-modal";
 import RadarReviewModal from "../../../_components/radar-review-modal";
@@ -31,6 +32,35 @@ import {
 } from "@/lib/radar/file-naming";
 import type { RadarAnalytics } from "@/lib/radar/types";
 import { getViewerShareAccess, type ShareStatus } from "@/lib/student-share";
+import { z } from "zod";
+import {
+  buildNormalizedTestsSummary,
+  getNormalizedTestDescription,
+  getNormalizedTestTitle,
+  NormalizedTestAssignmentSchema,
+  NormalizedTestAttemptSchema,
+  type NormalizedTestAssignment,
+  type NormalizedTestAttempt,
+  type NormalizedTestSlug,
+} from "@/lib/normalized-tests/monitoring";
+import { pickReportTime } from "@/lib/reports-kpis";
+import {
+  ReportSectionKpiSchema,
+  buildLongTermHighlights,
+  buildReportHighlights,
+  type LongTermHighlights,
+  type ReportHighlights,
+} from "@/lib/report-highlights";
+import {
+  ReportKpisRowSchema,
+  ReportKpisStatusSchema,
+  type ReportKpisRow,
+  type ReportKpisStatus,
+} from "@/lib/report-kpis-ai";
+import { PELZ_PUTTING_SLUG } from "@/lib/normalized-tests/pelz-putting";
+import { PELZ_APPROCHES_SLUG } from "@/lib/normalized-tests/pelz-approches";
+import { WEDGING_DRAPEAU_LONG_SLUG } from "@/lib/normalized-tests/wedging-drapeau-long";
+import { WEDGING_DRAPEAU_COURT_SLUG } from "@/lib/normalized-tests/wedging-drapeau-court";
 
 type Student = {
   id: string;
@@ -52,6 +82,9 @@ type Report = {
   created_at: string;
   sent_at: string | null;
   org_id: string;
+  coach_observations?: string | null;
+  coach_work?: string | null;
+  coach_club?: string | null;
   organizations?: OrganizationRef;
 };
 
@@ -145,6 +178,12 @@ const formatTpiTestName = (name: string) => {
   return shortened === "Wrist Flexion/Ext." ? "Wrist Flex./Ext." : shortened;
 };
 
+const tpiStatusLabel = (color: TpiTest["result_color"]) => {
+  if (color === "green") return "OK";
+  if (color === "orange") return "A surveiller";
+  return "Bloquant";
+};
+
 const formatDate = (
   value?: string | null,
   locale?: string | null,
@@ -182,6 +221,33 @@ const LoadingDots = () => (
   </span>
 );
 
+const NORMALIZED_TEST_CHOICES: Array<{
+  slug: NormalizedTestSlug;
+  title: string;
+  description: string;
+}> = [
+  {
+    slug: PELZ_PUTTING_SLUG,
+    title: getNormalizedTestTitle(PELZ_PUTTING_SLUG),
+    description: getNormalizedTestDescription(PELZ_PUTTING_SLUG),
+  },
+  {
+    slug: PELZ_APPROCHES_SLUG,
+    title: getNormalizedTestTitle(PELZ_APPROCHES_SLUG),
+    description: getNormalizedTestDescription(PELZ_APPROCHES_SLUG),
+  },
+  {
+    slug: WEDGING_DRAPEAU_LONG_SLUG,
+    title: getNormalizedTestTitle(WEDGING_DRAPEAU_LONG_SLUG),
+    description: getNormalizedTestDescription(WEDGING_DRAPEAU_LONG_SLUG),
+  },
+  {
+    slug: WEDGING_DRAPEAU_COURT_SLUG,
+    title: getNormalizedTestTitle(WEDGING_DRAPEAU_COURT_SLUG),
+    description: getNormalizedTestDescription(WEDGING_DRAPEAU_COURT_SLUG),
+  },
+];
+
 export default function CoachStudentDetailPage() {
   const {
     organization,
@@ -201,6 +267,8 @@ export default function CoachStudentDetailPage() {
   const [error, setError] = useState("");
   const [tpiReport, setTpiReport] = useState<TpiReport | null>(null);
   const [tpiTests, setTpiTests] = useState<TpiTest[]>([]);
+  const [tpiFilter, setTpiFilter] = useState<"all" | TpiTest["result_color"]>("all");
+  const [tpiQuery, setTpiQuery] = useState("");
   const [tpiLoading, setTpiLoading] = useState(false);
   const [tpiError, setTpiError] = useState("");
   const [tpiUploading, setTpiUploading] = useState(false);
@@ -218,6 +286,18 @@ export default function CoachStudentDetailPage() {
   const [radarTech, setRadarTech] = useState<RadarTech>("flightscope");
   const [radarFilter, setRadarFilter] = useState<RadarFilter>("all");
   const [radarUploading, setRadarUploading] = useState(false);
+  const [normalizedTestAssignments, setNormalizedTestAssignments] = useState<
+    NormalizedTestAssignment[]
+  >([]);
+  const [normalizedTestAttempts, setNormalizedTestAttempts] = useState<
+    NormalizedTestAttempt[]
+  >([]);
+  const [normalizedTestsLoading, setNormalizedTestsLoading] = useState(false);
+  const [normalizedTestsError, setNormalizedTestsError] = useState("");
+  const [assignTestModalOpen, setAssignTestModalOpen] = useState(false);
+  const [assignTestSlug, setAssignTestSlug] = useState<NormalizedTestSlug>(PELZ_PUTTING_SLUG);
+  const [assignTestSubmitting, setAssignTestSubmitting] = useState(false);
+  const [assignTestError, setAssignTestError] = useState("");
   const [radarProgress, setRadarProgress] = useState(0);
   const [radarPhase, setRadarPhase] = useState<"upload" | "analyse">("upload");
   const radarInputRef = useRef<HTMLInputElement | null>(null);
@@ -321,6 +401,26 @@ export default function CoachStudentDetailPage() {
     if (radarFilter === "all") return radarFiles;
     return radarFiles.filter((file) => file.source === radarFilter);
   }, [radarFiles, radarFilter]);
+
+  const tpiCounts = useMemo(() => {
+    const total = tpiTests.length;
+    const green = tpiTests.filter((t) => t.result_color === "green").length;
+    const orange = tpiTests.filter((t) => t.result_color === "orange").length;
+    const red = tpiTests.filter((t) => t.result_color === "red").length;
+    return { total, green, orange, red };
+  }, [tpiTests]);
+
+  const visibleTpiTests = useMemo(() => {
+    const normalizedQuery = tpiQuery.trim().toLowerCase();
+    return tpiTests.filter((test) => {
+      if (tpiFilter !== "all" && test.result_color !== tpiFilter) return false;
+      if (!normalizedQuery) return true;
+      return (
+        test.test_name.toLowerCase().includes(normalizedQuery) ||
+        formatTpiTestName(test.test_name).toLowerCase().includes(normalizedQuery)
+      );
+    });
+  }, [tpiTests, tpiFilter, tpiQuery]);
   const radarFilterOptions = useMemo(
     () => [
       {
@@ -335,6 +435,44 @@ export default function CoachStudentDetailPage() {
       })),
     ],
     []
+  );
+
+  const publishedReports = useMemo(() => {
+    const eligible = reports.filter((report) => Boolean(report.sent_at));
+    // Sort newest-first by report_date then created_at.
+    return [...eligible].sort((a, b) => pickReportTime(b) - pickReportTime(a));
+  }, [reports]);
+  const latestPublishedReport = useMemo(
+    () => publishedReports[0] ?? null,
+    [publishedReports]
+  );
+  const longReportIds = useMemo(
+    () => publishedReports.slice(0, 5).map((r) => r.id),
+    [publishedReports]
+  );
+  const shortReportId = latestPublishedReport?.id ?? null;
+  const [reportHighlightsShort, setReportHighlightsShort] = useState<ReportHighlights>({
+    strength: null,
+    weakness: null,
+    physical: null,
+    technical: null,
+  });
+  const [reportHighlightsLong, setReportHighlightsLong] = useState<LongTermHighlights>({
+    strength: { snippet: null, mentions: 0 },
+    weakness: { snippet: null, mentions: 0 },
+    physical: { snippet: null, mentions: 0 },
+    technical: { snippet: null, mentions: 0 },
+  });
+  const [reportHighlightsLoading, setReportHighlightsLoading] = useState(false);
+  const [reportHighlightsError, setReportHighlightsError] = useState("");
+  const [aiKpisRow, setAiKpisRow] = useState<ReportKpisRow | null>(null);
+  const [aiKpisStatus, setAiKpisStatus] = useState<ReportKpisStatus | "missing">("missing");
+  const [aiKpisLoading, setAiKpisLoading] = useState(false);
+  const [aiKpisError, setAiKpisError] = useState("");
+  const [aiKpisRegenerating, setAiKpisRegenerating] = useState(false);
+  const normalizedTestsSummary = useMemo(
+    () => buildNormalizedTestsSummary(normalizedTestAssignments, normalizedTestAttempts),
+    [normalizedTestAssignments, normalizedTestAttempts]
   );
   const [premiumModalOpen, setPremiumModalOpen] = useState(false);
   const [premiumNotice, setPremiumNotice] = useState<{
@@ -372,6 +510,83 @@ export default function CoachStudentDetailPage() {
     setPremiumModalOpen(false);
     setPremiumNotice(null);
   }, []);
+
+  const handleRegenerateAiKpis = useCallback(async () => {
+    if (!shortReportId) return;
+    setAiKpisError("");
+    setAiKpisRegenerating(true);
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setAiKpisError("Session invalide.");
+      setAiKpisRegenerating(false);
+      return;
+    }
+
+    const response = await fetch("/api/reports/kpis/regenerate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ reportId: shortReportId }),
+    });
+
+    const payload = (await response.json().catch(() => ({}))) as {
+      status?: string;
+      error?: string;
+    };
+
+    if (!response.ok) {
+      setAiKpisError(payload.error ?? "Regeneration impossible.");
+      setAiKpisRegenerating(false);
+      return;
+    }
+
+    const nextStatusParsed = ReportKpisStatusSchema.safeParse(payload.status);
+    const nextStatus: ReportKpisStatus = nextStatusParsed.success
+      ? nextStatusParsed.data
+      : ("pending" as const);
+    setAiKpisStatus(nextStatus);
+
+    setAiKpisLoading(true);
+    const { data: rowData, error: rowError } = await supabase
+      .from("report_kpis")
+      .select(
+        "id, org_id, student_id, report_id, status, input_hash, prompt_version, model, kpis_short, kpis_long, error, created_at, updated_at"
+      )
+      .eq("report_id", shortReportId)
+      .maybeSingle();
+
+    if (rowError) {
+      setAiKpisError("KPI IA indisponibles.");
+      setAiKpisLoading(false);
+      setAiKpisRegenerating(false);
+      return;
+    }
+
+    if (!rowData) {
+      setAiKpisRow(null);
+      setAiKpisLoading(false);
+      setAiKpisRegenerating(false);
+      return;
+    }
+
+    const rowParsed = ReportKpisRowSchema.safeParse(rowData);
+    if (!rowParsed.success) {
+      setAiKpisError("Donnees KPI invalides.");
+      setAiKpisLoading(false);
+      setAiKpisRegenerating(false);
+      return;
+    }
+
+    const rowStatusParsed = ReportKpisStatusSchema.safeParse(rowParsed.data.status);
+    setAiKpisStatus(rowStatusParsed.success ? rowStatusParsed.data : nextStatus);
+    setAiKpisRow(rowParsed.data);
+    setAiKpisLoading(false);
+    setAiKpisRegenerating(false);
+  }, [shortReportId]);
 
   const openRadarAddonModal = useCallback(() => {
     const planLabel = PLAN_LABELS[planTier];
@@ -984,7 +1199,9 @@ export default function CoachStudentDetailPage() {
       }
       const { data: reportData, error: reportError } = await supabase
         .from("reports")
-        .select("id, title, report_date, created_at, sent_at, org_id, organizations(name)")
+        .select(
+          "id, title, report_date, created_at, sent_at, org_id, organizations(name), coach_observations, coach_work, coach_club"
+        )
         .in("student_id", linkedIds)
         .order("created_at", { ascending: false });
 
@@ -1000,6 +1217,105 @@ export default function CoachStudentDetailPage() {
 
     loadStudent();
   }, [studentId, loadTpi, resolveLinkedStudentIds, userEmail, isOwner, router]);
+
+  const loadNormalizedTests = useCallback(
+    async (targetStudentId: string, isCancelled?: () => boolean) => {
+      const parsedId = z.string().uuid().safeParse(targetStudentId);
+      if (!parsedId.success) {
+        setNormalizedTestsError("Identifiant eleve invalide.");
+        setNormalizedTestAssignments([]);
+        setNormalizedTestAttempts([]);
+        return;
+      }
+
+      setNormalizedTestsLoading(true);
+      setNormalizedTestsError("");
+
+      const { data: assignmentData, error: assignmentError } = await supabase
+        .from("normalized_test_assignments")
+        .select(
+          "id, test_slug, status, assigned_at, started_at, finalized_at, archived_at, updated_at, index_or_flag_label, clubs_used"
+        )
+        .eq("student_id", targetStudentId)
+        .order("assigned_at", { ascending: false });
+
+      if (isCancelled?.()) return;
+
+      if (assignmentError) {
+        setNormalizedTestsError(assignmentError.message);
+        setNormalizedTestAssignments([]);
+        setNormalizedTestAttempts([]);
+        setNormalizedTestsLoading(false);
+        return;
+      }
+
+      const assignmentsParsed = z
+        .array(NormalizedTestAssignmentSchema)
+        .safeParse(assignmentData ?? []);
+
+      if (!assignmentsParsed.success) {
+        setNormalizedTestsError("Donnees de tests invalides.");
+        setNormalizedTestAssignments([]);
+        setNormalizedTestAttempts([]);
+        setNormalizedTestsLoading(false);
+        return;
+      }
+
+      const assignments = assignmentsParsed.data;
+      setNormalizedTestAssignments(assignments);
+
+      const assignmentIds = assignments.map((a) => a.id);
+      if (assignmentIds.length === 0) {
+        setNormalizedTestAttempts([]);
+        setNormalizedTestsLoading(false);
+        return;
+      }
+
+      const { data: attemptData, error: attemptError } = await supabase
+        .from("normalized_test_attempts")
+        .select("id, assignment_id, subtest_key, attempt_index, result_value, points, created_at")
+        .in("assignment_id", assignmentIds);
+
+      if (isCancelled?.()) return;
+
+      if (attemptError) {
+        setNormalizedTestsError(attemptError.message);
+        setNormalizedTestAttempts([]);
+        setNormalizedTestsLoading(false);
+        return;
+      }
+
+      const attemptsParsed = z
+        .array(NormalizedTestAttemptSchema)
+        .safeParse(attemptData ?? []);
+
+      if (!attemptsParsed.success) {
+        setNormalizedTestsError("Donnees de tentatives invalides.");
+        setNormalizedTestAttempts([]);
+        setNormalizedTestsLoading(false);
+        return;
+      }
+
+      setNormalizedTestAttempts(attemptsParsed.data);
+      setNormalizedTestsLoading(false);
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!studentId) return;
+
+    let cancelled = false;
+
+    Promise.resolve().then(() => {
+      if (cancelled) return;
+      void loadNormalizedTests(studentId, () => cancelled);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [studentId, loadNormalizedTests]);
 
   useEffect(() => {
     if (workspaceType !== "org" || !studentId || !organization?.id) {
@@ -1181,6 +1497,173 @@ export default function CoachStudentDetailPage() {
     return () => window.removeEventListener("click", handleClick);
   }, [headerMenuOpen]);
 
+  useEffect(() => {
+    if (!assignTestModalOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setAssignTestModalOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [assignTestModalOpen]);
+
+  useEffect(() => {
+    const ids = Array.from(
+      new Set([...(shortReportId ? [shortReportId] : []), ...longReportIds])
+    );
+
+    if (ids.length === 0) {
+      let cancelled = false;
+      // Avoid synchronous setState inside effect body (ESLint rule).
+      Promise.resolve().then(() => {
+        if (cancelled) return;
+        setReportHighlightsShort({
+          strength: null,
+          weakness: null,
+          physical: null,
+          technical: null,
+        });
+        setReportHighlightsLong({
+          strength: { snippet: null, mentions: 0 },
+          weakness: { snippet: null, mentions: 0 },
+          physical: { snippet: null, mentions: 0 },
+          technical: { snippet: null, mentions: 0 },
+        });
+        setReportHighlightsError("");
+        setReportHighlightsLoading(false);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    let cancelled = false;
+
+    const loadHighlights = async () => {
+      setReportHighlightsLoading(true);
+      setReportHighlightsError("");
+
+      const { data, error } = await supabase
+        .from("report_sections")
+        .select("id, report_id, title, content, content_formatted, position, created_at")
+        .in("report_id", ids)
+        .order("position", { ascending: true });
+
+      if (cancelled) return;
+
+      if (error) {
+        setReportHighlightsError(error.message);
+        setReportHighlightsLoading(false);
+        return;
+      }
+
+      const parsed = z.array(ReportSectionKpiSchema).safeParse(data ?? []);
+      if (!parsed.success) {
+        setReportHighlightsError("Donnees de sections invalides.");
+        setReportHighlightsLoading(false);
+        return;
+      }
+
+      const sections = parsed.data;
+      const short = shortReportId
+        ? buildReportHighlights(sections.filter((s) => s.report_id === shortReportId))
+        : {
+            strength: null,
+            weakness: null,
+            physical: null,
+            technical: null,
+          };
+      const long = buildLongTermHighlights(longReportIds, sections);
+
+      setReportHighlightsShort(short);
+      setReportHighlightsLong(long);
+      setReportHighlightsLoading(false);
+    };
+
+    Promise.resolve().then(() => {
+      if (cancelled) return;
+      void loadHighlights();
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [shortReportId, longReportIds]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!shortReportId) {
+      Promise.resolve().then(() => {
+        if (cancelled) return;
+        setAiKpisRow(null);
+        setAiKpisStatus("missing");
+        setAiKpisError("");
+        setAiKpisLoading(false);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const loadAiKpis = async () => {
+      setAiKpisLoading(true);
+      setAiKpisError("");
+
+      const { data, error } = await supabase
+        .from("report_kpis")
+        .select(
+          "id, org_id, student_id, report_id, status, input_hash, prompt_version, model, kpis_short, kpis_long, error, created_at, updated_at"
+        )
+        .eq("report_id", shortReportId)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (error) {
+        setAiKpisRow(null);
+        setAiKpisStatus("missing");
+        setAiKpisError("KPI IA indisponibles.");
+        setAiKpisLoading(false);
+        return;
+      }
+
+      if (!data) {
+        setAiKpisRow(null);
+        setAiKpisStatus("missing");
+        setAiKpisLoading(false);
+        return;
+      }
+
+      const parsed = ReportKpisRowSchema.safeParse(data);
+      if (!parsed.success) {
+        setAiKpisRow(null);
+        setAiKpisStatus("missing");
+        setAiKpisError("Donnees KPI invalides.");
+        setAiKpisLoading(false);
+        return;
+      }
+
+      const statusParsed = ReportKpisStatusSchema.safeParse(parsed.data.status);
+      const status: ReportKpisStatus =
+        statusParsed.success ? statusParsed.data : ("error" as const);
+
+      setAiKpisRow(parsed.data);
+      setAiKpisStatus(status);
+      setAiKpisLoading(false);
+    };
+
+    Promise.resolve().then(() => {
+      if (cancelled) return;
+      void loadAiKpis();
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [shortReportId]);
+
   const handleDeleteReport = async (report: Report) => {
     if (isReadOnly) return;
     const confirmed = window.confirm(`Supprimer le rapport "${report.title}" ?`);
@@ -1314,6 +1797,56 @@ export default function CoachStudentDetailPage() {
     setEditOpen(false);
   };
 
+  const handleAssignNormalizedTest = async () => {
+    if (!studentId) return;
+    if (isReadOnly) return;
+
+    setAssignTestSubmitting(true);
+    setAssignTestError("");
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setAssignTestError("Session invalide.");
+      setAssignTestSubmitting(false);
+      return;
+    }
+
+    const response = await fetch("/api/normalized-tests/assign", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        testSlug: assignTestSlug,
+        studentIds: [studentId],
+      }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    const parsed = z
+      .union([
+        z.object({ ok: z.literal(true), count: z.number().int().optional() }),
+        z.object({ error: z.string().min(1), details: z.unknown().optional() }),
+      ])
+      .safeParse(payload);
+
+    if (!response.ok) {
+      const errorMessage =
+        parsed.success && "error" in parsed.data
+          ? parsed.data.error
+          : "Assignation impossible.";
+      setAssignTestError(errorMessage);
+      setAssignTestSubmitting(false);
+      return;
+    }
+
+    setAssignTestSubmitting(false);
+    setAssignTestModalOpen(false);
+    await loadNormalizedTests(studentId);
+  };
+
   const handleOpenRadarConfig = (file: RadarFile) => {
     setRadarConfigError("");
     setRadarConfigFile(file);
@@ -1404,15 +1937,48 @@ export default function CoachStudentDetailPage() {
               }
             }
           `}</style>
-          <section className="panel rounded-2xl p-6">
-            <div className="flex items-center justify-between gap-3">
+          <PageHeader
+            overline={
               <div className="flex items-center gap-2">
                 <PageBack />
                 <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
                   Eleve
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+            }
+            leading={
+              student.avatar_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={student.avatar_url}
+                  alt={`Photo de ${student.first_name}`}
+                  className="h-12 w-12 rounded-full border border-white/10 object-cover"
+                />
+              ) : (
+                <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/10 text-sm font-semibold text-[var(--muted)]">
+                  {(student.first_name || "E").charAt(0).toUpperCase()}
+                </div>
+              )
+            }
+            title={`${student.first_name} ${student.last_name ?? ""}`.trim()}
+            titleBadges={
+              student.activated_at ? (
+                <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-emerald-200">
+                  Actif
+                </span>
+              ) : student.invited_at ? (
+                <span className="rounded-full border border-amber-300/30 bg-amber-400/10 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-amber-200">
+                  Invite
+                </span>
+              ) : (
+                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)]">
+                  A inviter
+                </span>
+              )
+            }
+            subtitle={student.email || "-"}
+            actions={
+              <>
                 {isOwner ? (
                   <button
                     type="button"
@@ -1450,7 +2016,11 @@ export default function CoachStudentDetailPage() {
                       aria-expanded={headerMenuOpen}
                       aria-haspopup="menu"
                     >
-                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-4 w-4"
+                        fill="currentColor"
+                      >
                         <circle cx="12" cy="5" r="2" />
                         <circle cx="12" cy="12" r="2" />
                         <circle cx="12" cy="19" r="2" />
@@ -1474,55 +2044,259 @@ export default function CoachStudentDetailPage() {
                     ) : null}
                   </div>
                 ) : null}
-              </div>
-            </div>
-            <div className="mt-3 flex items-center gap-3">
-              {student.avatar_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={student.avatar_url}
-                  alt={`Photo de ${student.first_name}`}
-                  className="h-12 w-12 rounded-full border border-white/10 object-cover"
-                />
-              ) : (
-                <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/10 text-sm font-semibold text-[var(--muted)]">
-                  {(student.first_name || "E").charAt(0).toUpperCase()}
+              </>
+            }
+            meta={
+              <>
+                <p className="text-xs text-[var(--muted)]">
+                  Invite le {formatDate(student.invited_at, locale, timezone)} - Cree le{" "}
+                  {formatDate(student.created_at, locale, timezone)}
+                </p>
+                {shareMessage ? (
+                  <p className="mt-3 text-xs text-emerald-200">{shareMessage}</p>
+                ) : null}
+                {isReadOnly ? (
+                  <div className="mt-4 rounded-xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-xs uppercase tracking-wide text-amber-100">
+                    Lecture seule active (eleve partage)
+                  </div>
+                ) : null}
+                <div className="mt-5 flex flex-wrap items-center gap-2">
+                  {canWriteReports ? (
+                    <Link
+                      href={`/app/coach/rapports/nouveau?studentId=${student.id}`}
+                      className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/70"
+                    >
+                      Nouveau rapport
+                    </Link>
+                  ) : (
+                    <span className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)] opacity-70">
+                      Nouveau rapport
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (tpiLocked) {
+                        openTpiAddonModal();
+                        return;
+                      }
+                      document.getElementById("tpi")?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start",
+                      });
+                    }}
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:border-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
+                  >
+                    Profil TPI
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      document.getElementById("standard-tests")?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start",
+                      });
+                    }}
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:border-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
+                  >
+                    Tests
+                  </button>
                 </div>
-              )}
+              </>
+            }
+          />
+
+          <section className="panel relative overflow-hidden rounded-3xl p-6">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_10%,rgba(110,231,183,0.10),transparent_55%),radial-gradient(circle_at_85%_0%,rgba(186,230,253,0.12),transparent_58%)]"
+            />
+            <div className="relative flex flex-wrap items-start justify-between gap-4">
               <div>
-                <h2 className="text-2xl font-semibold text-[var(--text)]">
-                  {student.first_name} {student.last_name ?? ""}
-                </h2>
-                <p className="mt-1 text-sm text-[var(--muted)]">{student.email || "-"}</p>
+                <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                  Synthese eleve
+                </p>
+                <h3 className="mt-2 text-lg font-semibold text-[var(--text)]">
+                  Vue rapide, priorites, dernieres donnees.
+                </h3>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-[0.65rem] uppercase tracking-[0.25em] text-[var(--muted)]">
+                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+                    {latestPublishedReport
+                      ? `Dernier rapport: ${formatDate(
+                          latestPublishedReport.report_date ??
+                            latestPublishedReport.created_at,
+                          locale,
+                          timezone
+                        )}`
+                      : "Aucun rapport publie"}
+                  </span>
+                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+                    TPI: {tpiCounts.red} rouge, {tpiCounts.orange} orange
+                  </span>
+                  <span
+                    className={`rounded-full border px-3 py-1 ${
+                      aiKpisStatus === "ready"
+                        ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-200"
+                        : aiKpisStatus === "pending"
+                          ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
+                          : "border-white/10 bg-white/5 text-[var(--muted)]"
+                    }`}
+                  >
+                    IA:{" "}
+                    {aiKpisStatus === "ready"
+                      ? "pret"
+                      : aiKpisStatus === "pending"
+                        ? "en cours"
+                        : "off"}
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {(aiKpisStatus === "missing" || aiKpisStatus === "error") &&
+                shortReportId ? (
+                  <button
+                    type="button"
+                    onClick={handleRegenerateAiKpis}
+                    disabled={aiKpisRegenerating}
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:border-white/30 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {aiKpisRegenerating ? "Regeneration..." : "Regenerer KPI IA"}
+                  </button>
+                ) : null}
               </div>
             </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs uppercase tracking-wide">
-              {student.activated_at ? (
-                <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-emerald-200">
-                  Actif
-                </span>
-              ) : student.invited_at ? (
-                <span className="rounded-full border border-amber-300/30 bg-amber-400/10 px-2 py-1 text-amber-200">
-                  Invite
-                </span>
-              ) : (
-                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[var(--muted)]">
-                  A inviter
-                </span>
-              )}
-            </div>
-            <p className="mt-2 text-xs text-[var(--muted)]">
-              Invite le {formatDate(student.invited_at, locale, timezone)} - Cree le{" "}
-              {formatDate(student.created_at, locale, timezone)}
-            </p>
-            {shareMessage ? (
-              <p className="mt-3 text-xs text-emerald-200">{shareMessage}</p>
+
+            {reportHighlightsError ? (
+              <p className="mt-4 text-sm text-red-300">{reportHighlightsError}</p>
             ) : null}
-            {isReadOnly ? (
-              <div className="mt-4 rounded-xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-xs uppercase tracking-wide text-amber-100">
-                Lecture seule active (eleve partage)
+            {reportHighlightsLoading ? (
+              <p className="mt-4 text-sm text-[var(--muted)]">Chargement des KPI...</p>
+            ) : null}
+            {aiKpisError ? <p className="mt-4 text-sm text-red-300">{aiKpisError}</p> : null}
+            {aiKpisLoading ? (
+              <p className="mt-4 text-sm text-[var(--muted)]">Chargement des KPI IA...</p>
+            ) : null}
+            {aiKpisStatus === "pending" ? (
+              <p className="mt-4 text-sm text-[var(--muted)]">
+                KPI IA en cours de generation...
+              </p>
+            ) : null}
+            {aiKpisStatus === "error" && aiKpisRow?.error ? (
+              <p className="mt-4 text-sm text-red-300">{aiKpisRow.error}</p>
+            ) : null}
+
+            <div className="relative mt-6 grid gap-8 lg:grid-cols-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                  Court terme
+                </p>
+                <div className="mt-4">
+                  {aiKpisStatus === "ready" && aiKpisRow ? (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      {aiKpisRow.kpis_short.map((kpi) => (
+                        <div
+                          key={kpi.id}
+                          className="min-h-36 rounded-2xl bg-[var(--panel-strong)] p-4"
+                        >
+                          <p className="text-[0.65rem] uppercase tracking-[0.25em] text-[var(--muted)]">
+                            {kpi.title}
+                          </p>
+                          <p className="mt-2 text-sm font-semibold text-[var(--text)]">
+                            {kpi.value ?? "-"}
+                          </p>
+                          <p className="mt-2 text-xs whitespace-pre-line text-[var(--muted)]">
+                            {kpi.evidence}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3">
+                      {[
+                        { key: "strength" as const, label: "Point fort" },
+                        { key: "weakness" as const, label: "Point faible" },
+                        { key: "physical" as const, label: "Physique" },
+                        { key: "technical" as const, label: "Technique" },
+                      ].map((item) => (
+                        <div
+                          key={`short-${item.key}`}
+                          className="rounded-2xl bg-[var(--panel-strong)] p-4"
+                        >
+                          <p className="text-[0.65rem] uppercase tracking-[0.25em] text-[var(--muted)]">
+                            {item.label}
+                          </p>
+                          <p className="mt-2 text-sm font-semibold text-[var(--text)]">
+                            {reportHighlightsShort[item.key] ?? "-"}
+                          </p>
+                          {item.key === "physical" ? (
+                            <div className="mt-3 flex flex-wrap gap-2 text-[0.7rem] text-[var(--muted)]">
+                              <span className="inline-flex items-center gap-1 rounded-full border border-rose-300/25 bg-rose-400/10 px-2 py-0.5 text-rose-200">
+                                {tpiCounts.red} rouge
+                              </span>
+                              <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/25 bg-amber-400/10 px-2 py-0.5 text-amber-200">
+                                {tpiCounts.orange} orange
+                              </span>
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
-            ) : null}
+
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                  Long terme
+                </p>
+                <div className="mt-4">
+                  {aiKpisStatus === "ready" && aiKpisRow ? (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      {aiKpisRow.kpis_long.map((kpi) => (
+                        <div
+                          key={kpi.id}
+                          className="min-h-36 rounded-2xl bg-[var(--panel-strong)] p-4"
+                        >
+                          <p className="text-[0.65rem] uppercase tracking-[0.25em] text-[var(--muted)]">
+                            {kpi.title}
+                          </p>
+                          <p className="mt-2 text-sm font-semibold text-[var(--text)]">
+                            {kpi.value ?? "-"}
+                          </p>
+                          <p className="mt-2 text-xs whitespace-pre-line text-[var(--muted)]">
+                            {kpi.evidence}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3">
+                      {[
+                        { key: "strength" as const, label: "Point fort" },
+                        { key: "weakness" as const, label: "Point faible" },
+                        { key: "physical" as const, label: "Physique" },
+                        { key: "technical" as const, label: "Technique" },
+                      ].map((item) => (
+                        <div
+                          key={`long-${item.key}`}
+                          className="rounded-2xl bg-[var(--panel-strong)] p-4"
+                        >
+                          <p className="text-[0.65rem] uppercase tracking-[0.25em] text-[var(--muted)]">
+                            {item.label}
+                          </p>
+                          <p className="mt-2 text-sm font-semibold text-[var(--text)]">
+                            {reportHighlightsLong[item.key].snippet ?? "-"}
+                          </p>
+                          <p className="mt-2 text-xs text-[var(--muted)]">
+                            Mentionne dans {reportHighlightsLong[item.key].mentions}/5 rapports
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </section>
 
           {workspaceType === "org" ? (
@@ -1760,7 +2534,10 @@ export default function CoachStudentDetailPage() {
               )}
             </section>
 
-            <section className="panel relative rounded-2xl border border-rose-400/40 bg-rose-500/5 p-6">
+            <section
+              id="tpi"
+              className="panel relative scroll-mt-24 rounded-2xl border border-rose-400/40 bg-rose-500/5 p-6"
+            >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-semibold text-[var(--text)]">
@@ -1967,48 +2744,99 @@ export default function CoachStudentDetailPage() {
                 <>
                   <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
                     <div>
+                      {tpiTests.length > 0 ? (
+                        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {(
+                              [
+                                { id: "all" as const, label: `Tous (${tpiCounts.total})` },
+                                { id: "red" as const, label: `Bloquants (${tpiCounts.red})` },
+                                {
+                                  id: "orange" as const,
+                                  label: `A surveiller (${tpiCounts.orange})`,
+                                },
+                                { id: "green" as const, label: `OK (${tpiCounts.green})` },
+                              ] as const
+                            ).map((option) => (
+                              <button
+                                key={option.id}
+                                type="button"
+                                onClick={() => setTpiFilter(option.id)}
+                                className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
+                                  tpiFilter === option.id
+                                    ? "border-white/30 bg-white/15 text-[var(--text)]"
+                                    : "border-white/10 bg-white/5 text-[var(--muted)] hover:border-white/20 hover:text-[var(--text)]"
+                                } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50`}
+                              >
+                                {option.label}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="relative w-full sm:w-56">
+                            <input
+                              value={tpiQuery}
+                              onChange={(event) => setTpiQuery(event.target.value)}
+                              placeholder="Rechercher..."
+                              className="w-full rounded-full border border-white/10 bg-[var(--bg-elevated)] px-4 py-2 text-sm text-[var(--text)] placeholder:text-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
+                              aria-label="Rechercher un test TPI"
+                            />
+                          </div>
+                        </div>
+                      ) : null}
                       {tpiTests.length === 0 ? (
                         <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
                           Aucun test TPI detecte.
                         </div>
                       ) : (
-                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                          {tpiTests.map((test) => {
-                            const colorClass =
-                              test.result_color === "green"
-                                ? "bg-emerald-400"
-                                : test.result_color === "orange"
-                                  ? "bg-amber-400"
-                                  : "bg-rose-400";
-                            const selectedTone =
-                              test.result_color === "green"
-                                ? "border-emerald-300/40 bg-emerald-400/10"
-                                : test.result_color === "orange"
-                                  ? "border-amber-300/40 bg-amber-400/10"
-                                  : "border-rose-300/40 bg-rose-400/10";
-                            const isSelected = selectedTpi?.id === test.id;
-                            return (
-                              <button
-                                key={test.id}
-                                type="button"
-                                onClick={() => setSelectedTpi(test)}
-                                aria-pressed={isSelected}
-                                className={`flex h-20 items-start gap-2 overflow-hidden rounded-xl border px-4 py-3 text-left transition ${
-                                  isSelected
-                                    ? selectedTone
-                                    : "border-white/10 bg-white/5 hover:border-white/20"
-                                }`}
-                              >
-                                <span
-                                  className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${colorClass}`}
-                                />
-                                <span className="max-h-16 min-w-0 overflow-hidden break-keep text-[0.7rem] font-semibold leading-snug text-[var(--text)]">
-                                  {formatTpiTestName(test.test_name)}
+                        visibleTpiTests.length === 0 ? (
+                          <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
+                            Aucun test ne correspond a ce filtre.
+                          </div>
+                        ) : (
+                          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                            {visibleTpiTests.map((test) => {
+                              const colorClass =
+                                test.result_color === "green"
+                                  ? "bg-emerald-400"
+                                  : test.result_color === "orange"
+                                    ? "bg-amber-400"
+                                    : "bg-rose-400";
+                              const selectedTone =
+                                test.result_color === "green"
+                                  ? "border-emerald-300/40 bg-emerald-400/10"
+                                  : test.result_color === "orange"
+                                    ? "border-amber-300/40 bg-amber-400/10"
+                                    : "border-rose-300/40 bg-rose-400/10";
+                              const isSelected = selectedTpi?.id === test.id;
+                              return (
+                                <button
+                                  key={test.id}
+                                  type="button"
+                                  onClick={() => setSelectedTpi(test)}
+                                  aria-pressed={isSelected}
+                                  aria-label={`${formatTpiTestName(test.test_name)} - ${tpiStatusLabel(test.result_color)}`}
+                                  className={`flex h-20 items-start gap-2 overflow-hidden rounded-xl border px-4 py-3 text-left transition ${
+                                    isSelected
+                                      ? selectedTone
+                                      : "border-white/10 bg-white/5 hover:border-white/20"
+                                  } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50`}
+                                >
+                                  <span
+                                    className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${colorClass}`}
+                                  />
+                                <span className="min-w-0">
+                                  <span className="block max-h-16 overflow-hidden break-keep text-[0.7rem] font-semibold leading-snug text-[var(--text)]">
+                                    {formatTpiTestName(test.test_name)}
+                                  </span>
+                                  <span className="sr-only">
+                                    Statut: {tpiStatusLabel(test.result_color)}
+                                  </span>
                                 </span>
                               </button>
                             );
                           })}
                         </div>
+                      )
                       )}
                       <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-[var(--muted)]">
                         {(["red", "orange", "green"] as const).map((color) => {
@@ -2064,6 +2892,170 @@ export default function CoachStudentDetailPage() {
                     </div>
                   </div>
                 </>
+              ) : null}
+            </section>
+
+            <section
+              id="standard-tests"
+              className="panel relative scroll-mt-24 rounded-2xl border border-sky-300/40 bg-sky-500/5 p-6 lg:col-span-2"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-[var(--text)]">Tests standardises</h3>
+                  <p className="mt-1 text-sm text-[var(--muted)]">
+                    Suivez les tests assignes a cet eleve, ceux en cours et l historique.
+                  </p>
+                </div>
+                {!isReadOnly ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAssignTestError("");
+                      setAssignTestSubmitting(false);
+                      setAssignTestSlug(NORMALIZED_TEST_CHOICES[0]?.slug ?? PELZ_PUTTING_SLUG);
+                      setAssignTestModalOpen(true);
+                    }}
+                    className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/70"
+                  >
+                    Assigner un test
+                  </button>
+                ) : (
+                  <span className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)] opacity-70">
+                    Assigner un test
+                  </span>
+                )}
+              </div>
+
+              {normalizedTestsLoading ? (
+                <p className="mt-3 text-xs text-[var(--muted)]">Chargement des tests...</p>
+              ) : null}
+              {normalizedTestsError ? (
+                <p className="mt-3 text-xs text-red-300">{normalizedTestsError}</p>
+              ) : null}
+
+              {!normalizedTestsLoading &&
+              !normalizedTestsError &&
+              normalizedTestAssignments.length === 0 ? (
+                <div className="mt-4 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
+                  Aucun test assigne.
+                </div>
+              ) : null}
+
+              {!normalizedTestsLoading &&
+              !normalizedTestsError &&
+              normalizedTestAssignments.length > 0 ? (
+                <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                      En cours
+                    </p>
+                    {normalizedTestsSummary.current.length === 0 ? (
+                      <p className="mt-3 text-sm text-[var(--muted)]">Aucun test en cours.</p>
+                    ) : (
+                      <ul className="mt-3 space-y-3">
+                        {normalizedTestsSummary.current.map((item) => (
+                          <li
+                            key={item.assignmentId}
+                            className="rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-4 py-3"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-[var(--text)]">
+                                  {item.title}
+                                </p>
+                                <p className="mt-1 text-xs text-[var(--muted)]">
+                                  Assigne le{" "}
+                                  {formatDate(item.assignedAt, locale, timezone)}
+                                  {item.attemptsCount > 0
+                                    ? ` • ${item.attemptsCount} tentative${
+                                        item.attemptsCount > 1 ? "s" : ""
+                                      }`
+                                    : ""}
+                                </p>
+                              </div>
+                              <span className="shrink-0 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)]">
+                                {item.status === "assigned"
+                                  ? "A faire"
+                                  : item.status === "in_progress"
+                                    ? "En cours"
+                                    : "Finalise"}
+                              </span>
+                            </div>
+                            {item.indexOrFlagLabel ? (
+                              <p className="mt-2 text-xs text-[var(--muted)]">
+                                Index / drapeau: {item.indexOrFlagLabel}
+                              </p>
+                            ) : null}
+                            {item.clubsUsed ? (
+                              <p className="mt-1 text-xs text-[var(--muted)]">
+                                Clubs: {item.clubsUsed}
+                              </p>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                      Historique
+                    </p>
+                    {normalizedTestsSummary.history.length === 0 ? (
+                      <p className="mt-3 text-sm text-[var(--muted)]">
+                        Aucun historique pour le moment.
+                      </p>
+                    ) : (
+                      <ul className="mt-3 space-y-3">
+                        {normalizedTestsSummary.history.map((item) => (
+                          <li
+                            key={item.assignmentId}
+                            className="rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-4 py-3"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-[var(--text)]">
+                                  {item.title}
+                                </p>
+                                <p className="mt-1 text-xs text-[var(--muted)]">
+                                  {item.finalizedAt
+                                    ? `Termine le ${formatDate(
+                                        item.finalizedAt,
+                                        locale,
+                                        timezone
+                                      )}`
+                                    : `Derniere activite le ${formatDate(
+                                        item.lastActivityAt,
+                                        locale,
+                                        timezone
+                                      )}`}
+                                  {item.attemptsCount > 0
+                                    ? ` • ${item.attemptsCount} tentative${
+                                        item.attemptsCount > 1 ? "s" : ""
+                                      }`
+                                    : ""}
+                                </p>
+                              </div>
+                              <span className="shrink-0 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)]">
+                                {item.archivedAt ? "Archive" : "Termine"}
+                              </span>
+                            </div>
+                            {item.indexOrFlagLabel ? (
+                              <p className="mt-2 text-xs text-[var(--muted)]">
+                                Index / drapeau: {item.indexOrFlagLabel}
+                              </p>
+                            ) : null}
+                            {item.clubsUsed ? (
+                              <p className="mt-1 text-xs text-[var(--muted)]">
+                                Clubs: {item.clubsUsed}
+                              </p>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
               ) : null}
             </section>
 
@@ -3033,6 +4025,121 @@ export default function CoachStudentDetailPage() {
               onClose={() => setShareModalOpen(false)}
               onShare={handleShareStudent}
             />
+          ) : null}
+          {assignTestModalOpen ? (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+              onClick={() => {
+                if (assignTestSubmitting) return;
+                setAssignTestModalOpen(false);
+              }}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Assigner un test"
+            >
+              <div
+                className="w-full max-w-lg rounded-2xl border border-white/10 bg-[var(--bg-elevated)] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)]"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                      Tests
+                    </p>
+                    <h4 className="mt-2 text-lg font-semibold text-[var(--text)]">
+                      Assigner un test
+                    </h4>
+                    <p className="mt-2 text-sm text-[var(--muted)]">
+                      Choisissez un test standardise a assigner a cet eleve.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (assignTestSubmitting) return;
+                      setAssignTestModalOpen(false);
+                    }}
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
+                    aria-label="Fermer"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M18 6L6 18" />
+                      <path d="M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="mt-5 space-y-3">
+                  {NORMALIZED_TEST_CHOICES.map((choice) => {
+                    const selected = assignTestSlug === choice.slug;
+                    return (
+                      <button
+                        key={choice.slug}
+                        type="button"
+                        onClick={() => setAssignTestSlug(choice.slug)}
+                        className={`w-full rounded-2xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50 ${
+                          selected
+                            ? "border-emerald-300/40 bg-emerald-400/10"
+                            : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
+                        }`}
+                        aria-pressed={selected}
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-[var(--text)]">
+                              {choice.title}
+                            </p>
+                            <p className="mt-1 text-xs text-[var(--muted)]">
+                              {choice.description}
+                            </p>
+                          </div>
+                          <span
+                            className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+                              selected
+                                ? "border-emerald-300/40 bg-emerald-400/20 text-emerald-100"
+                                : "border-white/10 bg-white/5 text-[var(--muted)]"
+                            }`}
+                            aria-hidden="true"
+                          >
+                            {selected ? (
+                              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M20 6L9 17l-5-5" />
+                              </svg>
+                            ) : null}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {assignTestError ? (
+                  <p className="mt-4 text-sm text-red-300">{assignTestError}</p>
+                ) : null}
+
+                <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (assignTestSubmitting) return;
+                      setAssignTestModalOpen(false);
+                    }}
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                    disabled={assignTestSubmitting}
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAssignNormalizedTest}
+                    disabled={assignTestSubmitting}
+                    className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
+                  >
+                    {assignTestSubmitting ? "Assignation..." : "Assigner"}
+                  </button>
+                </div>
+              </div>
+            </div>
           ) : null}
           <PremiumOfferModal
             open={premiumModalOpen}

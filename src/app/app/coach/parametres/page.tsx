@@ -9,6 +9,7 @@ import RoleGuard from "../../_components/role-guard";
 import { useProfile } from "../../_components/profile-context";
 import PageBack from "../../_components/page-back";
 import PremiumOfferModal from "../../_components/premium-offer-modal";
+import PageHeader from "../../_components/page-header";
 import { z } from "zod";
 
 type ProfileSettings = {
@@ -390,20 +391,18 @@ export default function CoachSettingsPage() {
         </section>
       ) : (
         <div className="space-y-6">
-          <section className="panel rounded-2xl p-6">
-            <div className="flex items-center gap-2">
-              <PageBack />
-              <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                Parametres coach
-              </p>
-            </div>
-            <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
-              Identite et branding
-            </h2>
-            <p className="mt-2 text-sm text-[var(--muted)]">
-              Configure ton profil, ton organisation et les rapports.
-            </p>
-          </section>
+          <PageHeader
+            overline={
+              <div className="flex items-center gap-2">
+                <PageBack />
+                <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                  Parametres coach
+                </p>
+              </div>
+            }
+            title="Identite et branding"
+            subtitle="Configure ton profil, ton organisation et les rapports."
+          />
 
           <section className="panel rounded-2xl p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">

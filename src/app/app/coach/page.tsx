@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { z } from "zod";
 import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../_components/role-guard";
 import { useProfile } from "../_components/profile-context";
+import PageHeader from "../_components/page-header";
 
 type ReportRow = {
   id: string;
@@ -17,6 +19,30 @@ type ReportRow = {
     | null;
 };
 
+type AnalyticsBar = {
+  key: string; // YYYY-MM-DD in org timezone
+  label: string; // day label (e.g. L, M, ...)
+  value: number;
+};
+
+type StudentPreviewRow = {
+  id: string;
+  first_name: string;
+  last_name: string | null;
+  email: string | null;
+  created_at: string;
+  invited_at: string | null;
+  activated_at: string | null;
+};
+
+type Reminder = {
+  title: string;
+  description: string;
+  cta: string;
+  href: string;
+  tone: "primary" | "neutral";
+};
+
 const formatDate = (
   value?: string | null,
   locale?: string | null,
@@ -27,14 +53,140 @@ const formatDate = (
   return new Date(value).toLocaleDateString(locale ?? "fr-FR", options);
 };
 
+const formatStudentName = (value: ReportRow["students"]) => {
+  const student = Array.isArray(value) ? value[0] : value;
+  if (!student) return "Eleve";
+  return `${student.first_name} ${student.last_name ?? ""}`.trim();
+};
+
+const localDateKey = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const getTimezoneDateKey = (date: Date, timeZone: string) => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+  if (!year || !month || !day) return localDateKey(date);
+  return `${year}-${month}-${day}`;
+};
+
+const getWeekdayLabel = (date: Date, timeZone: string) => {
+  const label = new Intl.DateTimeFormat("fr-FR", {
+    timeZone,
+    weekday: "narrow",
+  }).format(date);
+  return label.toUpperCase();
+};
+
+const AnalyticsRowSchema = z.object({
+  created_at: z.string().min(1),
+});
+
+const StudentPreviewRowSchema = z.object({
+  id: z.string().min(1),
+  first_name: z.string().min(1),
+  last_name: z.string().nullable(),
+  email: z.string().nullable(),
+  created_at: z.string().min(1),
+  invited_at: z.string().nullable(),
+  activated_at: z.string().nullable(),
+});
+
+type KpiCardProps = {
+  label: string;
+  value: string;
+  hint: string;
+  tone?: "accent" | "default";
+  href?: string;
+};
+
+function KpiCard({ label, value, hint, tone = "default", href }: KpiCardProps) {
+  const content = (
+    <div className="panel-soft relative overflow-hidden rounded-2xl p-5">
+      {tone === "accent" ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(110,231,183,0.22),transparent_60%),radial-gradient(circle_at_90%_20%,rgba(186,230,253,0.22),transparent_60%),linear-gradient(135deg,rgba(16,185,129,0.10),rgba(56,189,248,0.10))]"
+        />
+      ) : (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(15,23,42,0.05),transparent_60%)]"
+        />
+      )}
+
+      <div className="relative flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[0.65rem] uppercase tracking-[0.25em] text-[var(--muted)]">
+            {label}
+          </p>
+          <p className="mt-4 text-4xl font-semibold tracking-tight text-[var(--text)]">
+            {value}
+          </p>
+          <p className="mt-2 text-xs text-[var(--muted)]">{hint}</p>
+        </div>
+        {href ? (
+          <span
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition group-hover:text-[var(--text)]"
+            aria-hidden="true"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M7 17L17 7" />
+              <path d="M9 7h8v8" />
+            </svg>
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+
+  if (!href) return content;
+  return (
+    <Link href={href} className="group block">
+      {content}
+    </Link>
+  );
+}
+
 export default function CoachDashboardPage() {
   const { organization, workspaceType } = useProfile();
+  const [loading, setLoading] = useState(true);
+
   const [reports, setReports] = useState<ReportRow[]>([]);
+  const [studentsPreview, setStudentsPreview] = useState<StudentPreviewRow[]>([]);
+  const [studentsPreviewError, setStudentsPreviewError] = useState<string | null>(null);
   const [studentsCount, setStudentsCount] = useState<number | null>(null);
   const [reportsCount, setReportsCount] = useState<number | null>(null);
+  const [draftReportsCount, setDraftReportsCount] = useState<number | null>(null);
+  const [activeTestsCount, setActiveTestsCount] = useState<number | null>(null);
+  const [pendingInvitesCount, setPendingInvitesCount] = useState<number | null>(null);
+
+  const [analyticsBars, setAnalyticsBars] = useState<AnalyticsBar[] | null>(null);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+
   const locale = organization?.locale ?? "fr-FR";
   const timezone = organization?.timezone ?? "Europe/Paris";
   const isOrgMode = workspaceType === "org";
+
   const modeLabel =
     (organization?.workspace_type ?? "personal") === "org"
       ? `Organisation : ${organization?.name ?? "Organisation"}`
@@ -51,46 +203,222 @@ export default function CoachDashboardPage() {
 
   useEffect(() => {
     if (isOrgMode) return;
-    const loadStats = async () => {
-      const [{ count: studentTotal }, { count: reportTotal }] = await Promise.all([
+
+    let cancelled = false;
+    const loadDashboard = async () => {
+      setLoading(true);
+      setAnalyticsError(null);
+
+      const anchor = new Date();
+      anchor.setHours(12, 0, 0, 0); // stable anchor for DST edges
+
+      const days = Array.from({ length: 7 }, (_, index) => {
+        const date = new Date(anchor.getTime() - (6 - index) * 24 * 60 * 60 * 1000);
+        return {
+          key: getTimezoneDateKey(date, timezone),
+          label: getWeekdayLabel(date, timezone),
+          date,
+        };
+      });
+
+      const start = new Date(days[0]?.date ?? anchor);
+      start.setHours(0, 0, 0, 0);
+      const startIso = start.toISOString();
+
+      const [
+        { count: studentTotal },
+        { count: reportTotal },
+        { count: draftTotal },
+        { count: pendingInvitesTotal },
+        { count: activeTestsTotal },
+        recentReportsRes,
+        studentsPreviewRes,
+        analyticsRes,
+      ] = await Promise.all([
         supabase.from("students").select("id", { count: "exact", head: true }),
         supabase.from("reports").select("id", { count: "exact", head: true }),
+        supabase
+          .from("reports")
+          .select("id", { count: "exact", head: true })
+          .is("sent_at", null),
+        supabase
+          .from("students")
+          .select("id", { count: "exact", head: true })
+          .not("invited_at", "is", null)
+          .is("activated_at", null),
+        supabase
+          .from("normalized_test_assignments")
+          .select("id", { count: "exact", head: true })
+          .is("archived_at", null)
+          .in("status", ["assigned", "in_progress"]),
+        supabase
+          .from("reports")
+          .select("id, title, report_date, created_at, students(first_name, last_name)")
+          .order("created_at", { ascending: false })
+          .limit(5),
+        supabase
+          .from("students")
+          .select(
+            "id, first_name, last_name, email, created_at, invited_at, activated_at"
+          )
+          .order("created_at", { ascending: false })
+          .limit(5),
+        supabase.from("reports").select("created_at").gte("created_at", startIso),
       ]);
+
+      if (cancelled) return;
 
       setStudentsCount(studentTotal ?? null);
       setReportsCount(reportTotal ?? null);
+      setDraftReportsCount(draftTotal ?? null);
+      setPendingInvitesCount(pendingInvitesTotal ?? null);
+      setActiveTestsCount(activeTestsTotal ?? null);
+      setReports((recentReportsRes.data ?? []) as ReportRow[]);
+
+      if (studentsPreviewRes.error) {
+        setStudentsPreview([]);
+        setStudentsPreviewError("Chargement des eleves impossible.");
+      } else {
+        const parsed = z
+          .array(StudentPreviewRowSchema)
+          .safeParse(studentsPreviewRes.data ?? []);
+        if (!parsed.success) {
+          setStudentsPreview([]);
+          setStudentsPreviewError("Chargement des eleves impossible.");
+        } else {
+          setStudentsPreview(parsed.data);
+          setStudentsPreviewError(null);
+        }
+      }
+
+      if (analyticsRes.error) {
+        setAnalyticsBars(null);
+        setAnalyticsError("Analytics indisponible.");
+      } else {
+        const parsed = z.array(AnalyticsRowSchema).safeParse(analyticsRes.data ?? []);
+        if (!parsed.success) {
+          setAnalyticsBars(null);
+          setAnalyticsError("Analytics indisponible.");
+        } else {
+          const counts = new Map<string, number>();
+          parsed.data.forEach((row) => {
+            const key = getTimezoneDateKey(new Date(row.created_at), timezone);
+            counts.set(key, (counts.get(key) ?? 0) + 1);
+          });
+
+          setAnalyticsBars(
+            days.map((day) => ({
+              key: day.key,
+              label: day.label,
+              value: counts.get(day.key) ?? 0,
+            }))
+          );
+          setAnalyticsError(null);
+        }
+      }
+
+      setLoading(false);
     };
 
-    const loadReports = async () => {
-      const { data } = await supabase
-        .from("reports")
-        .select("id, title, report_date, created_at, students(first_name, last_name)")
-        .order("created_at", { ascending: false })
-        .limit(5);
-
-      setReports(data ?? []);
+    void loadDashboard();
+    return () => {
+      cancelled = true;
     };
+  }, [isOrgMode, organization?.id, timezone]);
 
-    loadStats();
-    loadReports();
-  }, [isOrgMode]);
+  const reminders = useMemo<Reminder[]>(() => {
+    const list: Reminder[] = [];
+
+    if ((draftReportsCount ?? 0) > 0) {
+      list.push({
+        title: "Publier vos brouillons",
+        description: "Des rapports sont encore en brouillon. Publie pour notifier l eleve.",
+        cta: "Voir les rapports",
+        href: "/app/coach/rapports",
+        tone: "primary",
+      });
+    }
+
+    if (list.length < 3 && (pendingInvitesCount ?? 0) > 0) {
+      list.push({
+        title: "Finaliser les invitations eleves",
+        description: "Des eleves sont invites mais pas encore actives.",
+        cta: "Gerer les eleves",
+        href: "/app/coach/eleves",
+        tone: "neutral",
+      });
+    }
+
+    if (list.length < 3 && (activeTestsCount ?? 0) > 0) {
+      list.push({
+        title: "Suivre les tests en cours",
+        description: "Consulte les assignations et relance si besoin.",
+        cta: "Ouvrir les tests",
+        href: "/app/coach/tests",
+        tone: "neutral",
+      });
+    }
+
+    if (list.length === 0) {
+      list.push({
+        title: "Creer un nouveau rapport",
+        description: "Demarre un rapport structure pour ton eleve.",
+        cta: "Nouveau rapport",
+        href: "/app/coach/rapports/nouveau",
+        tone: "primary",
+      });
+    }
+
+    return list.slice(0, 3);
+  }, [activeTestsCount, draftReportsCount, pendingInvitesCount]);
+
+  const analyticsMax = useMemo(() => {
+    if (!analyticsBars || analyticsBars.length === 0) return 0;
+    return analyticsBars.reduce((max, bar) => Math.max(max, bar.value), 0);
+  }, [analyticsBars]);
+
+  const formatStudentInitials = (student: StudentPreviewRow) => {
+    const first = (student.first_name ?? "").trim().charAt(0).toUpperCase();
+    const last = (student.last_name ?? "").trim().charAt(0).toUpperCase();
+    return `${first}${last}`.trim() || "E";
+  };
+
+  const getStudentStatus = (student: StudentPreviewRow) => {
+    if (student.activated_at) {
+      return {
+        label: "Actif",
+        tone: "border-emerald-400/30 bg-emerald-400/10 text-emerald-200",
+      } as const;
+    }
+    if (student.invited_at) {
+      return {
+        label: "Invite",
+        tone: "border-amber-300/30 bg-amber-400/10 text-amber-200",
+      } as const;
+    }
+    return {
+      label: "A inviter",
+      tone: "border-white/10 bg-white/5 text-[var(--muted)]",
+    } as const;
+  };
 
   if (isOrgMode) {
     return (
       <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
         <div className="space-y-6">
+          <PageHeader
+            overline={
+              <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                Dashboard coach
+              </p>
+            }
+            title="Dashboard perso"
+            subtitle="Cette page est disponible uniquement en mode Perso."
+          />
+
           <section className="panel rounded-2xl p-6">
-            <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-              Dashboard coach
-            </p>
-            <h2 className="mt-3 font-[var(--font-display)] text-3xl font-semibold">
-              Dashboard perso
-            </h2>
-            <p className="mt-2 text-sm text-[var(--muted)]">
-              Cette page est disponible uniquement en mode Perso.
-            </p>
             <div
-              className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
+              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
             >
               Vous travaillez dans {modeLabel}
             </div>
@@ -112,129 +440,389 @@ export default function CoachDashboardPage() {
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       <div className="space-y-6">
-        <section className="panel rounded-2xl p-6">
-          <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-            Dashboard coach
-          </p>
-          <h2 className="mt-3 font-[var(--font-display)] text-3xl font-semibold">
-            Vue d ensemble
-          </h2>
-          <p className="mt-2 text-sm text-[var(--muted)]">
-            Suivi rapide des eleves et rapports.
-          </p>
-        </section>
-
-        <section className="grid grid-cols-2 gap-4 md:grid-cols-3">
-          {[
-            {
-              label: "Eleves actifs",
-              value: studentsCount !== null ? `${studentsCount}` : "-",
-            },
-            {
-              label: "Rapports",
-              value: reportsCount !== null ? `${reportsCount}` : "-",
-            },
-            { label: "Prochaine action", value: "En attente" },
-          ].map((item, index) => (
-            <div
-              key={item.label}
-              className={`panel-soft rounded-2xl p-4 ${
-                index === 2 ? "col-span-2 md:col-span-1" : ""
-              }`}
-            >
-              <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                {item.label}
-              </p>
-              <p className="mt-3 text-2xl font-semibold text-[var(--text)]">
-                {item.value}
-              </p>
-              <p className="mt-2 text-xs text-[var(--muted)]">
-                Derniere mise a jour automatique
-              </p>
-            </div>
-          ))}
-        </section>
-
-        <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="panel rounded-2xl p-6">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-[var(--text)]">
-                Rapports recents
-              </h3>
+        <PageHeader
+          overline={
+            <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+              Dashboard coach
+            </p>
+          }
+          title="Vue d ensemble"
+          subtitle="Suivi rapide des eleves, rapports et tests."
+          actions={
+            <>
               <Link
-                href="/app/coach/rapports"
-                className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)]"
+                href="/app/coach/rapports/nouveau"
+                className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90"
               >
-                Voir tout
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 5v14" />
+                  <path d="M5 12h14" />
+                </svg>
+                Nouveau rapport
               </Link>
-            </div>
-            <div className="mt-4 space-y-3">
-              {reports.length === 0 ? (
-                <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
-                  Aucun rapport pour le moment.
-                </div>
-              ) : (
-                reports.map((report) => (
-                  <Link
-                    key={report.id}
-                    href={`/app/coach/rapports/${report.id}`}
-                    className="flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--text)] transition hover:border-white/20"
-                  >
-                    <div>
-                      <p className="font-medium">{report.title}</p>
-                      <p className="mt-1 text-xs text-[var(--muted)]">
-                        {(() => {
-                          const student = Array.isArray(report.students)
-                            ? report.students[0]
-                            : report.students;
-                          if (!student) return "Eleve";
-                          return `${student.first_name} ${
-                            student.last_name ?? ""
-                          }`.trim();
-                        })()}
-                        {" - "}
-                        {formatDate(
-                          report.report_date ?? report.created_at,
-                          locale,
-                          timezone
-                        )}
-                      </p>
-                    </div>
-                    <span className="text-xs text-[var(--muted)]">Lire -&gt;</span>
-                  </Link>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className="panel rounded-2xl p-6">
-            <h3 className="text-lg font-semibold text-[var(--text)]">Acces rapides</h3>
-            <div className="mt-4 space-y-3 text-sm text-[var(--muted)]">
               <Link
-                href="/app/coach/eleves"
-                className="block rounded-xl border border-white/5 bg-white/5 px-4 py-3 transition hover:border-white/20"
+                href="/app/coach/eleves#student-create-form"
+                className="rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
               >
-                Gerer les eleves
+                Ajouter un eleve
               </Link>
               <Link
                 href="/app/coach/tests"
-                className="block rounded-xl border border-white/5 bg-white/5 px-4 py-3 transition hover:border-white/20"
+                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
               >
-                Tests normalises
+                Tests
               </Link>
-              <Link
-                href="/app/coach/rapports/nouveau"
-                className="block rounded-xl border border-white/5 bg-white/5 px-4 py-3 transition hover:border-white/20"
-              >
-                Creer un rapport
-              </Link>
-              <Link
-                href="/app/coach/rapports"
-                className="block rounded-xl border border-white/5 bg-white/5 px-4 py-3 transition hover:border-white/20"
-              >
-                Voir tous les rapports
-              </Link>
+            </>
+          }
+          meta={
+            <div
+              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
+            >
+              Vous travaillez dans {modeLabel}
             </div>
+          }
+        />
+
+        <section className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <KpiCard
+            label="Eleves"
+            value={studentsCount !== null ? `${studentsCount}` : "-"}
+            hint="Maj automatique"
+            tone="accent"
+            href="/app/coach/eleves"
+          />
+          <KpiCard
+            label="Rapports"
+            value={reportsCount !== null ? `${reportsCount}` : "-"}
+            hint="Tous rapports"
+            href="/app/coach/rapports"
+          />
+          <KpiCard
+            label="Brouillons"
+            value={draftReportsCount !== null ? `${draftReportsCount}` : "-"}
+            hint="A publier"
+            href="/app/coach/rapports"
+          />
+          <KpiCard
+            label="Tests actifs"
+            value={activeTestsCount !== null ? `${activeTestsCount}` : "-"}
+            hint="Assignes ou en cours"
+            href="/app/coach/tests"
+          />
+        </section>
+
+        <section className="grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
+          <div className="space-y-6">
+            <section className="panel rounded-2xl p-6">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                    Activite
+                  </p>
+                  <h2 className="mt-2 text-lg font-semibold text-[var(--text)]">
+                    7 derniers jours
+                  </h2>
+                  <p className="mt-2 text-xs text-[var(--muted)]">
+                    {analyticsBars
+                      ? `Total semaine : ${analyticsBars.reduce(
+                          (sum, bar) => sum + bar.value,
+                          0
+                        )}`
+                      : analyticsError
+                        ? analyticsError
+                        : "Chargement..."}
+                  </p>
+                </div>
+                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] text-[var(--muted)]">
+                  Rapports crees
+                </div>
+              </div>
+
+              <div className="mt-5">
+                {analyticsBars && analyticsBars.length > 0 ? (
+                  <div className="grid gap-4">
+                    <div className="flex h-28 items-end gap-2">
+                      {analyticsBars.map((bar, index) => {
+                        const max = analyticsMax || 1;
+                        const raw = Math.round((bar.value / max) * 100);
+                        const height = Math.max(6, raw);
+                        const isToday = index === analyticsBars.length - 1;
+                        return (
+                          <div key={bar.key} className="flex flex-1 flex-col items-center gap-2">
+                            <div
+                              className="flex h-24 w-full items-end"
+                              aria-label={`${bar.label}: ${bar.value} rapport${
+                                bar.value > 1 ? "s" : ""
+                              }`}
+                              title={`${bar.value} rapport${bar.value > 1 ? "s" : ""}`}
+                            >
+                              <div
+                                className={`w-full rounded-xl ${
+                                  isToday
+                                    ? "bg-gradient-to-t from-emerald-300 via-emerald-200 to-sky-200"
+                                    : "bg-[var(--border)] opacity-40"
+                                }`}
+                                style={{ height: `${height}%` }}
+                              />
+                            </div>
+                            <span className="text-[0.65rem] uppercase tracking-wide text-[var(--muted)]">
+                              {bar.label}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <p className="text-xs text-[var(--muted)]">
+                      Astuce: vise 1 rapport par seance pour garder l historique a jour.
+                    </p>
+                  </div>
+                ) : analyticsError ? (
+                  <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
+                    {analyticsError}
+                  </div>
+                ) : loading ? (
+                  <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
+                    Chargement de l activite...
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
+                    Aucune activite recente.
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              <section className="panel rounded-2xl p-6">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                    Collaboration
+                  </p>
+                  <h3 className="mt-2 text-lg font-semibold text-[var(--text)]">
+                    Annuaire élèves
+                  </h3>
+                  <p className="mt-2 text-xs text-[var(--muted)]">
+                    {studentsPreviewError
+                      ? studentsPreviewError
+                      : "Acces rapide aux eleves recents."}
+                  </p>
+                </div>
+                <Link
+                  href="/app/coach/eleves"
+                  className="rounded-full px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10"
+                >
+                  Voir annuaire
+                </Link>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {loading ? (
+                  <div className="rounded-xl px-4 py-3 text-sm text-[var(--muted)]">
+                    Chargement des eleves...
+                  </div>
+                ) : studentsPreview.length === 0 ? (
+                  <div className="rounded-2xl px-4 py-4 text-sm">
+                    <p className="text-[var(--text)]">Aucun eleve pour le moment.</p>
+                    <p className="mt-1 text-xs text-[var(--muted)]">
+                      Cree ton premier eleve pour demarrer le suivi.
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Link
+                        href="/app/coach/eleves#student-create-form"
+                        className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90"
+                      >
+                        Ajouter un eleve
+                      </Link>
+                      <Link
+                        href="/app/coach/eleves"
+                        className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                      >
+                        Ouvrir l annuaire
+                      </Link>
+                    </div>
+                  </div>
+                ) : (
+                  studentsPreview.slice(0, 5).map((student) => {
+                    const status = getStudentStatus(student);
+                    return (
+                      <Link
+                        key={student.id}
+                        href={`/app/coach/eleves/${student.id}`}
+                        className="flex items-center justify-between gap-4 rounded-2xl py-3 text-sm text-[var(--text)] transition hover:border-white/20"
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-white/10 bg-white/10 text-xs font-semibold text-[var(--muted)]">
+                            {formatStudentInitials(student)}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">
+                              {student.first_name} {student.last_name ?? ""}
+                            </p>
+                            <p className="mt-0.5 truncate text-xs text-[var(--muted)]">
+                              {student.email
+                                ? student.email
+                                : `Cree le ${formatDate(
+                                    student.created_at,
+                                    locale,
+                                    timezone
+                                  )}`}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <span
+                            className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${status.tone}`}
+                          >
+                            {status.label}
+                          </span>
+                        </div>
+                      </Link>
+                    );
+                  })
+                )}
+              </div>
+              </section>
+
+              <section className="panel rounded-2xl p-6">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                    Rapports
+                  </p>
+                <h3 className="mt-2 text-lg font-semibold text-[var(--text)]">
+                  Rapports recents
+                </h3>
+                </div>
+                <Link
+                  href="/app/coach/rapports"
+                  className="rounded-full px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10"
+                >
+                  Voir rapports
+                
+                </Link>
+              </div>
+              <div className="mt-4 space-y-3">
+                {loading ? (
+                  <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
+                    Chargement des rapports...
+                  </div>
+                ) : reports.length === 0 ? (
+                  <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
+                    Aucun rapport pour le moment.
+                  </div>
+                ) : (
+                  reports.map((report) => (
+                    <Link
+                      key={report.id}
+                      href={`/app/coach/rapports/${report.id}`}
+                      className="group flex items-center justify-between gap-4 rounded-2xl border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--text)] transition hover:border-white/20"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{report.title}</p>
+                        <p className="mt-1 truncate text-xs text-[var(--muted)]">
+                          {formatStudentName(report.students)}
+                          {" - "}
+                          {formatDate(
+                            report.report_date ?? report.created_at,
+                            locale,
+                            timezone
+                          )}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-xs text-[var(--muted)] transition group-hover:text-[var(--text)]">
+                        Ouvrir -&gt;
+                      </span>
+                    </Link>
+                  ))
+                )}
+              </div>
+              </section>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <section className="panel rounded-2xl p-6">
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                  Rappels
+                </p>
+                <h3 className="mt-2 text-lg font-semibold text-[var(--text)]">
+                  Prochaine action
+                </h3>
+                <p className="mt-2 text-xs text-[var(--muted)]">
+                  {pendingInvitesCount !== null
+                    ? `${pendingInvitesCount} invitation${
+                        pendingInvitesCount > 1 ? "s" : ""
+                      } en attente`
+                    : "Conseils bases sur ton activite"}
+                </p>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {reminders.map((reminder) => (
+                  <div
+                    key={reminder.title}
+                    className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                  >
+                    <p className="text-sm font-semibold text-[var(--text)]">
+                      {reminder.title}
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--muted)]">
+                      {reminder.description}
+                    </p>
+                    <Link
+                      href={reminder.href}
+                      className={`mt-3 inline-flex rounded-full px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
+                        reminder.tone === "primary"
+                          ? "bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 text-zinc-900 hover:opacity-90"
+                          : "border border-white/10 bg-white/10 text-[var(--text)] hover:bg-white/20"
+                      }`}
+                    >
+                      {reminder.cta}
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="panel rounded-2xl p-6">
+              <h3 className="text-lg font-semibold text-[var(--text)]">Acces rapides</h3>
+              <div className="mt-4 space-y-3 text-sm text-[var(--muted)]">
+                <Link
+                  href="/app/coach/eleves"
+                  className="block rounded-2xl border border-white/5 bg-white/5 px-4 py-3 transition hover:border-white/20"
+                >
+                  Gerer les eleves
+                </Link>
+                <Link
+                  href="/app/coach/tests"
+                  className="block rounded-2xl border border-white/5 bg-white/5 px-4 py-3 transition hover:border-white/20"
+                >
+                  Tests normalises
+                </Link>
+                <Link
+                  href="/app/coach/rapports/nouveau"
+                  className="block rounded-2xl border border-white/5 bg-white/5 px-4 py-3 transition hover:border-white/20"
+                >
+                  Creer un rapport
+                </Link>
+                <Link
+                  href="/app/coach/rapports"
+                  className="block rounded-2xl border border-white/5 bg-white/5 px-4 py-3 transition hover:border-white/20"
+                >
+                  Voir tous les rapports
+                </Link>
+              </div>
+            </section>
           </div>
         </section>
       </div>

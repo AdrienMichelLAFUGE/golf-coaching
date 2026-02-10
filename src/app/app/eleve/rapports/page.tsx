@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../_components/role-guard";
 import { useProfile } from "../../_components/profile-context";
+import PageHeader from "../../_components/page-header";
 
 type Report = {
   id: string;
@@ -97,17 +98,15 @@ export default function StudentReportsPage() {
       }
     >
       <div className="space-y-6">
-        <section className="panel rounded-2xl p-6">
-          <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-            Rapports
-          </p>
-          <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
-            Historique complet
-          </h2>
-          <p className="mt-2 text-sm text-[var(--muted)]">
-            Acces a tous tes rapports et recommandations.
-          </p>
-        </section>
+        <PageHeader
+          overline={
+            <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+              Rapports
+            </p>
+          }
+          title="Historique complet"
+          subtitle="Acces a tous tes rapports et recommandations."
+        />
 
         <section className="panel rounded-2xl p-6">
           {loading ? (

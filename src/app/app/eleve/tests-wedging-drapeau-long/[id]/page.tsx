@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../../_components/role-guard";
+import PageHeader from "../../../_components/page-header";
 import PelzDiagramModal from "../../../_components/pelz-diagram-modal";
 import TestResultModal from "../../../_components/test-result-modal";
 import {
@@ -302,46 +303,48 @@ export default function StudentWedgingDrapeauLongPage() {
         </section>
       ) : assignment ? (
         <div className="space-y-6">
-          <section className="panel rounded-2xl p-6">
-            <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-              Test normalise
-            </p>
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-2xl font-semibold text-[var(--text)]">
-                  {WEDGING_DRAPEAU_LONG_TEST.title}
-                </h2>
-                <p className="mt-2 text-sm text-[var(--muted)]">
-                  {WEDGING_DRAPEAU_LONG_TEST.description}
-                </p>
-                <p className="mt-2 text-sm text-[var(--muted)]">
+          <PageHeader
+            overline={
+              <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                Test normalise
+              </p>
+            }
+            title={WEDGING_DRAPEAU_LONG_TEST.title}
+            subtitle={
+              <>
+                <p>{WEDGING_DRAPEAU_LONG_TEST.description}</p>
+                <p>
                   Pris le {formatDate(assignment.started_at ?? assignment.assigned_at)}.
                 </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
+              </>
+            }
+            meta={
+              assignment.status === "finalized" ? (
+                <span className="inline-flex rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-emerald-200">
+                  Finalise
+                </span>
+              ) : null
+            }
+            actions={
+              <>
                 <button
                   type="button"
                   onClick={() => router.push("/app/eleve/tests")}
-                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
                 >
                   Retour
                 </button>
                 <button
                   type="button"
                   onClick={() => setDiagramOpen(true)}
-                  className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[0.6rem] font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
+                  className="rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
                   aria-label="Ouvrir schema Wedging drapeau long"
                 >
                   Schema
                 </button>
-                {assignment.status === "finalized" ? (
-                  <span className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-emerald-200">
-                    Finalise
-                  </span>
-                ) : null}
-              </div>
-            </div>
-          </section>
+              </>
+            }
+          />
 
           <section className="panel-soft rounded-2xl p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">

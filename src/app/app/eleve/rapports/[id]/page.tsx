@@ -7,6 +7,8 @@ import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../../_components/role-guard";
 import { useProfile } from "../../../_components/profile-context";
+import PageHeader from "../../../_components/page-header";
+import Link from "next/link";
 import RadarCharts, {
   type RadarConfig,
   type RadarColumn,
@@ -212,18 +214,27 @@ export default function ReportDetailPage() {
         </section>
       ) : (
         <div className="space-y-6">
-          <section className="panel rounded-2xl p-6">
-            <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-              Rapport detaille
-            </p>
-            <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
-              {report.title}
-            </h2>
-            <p className="mt-2 text-sm text-[var(--muted)]">
-              Date :{" "}
-              {formatDate(report.report_date ?? report.created_at, locale, timezone)}
-            </p>
-          </section>
+          <PageHeader
+            overline={
+              <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                Rapport detaille
+              </p>
+            }
+            title={report.title}
+            subtitle={`Date : ${formatDate(
+              report.report_date ?? report.created_at,
+              locale,
+              timezone
+            )}`}
+            actions={
+              <Link
+                href="/app/eleve/rapports"
+                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+              >
+                Retour
+              </Link>
+            }
+          />
 
           {sections.length === 0 ? (
             <section className="panel rounded-2xl p-6">

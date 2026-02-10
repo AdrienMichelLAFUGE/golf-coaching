@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../_components/role-guard";
 import { useProfile } from "../../_components/profile-context";
 import PageBack from "../../_components/page-back";
+import PageHeader from "../../_components/page-header";
 
 type ReportRow = {
   id: string;
@@ -259,27 +260,25 @@ export default function CoachReportsPage() {
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       <div className="space-y-6">
-        <section className="panel rounded-2xl p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <PageBack />
-                <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                  Rapports
-                </p>
-              </div>
-              <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
-                Historique coach
-              </h2>
-              <p className="mt-2 text-sm text-[var(--muted)]">
-                Consulte et supprime les rapports par eleve.
+        <PageHeader
+          overline={
+            <div className="flex items-center gap-2">
+              <PageBack />
+              <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                Rapports
               </p>
-              <div
-                className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
-              >
-                Vous travaillez dans {modeLabel}
-              </div>
             </div>
+          }
+          title="Historique coach"
+          subtitle="Consulte et supprime les rapports par eleve."
+          meta={
+            <div
+              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
+            >
+              Vous travaillez dans {modeLabel}
+            </div>
+          }
+          actions={
             <Link
               href="/app/coach/rapports/nouveau"
               className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90"
@@ -298,8 +297,8 @@ export default function CoachReportsPage() {
               </svg>
               Nouveau rapport
             </Link>
-          </div>
-        </section>
+          }
+        />
 
         <section className="panel rounded-2xl p-6">
           {loading ? (

@@ -10,6 +10,7 @@ import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../../_components/role-guard";
 import { useProfile } from "../../../_components/profile-context";
 import PageBack from "../../../_components/page-back";
+import PageHeader from "../../../_components/page-header";
 import RadarCharts, {
   type RadarConfig,
   type RadarColumn,
@@ -496,44 +497,45 @@ export default function CoachReportDetailPage() {
         </section>
       ) : (
         <div className="space-y-6">
-          <section className="panel rounded-2xl p-6">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <PageBack />
-                  <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                    Rapport
-                  </p>
-                </div>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <h2 className="text-2xl font-semibold text-[var(--text)]">
-                    {report.title}
-                  </h2>
-                  {!report.sent_at ? (
-                    <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                      Brouillon
-                    </span>
-                  ) : null}
-                  {(() => {
-                    const label = formatSourceLabel(
-                      report.org_id,
-                      getOrgName(report.organizations),
-                      organization?.id ?? null
-                    );
-                    if (!label) return null;
-                    return (
-                      <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                        {label}
-                      </span>
-                    );
-                  })()}
-                </div>
-                <p className="mt-2 text-sm text-[var(--muted)]">
-                  Date :{" "}
-                  {formatDate(report.report_date ?? report.created_at, locale, timezone)}
+          <PageHeader
+            overline={
+              <div className="flex items-center gap-2">
+                <PageBack />
+                <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                  Rapport
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+            }
+            title={report.title}
+            titleBadges={
+              <>
+                {!report.sent_at ? (
+                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                    Brouillon
+                  </span>
+                ) : null}
+                {(() => {
+                  const label = formatSourceLabel(
+                    report.org_id,
+                    getOrgName(report.organizations),
+                    organization?.id ?? null
+                  );
+                  if (!label) return null;
+                  return (
+                    <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                      {label}
+                    </span>
+                  );
+                })()}
+              </>
+            }
+            subtitle={
+              <>
+                Date : {formatDate(report.report_date ?? report.created_at, locale, timezone)}
+              </>
+            }
+            actions={
+              <>
                 <Link
                   href={`/app/coach/eleves/${report.student_id}`}
                   className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)]"
@@ -564,12 +566,14 @@ export default function CoachReportDetailPage() {
                 >
                   {deleting ? "Suppression..." : "Supprimer"}
                 </button>
-              </div>
-              {publishing ? (
+              </>
+            }
+            meta={
+              publishing ? (
                 <p className="text-xs text-[var(--muted)]">Reformatage IA en cours...</p>
-              ) : null}
-            </div>
-          </section>
+              ) : null
+            }
+          />
 
           <section className="panel rounded-2xl p-6">
             {sections.length === 0 ? (

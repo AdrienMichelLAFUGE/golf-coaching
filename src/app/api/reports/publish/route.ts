@@ -9,6 +9,7 @@ import {
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
 import { loadPromptSection } from "@/lib/promptLoader";
+import { generateReportKpisForPublishedReport } from "@/lib/ai/report-kpis";
 
 export const runtime = "nodejs";
 
@@ -286,5 +287,21 @@ export async function POST(req: Request) {
     );
   }
 
-  return Response.json({ sentAt, formattedSections: formattedCount });
+  let kpiStatus: "pending" | "ready" | "error" = "pending";
+  try {
+    const result = await generateReportKpisForPublishedReport({
+      admin,
+      orgId: profileData.org_id,
+      studentId: report.student_id,
+      reportId: report.id,
+      actorUserId: userId,
+      timeoutMs: 12_000,
+    });
+    kpiStatus = result.status;
+  } catch (error) {
+    console.error("[report_kpis] generation failed:", error);
+    kpiStatus = "error";
+  }
+
+  return Response.json({ sentAt, formattedSections: formattedCount, kpis: { status: kpiStatus } });
 }

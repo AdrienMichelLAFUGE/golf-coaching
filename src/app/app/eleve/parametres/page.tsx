@@ -9,6 +9,7 @@ import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../_components/role-guard";
 import { useProfile } from "../../_components/profile-context";
 import PageBack from "../../_components/page-back";
+import PageHeader from "../../_components/page-header";
 
 type StudentProfile = {
   id: string;
@@ -288,20 +289,16 @@ export default function StudentSettingsPage() {
         </section>
       ) : (
         <div className="space-y-6">
-          <section className="panel rounded-2xl p-6">
-            <div className="flex items-center gap-2">
-              <PageBack />
+          <PageHeader
+            overline={
               <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
                 Parametres eleve
               </p>
-            </div>
-            <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
-              Reglages du compte
-            </h2>
-            <p className="mt-2 text-sm text-[var(--muted)]">
-              Gere ta securite, ta photo et la suppression de ton compte.
-            </p>
-          </section>
+            }
+            leading={<PageBack />}
+            title="Reglages du compte"
+            subtitle="Gere ta securite, ta photo et la suppression de ton compte."
+          />
 
           <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">
             <div className="panel rounded-2xl p-6">
@@ -440,14 +437,16 @@ export default function StudentSettingsPage() {
           </section>
 
           <section className="panel rounded-2xl border border-rose-300/30 bg-rose-400/10 p-6">
-            <h3 className="text-lg font-semibold text-rose-100">Supprimer mon compte</h3>
-            <p className="mt-2 text-sm text-rose-100/80">
+            <h3 className="text-lg font-semibold text-[var(--text)]">
+              Supprimer mon compte
+            </h3>
+            <p className="mt-2 text-sm text-[var(--muted)]">
               Cette action est definitive. Ton compte sera anonymise immediatement. Tes
               contenus restent accessibles a ton coach.
             </p>
             <div className="mt-4 grid gap-4 md:grid-cols-[1fr_auto]">
               <div>
-                <label className="text-xs uppercase tracking-wide text-rose-100/80">
+                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
                   Mot de passe
                 </label>
                 <input
@@ -455,9 +454,9 @@ export default function StudentSettingsPage() {
                   value={deletePassword}
                   onChange={(event) => setDeletePassword(event.target.value)}
                   placeholder="********"
-                  className="mt-2 w-full rounded-xl border border-rose-200/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-50 placeholder:text-rose-100/50"
+                  className="mt-2 w-full rounded-xl border border-rose-200/30 bg-rose-500/10 px-3 py-2 text-sm text-[var(--text)] placeholder:text-[var(--muted)]"
                 />
-                <label className="mt-3 flex items-center gap-2 text-xs text-rose-100/80">
+                <label className="mt-3 flex items-center gap-2 text-xs text-[var(--muted)]">
                   <input
                     type="checkbox"
                     checked={deleteConfirm}
@@ -471,13 +470,13 @@ export default function StudentSettingsPage() {
                 type="button"
                 onClick={handleDeleteAccount}
                 disabled={deleting}
-                className="self-end rounded-full border border-rose-200/40 bg-rose-500/20 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-rose-50 transition hover:bg-rose-500/30 disabled:opacity-60"
+                className="self-end rounded-full border border-rose-200/40 bg-rose-500/20 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-rose-500/30 disabled:opacity-60"
               >
                 {deleting ? "Suppression..." : "Supprimer definitivement"}
               </button>
             </div>
             {deleteError ? (
-              <p className="mt-3 text-sm text-rose-100">{deleteError}</p>
+              <p className="mt-3 text-sm text-red-400">{deleteError}</p>
             ) : null}
           </section>
         </div>

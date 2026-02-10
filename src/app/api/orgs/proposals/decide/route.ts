@@ -7,6 +7,7 @@ import {
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { createOrgNotifications } from "@/lib/org-notifications";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
+import { generateReportKpisForPublishedReport } from "@/lib/ai/report-kpis";
 
 const decideSchema = z.object({
   proposalId: z.string().uuid(),
@@ -138,6 +139,19 @@ export async function POST(request: Request) {
     ];
 
     await admin.from("report_sections").insert(sectionsPayload);
+
+    try {
+      await generateReportKpisForPublishedReport({
+        admin,
+        orgId: proposal.org_id,
+        studentId: proposal.student_id,
+        reportId: report.id,
+        actorUserId: profile.id,
+        timeoutMs: 12_000,
+      });
+    } catch (error) {
+      console.error("[report_kpis] proposal generation failed:", error);
+    }
   }
 
   const { error: updateError } = await admin

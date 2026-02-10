@@ -19,6 +19,7 @@ import { useRotatingPhrase } from "@/lib/use-rotating-phrase";
 import RoleGuard from "../../../_components/role-guard";
 import { useProfile } from "../../../_components/profile-context";
 import PageBack from "../../../_components/page-back";
+import PageHeader from "../../../_components/page-header";
 import PremiumOfferModal from "../../../_components/premium-offer-modal";
 import RadarReviewModal from "../../../_components/radar-review-modal";
 import RadarCharts, {
@@ -4617,15 +4618,27 @@ export default function CoachReportBuilderPage() {
           }
         `}</style>
         <div className="space-y-6">
-          <section className="panel rounded-2xl p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+          <PageHeader
+            overline={
               <div className="flex items-center gap-2">
                 <PageBack />
                 <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
                   Rapport
                 </p>
               </div>
-              {!isEditing && activeBuilderStep !== "report" ? (
+            }
+            title={isEditing ? "Modifier le rapport" : "Nouveau rapport"}
+            subtitle={
+              isEditing
+                ? "Mets a jour les sections et le contenu du rapport."
+                : activeBuilderStep === "layout"
+                  ? "Choisis un layout de depart pour structurer le rapport."
+                  : activeBuilderStep === "sections"
+                    ? "Selectionne et organise les sections avant la redaction."
+                    : "Remplis le contenu et ajuste les sections au fil du rapport."
+            }
+            actions={
+              !isEditing && activeBuilderStep !== "report" ? (
                 <button
                   type="button"
                   onClick={handleSkipSetup}
@@ -4633,79 +4646,73 @@ export default function CoachReportBuilderPage() {
                 >
                   Passer
                 </button>
-              ) : null}
-            </div>
-            <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
-              {isEditing ? "Modifier le rapport" : "Nouveau rapport"}
-            </h2>
-            <p className="mt-2 text-sm text-[var(--muted)]">
-              {isEditing
-                ? "Mets a jour les sections et le contenu du rapport."
-                : activeBuilderStep === "layout"
-                  ? "Choisis un layout de depart pour structurer le rapport."
-                  : activeBuilderStep === "sections"
-                    ? "Selectionne et organise les sections avant la redaction."
-                    : "Remplis le contenu et ajuste les sections au fil du rapport."}
-            </p>
-            {localDraftPrompt && !isEditing ? (
-              <div className="relative mt-4 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--panel)] p-4 shadow-[var(--shadow-soft)]">
+              ) : null
+            }
+            meta={
+              <>
+                {localDraftPrompt && !isEditing ? (
+                  <div className="relative overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--panel)] p-4 shadow-[var(--shadow-soft)]">
+                    <div
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-0 bg-gradient-to-r from-amber-400/10 via-transparent to-sky-400/10"
+                    />
+                    <p className="relative text-sm font-semibold text-[var(--text)]">
+                      Un brouillon existe deja pour cet eleve.
+                    </p>
+                    <p className="relative mt-1 text-xs text-[var(--muted)]">
+                      {localDraftPrompt.savedAt
+                        ? `Derniere sauvegarde : ${new Date(localDraftPrompt.savedAt).toLocaleString()}`
+                        : "Derniere sauvegarde locale detectee."}
+                    </p>
+                    <div className="relative mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={handleResumeLocalDraft}
+                        className="rounded-full bg-gradient-to-r from-amber-200 via-amber-100 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90"
+                      >
+                        Reprendre
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleStartFreshReport}
+                        className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                      >
+                        Nouveau
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
                 <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 bg-gradient-to-r from-amber-400/10 via-transparent to-sky-400/10"
-                />
-                <p className="relative text-sm font-semibold text-[var(--text)]">
-                  Un brouillon existe deja pour cet eleve.
-                </p>
-                <p className="relative mt-1 text-xs text-[var(--muted)]">
-                  {localDraftPrompt.savedAt
-                    ? `Derniere sauvegarde : ${new Date(localDraftPrompt.savedAt).toLocaleString()}`
-                    : "Derniere sauvegarde locale detectee."}
-                </p>
-                <div className="relative mt-3 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={handleResumeLocalDraft}
-                    className="rounded-full bg-gradient-to-r from-amber-200 via-amber-100 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90"
-                  >
-                    Reprendre
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleStartFreshReport}
-                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
-                  >
-                    Nouveau
-                  </button>
-                </div>
-              </div>
-            ) : null}
-            <div
-              className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
-            >
-              Vous travaillez dans {modeLabel}
-            </div>
-            <div className="mt-4 flex flex-wrap items-center gap-2 text-[0.6rem] uppercase tracking-[0.25em] text-[var(--muted)]">
-              {[
-                { id: "layout", label: "Layout" },
-                { id: "sections", label: "Sections" },
-                { id: "report", label: "Rapport" },
-              ].map((step, index) => (
-                <span
-                  key={step.id}
-                  className={`rounded-full border px-3 py-1 ${
-                    activeBuilderStep === step.id
-                      ? "border-emerald-300/40 bg-emerald-400/10 text-emerald-100"
-                      : "border-white/10 bg-white/5"
-                  }`}
+                  className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
                 >
-                  {index + 1}. {step.label}
-                </span>
-              ))}
-            </div>
-            {loadingReport ? (
-              <p className="mt-3 text-sm text-[var(--muted)]">Chargement du rapport...</p>
-            ) : null}
-          </section>
+                  Vous travaillez dans {modeLabel}
+                </div>
+                <div className="mt-4 flex flex-wrap items-center gap-2 text-[0.6rem] uppercase tracking-[0.25em] text-[var(--muted)]">
+                  {[
+                    { id: "layout", label: "Layout" },
+                    { id: "sections", label: "Sections" },
+                    { id: "report", label: "Rapport" },
+                  ].map((step, index) => (
+                    <span
+                      key={step.id}
+                      className={`rounded-full border px-3 py-1 ${
+                        activeBuilderStep === step.id
+                          ? "border-emerald-300/40 bg-emerald-400/10 text-emerald-100"
+                          : "border-white/10 bg-white/5"
+                      }`}
+                    >
+                      {index + 1}. {step.label}
+                    </span>
+                  ))}
+                </div>
+                {loadingReport ? (
+                  <p className="mt-3 text-sm text-[var(--muted)]">
+                    Chargement du rapport...
+                  </p>
+                ) : null}
+              </>
+            }
+          />
 
           {activeBuilderStep === "layout" ? (
             <section className="panel-soft rounded-2xl p-6">

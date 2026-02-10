@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { useProfile } from "./_components/profile-context";
 import WorkspaceSelector from "./_components/workspace-selector";
+import PageHeader from "./_components/page-header";
 
 type WorkspaceOption = {
   id: string;
@@ -125,6 +126,10 @@ export default function AppPage() {
 
   return (
     <div className="space-y-6">
+      <PageHeader
+        title="Workspaces"
+        subtitle="Selectionne ton espace de travail."
+      />
       <WorkspaceSelector />
       <section className="grid gap-6 md:grid-cols-2">
         <div className="panel rounded-2xl p-6" data-testid="workspace-personal-panel">

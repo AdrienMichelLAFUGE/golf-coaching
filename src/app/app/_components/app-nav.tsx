@@ -1,10 +1,14 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useProfile } from "./profile-context";
 import { isAdminEmail } from "@/lib/admin";
+import { supabase } from "@/lib/supabase/client";
+import { useThemePreference } from "./use-theme-preference";
 
 type NavItem = {
   label: string;
@@ -24,6 +28,8 @@ type AppNavProps = {
 
 export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNavProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { theme, toggleTheme } = useThemePreference();
   const { profile, loading, userEmail, organization, isWorkspaceAdmin } = useProfile();
   const isAdmin = isAdminEmail(userEmail);
   const workspaceType = organization?.workspace_type ?? "personal";
@@ -53,17 +59,14 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
       });
     } else if (workspaceType === "org") {
       sections.push({
-        title: "Workspaces",
-        items: [{ label: "Workspaces", href: "/app" }],
-      });
-      sections.push({
         title: "Organisation",
         items: [
-          { label: "Eleves (org)", href: "/app/coach/eleves" },
-          { label: "Tests (org)", href: "/app/coach/tests" },
+          { label: "Elèves", href: "/app/coach/eleves" },
+          { label: "Tests", href: "/app/coach/tests" },
           { label: "Propositions", href: "/app/org/proposals" },
           { label: "Groupes / ecole", href: "/app/org" },
-          { label: "Parametres org", href: "/app/coach/parametres" },
+          { label: "Espaces de travail", href: "/app" },
+          { label: "Paramètres org", href: "/app/coach/parametres" },
           ...(isWorkspaceAdmin
             ? [
                 { label: "Membres / Invitations", href: "/app/org/members" },
@@ -75,17 +78,14 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
       });
     } else {
       sections.push({
-        title: "Workspaces",
-        items: [{ label: "Workspaces", href: "/app" }],
-      });
-      sections.push({
-        title: "Coach",
+        title: "Menu",
         items: [
           { label: "Dashboard", href: "/app/coach" },
-          { label: "Eleves", href: "/app/coach/eleves" },
+          { label: "Elèves", href: "/app/coach/eleves" },
           { label: "Tests", href: "/app/coach/tests" },
           { label: "Rapports", href: "/app/coach/rapports" },
-          { label: "Parametres", href: "/app/coach/parametres" },
+          { label: "Espaces de travail", href: "/app" },
+          { label: "Paramètres", href: "/app/coach/parametres" },
         ],
       });
     }
@@ -93,7 +93,7 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
 
   if (!loading && isAdmin) {
     sections.push({
-      title: "Admin",
+      title: "Backoffice",
       items: [
         { label: "Dashboard", href: "/app/admin" },
         { label: "Tarifs", href: "/app/admin/pricing" },
@@ -119,6 +119,18 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
   const showReportSectionsToggle = Boolean(
     pathname?.startsWith("/app/coach/rapports/nouveau")
   );
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem("gc.rememberMe");
+    }
+    router.replace("/");
+  };
+
+  const settingsHref = profile?.role === "student" ? "/app/eleve/parametres" : "/app/coach/parametres";
+  const brandIconUrl = "/branding/logo.png";
+  const brandWordmarkUrl = "/branding/wordmark.png";
 
   const iconForHref = (href: string) => {
     const sharedProps = {
@@ -291,66 +303,51 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
 
   return (
     <aside
-      className={`panel-soft w-full rounded-2xl transition-[width,padding] duration-200 ${
-        isCollapsed ? "px-2 py-4 lg:w-16" : "px-4 py-5 lg:w-60"
+      className={`flex w-auto flex-col rounded-3xl bg-[var(--app-surface)] transition-[width,padding] duration-200 ${
+        isCollapsed ? "py-4 lg:w-16" : " py-4 lg:w-60"
       }`}
     >
-      <div
-        className={`flex items-center gap-2 ${
-          isCollapsed ? "justify-center" : "justify-between"
-        }`}
-      >
-        {!isCollapsed ? (
-          <p className="text-[0.65rem] uppercase tracking-[0.25em] text-[var(--muted)]">
-            Navigation
-          </p>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => {
-            if (onCollapse) {
-              onCollapse();
-              return;
-            }
-            setCollapsed((prev) => !prev);
-          }}
-          className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
-          aria-label={
-            onCollapse
-              ? "Masquer la navigation"
-              : isCollapsed
-                ? "Etendre le menu"
-                : "Reduire le menu"
-          }
+      <div className={`flex items-center justify-between gap-2 ${isCollapsed ? "px-1" : ""}`}>
+        <Link
+          href="/app"
+          onClick={onNavigate}
+          className={`group flex min-w-0 items-center gap-2 rounded-2xl border border-transparent py-2 transition hover:border-white/10 hover:bg-white/5 ${
+            isCollapsed ? "px-1 justify-center" : "px-2"
+          }`}
+          aria-label="Aller au dashboard"
+          title="Dashboard"
         >
-          <svg
-            viewBox="0 0 24 24"
-            className="h-3.5 w-3.5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d={isCollapsed ? "M15 18l-6-6 6-6" : "M9 18l6-6-6-6"} />
-          </svg>
-        </button>
+          <img
+            src={brandIconUrl}
+            alt="Logo SwingFlow"
+            className="h-9 w-9 object-contain"
+          />
+          {!isCollapsed ? (
+            <img
+              src={brandWordmarkUrl}
+              alt="SwingFlow"
+              className="h-7 w-auto max-w-[160px] object-contain"
+            />
+          ) : null}
+        </Link>
       </div>
-      <nav className="mt-4 space-y-6 text-sm">
+
+      <div className="mt-4 flex min-h-0 flex-1 flex-col">
+        <nav className="min-h-0 flex-1 space-y-6 overflow-auto pr-1 text-sm">
         {loading ? (
           <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-            Chargement du profil...
+            Chargement...
           </p>
         ) : null}
         {sections.map((section) => (
           <div key={section.title} className="space-y-3">
             {!isCollapsed ? (
-              <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+              <p className="text-xs font-semibold px-5 uppercase tracking-[0.2em] text-[var(--muted)]">
                 {section.title}
               </p>
             ) : null}
             <div
-              className={`space-y-2 ${isCollapsed ? "" : "border-l border-white/10 pl-3"}`}
+              className={`space-y-2 ${isCollapsed ? "" : " border-white/10"}`}
             >
               {section.items.map((item) => {
                 const active = isActive(item.href);
@@ -361,14 +358,14 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
                     title={item.label}
                     aria-label={item.label}
                     onClick={onNavigate}
-                    className={`group relative flex w-full items-center gap-3 transition ${
+                    className={`group relative flex w-full items-center gap-3 rounded-xl px-3 py-2 transition ${
                       isCollapsed
-                        ? `justify-center rounded-xl border px-2 py-3 ${
+                        ? `justify-center px-2 py-3 ${
                             active
-                              ? "border-white/30 bg-white/10 text-[var(--text)] shadow-[0_12px_25px_rgba(0,0,0,0.35)]"
-                              : "border-white/5 bg-white/5 text-[var(--muted)] hover:border-white/20 hover:bg-white/10 hover:text-[var(--text)]"
+                              ? "text-[var(--text)]"
+                              : "text-[var(--muted)] hover:text-[var(--text)]"
                           }`
-                        : `justify-between px-2 py-2 ${
+                        : `justify-between ${
                             active
                               ? "text-[var(--text)]"
                               : "text-[var(--muted)] hover:text-[var(--text)]"
@@ -376,44 +373,28 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
                     }`}
                   >
                     {active ? (
-                      <span className="absolute left-0 top-1/2 h-6 w-0.5 -translate-y-1/2 rounded-full bg-emerald-300/70" />
+                      <span className="absolute left-0 top-1/2 h-12 w-3 -translate-y-1/2 -translate-x-1.25 rounded-full bg-[var(--accent)]" />
                     ) : null}
                     <span className="flex min-w-0 flex-1 items-center gap-3">
                       <span
-                        className={`flex h-8 w-8 items-center justify-center text-[var(--muted)] transition ${
+                        className={`flex h-8 w-8 items-center justify-center transition ${
                           isCollapsed
-                            ? "rounded-lg border border-transparent bg-transparent group-hover:text-[var(--text)]"
+                            ? active
+                              ? "text-[var(--accent)]"
+                              : "text-[var(--muted)] group-hover:text-[var(--text)]"
                             : active
-                              ? "text-[var(--text)]"
-                              : "group-hover:text-[var(--text)]"
+                              ? "text-[var(--accent)]"
+                              : "text-[var(--muted)] group-hover:text-[var(--text)]"
                         }`}
                       >
                         {iconForHref(item.href)}
                       </span>
                       {!isCollapsed ? (
-                        <span className="whitespace-nowrap">{item.label}</span>
+                        <span className={`whitespace-nowrap ${active ? "font-medium" : ""}`}>
+                          {item.label}
+                        </span>
                       ) : null}
                     </span>
-                    {!isCollapsed ? (
-                      <span
-                        className={`ml-auto flex h-5 w-5 items-center justify-center text-[var(--muted)] transition ${
-                          active ? "text-[var(--text)]" : "group-hover:text-[var(--text)]"
-                        }`}
-                        aria-hidden="true"
-                      >
-                        <svg
-                          viewBox="0 0 24 24"
-                          className="h-3.5 w-3.5"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M9 6l6 6-6 6" />
-                        </svg>
-                      </span>
-                    ) : null}
                   </Link>
                 );
               })}
@@ -491,7 +472,203 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
             </div>
           </div>
         ) : null}
-      </nav>
+        </nav>
+
+        <div className="mt-4 pt-4">
+          {!isCollapsed ? (
+            <p className="text-xs pl-5 font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+              General
+            </p>
+          ) : null}
+          <div className={`mt-3 space-y-2 ${isCollapsed ? "" : "pl-1"}`}>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              title="Theme"
+              aria-label="Theme"
+              className={`group relative flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition ${
+                isCollapsed
+                  ? "justify-center text-[var(--muted)] hover:bg-white/50 hover:text-[var(--text)]"
+                  : "justify-between text-[var(--muted)] hover:bg-white/50 hover:text-[var(--text)]"
+              }`}
+            >
+              <span className="flex min-w-0 flex-1 items-center gap-3">
+                <span className="flex h-8 w-8 items-center justify-center text-[var(--muted)] transition group-hover:text-[var(--text)]">
+                  {theme === "dark" ? (
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z" />
+                    </svg>
+                  ) : (
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <circle cx="12" cy="12" r="4" />
+                      <path d="M12 2v2" />
+                      <path d="M12 20v2" />
+                      <path d="M4.93 4.93l1.41 1.41" />
+                      <path d="M17.66 17.66l1.41 1.41" />
+                      <path d="M2 12h2" />
+                      <path d="M20 12h2" />
+                      <path d="M6.34 17.66l-1.41 1.41" />
+                      <path d="M19.07 4.93l-1.41 1.41" />
+                    </svg>
+                  )}
+                </span>
+                {!isCollapsed ? <span className="whitespace-nowrap">Theme</span> : null}
+              </span>
+              {!isCollapsed ? (
+                <span className="text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                  {theme === "dark" ? "Clair" : "Sombre"}
+                </span>
+              ) : null}
+            </button>
+
+            <Link
+              href={settingsHref}
+              title="Parametres"
+              aria-label="Parametres"
+              onClick={onNavigate}
+              className={`group relative flex w-full items-center gap-3 rounded-xl px-3 py-2 transition ${
+                isCollapsed
+                  ? "justify-center text-[var(--muted)] hover:text-[var(--text)]"
+                  : "justify-between text-[var(--muted)] hover:text-[var(--text)]"
+              }`}
+            >
+              <span className="flex min-w-0 flex-1 items-center gap-3">
+                <span
+                  className={`flex h-8 w-8 items-center justify-center text-[var(--muted)] transition ${
+                    isCollapsed ? "group-hover:text-[var(--text)]" : "group-hover:text-[var(--text)]"
+                  }`}
+                >
+                  {iconForHref(settingsHref)}
+                </span>
+                {!isCollapsed ? <span className="whitespace-nowrap">Parametres</span> : null}
+              </span>
+            </Link>
+
+            <a
+              href="mailto:contact@adrienlafuge.com?subject=Support%20SwingFlow"
+              title="Aide"
+              aria-label="Aide"
+              className={`group relative flex w-full items-center gap-3 rounded-xl px-3 py-2 transition ${
+                isCollapsed
+                  ? "justify-center text-[var(--muted)] hover:text-[var(--text)]"
+                  : "justify-between text-[var(--muted)] hover:text-[var(--text)]"
+              }`}
+            >
+              <span className="flex min-w-0 flex-1 items-center gap-3">
+                <span className="flex h-8 w-8 items-center justify-center text-[var(--muted)] transition group-hover:text-[var(--text)]">
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
+                    <path d="M8 9h8" />
+                    <path d="M8 13h6" />
+                  </svg>
+                </span>
+                {!isCollapsed ? <span className="whitespace-nowrap">Aide</span> : null}
+              </span>
+            </a>
+
+            <button
+              type="button"
+              onClick={() => void handleSignOut()}
+              title="Se deconnecter"
+              aria-label="Se deconnecter"
+              className={`group relative flex w-full items-center gap-3 rounded-xl px-3 py-2 transition ${
+                isCollapsed
+                  ? "justify-center text-[var(--muted)] hover:text-[var(--text)]"
+                  : "justify-between text-[var(--muted)] hover:text-[var(--text)]"
+              }`}
+            >
+              <span className="flex min-w-0 flex-1 items-center gap-3">
+                <span className="flex h-8 w-8 items-center justify-center text-[var(--muted)] transition group-hover:text-[var(--text)]">
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M10 17l5-5-5-5" />
+                    <path d="M15 12H3" />
+                    <path d="M21 3v18" />
+                  </svg>
+                </span>
+                {!isCollapsed ? <span className="whitespace-nowrap">Se deconnecter</span> : null}
+              </span>
+            </button>
+
+            {!forceExpanded ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (onCollapse) {
+                    onCollapse();
+                    return;
+                  }
+                  setCollapsed((prev) => !prev);
+                }}
+                title={isCollapsed ? "Etendre la navigation" : "Reduire la navigation"}
+                aria-label={isCollapsed ? "Etendre la navigation" : "Reduire la navigation"}
+                className={`group relative flex w-full items-center gap-3 rounded-xl px-3 py-2 transition ${
+                  isCollapsed
+                    ? "justify-center text-[var(--muted)] hover:bg-white/50 hover:text-[var(--text)]"
+                    : "justify-between text-[var(--muted)] hover:bg-white/50 hover:text-[var(--text)]"
+                }`}
+              >
+                <span className="flex min-w-0 flex-1 items-center gap-3">
+                  <span className="flex h-8 w-8 items-center justify-center text-[var(--muted)] transition group-hover:text-[var(--text)]">
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d={isCollapsed ? "M15 18l-6-6 6-6" : "M9 18l6-6-6-6"} />
+                    </svg>
+                  </span>
+                  {!isCollapsed ? (
+                    <span className="whitespace-nowrap">
+                      {isCollapsed ? "Etendre" : "Reduire"}
+                    </span>
+                  ) : null}
+                </span>
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </div>
     </aside>
   );
 }

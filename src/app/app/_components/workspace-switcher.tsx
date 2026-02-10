@@ -212,7 +212,7 @@ export default function WorkspaceSwitcher() {
         aria-haspopup="menu"
         aria-expanded={open}
         data-testid="workspace-switcher-button"
-        className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs uppercase tracking-wide text-[var(--text)] transition hover:border-white/30"
+        className="flex items-center gap-2 rounded-full border border-white/10 bg-white/90 px-3 py-2 text-xs uppercase tracking-wide text-[var(--text)] transition hover:border-white/30"
       >
         <span
           className={`inline-flex items-center gap-2 rounded-full border px-2 py-1 ${modeClass}`}
@@ -239,7 +239,7 @@ export default function WorkspaceSwitcher() {
           role="menu"
           className="absolute right-0 z-50 mt-2 w-[260px] rounded-2xl border border-white/10 bg-[var(--bg-elevated)] p-2 text-xs shadow-[0_18px_40px_rgba(0,0,0,0.4)]"
         >
-          <p className="px-3 pb-2 text-[0.6rem] uppercase tracking-[0.25em] text-[var(--muted)]">
+          <p className="px-3 pb-2 text-[0.6rem] font-bold uppercase tracking-[0.25em] text-[var(--muted)]">
             Choisir un mode
           </p>
           <div className="space-y-2">

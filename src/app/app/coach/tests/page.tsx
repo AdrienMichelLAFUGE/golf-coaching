@@ -7,6 +7,7 @@ import { PLAN_ENTITLEMENTS } from "@/lib/plans";
 import RoleGuard from "../../_components/role-guard";
 import { useProfile } from "../../_components/profile-context";
 import PremiumOfferModal from "../../_components/premium-offer-modal";
+import PageHeader from "../../_components/page-header";
 import { isAdminEmail } from "@/lib/admin";
 import {
   PELZ_PUTTING_TEST,
@@ -577,22 +578,22 @@ export default function CoachTestsPage() {
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       <div className="space-y-6">
-        <section className="panel rounded-2xl p-6">
-          <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-            Tests normalises
-          </p>
-          <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
-            Bibliotheque de tests
-          </h2>
-          <p className="mt-2 text-sm text-[var(--muted)]">
-            Selectionne un test normalise et assigne-le a tes eleves.
-          </p>
-          <div
-            className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
-          >
-            Vous travaillez dans {modeLabel}
-          </div>
-        </section>
+        <PageHeader
+          overline={
+            <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+              Tests normalises
+            </p>
+          }
+          title="Bibliotheque de tests"
+          subtitle="Selectionne un test normalise et assigne-le a tes eleves."
+          meta={
+            <div
+              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
+            >
+              Vous travaillez dans {modeLabel}
+            </div>
+          }
+        />
 
         {loading ? (
           <section className="panel rounded-2xl p-6">

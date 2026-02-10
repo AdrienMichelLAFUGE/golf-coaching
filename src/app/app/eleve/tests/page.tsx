@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../_components/role-guard";
 import { useProfile } from "../../_components/profile-context";
+import PageHeader from "../../_components/page-header";
 import {
   PELZ_PUTTING_TEST,
   PELZ_PUTTING_SLUG,
@@ -94,17 +95,15 @@ export default function StudentTestsPage() {
         </section>
       ) : (
         <div className="space-y-6">
-          <section className="panel rounded-2xl p-6">
-            <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-              Tests
-            </p>
-            <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
-              Tests a remplir
-            </h2>
-            <p className="mt-2 text-sm text-[var(--muted)]">
-              Tes tests assigns par ton coach, a completer sur mobile.
-            </p>
-          </section>
+          <PageHeader
+            overline={
+              <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                Tests
+              </p>
+            }
+            title="Tests a remplir"
+            subtitle="Tes tests assigns par ton coach, a completer sur mobile."
+          />
 
           {tests.map((test) => {
             const items = assignmentsBySlug.get(test.slug) ?? [];

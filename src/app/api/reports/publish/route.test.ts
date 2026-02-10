@@ -4,6 +4,7 @@ import { POST } from "./route";
 jest.mock("server-only", () => ({}));
 
 const openAiCreate = jest.fn();
+const generateReportKpisForPublishedReport = jest.fn();
 
 jest.mock("openai", () => {
   return function OpenAI() {
@@ -14,6 +15,11 @@ jest.mock("openai", () => {
     };
   };
 });
+
+jest.mock("@/lib/ai/report-kpis", () => ({
+  generateReportKpisForPublishedReport: (...args: unknown[]) =>
+    generateReportKpisForPublishedReport(...args),
+}));
 
 jest.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClientFromRequest: jest.fn(),
@@ -91,6 +97,8 @@ describe("POST /api/reports/publish", () => {
 
   beforeEach(() => {
     openAiCreate.mockReset();
+    generateReportKpisForPublishedReport.mockReset();
+    generateReportKpisForPublishedReport.mockResolvedValue({ status: "ready" });
     serverMocks.createSupabaseServerClientFromRequest.mockReset();
     serverMocks.createSupabaseAdminClient.mockReset();
   });
@@ -241,7 +249,7 @@ describe("POST /api/reports/publish", () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.formattedSections).toBe(0);
-    expect(openAiCreate).not.toHaveBeenCalled();
+    expect(generateReportKpisForPublishedReport).toHaveBeenCalled();
   });
 
   it("blocks publish when org member is not premium", async () => {

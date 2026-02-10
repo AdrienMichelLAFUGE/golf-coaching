@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../_components/role-guard";
 import PageBack from "../../_components/page-back";
 import { useProfile } from "../../_components/profile-context";
+import PageHeader from "../../_components/page-header";
 
 type Student = {
   id: string;
@@ -557,29 +558,25 @@ export default function CoachStudentsPage() {
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       <div className="space-y-6">
-        <section className="panel rounded-2xl p-6">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <PageBack />
-                <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                  Eleves
-                </p>
-              </div>
-              <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
-                Annuaire eleves
-              </h2>
-              <p className="mt-2 text-sm text-[var(--muted)]">
-                Recherche rapide, suivi et historique des rapports.
+        <PageHeader
+          overline={
+            <div className="flex items-center gap-2">
+              <PageBack />
+              <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                Eleves
               </p>
-              <div
-                className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
-              >
-                Vous travaillez dans {modeLabel}
-              </div>
             </div>
-          </div>
-        </section>
+          }
+          title="Annuaire eleves"
+          subtitle="Recherche rapide, suivi et historique des rapports."
+          meta={
+            <div
+              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
+            >
+              Vous travaillez dans {modeLabel}
+            </div>
+          }
+        />
 
         <section className="panel-soft rounded-2xl p-5">
           <form

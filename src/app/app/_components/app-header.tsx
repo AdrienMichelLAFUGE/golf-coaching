@@ -2,11 +2,13 @@
 
 /* eslint-disable @next/next/no-img-element */
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { useProfile } from "./profile-context";
 import WorkspaceSwitcher from "./workspace-switcher";
+import { useThemePreference } from "./use-theme-preference";
 
 type AppHeaderProps = {
   onToggleNav?: () => void;
@@ -18,28 +20,16 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
   const [email, setEmail] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement | null>(null);
-  const [theme, setTheme] = useState<"dark" | "light">(() => {
-    if (typeof window === "undefined") return "dark";
-    const storedTheme = window.localStorage.getItem("gc.theme");
-    const prefersLight =
-      window.matchMedia?.("(prefers-color-scheme: light)").matches ?? false;
-    if (storedTheme === "light" || storedTheme === "dark") {
-      return storedTheme;
-    }
-    return prefersLight ? "light" : "dark";
-  });
-  const { profile, organization } = useProfile();
+  useThemePreference();
+  const { profile } = useProfile();
 
   const roleLabel = profile?.role === "student" ? "Eleve" : "Coach";
   const needsProfileName =
     !!profile && profile.role !== "student" && !(profile.full_name ?? "").trim();
   const avatarFallback = (profile?.full_name || email || "Coach").charAt(0).toUpperCase();
-  const logoFallback = (organization?.name || "SwingFlow").charAt(0).toUpperCase();
   const brandIconUrl = "/branding/logo.png";
   const brandWordmarkUrl = "/branding/wordmark.png";
-  const mobileIdentityUrl = profile?.avatar_url ?? organization?.logo_url ?? null;
-  const mobileIdentityAlt = profile?.avatar_url ? "Photo de profil" : "Logo";
-  const mobileIdentityFallback = profile?.avatar_url ? avatarFallback : logoFallback;
+  const displayName = (profile?.full_name ?? "").trim() || (email ?? "Compte");
 
   useEffect(() => {
     let active = true;
@@ -56,12 +46,6 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
       active = false;
     };
   }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem("gc.theme", theme);
-  }, [theme]);
 
   useEffect(() => {
     if (!mobileMenuOpen) return;
@@ -95,89 +79,123 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
     router.replace("/");
   };
 
-  const toggleTheme = () => {
-    setTheme((current) => (current === "dark" ? "light" : "dark"));
-  };
-
   return (
-    <header className="relative sticky top-0 z-40 -mx-4 flex w-[calc(100%+2rem)] items-center justify-between gap-3 rounded-none border border-white/5 bg-white/5 px-4 py-2 shadow-[0_18px_45px_rgba(0,0,0,0.35)] backdrop-blur min-[880px]:px-6 min-[880px]:py-4">
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="min-[880px]:hidden">
-          {mobileIdentityUrl ? (
-            <img
-              src={mobileIdentityUrl}
-              alt={mobileIdentityAlt}
-              className="h-10 w-10 rounded-xl border border-white/10 object-cover"
-            />
-          ) : (
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/10 text-xs text-[var(--muted)]">
-              {mobileIdentityFallback}
-            </div>
-          )}
-        </div>
-        <div className="min-[880px]:hidden">
-          <div className="flex items-center gap-2">
-            <img
-              src={brandIconUrl}
-              alt="Logo SwingFlow"
-              className="h-11 w-11 object-contain p-1 min-[460px]:hidden min-[530px]:block"
-            />
-            <img
-              src={brandWordmarkUrl}
-              alt="SwingFlow"
-              className="hidden h-9 w-auto max-w-[56vw] object-contain min-[460px]:block"
+    <header className="relative sticky top-4 z-40 flex w-full items-center gap-3 rounded-3xl bg-[var(--app-surface)] px-4 py-3 min-[880px]:top-6 min-[880px]:px-6 min-[880px]:py-4">
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        {onToggleNav ? (
+          <button
+            type="button"
+            onClick={onToggleNav}
+            aria-label={isNavOpen ? "Fermer la navigation" : "Ouvrir la navigation"}
+            aria-expanded={isNavOpen ?? false}
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-[var(--muted)] transition hover:bg-white hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50 min-[880px]:hidden"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              {isNavOpen ? (
+                <>
+                  <path d="M18 6L6 18" />
+                  <path d="M6 6l12 12" />
+                </>
+              ) : (
+                <>
+                  <path d="M3 6h18" />
+                  <path d="M3 12h18" />
+                  <path d="M3 18h18" />
+                </>
+              )}
+            </svg>
+          </button>
+        ) : null}
+
+        <Link href="/app" className="flex items-center gap-2 min-[880px]:hidden">
+          <img src={brandIconUrl} alt="Logo SwingFlow" className="h-10 w-10 object-contain" />
+          <img
+            src={brandWordmarkUrl}
+            alt="SwingFlow"
+            className="hidden h-8 w-auto max-w-[56vw] object-contain min-[460px]:block"
+          />
+        </Link>
+
+        <div className="hidden min-w-0 flex-1 min-[880px]:block">
+          <div className="relative w-[min(420px,45vw)]">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]">
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path d="M21 21l-4.3-4.3" />
+              </svg>
+            </span>
+            <input
+              type="search"
+              placeholder="Rechercher..."
+              aria-label="Rechercher"
+              className="w-full rounded-full border-white/30 bg-white/90 py-2 pl-9 pr-4 text-sm text-[var(--text)] placeholder:text-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
             />
           </div>
         </div>
-        <div className="hidden min-[880px]:block">
-          {organization?.logo_url ? (
-            <img
-              src={organization.logo_url}
-              alt="Logo"
-              className="h-11 w-11 rounded-xl border border-white/10 object-cover"
-            />
-          ) : (
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/10 text-xs text-[var(--muted)]">
-              {logoFallback}
-            </div>
-          )}
-        </div>
-        <div className="hidden min-w-0 min-[880px]:block">
-          <div className="flex items-center gap-3">
-            <img
-              src={brandIconUrl}
-              alt="Logo SwingFlow"
-              className="h-15 w-15 object-contain p-1"
-            />
-            <img
-              src={brandWordmarkUrl}
-              alt="SwingFlow"
-              className="h-10 w-auto object-contain"
-            />
-          </div>
-        </div>
-        {profile ? <div className="min-[880px]:hidden"></div> : null}
       </div>
-      <div className="flex items-center gap-2 pr-16 min-[880px]:gap-3 min-[880px]:pr-0">
+
+      <div className="flex items-center gap-2">
+        <div className="hidden items-center gap-2 min-[880px]:flex">
+          <button
+            type="button"
+            aria-label="Messages"
+            className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-[var(--muted)] transition hover:bg-white hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="h-6 w-6"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M4 4h16v14H5.2L4 19.2V4z" />
+              <path d="M6 8h12" />
+              <path d="M6 12h10" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            aria-label="Notifications"
+            className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-[var(--muted)] transition hover:bg-white hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="h-6 w-6"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
+              <path d="M13.7 21a2 2 0 01-3.4 0" />
+            </svg>
+          </button>
+        </div>
+
         <WorkspaceSwitcher />
-        <div className="hidden min-[880px]:block">
-          {profile?.avatar_url ? (
-            <img
-              src={profile.avatar_url}
-              alt="Photo de profil"
-              className="h-10 w-10 rounded-full border border-white/10 object-cover"
-            />
-          ) : (
-            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/10 text-xs text-[var(--muted)]">
-              {avatarFallback}
-            </div>
-          )}
-        </div>
-        <div className="hidden min-w-0 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs text-[var(--muted)] min-[1050px]:block">
-          <span className="block max-w-[180px] truncate">
-            {email ?? "Session active"}
-          </span>
-        </div>
+
         {needsProfileName ? (
           <button
             type="button"
@@ -187,70 +205,30 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
             Profil incomplet
           </button>
         ) : null}
-        {profile ? (
-          <div className="hidden items-center gap-2 min-[880px]:flex">
-            <div className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs text-[var(--muted)]">
-              {roleLabel}
-            </div>
-          </div>
-        ) : null}
+
         <div className="hidden min-[880px]:flex items-center gap-3">
-          <button
-            type="button"
-            onClick={toggleTheme}
-            role="switch"
-            aria-checked={theme === "dark"}
-            aria-label="Basculer le theme"
-            className="relative inline-flex h-9 w-16 items-center rounded-full border border-white/10 bg-white/10 px-1 transition hover:border-white/30"
-          >
-            <span
-              className={`absolute left-1 top-1 flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-[var(--bg-elevated)] text-[var(--text)] shadow-[0_8px_16px_rgba(0,0,0,0.25)] transition-transform ${
-                theme === "dark" ? "translate-x-0" : "translate-x-7"
-              }`}
-            >
-              {theme === "dark" ? (
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z" />
-                </svg>
-              ) : (
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <circle cx="12" cy="12" r="4" />
-                  <path d="M12 2v2" />
-                  <path d="M12 20v2" />
-                  <path d="M4.93 4.93l1.41 1.41" />
-                  <path d="M17.66 17.66l1.41 1.41" />
-                  <path d="M2 12h2" />
-                  <path d="M20 12h2" />
-                  <path d="M6.34 17.66l-1.41 1.41" />
-                  <path d="M19.07 4.93l-1.41 1.41" />
-                </svg>
-              )}
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={handleSignOut}
-            className="rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:border-white/30 hover:bg-white/20"
-          >
-            Se deconnecter
-          </button>
+          {profile?.avatar_url ? (
+            <img
+              src={profile.avatar_url}
+              alt="Photo de profil"
+              className="h-12 w-12 rounded-full border border-white/10 object-cover"
+            />
+          ) : (
+            <div className="flex h-12 w-12 items-center justify-center rounded-full border-white/10 bg-white/90 text-xs text-[var(--muted)]">
+              {avatarFallback}
+            </div>
+          )}
+          <div className="min-w-0 leading-tight">
+            <p className="max-w-[200px] truncate text-m py-1 font-semibold text-[var(--text)]">
+              {displayName}
+            </p>
+            <p className="max-w-[220px] truncate text-xs text-[var(--muted)]">
+              <span className="hidden min-[1050px]:inline">{email ?? roleLabel}</span>
+              <span className="min-[1050px]:hidden">{roleLabel}</span>
+            </p>
+          </div>
         </div>
+
         <div className="relative min-[880px]:hidden" ref={mobileMenuRef}>
           <button
             type="button"
@@ -275,23 +253,10 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
                 type="button"
                 role="menuitem"
                 onClick={() => {
-                  toggleTheme();
-                }}
-                className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs text-[var(--text)] transition hover:bg-white/5"
-              >
-                <span>Theme</span>
-                <span className="text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                  {theme === "dark" ? "Clair" : "Sombre"}
-                </span>
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
                   setMobileMenuOpen(false);
                   void handleSignOut();
                 }}
-                className="mt-1 flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs text-[var(--text)] transition hover:bg-white/5"
+                className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs text-[var(--text)] transition hover:bg-white/5"
               >
                 <span>Se deconnecter</span>
               </button>
@@ -299,36 +264,6 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
           ) : null}
         </div>
       </div>
-      <button
-        type="button"
-        onClick={onToggleNav}
-        aria-label={isNavOpen ? "Fermer la navigation" : "Ouvrir la navigation"}
-        aria-expanded={isNavOpen ?? false}
-        className="absolute right-4 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] min-[880px]:hidden"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          className="h-4 w-4"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          {isNavOpen ? (
-            <>
-              <path d="M18 6L6 18" />
-              <path d="M6 6l12 12" />
-            </>
-          ) : (
-            <>
-              <path d="M3 6h18" />
-              <path d="M3 12h18" />
-              <path d="M3 18h18" />
-            </>
-          )}
-        </svg>
-      </button>
     </header>
   );
 }
