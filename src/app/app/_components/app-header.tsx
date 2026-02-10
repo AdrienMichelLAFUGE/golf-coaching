@@ -153,7 +153,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
               type="search"
               placeholder="Rechercher..."
               aria-label="Rechercher"
-              className="w-full rounded-full border-white/20 bg-white/90 py-4 pl-9 pr-4 text-sm text-[var(--text)] placeholder:text-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
+              className="w-full rounded-full border-white/20 bg-white/90 py-3 pl-9 pr-4 text-sm text-[var(--text)] placeholder:text-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
             />
           </div>
         </div>

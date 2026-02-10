@@ -7,6 +7,9 @@ import RoleGuard from "../../_components/role-guard";
 import { useProfile } from "../../_components/profile-context";
 import PageHeader from "../../_components/page-header";
 import Badge from "../../_components/badge";
+import StudentCreateModal, {
+  StudentCreateButton,
+} from "../../_components/student-create-modal";
 
 type Student = {
   id: string;
@@ -20,49 +23,32 @@ type Student = {
   playing_hand: "right" | "left" | null;
 };
 
-type StudentForm = {
-  first_name: string;
-  last_name: string;
-  email: string;
-  playing_hand: "" | "right" | "left";
-};
-
-type OrgCoachOption = {
-  user_id: string;
-  role: "admin" | "coach";
-  status: "active" | "invited" | "disabled";
-  profiles?: { full_name: string | null } | null;
-};
+type StatusFilter = "all" | "active" | "invited" | "to_invite" | "shared";
+type TpiFilter = "all" | "active" | "inactive";
 
 export default function CoachStudentsPage() {
   const {
     userEmail,
     organization,
-    currentMembership,
     isWorkspacePremium,
     workspaceType,
-    profile,
-    loading: profileLoading,
   } = useProfile();
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
-  const [form, setForm] = useState<StudentForm>({
-    first_name: "",
-    last_name: "",
-    email: "",
-    playing_hand: "",
-  });
-  const [creating, setCreating] = useState(false);
-  const [orgId, setOrgId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [tpiFilter, setTpiFilter] = useState<TpiFilter>("all");
+  const [pageSize, setPageSize] = useState<25 | 50 | 100>(25);
+  const [page, setPage] = useState(1);
+  const [createOpen, setCreateOpen] = useState(false);
   const [invitingId, setInvitingId] = useState<string | null>(null);
   const [inviteMessage, setInviteMessage] = useState("");
   const [inviteError, setInviteError] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
-  const [editForm, setEditForm] = useState<StudentForm>({
+  const [editForm, setEditForm] = useState({
     first_name: "",
     last_name: "",
     email: "",
@@ -71,17 +57,9 @@ export default function CoachStudentsPage() {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
   const [sharedStudentIds, setSharedStudentIds] = useState<string[]>([]);
-  const [coachOptions, setCoachOptions] = useState<OrgCoachOption[]>([]);
-  const [coachOptionsLoading, setCoachOptionsLoading] = useState(false);
-  const [coachOptionsError, setCoachOptionsError] = useState("");
-  const [selectedCoachIds, setSelectedCoachIds] = useState<string[]>([]);
   const [tpiActiveById, setTpiActiveById] = useState<Record<string, boolean>>({});
-  const isOrgWorkspace =
-    organization?.workspace_type === "org" ||
-    currentMembership?.organization?.workspace_type === "org";
   const isOrgReadOnly = organization?.workspace_type === "org" && !isWorkspacePremium;
   const currentWorkspaceType = workspaceType ?? "personal";
-  const canAssignCoaches = currentWorkspaceType === "org" && isWorkspacePremium;
   const workspaceName = organization?.name ?? "Organisation";
   const modeLabel =
     currentWorkspaceType === "org"
@@ -97,54 +75,61 @@ export default function CoachStudentsPage() {
     window.dispatchEvent(new CustomEvent("gc:open-workspace-switcher"));
   };
 
-  const scrollToForm = () => {
-    if (typeof window === "undefined") return;
-    document.getElementById("student-create-form")?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
+  const sharedStudentSet = useMemo(() => new Set(sharedStudentIds), [sharedStudentIds]);
+
+  const formatStudentInitials = (student: Student) => {
+    const first = (student.first_name ?? "").trim().charAt(0).toUpperCase();
+    const last = (student.last_name ?? "").trim().charAt(0).toUpperCase();
+    return `${first}${last}`.trim() || "E";
   };
 
-  const sharedStudentSet = useMemo(() => new Set(sharedStudentIds), [sharedStudentIds]);
+  const getStudentAccessBadge = (student: Student) => {
+    if (student.activated_at) {
+      return { label: "Actif", tone: "emerald" } as const;
+    }
+    if (student.invited_at) {
+      return { label: "Invite", tone: "amber" } as const;
+    }
+    return { label: "A inviter", tone: "muted" } as const;
+  };
+
+  const getStudentTpiActive = (student: Student) =>
+    tpiActiveById[student.id] ?? Boolean(student.tpi_report_id);
 
   const filteredStudents = useMemo(() => {
     const search = query.trim().toLowerCase();
-    if (!search) return students;
-    return students.filter((student) => {
+    const searched = students.filter((student) => {
+      if (!search) return true;
       const name = `${student.first_name} ${student.last_name ?? ""}`.trim();
       return (
         name.toLowerCase().includes(search) ||
         (student.email ?? "").toLowerCase().includes(search)
       );
     });
-  }, [query, students]);
 
-  const loadProfile = useCallback(async () => {
-    const { data: userData, error: userError } = await supabase.auth.getUser();
-    const userId = userData.user?.id;
-    if (userError || !userId) {
-      setError("Session invalide.");
-      return;
-    }
+    const filteredByStatus = searched.filter((student) => {
+      if (statusFilter === "all") return true;
+      if (statusFilter === "shared") return sharedStudentSet.has(student.id);
+      if (statusFilter === "active") return Boolean(student.activated_at);
+      if (statusFilter === "invited") return Boolean(student.invited_at) && !student.activated_at;
+      if (statusFilter === "to_invite") return !student.invited_at && !student.activated_at;
+      return true;
+    });
 
-    const { data, error: profileError } = await supabase
-      .from("profiles")
-      .select("org_id")
-      .eq("id", userId)
-      .maybeSingle();
+    return filteredByStatus.filter((student) => {
+      const tpiActive = tpiActiveById[student.id] ?? Boolean(student.tpi_report_id);
+      if (tpiFilter === "all") return true;
+      if (tpiFilter === "active") return tpiActive;
+      if (tpiFilter === "inactive") return !tpiActive;
+      return true;
+    });
+  }, [query, students, statusFilter, tpiFilter, sharedStudentSet, tpiActiveById]);
 
-    if (profileError) {
-      setError(profileError.message);
-      return;
-    }
-
-    if (!data?.org_id) {
-      setError("Organisation introuvable.");
-      return;
-    }
-
-    setOrgId(data.org_id);
-  }, []);
+  const totalPages = Math.max(1, Math.ceil(filteredStudents.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const rangeStart = filteredStudents.length === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const rangeEnd = Math.min(filteredStudents.length, currentPage * pageSize);
+  const pagedStudents = filteredStudents.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const loadTpiStatus = useCallback(async (studentIds: string[]) => {
     if (!studentIds.length) {
@@ -198,14 +183,12 @@ export default function CoachStudentsPage() {
     let cancelled = false;
     Promise.resolve().then(async () => {
       if (cancelled) return;
-      await loadProfile();
-      if (cancelled) return;
       await loadStudents();
     });
     return () => {
       cancelled = true;
     };
-  }, [loadProfile, loadStudents]);
+  }, [loadStudents]);
 
   useEffect(() => {
     let cancelled = false;
@@ -238,55 +221,6 @@ export default function CoachStudentsPage() {
   }, [userEmail]);
 
   useEffect(() => {
-    if (!canAssignCoaches) return;
-
-    let cancelled = false;
-    const loadCoaches = async () => {
-      setCoachOptionsLoading(true);
-      setCoachOptionsError("");
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token;
-      if (!token) {
-        setCoachOptionsError("Session invalide.");
-        setCoachOptionsLoading(false);
-        return;
-      }
-      const response = await fetch("/api/orgs/coaches", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const payload = (await response.json()) as {
-        members?: OrgCoachOption[];
-        error?: string;
-      };
-      if (!response.ok) {
-        setCoachOptionsError(payload.error ?? "Chargement impossible.");
-        setCoachOptionsLoading(false);
-        return;
-      }
-      const options = (payload.members ?? []).map((entry) => {
-        const profiles = Array.isArray(entry.profiles)
-          ? (entry.profiles[0] ?? null)
-          : (entry.profiles ?? null);
-        return {
-          user_id: entry.user_id,
-          role: entry.role,
-          status: entry.status,
-          profiles,
-        } as OrgCoachOption;
-      });
-      if (!cancelled) {
-        setCoachOptions(options);
-      }
-      setCoachOptionsLoading(false);
-    };
-
-    loadCoaches();
-    return () => {
-      cancelled = true;
-    };
-  }, [canAssignCoaches]);
-
-  useEffect(() => {
     if (!menuOpenId) return;
     const handleClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
@@ -296,114 +230,6 @@ export default function CoachStudentsPage() {
     window.addEventListener("click", handleClick);
     return () => window.removeEventListener("click", handleClick);
   }, [menuOpenId]);
-
-  const handleCreateStudent = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setCreating(true);
-    setError("");
-
-    if (profileLoading) {
-      setError("Profil en cours de chargement. Reessaie dans un instant.");
-      setCreating(false);
-      return;
-    }
-
-    if (!profile) {
-      setError("Profil introuvable. Reconnecte-toi.");
-      setCreating(false);
-      return;
-    }
-
-    if (isOrgReadOnly) {
-      setError("Lecture seule: plan Free en organisation.");
-      setCreating(false);
-      return;
-    }
-
-    const firstName = form.first_name.trim();
-    const lastName = form.last_name.trim();
-    const email = form.email.trim();
-    const playingHand = form.playing_hand || null;
-
-    if (!firstName) {
-      setError("Le prenom est obligatoire.");
-      setCreating(false);
-      return;
-    }
-
-    if (isOrgWorkspace) {
-      const coachIds = canAssignCoaches
-        ? Array.from(
-            new Set(
-              [profile?.id, ...selectedCoachIds].filter(
-                (id): id is string => Boolean(id)
-              )
-            )
-          )
-        : [];
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token;
-      if (!token) {
-        setError("Session invalide.");
-        setCreating(false);
-        return;
-      }
-      const response = await fetch("/api/orgs/students", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          first_name: firstName,
-          last_name: lastName || null,
-          email: email || null,
-          playing_hand: playingHand || null,
-          ...(canAssignCoaches && coachIds.length ? { coach_ids: coachIds } : null),
-        }),
-      });
-      const payload = (await response.json()) as { error?: string };
-      if (!response.ok) {
-        setError(payload.error ?? "Creation impossible.");
-        setCreating(false);
-        return;
-      }
-    } else {
-      const personalOrgId =
-        orgId ??
-        profile.active_workspace_id ??
-        profile.org_id ??
-        organization?.id ??
-        null;
-      if (!personalOrgId) {
-        setError("Organisation introuvable.");
-        setCreating(false);
-        return;
-      }
-      const { error: insertError } = await supabase.from("students").insert([
-        {
-          org_id: personalOrgId,
-          first_name: firstName,
-          last_name: lastName || null,
-          email: email || null,
-          playing_hand: playingHand,
-        },
-      ]);
-
-      if (insertError) {
-        setError(insertError.message);
-        setCreating(false);
-        return;
-      }
-    }
-
-    setForm({ first_name: "", last_name: "", email: "", playing_hand: "" });
-    if (profile?.id) {
-      setSelectedCoachIds([profile.id]);
-    }
-    await loadStudents();
-    setCreating(false);
-  };
 
   const handleInviteStudent = async (student: Student) => {
     if (isOrgReadOnly) {
@@ -548,13 +374,6 @@ export default function CoachStudentsPage() {
     await loadStudents();
   };
 
-  const toggleCoachSelection = (coachId: string) => {
-    if (coachId === profile?.id) return;
-    setSelectedCoachIds((prev) =>
-      prev.includes(coachId) ? prev.filter((id) => id !== coachId) : [...prev, coachId]
-    );
-  };
-
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       <div className="space-y-6">
@@ -563,221 +382,184 @@ export default function CoachStudentsPage() {
           subtitle="Gerez vos élèves."
           meta={
             <Badge className={modeBadgeTone}>
-              <span className="min-w-0 break-words">Vous travaillez dans {modeLabel}</span>
+              <span className="min-w-0 break-words">{modeLabel}</span>
             </Badge>
           }
         />
 
-        <section className="panel-soft rounded-2xl p-5">
-          <form
-            id="student-create-form"
-            className="grid gap-4 md:grid-cols-[1fr_1fr_1fr_0.8fr_auto]"
-            onSubmit={handleCreateStudent}
-          >
-            <div>
-              <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                Prenom
-              </label>
-              <input
-                type="text"
-                value={form.first_name}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    first_name: event.target.value,
-                  }))
-                }
-                placeholder="Camille"
-                disabled={creating || isOrgReadOnly}
-                className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+        <section className="rounded-2xl">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+              <StudentCreateButton
+                onClick={() => setCreateOpen(true)}
+                disabled={isOrgReadOnly && currentWorkspaceType === "org"}
+                label="NEW"
+                className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               />
-            </div>
-            <div>
-              <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                Nom
-              </label>
-              <input
-                type="text"
-                value={form.last_name}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    last_name: event.target.value,
-                  }))
-                }
-                placeholder="Dupont"
-                disabled={creating || isOrgReadOnly}
-                className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
-              />
-            </div>
-            <div>
-              <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                Email
-              </label>
-              <input
-                type="email"
-                value={form.email}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, email: event.target.value }))
-                }
-                placeholder="camille@email.com"
-                disabled={creating || isOrgReadOnly}
-                className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
-              />
-            </div>
-            <div>
-              <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                Sens de jeu
-              </label>
-              <select
-                value={form.playing_hand}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    playing_hand: event.target.value as "" | "left" | "right",
-                  }))
-                }
-                disabled={creating || isOrgReadOnly}
-                className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
-              >
-                <option value="">Non precise</option>
-                <option value="right">Droitier</option>
-                <option value="left">Gaucher</option>
-              </select>
-            </div>
-            <button
-              type="submit"
-              disabled={creating || isOrgReadOnly}
-              className="self-end rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
-            >
-              {creating ? "Ajout..." : "Ajouter"}
-            </button>
-          </form>
-          {currentWorkspaceType === "org" ? (
-            <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Assignations coach
-                </p>
-                <span
-                  className={`rounded-full border px-2 py-1 text-[0.6rem] uppercase tracking-wide ${
-                    canAssignCoaches
-                      ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-200"
-                      : "border-amber-300/30 bg-amber-400/10 text-amber-200"
-                  }`}
-                >
-                  {canAssignCoaches ? "Actif" : "Plan requis"}
-                </span>
-              </div>
-              <p className="mt-2 text-xs text-[var(--muted)]">
-                Tu es toujours assigne automatiquement. Ajoute d autres coachs si besoin.
-              </p>
-              {!canAssignCoaches ? (
-                <p className="mt-3 text-sm text-amber-300">
-                  Plan Pro/Entreprise requis pour gerer les assignations.
-                </p>
-              ) : coachOptionsLoading ? (
-                <p className="mt-3 text-sm text-[var(--muted)]">
-                  Chargement des coachs...
-                </p>
-              ) : coachOptionsError ? (
-                <p className="mt-3 text-sm text-red-400">{coachOptionsError}</p>
-              ) : coachOptions.length === 0 ? (
-                <p className="mt-3 text-sm text-[var(--muted)]">
-                  Aucun coach actif disponible.
-                </p>
-              ) : (
-                <div className="mt-3 grid gap-2 md:grid-cols-2">
-                  {coachOptions.map((coach) => {
-                    const fullName = coach.profiles?.full_name?.trim();
-                    const isSelf = coach.user_id === profile?.id;
-                    const checked = selectedCoachIds.includes(coach.user_id) || isSelf;
-                    const label = fullName
-                      ? fullName
-                      : `Coach ${coach.user_id.slice(0, 6)}`;
-                    return (
-                      <label
-                        key={coach.user_id}
-                        className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs ${
-                          isSelf
-                            ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
-                            : "border-white/10 bg-white/5 text-[var(--muted)]"
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          disabled={isSelf || isOrgReadOnly}
-                          onChange={() => toggleCoachSelection(coach.user_id)}
-                          className="h-4 w-4 rounded border-white/10 bg-[var(--bg-elevated)]"
-                        />
-                        <span className="flex-1">
-                          <span className="text-[var(--text)]">{label}</span>
-                          <span className="ml-2 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                            {coach.role === "admin" ? "Admin" : "Coach"}
-                          </span>
-                        </span>
-                        {isSelf ? (
-                          <span className="text-[0.6rem] uppercase tracking-wide text-emerald-200">
-                            Toi
-                          </span>
-                        ) : null}
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          ) : null}
-          <p className="mt-3 text-xs text-[var(--muted)]">
-            Cet eleve sera cree dans :{" "}
-            <span className="text-[var(--text)]">{modeLabel}</span>
-          </p>
-          {isOrgReadOnly ? (
-            <p className="mt-3 text-sm text-amber-300">
-              Freemium: lecture seule en organisation.
-            </p>
-          ) : null}
-          {error ? <p className="mt-3 text-sm text-red-400">{error}</p> : null}
-          {inviteError ? (
-            <p className="mt-3 text-sm text-red-400">{inviteError}</p>
-          ) : null}
-          {inviteMessage ? (
-            <p className="mt-3 text-sm text-[var(--muted)]">{inviteMessage}</p>
-          ) : null}
-        </section>
 
-        <section className="panel-soft rounded-2xl p-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <input
-              type="text"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Rechercher un eleve"
-              className="w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-4 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500 md:max-w-sm"
-            />
-            <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
-              <span>{filteredStudents.length} eleves</span>
-              <span>-</span>
-              <span>Donnees en temps reel</span>
+              <div className="relative w-full sm:w-[min(420px,45vw)]">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]">
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-5 w-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="11" cy="11" r="7" />
+                    <path d="M21 21l-4.3-4.3" />
+                  </svg>
+                </span>
+                <input
+                  type="text"
+                  value={query}
+                  onChange={(event) => {
+                    setQuery(event.target.value);
+                    setPage(1);
+                  }}
+                  placeholder="Rechercher un eleve"
+                  className="w-full rounded-full border border-white/10 py-2.5 pl-10 pr-4 text-sm text-[var(--text)] placeholder:text-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/40"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={statusFilter}
+                  onChange={(event) => {
+                    setStatusFilter(event.target.value as StatusFilter);
+                    setPage(1);
+                  }}
+                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs text-[var(--text)]"
+                  aria-label="Filtre acces"
+                >
+                  <option value="all">Statut: Tous</option>
+                  <option value="active">Statut: Actifs</option>
+                  <option value="invited">Statut: Invites</option>
+                  <option value="to_invite">Statut: A inviter</option>
+                  <option value="shared">Statut: Partages</option>
+                </select>
+
+                <select
+                  value={tpiFilter}
+                  onChange={(event) => {
+                    setTpiFilter(event.target.value as TpiFilter);
+                    setPage(1);
+                  }}
+                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs text-[var(--text)]"
+                  aria-label="Filtre TPI"
+                >
+                  <option value="all">TPI: Tous</option>
+                  <option value="active">TPI: Actif</option>
+                  <option value="inactive">TPI: Inactif</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
+                <span>
+                  <span className="font-semibold text-[var(--text)]">
+                    {filteredStudents.length}
+                  </span>{" "}
+                  eleves
+                </span>
+                <span>-</span>
+                <span>Donnees en temps reel</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <select
+                  value={pageSize}
+                  onChange={(event) => {
+                    setPageSize(Number(event.target.value) as 25 | 50 | 100);
+                    setPage(1);
+                  }}
+                  className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-[var(--text)]"
+                  aria-label="Taille de page"
+                >
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+                <span className="text-xs text-[var(--muted)]">
+                  {rangeStart}-{rangeEnd} of {filteredStudents.length}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                    disabled={currentPage <= 1}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label="Page precedente"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M15 18l-6-6 6-6" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage >= totalPages}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label="Page suivante"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M9 18l6-6-6-6" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </section>
 
-        <section className="panel rounded-2xl p-6">
-          <div className="grid gap-3 text-sm text-[var(--muted)]">
-            <div className="hidden gap-3 uppercase tracking-wide text-[0.7rem] text-[var(--muted)] md:grid md:grid-cols-[1.5fr_1fr_0.9fr_0.9fr]">
-              <span>Eleve</span>
-              <span>Email</span>
-              <span>Acces</span>
-              <span>Features</span>
-            </div>
+        <section className="panel overflow-hidden rounded-2xl">
+          <div className="grid gap-3 px-6 py-1 text-sm text-[var(--muted)]">
+            {error ? <p className="text-sm text-red-400">{error}</p> : null}
+            {inviteError ? (
+              <p className="text-sm text-red-400">{inviteError}</p>
+            ) : null}
+            {inviteMessage ? (
+              <p className="text-sm text-[var(--muted)]">{inviteMessage}</p>
+            ) : null}
+          </div>
+
+          <div className="hidden border-b border-white/10 bg-white/[0.02] px-6 py-3 text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--muted)] md:grid md:grid-cols-[1fr_0.3fr_1fr_1.2fr_56px]">
+            <span>Nom</span>
+            <span>Acces</span>
+            <span>Features</span>
+            <span>Email</span>
+            <span className="text-right">Actions</span>
+          </div>
+
+          <div className="divide-y divide-white/10">
             {loading ? (
-              <div className="rounded-xl border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
+              <div className="px-6 py-6 text-sm text-[var(--muted)]">
                 Chargement des eleves...
               </div>
             ) : filteredStudents.length === 0 ? (
-              <div className="rounded-xl border-white/5 bg-white/5 px-4 py-4 text-sm">
+              <div className="px-6 py-8 text-sm">
                 <p className="text-[var(--text)]">
                   {currentWorkspaceType === "org"
                     ? "Aucun eleve dans cette organisation."
@@ -790,7 +572,7 @@ export default function CoachStudentsPage() {
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={scrollToForm}
+                    onClick={() => setCreateOpen(true)}
                     disabled={isOrgReadOnly && currentWorkspaceType === "org"}
                     className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20 disabled:opacity-60"
                   >
@@ -808,12 +590,12 @@ export default function CoachStudentsPage() {
                 </div>
               </div>
             ) : (
-              filteredStudents.map((student) => {
+              pagedStudents.map((student) => {
                 const inviteDisabled = Boolean(student.activated_at);
                 const isShared = sharedStudentSet.has(student.id);
                 const isReadOnlyAction = isShared || isOrgReadOnly;
-                const tpiActive =
-                  tpiActiveById[student.id] ?? Boolean(student.tpi_report_id);
+                const tpiActive = getStudentTpiActive(student);
+                const access = getStudentAccessBadge(student);
                 const inviteLabel = inviteDisabled
                   ? "Inviter"
                   : invitingId === student.id
@@ -822,54 +604,35 @@ export default function CoachStudentsPage() {
                 return (
                   <div
                     key={student.id}
-                    className="relative grid gap-3 rounded-xl border-white/5 bg-white/5 px-4 py-3 text-[var(--text)] md:grid-cols-[1.5fr_1fr_0.9fr_0.9fr]"
+                    className="relative grid gap-3 px-6 py-4 text-[var(--text)] transition hover:bg-white/5 md:grid-cols-[1fr_0.3fr_1fr_1.2fr_56px]"
                   >
-                    <div>
-                      <div className="flex items-center gap-3">
-                        <Link
-                          href={`/app/coach/eleves/${student.id}`}
-                          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
-                          aria-label="Voir le dashboard eleve"
-                          title="Voir le dashboard eleve"
-                        >
-                          <svg
-                            viewBox="0 0 24 24"
-                            className="h-4 w-4"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M3 12h18" />
-                            <path d="M15 6l6 6-6 6" />
-                          </svg>
-                        </Link>
-                        <p className="font-medium">
-                          {student.first_name} {student.last_name ?? ""}
-                        </p>
-                      </div>
+                    <div className="min-w-0">
+                      <Link
+                        href={`/app/coach/eleves/${student.id}`}
+                        className="group flex min-w-0 items-center gap-3"
+                      >
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-xs font-semibold text-[var(--muted)]">
+                          {formatStudentInitials(student)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-[var(--text)] transition group-hover:opacity-90">
+                            {student.first_name} {student.last_name ?? ""}
+                          </p>
+                          <p className="mt-0.5 truncate text-xs text-[var(--muted)]">
+                            #{student.id.slice(0, 8)}
+                          </p>
+                        </div>
+                      </Link>
                     </div>
-                    <span className="text-sm text-[var(--muted)]">
-                      {student.email || "-"}
-                    </span>
+
                     <div className="flex flex-col gap-2">
-                      {student.activated_at ? (
-                        <Badge tone="emerald" size="sm" className="self-start">
-                          Actif
-                        </Badge>
-                      ) : student.invited_at ? (
-                        <Badge tone="amber" size="sm" className="self-start">
-                          Invite
-                        </Badge>
-                      ) : (
-                        <Badge tone="muted" size="sm" className="self-start">
-                          A inviter
-                        </Badge>
-                      )}
+                      <Badge tone={access.tone} size="sm" className="self-start">
+                        {access.label}
+                      </Badge>
                     </div>
-                    <div className="flex items-start justify-between gap-3">
-                      {sharedStudentSet.has(student.id) ? (
+
+                    <div className="flex flex-wrap items-start gap-2">
+                      {isShared ? (
                         <Badge tone="sky" size="sm" className="self-start">
                           Partage
                         </Badge>
@@ -883,25 +646,31 @@ export default function CoachStudentsPage() {
                           TPI inactif
                         </Badge>
                       )}
+                      {student.playing_hand ? (
+                        <Badge tone="muted" size="sm" className="self-start">
+                          {student.playing_hand === "right" ? "Droitier" : "Gaucher"}
+                        </Badge>
+                      ) : null}
+                    </div>
+
+                    <div className="text-sm text-[var(--muted)]">
+                      {student.email || "-"}
+                    </div>
+
+                    <div className="flex items-start justify-end">
                       <div className="relative" data-student-menu>
                         <button
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
-                            setMenuOpenId((prev) =>
-                              prev === student.id ? null : student.id
-                            );
+                            setMenuOpenId((prev) => (prev === student.id ? null : student.id));
                           }}
-                          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                          className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
                           aria-label="Actions eleve"
                           aria-expanded={menuOpenId === student.id}
                           aria-haspopup="menu"
                         >
-                          <svg
-                            viewBox="0 0 24 24"
-                            className="h-4 w-4"
-                            fill="currentColor"
-                          >
+                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
                             <circle cx="12" cy="5" r="2" />
                             <circle cx="12" cy="12" r="2" />
                             <circle cx="12" cy="19" r="2" />
@@ -953,9 +722,7 @@ export default function CoachStudentsPage() {
                               role="menuitem"
                               onClick={() => handleMenuInvite(student)}
                               disabled={
-                                isReadOnlyAction ||
-                                inviteDisabled ||
-                                invitingId === student.id
+                                isReadOnlyAction || inviteDisabled || invitingId === student.id
                               }
                               className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide transition ${
                                 inviteDisabled || isReadOnlyAction
@@ -984,6 +751,12 @@ export default function CoachStudentsPage() {
             )}
           </div>
         </section>
+        {createOpen ? (
+          <StudentCreateModal
+            onClose={() => setCreateOpen(false)}
+            afterCreate={loadStudents}
+          />
+        ) : null}
         {editingStudent ? (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6">
             <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[var(--bg-elevated)] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)]">

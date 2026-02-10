@@ -8,6 +8,7 @@ import RoleGuard from "../_components/role-guard";
 import { useProfile } from "../_components/profile-context";
 import PageHeader from "../_components/page-header";
 import Badge from "../_components/badge";
+import StudentCreateModal from "../_components/student-create-modal";
 
 type ReportRow = {
   id: string;
@@ -129,7 +130,7 @@ function KpiCard({ label, value, hint, tone = "default", href }: KpiCardProps) {
 
       <div className="relative flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[0.65rem] uppercase tracking-[0.25em] text-[var(--muted)]">
+          <p className="text-[0.65rem] uppercase tracking-[0.25em] text-[var(--text)]">
             {label}
           </p>
           <p className="mt-4 text-4xl font-semibold tracking-tight text-[var(--text)]">
@@ -139,12 +140,12 @@ function KpiCard({ label, value, hint, tone = "default", href }: KpiCardProps) {
         </div>
         {href ? (
           <span
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition group-hover:text-[var(--text)]"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/40 text-[var(--muted)] transition group-hover:text-[var(--text)]"
             aria-hidden="true"
           >
             <svg
               viewBox="0 0 24 24"
-              className="h-4 w-4"
+              className="h-5 w-5"
               fill="none"
               stroke="currentColor"
               strokeWidth="2"
@@ -169,8 +170,10 @@ function KpiCard({ label, value, hint, tone = "default", href }: KpiCardProps) {
 }
 
 export default function CoachDashboardPage() {
-  const { organization, workspaceType } = useProfile();
+  const { organization } = useProfile();
   const [loading, setLoading] = useState(true);
+  const [createStudentOpen, setCreateStudentOpen] = useState(false);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   const [reports, setReports] = useState<ReportRow[]>([]);
   const [studentsPreview, setStudentsPreview] = useState<StudentPreviewRow[]>([]);
@@ -186,8 +189,6 @@ export default function CoachDashboardPage() {
 
   const locale = organization?.locale ?? "fr-FR";
   const timezone = organization?.timezone ?? "Europe/Paris";
-  const isOrgMode = workspaceType === "org";
-
   const modeLabel =
     (organization?.workspace_type ?? "personal") === "org"
       ? `Organisation : ${organization?.name ?? "Organisation"}`
@@ -197,14 +198,7 @@ export default function CoachDashboardPage() {
       ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
       : "border-sky-300/30 bg-sky-400/10 text-sky-100";
 
-  const openWorkspaceSwitcher = () => {
-    if (typeof window === "undefined") return;
-    window.dispatchEvent(new CustomEvent("gc:open-workspace-switcher"));
-  };
-
   useEffect(() => {
-    if (isOrgMode) return;
-
     let cancelled = false;
     const loadDashboard = async () => {
       setLoading(true);
@@ -325,7 +319,7 @@ export default function CoachDashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [isOrgMode, organization?.id, timezone]);
+  }, [organization?.id, timezone, refreshTick]);
 
   const reminders = useMemo<Reminder[]>(() => {
     const list: Reminder[] = [];
@@ -403,79 +397,12 @@ export default function CoachDashboardPage() {
     } as const;
   };
 
-  if (isOrgMode) {
-    return (
-      <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
-        <div className="space-y-6">
-          <PageHeader
-            overline={
-              <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                Dashboard coach
-              </p>
-            }
-            title="Dashboard perso"
-            subtitle="Cette page est disponible uniquement en mode Perso."
-          />
-
-          <section className="panel rounded-2xl p-6">
-            <Badge className={modeBadgeTone}>
-              <span className="min-w-0 break-words">Vous travaillez dans {modeLabel}</span>
-            </Badge>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={openWorkspaceSwitcher}
-                className="rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
-              >
-                Changer de mode
-              </button>
-            </div>
-          </section>
-        </div>
-      </RoleGuard>
-    );
-  }
-
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
-      <div className="space-y-6">
+      <div className="space-y-4">
         <PageHeader
           title="Dashboard"
           subtitle="Vos rapports, eleves et activite recente en un coup d oeil."
-          actions={
-            <>
-              <Link
-                href="/app/coach/rapports/nouveau"
-                className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M12 5v14" />
-                  <path d="M5 12h14" />
-                </svg>
-                Nouveau rapport
-              </Link>
-              <Link
-                href="/app/coach/eleves#student-create-form"
-                className="rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
-              >
-                Ajouter un eleve
-              </Link>
-              <Link
-                href="/app/coach/tests"
-                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
-              >
-                Tests
-              </Link>
-            </>
-          }
           meta={
             <Badge className={modeBadgeTone}>
               <span className="min-w-0 break-words">Vous travaillez dans {modeLabel}</span>
@@ -503,7 +430,7 @@ export default function CoachDashboardPage() {
             hint="A publier"
             href="/app/coach/rapports"
           />
-          <KpiCard
+          <KpiCard 
             label="Tests actifs"
             value={activeTestsCount !== null ? `${activeTestsCount}` : "-"}
             hint="Assignes ou en cours"
@@ -511,8 +438,8 @@ export default function CoachDashboardPage() {
           />
         </section>
 
-        <section className="grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
-          <div className="space-y-6">
+        <section className="grid items-stretch gap-4 lg:grid-cols-[1.35fr_0.65fr]">
+          <div className="flex h-full flex-col gap-4">
             <section className="panel rounded-2xl p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -548,14 +475,14 @@ export default function CoachDashboardPage() {
                         return (
                           <div key={bar.key} className="flex flex-1 flex-col items-center gap-2">
                             <div
-                              className="flex h-24 w-full items-end"
+                              className="flex h-24 w-15 items-end"
                               aria-label={`${bar.label}: ${bar.value} rapport${
                                 bar.value > 1 ? "s" : ""
                               }`}
                               title={`${bar.value} rapport${bar.value > 1 ? "s" : ""}`}
                             >
                               <div
-                                className={`w-full rounded-xl ${
+                                className={`w-full rounded-full ${
                                   isToday
                                     ? "bg-gradient-to-t from-emerald-300 via-emerald-200 to-sky-200"
                                     : "bg-[var(--border)] opacity-40"
@@ -590,31 +517,40 @@ export default function CoachDashboardPage() {
               </div>
             </section>
 
-            <div className="grid gap-6 lg:grid-cols-2">
-              <section className="panel rounded-2xl p-6">
+            <div className="h-full grid items-stretch gap-4 lg:grid-cols-2">
+              <section className="panel h-full rounded-2xl p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                    Collaboration
-                  </p>
-                  <h3 className="mt-2 text-lg font-semibold text-[var(--text)]">
-                    Annuaire élèves
+                  <h3 className=" text-2xl font-semibold text-[var(--text)]">
+                    Liste élèves
                   </h3>
-                  <p className="mt-2 text-xs text-[var(--muted)]">
-                    {studentsPreviewError
-                      ? studentsPreviewError
-                      : "Acces rapide aux eleves recents."}
-                  </p>
                 </div>
-                <Link
-                  href="/app/coach/eleves"
-                  className="rounded-full px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10"
+                <button
+                type="button"
+                onClick={() => setCreateStudentOpen(true)}
+                className="inline-flex items-center gap-2 rounded-full border-2 border-grey-500 px-4 py-2 text-xs tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+              ><svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                 >
-                  Voir annuaire
-                </Link>
+                  <path d="M12 5v14" />
+                  <path d="M5 12h14" />
+                </svg>
+                AJOUTER
+              </button>
               </div>
 
-              <div className="mt-4 space-y-3">
+              <div className="mt-6">
+                {studentsPreviewError ? (
+                  <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-red-300">
+                    {studentsPreviewError}
+                  </div>
+                ) : null}
                 {loading ? (
                   <div className="rounded-xl px-4 py-3 text-sm text-[var(--muted)]">
                     Chargement des eleves...
@@ -626,17 +562,18 @@ export default function CoachDashboardPage() {
                       Cree ton premier eleve pour demarrer le suivi.
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <Link
-                        href="/app/coach/eleves#student-create-form"
+                      <button
+                        type="button"
+                        onClick={() => setCreateStudentOpen(true)}
                         className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90"
                       >
                         Ajouter un eleve
-                      </Link>
+                      </button>
                       <Link
                         href="/app/coach/eleves"
                         className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
                       >
-                        Ouvrir l annuaire
+                        Ouvrir l&apos;annuaire
                       </Link>
                     </div>
                   </div>
@@ -678,25 +615,33 @@ export default function CoachDashboardPage() {
               </div>
               </section>
 
-              <section className="panel rounded-2xl p-6">
+              <section className="border border-pink-200 bg-white/90 h-full rounded-2xl p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                    Rapports
-                  </p>
-                <h3 className="mt-2 text-lg font-semibold text-[var(--text)]">
-                  Rapports recents
+                <h3 className=" text-2xl font-semibold text-[var(--text)]">
+                  Liste rapports
                 </h3>
                 </div>
                 <Link
-                  href="/app/coach/rapports"
-                  className="rounded-full px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10"
+                href="/app/coach/rapports/nouveau"
+                className="inline-flex items-center gap-2 rounded-full border-2 border-pink-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-pink-700 transition hover:opacity-90"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                 >
-                  Voir rapports
-                
-                </Link>
+                  <path d="M12 5v14" />
+                  <path d="M5 12h14" />
+                </svg>
+                rapport
+              </Link>
               </div>
-              <div className="mt-4 space-y-3">
+              <div className="mt-6">
                 {loading ? (
                   <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
                     Chargement des rapports...
@@ -724,8 +669,8 @@ export default function CoachDashboardPage() {
                           )}
                         </p>
                       </div>
-                      <span className="shrink-0 text-xs text-[var(--muted)] transition group-hover:text-[var(--text)]">
-                        Ouvrir -&gt;
+                      <span className="shrink-0 text-xs font-semibold text-[var(--muted)] transition group-hover:text-[var(--text)]">
+                        Ouvrir
                       </span>
                     </Link>
                   ))
@@ -735,13 +680,10 @@ export default function CoachDashboardPage() {
             </div>
           </div>
 
-          <div className="space-y-6">
+          <div className="flex h-full flex-col gap-4">
             <section className="panel rounded-2xl p-6">
               <div>
-                <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                  Rappels
-                </p>
-                <h3 className="mt-2 text-lg font-semibold text-[var(--text)]">
+                <h3 className="mt-2 text-2xl font-semibold text-[var(--text)]">
                   Prochaine action
                 </h3>
                 <p className="mt-2 text-xs text-[var(--muted)]">
@@ -757,7 +699,7 @@ export default function CoachDashboardPage() {
                 {reminders.map((reminder) => (
                   <div
                     key={reminder.title}
-                    className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                    className="rounded-2xl border-white/10 bg-white/5 p-4"
                   >
                     <p className="text-sm font-semibold text-[var(--text)]">
                       {reminder.title}
@@ -780,30 +722,30 @@ export default function CoachDashboardPage() {
               </div>
             </section>
 
-            <section className="panel rounded-2xl p-6">
-              <h3 className="text-lg font-semibold text-[var(--text)]">Acces rapides</h3>
+            <section className="panel mt-auto rounded-2xl p-6">
+              <h3 className="text-2xl font-semibold text-[var(--text)]">Acces rapides</h3>
               <div className="mt-4 space-y-3 text-sm text-[var(--muted)]">
                 <Link
                   href="/app/coach/eleves"
-                  className="block rounded-2xl border border-white/5 bg-white/5 px-4 py-3 transition hover:border-white/20"
+                  className="block rounded-2xl border-white/5 bg-white/5 px-4 py-3 transition hover:border-white/20"
                 >
                   Gerer les eleves
                 </Link>
                 <Link
                   href="/app/coach/tests"
-                  className="block rounded-2xl border border-white/5 bg-white/5 px-4 py-3 transition hover:border-white/20"
+                  className="block rounded-2xl border-white/5 bg-white/5 px-4 py-3 transition hover:border-white/20"
                 >
                   Tests normalises
                 </Link>
                 <Link
                   href="/app/coach/rapports/nouveau"
-                  className="block rounded-2xl border border-white/5 bg-white/5 px-4 py-3 transition hover:border-white/20"
+                  className="block rounded-2xl border-white/5 bg-white/5 px-4 py-3 transition hover:border-white/20"
                 >
                   Creer un rapport
                 </Link>
                 <Link
                   href="/app/coach/rapports"
-                  className="block rounded-2xl border border-white/5 bg-white/5 px-4 py-3 transition hover:border-white/20"
+                  className="block rounded-2xl border-white/5 bg-white/5 px-4 py-3 transition hover:border-white/20"
                 >
                   Voir tous les rapports
                 </Link>
@@ -811,6 +753,13 @@ export default function CoachDashboardPage() {
             </section>
           </div>
         </section>
+
+        {createStudentOpen ? (
+          <StudentCreateModal
+            onClose={() => setCreateStudentOpen(false)}
+            afterCreate={() => setRefreshTick((prev) => prev + 1)}
+          />
+        ) : null}
       </div>
     </RoleGuard>
   );

@@ -275,7 +275,6 @@ export default function CoachStudentDetailPage() {
   const [tpiUploading, setTpiUploading] = useState(false);
   const [tpiProgress, setTpiProgress] = useState(0);
   const [tpiPhase, setTpiPhase] = useState<"upload" | "analyse">("upload");
-  const [tpiDragging, setTpiDragging] = useState(false);
   const tpiInputRef = useRef<HTMLInputElement | null>(null);
   const [tpiDetail, setTpiDetail] = useState<TpiTest | null>(null);
   const [selectedTpi, setSelectedTpi] = useState<TpiTest | null>(null);
@@ -1915,7 +1914,7 @@ export default function CoachStudentDetailPage() {
           <p className="text-sm text-red-400">{error || "Eleve introuvable."}</p>
         </section>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           <style jsx>{`
             .tpi-dots {
               display: inline-block;
@@ -1953,7 +1952,7 @@ export default function CoachStudentDetailPage() {
                 <img
                   src={student.avatar_url}
                   alt={`Photo de ${student.first_name}`}
-                  className="h-12 w-12 rounded-full border border-white/10 object-cover"
+                  className="h-12 w-12 rounded-full border-white/10 object-cover"
                 />
               ) : (
                 <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/10 text-sm font-semibold text-[var(--muted)]">
@@ -2047,70 +2046,27 @@ export default function CoachStudentDetailPage() {
                 ) : null}
               </>
             }
-            meta={
-              <>
-                <p className="text-xs text-[var(--muted)]">
-                  Invite le {formatDate(student.invited_at, locale, timezone)} - Cree le{" "}
-                  {formatDate(student.created_at, locale, timezone)}
-                </p>
-                {shareMessage ? (
-                  <p className="mt-3 text-xs text-emerald-200">{shareMessage}</p>
-                ) : null}
-                {isReadOnly ? (
-                  <div className="mt-4 rounded-xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-xs uppercase tracking-wide text-amber-100">
-                    Lecture seule active (eleve partage)
-                  </div>
-                ) : null}
-                <div className="mt-5 flex flex-wrap items-center gap-2">
-                  {canWriteReports ? (
-                    <Link
-                      href={`/app/coach/rapports/nouveau?studentId=${student.id}`}
-                      className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/70"
-                    >
-                      Nouveau rapport
-                    </Link>
-                  ) : (
-                    <span className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)] opacity-70">
-                      Nouveau rapport
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (tpiLocked) {
-                        openTpiAddonModal();
-                        return;
-                      }
-                      document.getElementById("tpi")?.scrollIntoView({
-                        behavior: "smooth",
-                        block: "start",
-                      });
-                    }}
-                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:border-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
-                  >
-                    Profil TPI
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      document.getElementById("standard-tests")?.scrollIntoView({
-                        behavior: "smooth",
-                        block: "start",
-                      });
-                    }}
-                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:border-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
-                  >
-                    Tests
-                  </button>
-                </div>
-              </>
-            }
           />
+
+          <div className="mt-4 px-1">
+            <p className="text-xs text-[var(--muted)]">
+              Invite le {formatDate(student.invited_at, locale, timezone)} - Cree le{" "}
+              {formatDate(student.created_at, locale, timezone)}
+            </p>
+            {shareMessage ? (
+              <p className="mt-3 text-xs text-emerald-200">{shareMessage}</p>
+            ) : null}
+            {isReadOnly ? (
+              <div className="mt-4 rounded-xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-xs uppercase tracking-wide text-amber-100">
+                Lecture seule active (eleve partage)
+              </div>
+            ) : null}
+          </div>
 
           <section className="panel relative overflow-hidden rounded-3xl p-6">
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_10%,rgba(110,231,183,0.10),transparent_55%),radial-gradient(circle_at_85%_0%,rgba(186,230,253,0.12),transparent_58%)]"
+              className="pointer-events-none absolute inset-0"
             />
             <div className="relative flex flex-wrap items-start justify-between gap-4">
               <div>
@@ -2194,23 +2150,29 @@ export default function CoachStudentDetailPage() {
                 </p>
                 <div className="mt-4">
                   {aiKpisStatus === "ready" && aiKpisRow ? (
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                      {aiKpisRow.kpis_short.map((kpi) => (
-                        <div
-                          key={kpi.id}
-                          className="min-h-36 rounded-2xl bg-[var(--panel-strong)] p-4"
-                        >
-                          <p className="text-[0.65rem] uppercase tracking-[0.25em] text-[var(--muted)]">
-                            {kpi.title}
-                          </p>
-                          <p className="mt-2 text-sm font-semibold text-[var(--text)]">
-                            {kpi.value ?? "-"}
-                          </p>
-                          <p className="mt-2 text-xs whitespace-pre-line text-[var(--muted)]">
-                            {kpi.evidence}
-                          </p>
-                        </div>
-                      ))}
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {aiKpisRow.kpis_short.map((kpi, index, list) => {
+                        const shouldSpanTwo =
+                          list.length % 2 === 1 && index === list.length - 1;
+                        return (
+                          <div
+                            key={kpi.id}
+                            className={`min-h-36 rounded-2xl bg-[var(--panel-strong)] p-4 ${
+                              shouldSpanTwo ? "sm:col-span-2" : ""
+                            }`}
+                          >
+                            <p className="text-[0.65rem] uppercase tracking-[0.25em] text-[var(--muted)]">
+                              {kpi.title}
+                            </p>
+                            <p className="mt-2 text-sm font-semibold text-[var(--text)]">
+                              {kpi.value ?? "-"}
+                            </p>
+                            <p className="mt-2 text-xs whitespace-pre-line text-[var(--muted)]">
+                              {kpi.evidence}
+                            </p>
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="grid grid-cols-2 gap-3">
@@ -2253,23 +2215,29 @@ export default function CoachStudentDetailPage() {
                 </p>
                 <div className="mt-4">
                   {aiKpisStatus === "ready" && aiKpisRow ? (
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                      {aiKpisRow.kpis_long.map((kpi) => (
-                        <div
-                          key={kpi.id}
-                          className="min-h-36 rounded-2xl bg-[var(--panel-strong)] p-4"
-                        >
-                          <p className="text-[0.65rem] uppercase tracking-[0.25em] text-[var(--muted)]">
-                            {kpi.title}
-                          </p>
-                          <p className="mt-2 text-sm font-semibold text-[var(--text)]">
-                            {kpi.value ?? "-"}
-                          </p>
-                          <p className="mt-2 text-xs whitespace-pre-line text-[var(--muted)]">
-                            {kpi.evidence}
-                          </p>
-                        </div>
-                      ))}
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {aiKpisRow.kpis_long.map((kpi, index, list) => {
+                        const shouldSpanTwo =
+                          list.length % 2 === 1 && index === list.length - 1;
+                        return (
+                          <div
+                            key={kpi.id}
+                            className={`min-h-36 rounded-2xl bg-[var(--panel-strong)] p-4 ${
+                              shouldSpanTwo ? "sm:col-span-2" : ""
+                            }`}
+                          >
+                            <p className="text-[0.65rem] uppercase tracking-[0.25em] text-[var(--muted)]">
+                              {kpi.title}
+                            </p>
+                            <p className="mt-2 text-sm font-semibold text-[var(--text)]">
+                              {kpi.value ?? "-"}
+                            </p>
+                            <p className="mt-2 text-xs whitespace-pre-line text-[var(--muted)]">
+                              {kpi.evidence}
+                            </p>
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="grid grid-cols-2 gap-3">
@@ -2446,7 +2414,7 @@ export default function CoachStudentDetailPage() {
           ) : null}
 
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-            <section className="panel rounded-2xl p-6">
+            <section className="border border-pink-200 bg-white/90 rounded-2xl p-6">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-[var(--text)]">Rapports</h3>
                 {!canWriteReports ? (
@@ -2455,11 +2423,23 @@ export default function CoachStudentDetailPage() {
                   </Badge>
                 ) : (
                   <Link
-                    href={`/app/coach/rapports/nouveau?studentId=${student.id}`}
-                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)]"
-                  >
-                    Nouveau rapport
-                  </Link>
+                href="/app/coach/rapports/nouveau"
+                className="inline-flex items-center gap-2 rounded-full border border-pink-200 px-4 py-2 text-xs text-pink-700 font-semibold uppercase tracking-wide transition hover:opacity-90"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 5v14" />
+                  <path d="M5 12h14" />
+                </svg>
+                Nouveau
+              </Link>
                 )}
               </div>
               {reports.length === 0 ? (
@@ -2471,7 +2451,7 @@ export default function CoachStudentDetailPage() {
                   {reports.map((report) => (
                     <div
                       key={report.id}
-                      className="flex flex-col gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--text)] md:flex-row md:items-center md:justify-between"
+                      className="flex flex-col gap-3 rounded-xl border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--text)] md:flex-row md:items-center md:justify-between"
                     >
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
@@ -2502,34 +2482,97 @@ export default function CoachStudentDetailPage() {
                           )}
                         </p>
                       </div>
-                      <div className="flex flex-col items-end gap-2 self-end md:self-auto">
+                      <div className="flex items-center gap-2 self-end md:self-auto">
                         <Link
                           href={`/app/coach/rapports/${report.id}`}
-                          className="w-28 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-center text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
+                          aria-label="Ouvrir le rapport"
+                          title="Ouvrir"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:bg-white/20 hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
                         >
-                          Ouvrir
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-4 w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden="true"
+                          >
+                            <path d="M7 17L17 7" />
+                            <path d="M9 7h8v8" />
+                          </svg>
                         </Link>
+
                         <Link
                           href={`/app/coach/rapports/nouveau?reportId=${report.id}`}
                           onClick={(event) => {
                             if (!canWriteReports) event.preventDefault();
                           }}
                           aria-disabled={!canWriteReports}
-                          className={`w-28 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-center text-[0.65rem] uppercase tracking-wide transition ${
+                          tabIndex={!canWriteReports ? -1 : undefined}
+                          aria-label="Modifier le rapport"
+                          title={canWriteReports ? "Modifier" : "Lecture seule"}
+                          className={`inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50 ${
                             !canWriteReports
-                              ? "cursor-not-allowed text-[var(--muted)] opacity-60"
-                              : "text-[var(--muted)] hover:text-[var(--text)]"
+                              ? "cursor-not-allowed text-[var(--muted)] opacity-50"
+                              : "text-[var(--muted)] hover:bg-white/10 hover:text-[var(--text)]"
                           }`}
                         >
-                          Modifier
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-4 w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden="true"
+                          >
+                            <path d="M12 20h9" />
+                            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                          </svg>
                         </Link>
+
                         <button
                           type="button"
                           onClick={() => handleDeleteReport(report)}
                           disabled={!canWriteReports || deletingId === report.id}
-                          className="w-28 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-center text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-60"
+                          aria-label="Supprimer le rapport"
+                          title={deletingId === report.id ? "Suppression..." : "Supprimer"}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-red-300 transition hover:bg-white/10 hover:text-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200/40 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          {deletingId === report.id ? "Suppression..." : "Supprimer"}
+                          {deletingId === report.id ? (
+                            <svg
+                              viewBox="0 0 24 24"
+                              className="h-4 w-4 animate-spin"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <path d="M21 12a9 9 0 1 1-3-6.7" />
+                            </svg>
+                          ) : (
+                            <svg
+                              viewBox="0 0 24 24"
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <path d="M3 6h18" />
+                              <path d="M8 6V4h8v2" />
+                              <path d="M19 6l-1 14H6L5 6" />
+                              <path d="M10 11v6" />
+                              <path d="M14 11v6" />
+                            </svg>
+                          )}
                         </button>
                       </div>
                     </div>
@@ -2540,33 +2583,123 @@ export default function CoachStudentDetailPage() {
 
             <section
               id="tpi"
-              className="panel relative scroll-mt-24 rounded-2xl border border-rose-400/40 bg-rose-500/5 p-6"
+              className="border border-teal-200 bg-white/90 relative scroll-mt-24 rounded-2xl p-6"
             >
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+                <div className="min-w-0">
                   <h3 className="text-lg font-semibold text-[var(--text)]">
                     Profil TPI
                     {tpiReport?.created_at ? (
                       <span className="text-sm font-medium text-[var(--muted)]">
                         {" "}
-                        - {formatDate(tpiReport.created_at, locale, timezone)}
+                        Importé le - {formatDate(tpiReport.created_at, locale, timezone)}
                       </span>
                     ) : null}
                   </h3>
                   <p className="mt-1 text-sm text-[var(--muted)]">
-                    Ajoute un screening TPI pour obtenir une synthese claire des points a
-                    travailler et des points forts.
+                    Screening physique TPI, synthétisé, et connecté à l&apos;IA de Swingflow.
                   </p>
+
                   {tpiSourceLabel ? (
                     <Badge as="div" tone="muted" size="sm" className="mt-2">
                       <span className="h-1.5 w-1.5 rounded-full bg-white/30" />
                       Source: {tpiSourceLabel}
                     </Badge>
-                  ) : null}
+                  ) : null} <br/>
                   <Badge as="div" tone="emerald" size="sm" className="mt-2">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />L
-                    assistant IA s appuie sur ce profil pour ses analyses.
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
+                    L assistant IA s appuie sur ce profil pour ses analyses.
                   </Badge>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 sm:justify-self-end">
+                  <span className="group relative">
+                    <button
+                      type="button"
+                      onClick={() => setTpiHelpOpen((prev) => !prev)}
+                      className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-sm text-[var(--muted)] transition hover:text-[var(--text)]"
+                      aria-label="Aide import TPI"
+                      aria-expanded={tpiHelpOpen}
+                    >
+                      ?
+                    </button>
+                    <span
+                      className={`absolute right-0 top-full z-20 mt-2 w-80 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-3 text-xs text-[var(--text)] shadow-xl transition ${
+                        tpiHelpOpen
+                          ? "pointer-events-auto opacity-100"
+                          : "pointer-events-none opacity-0"
+                      } group-hover:opacity-100 group-focus-within:opacity-100`}
+                    >
+                      <span className="block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                        Tablette / mobile
+                      </span>
+                      <ol className="mt-2 list-decimal space-y-1 pl-4 text-[0.68rem] text-[var(--muted)]">
+                        <li>
+                          Envoie le rapport TPI depuis myTPI Pro a l eleve, en te mettant
+                          en copie (CC to me).
+                        </li>
+                        <li>
+                          Dans ta boite mail, ouvre le mail et clique sur partager (icone
+                          fleche).
+                        </li>
+                        <li>Selectionne Imprimer.</li>
+                        <li>
+                          Dans l ecran d impression, partage a nouveau et choisis Enregistrer
+                          dans Fichiers.
+                        </li>
+                        <li>
+                          Importe le PDF ici. Attends quelques minutes, puis le profil apparait
+                          en dessous dans la langue du compte.
+                        </li>
+                      </ol>
+                      <span className="mt-3 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                        PC
+                      </span>
+                      <ol className="mt-2 list-decimal space-y-1 pl-4 text-[0.68rem] text-[var(--muted)]">
+                        <li>
+                          Envoie le rapport TPI depuis myTPI Pro a l eleve, en te mettant
+                          en copie (CC to me).
+                        </li>
+                        <li>Ouvre le mail recu et imprime (Ctrl + P).</li>
+                        <li>Dans la fenetre d impression, choisis Print to PDF.</li>
+                        <li>
+                          Importe le PDF ici. Attends quelques minutes, puis le profil apparait
+                          en dessous dans la langue du compte.
+                        </li>
+                      </ol>
+                    </span>
+                  </span>
+
+                  <button
+                    type="button"
+                    disabled={tpiUploading || isReadOnly}
+                    onClick={() => {
+                      if (tpiLocked) {
+                        openTpiAddonModal();
+                        return;
+                      }
+                      if (isReadOnly) return;
+                      tpiInputRef.current?.click();
+                    }}
+                    className={`rounded-full border border-teal-400 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-teal-700 transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/70 ${
+                      tpiLocked || isReadOnly ? "cursor-not-allowed opacity-60" : ""
+                    } disabled:opacity-60`}
+                    aria-disabled={tpiLocked || isReadOnly}
+                  >
+                    Parcourir
+                  </button>
+                  <input
+                    ref={tpiInputRef}
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    className="hidden"
+                    disabled={tpiUploading || isReadOnly || tpiLocked}
+                    onChange={(event) => {
+                      const file = event.currentTarget.files?.[0];
+                      if (file) void handleTpiFile(file);
+                      event.currentTarget.value = "";
+                    }}
+                  />
                 </div>
               </div>
               {tpiLocked ? (
@@ -2581,128 +2714,7 @@ export default function CoachStudentDetailPage() {
                   </button>
                 </div>
               ) : null}
-              <div
-                className={`mt-4 rounded-xl border border-dashed px-4 py-4 text-sm text-[var(--muted)] transition ${
-                  tpiDragging
-                    ? "border-rose-300/50 bg-rose-400/10 text-rose-100"
-                    : "border-white/10 bg-white/5"
-                }`}
-                onDragOver={(event) => {
-                  if (tpiLocked) return;
-                  event.preventDefault();
-                  setTpiDragging(true);
-                }}
-                onDragLeave={() => setTpiDragging(false)}
-                onDrop={(event) => {
-                  if (tpiLocked) {
-                    setTpiError("Plan Pro requis pour importer un rapport TPI.");
-                    openTpiAddonModal();
-                    return;
-                  }
-                  event.preventDefault();
-                  setTpiDragging(false);
-                  const file = event.dataTransfer.files?.[0];
-                  if (file) void handleTpiFile(file);
-                }}
-              >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm text-[var(--text)]">
-                      Glisse le PDF TPI Pro recu par email.
-                    </p>
-                    <p className="mt-1 text-xs text-[var(--muted)]">
-                      Seul le PDF du rapport TPI Pro est accepte.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="group relative">
-                      <button
-                        type="button"
-                        onClick={() => setTpiHelpOpen((prev) => !prev)}
-                        className="flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[0.7rem] text-[var(--muted)] transition hover:text-[var(--text)]"
-                        aria-label="Aide import TPI"
-                        aria-expanded={tpiHelpOpen}
-                      >
-                        ?
-                      </button>
-                      <span
-                        className={`absolute right-0 top-full z-20 mt-2 w-80 rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-3 text-xs text-[var(--text)] shadow-xl transition ${
-                          tpiHelpOpen
-                            ? "pointer-events-auto opacity-100"
-                            : "pointer-events-none opacity-0"
-                        } group-hover:opacity-100 group-focus-within:opacity-100`}
-                      >
-                        <span className="block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                          Tablette / mobile
-                        </span>
-                        <ol className="mt-2 list-decimal space-y-1 pl-4 text-[0.68rem] text-[var(--muted)]">
-                          <li>
-                            Envoie le rapport TPI depuis myTPI Pro a l eleve, en te
-                            mettant en copie (CC to me).
-                          </li>
-                          <li>
-                            Dans ta boite mail, ouvre le mail et clique sur partager
-                            (icone fleche).
-                          </li>
-                          <li>Selectionne Imprimer.</li>
-                          <li>
-                            Dans l ecran d impression, partage a nouveau et choisis
-                            Enregistrer dans Fichiers.
-                          </li>
-                          <li>
-                            Importe le PDF ici. Attends quelques minutes, puis le profil
-                            apparait en dessous dans la langue du compte.
-                          </li>
-                        </ol>
-                        <span className="mt-3 block text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                          PC
-                        </span>
-                        <ol className="mt-2 list-decimal space-y-1 pl-4 text-[0.68rem] text-[var(--muted)]">
-                          <li>
-                            Envoie le rapport TPI depuis myTPI Pro a l eleve, en te
-                            mettant en copie (CC to me).
-                          </li>
-                          <li>Ouvre le mail recu et imprime (Ctrl + P).</li>
-                          <li>Dans la fenetre d impression, choisis Print to PDF.</li>
-                          <li>
-                            Importe le PDF ici. Attends quelques minutes, puis le profil
-                            apparait en dessous dans la langue du compte.
-                          </li>
-                        </ol>
-                      </span>
-                    </span>
-                    <button
-                      type="button"
-                      disabled={tpiUploading || isReadOnly}
-                      onClick={() => {
-                        if (tpiLocked) {
-                          openTpiAddonModal();
-                          return;
-                        }
-                        if (isReadOnly) return;
-                        tpiInputRef.current?.click();
-                      }}
-                      className={`rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20 ${
-                        tpiLocked || isReadOnly ? "cursor-not-allowed opacity-60" : ""
-                      } disabled:opacity-60`}
-                      aria-disabled={tpiLocked || isReadOnly}
-                    >
-                      Parcourir
-                    </button>
-                  </div>
-                </div>
-                <input
-                  ref={tpiInputRef}
-                  type="file"
-                  accept="application/pdf"
-                  className="hidden"
-                  disabled={tpiLocked || isReadOnly}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) void handleTpiFile(file);
-                  }}
-                />
-              </div>
+              
 
               {tpiUploading ? (
                 <div className="mt-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3">
@@ -2766,7 +2778,7 @@ export default function CoachStudentDetailPage() {
                                 key={option.id}
                                 type="button"
                                 onClick={() => setTpiFilter(option.id)}
-                                className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
+                                className={`rounded-full px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
                                   tpiFilter === option.id
                                     ? "border-white/30 bg-white/15 text-[var(--text)]"
                                     : "border-white/10 bg-white/5 text-[var(--muted)] hover:border-white/20 hover:text-[var(--text)]"
@@ -2788,12 +2800,12 @@ export default function CoachStudentDetailPage() {
                         </div>
                       ) : null}
                       {tpiTests.length === 0 ? (
-                        <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
+                        <div className="rounded-xl border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
                           Aucun test TPI detecte.
                         </div>
                       ) : (
                         visibleTpiTests.length === 0 ? (
-                          <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
+                          <div className="rounded-xl border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
                             Aucun test ne correspond a ce filtre.
                           </div>
                         ) : (
@@ -2819,7 +2831,7 @@ export default function CoachStudentDetailPage() {
                                   onClick={() => setSelectedTpi(test)}
                                   aria-pressed={isSelected}
                                   aria-label={`${formatTpiTestName(test.test_name)} - ${tpiStatusLabel(test.result_color)}`}
-                                  className={`flex h-20 items-start gap-2 overflow-hidden rounded-xl border px-4 py-3 text-left transition ${
+                                  className={`flex h-20 items-start gap-2 overflow-hidden rounded-xl px-4 py-3 text-left transition ${
                                     isSelected
                                       ? selectedTone
                                       : "border-white/10 bg-white/5 hover:border-white/20"
@@ -2901,7 +2913,7 @@ export default function CoachStudentDetailPage() {
 
             <section
               id="standard-tests"
-              className="panel relative scroll-mt-24 rounded-2xl border border-sky-300/40 bg-sky-500/5 p-6 lg:col-span-2"
+              className=" relative scroll-mt-24 rounded-2xl border border-orange-200 bg-white/90 p-6 lg:col-span-2"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -2919,12 +2931,12 @@ export default function CoachStudentDetailPage() {
                       setAssignTestSlug(NORMALIZED_TEST_CHOICES[0]?.slug ?? PELZ_PUTTING_SLUG);
                       setAssignTestModalOpen(true);
                     }}
-                    className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/70"
+                    className="rounded-full border border-orange-400 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-orange-700 transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/70"
                   >
                     Assigner un test
                   </button>
                 ) : (
-                  <span className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)] opacity-70">
+                  <span className="rounded-full border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)] opacity-70">
                     Assigner un test
                   </span>
                 )}
@@ -2940,7 +2952,7 @@ export default function CoachStudentDetailPage() {
               {!normalizedTestsLoading &&
               !normalizedTestsError &&
               normalizedTestAssignments.length === 0 ? (
-                <div className="mt-4 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
+                <div className="mt-4 rounded-xl border-white/10 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
                   Aucun test assigne.
                 </div>
               ) : null}
@@ -2949,7 +2961,7 @@ export default function CoachStudentDetailPage() {
               !normalizedTestsError &&
               normalizedTestAssignments.length > 0 ? (
                 <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="rounded-2xl border-white/10 bg-white/5 p-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
                       En cours
                     </p>
@@ -2960,7 +2972,7 @@ export default function CoachStudentDetailPage() {
                         {normalizedTestsSummary.current.map((item) => (
                           <li
                             key={item.assignmentId}
-                            className="rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-4 py-3"
+                            className="rounded-xl border-white/10 bg-[var(--bg-elevated)] px-4 py-3"
                           >
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
@@ -3077,7 +3089,7 @@ export default function CoachStudentDetailPage() {
               ) : null}
             </section>
 
-            <section className="panel relative rounded-2xl border border-violet-400/40 bg-violet-500/5 p-6 lg:col-span-2">
+            <section className=" border border-purple-200 bg-white/90relative rounded-2xl p-6 lg:col-span-2">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-semibold text-[var(--text)]">
@@ -3088,7 +3100,7 @@ export default function CoachStudentDetailPage() {
                     resume.
                   </p>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 rounded-full border border-white/10 bg-white/5 px-2 py-1">
+                <div className="flex flex-wrap items-center gap-2 rounded-full px-2 py-1">
                   <select
                     value={radarTech}
                     onChange={(event) => {
@@ -3101,7 +3113,7 @@ export default function CoachStudentDetailPage() {
                       setRadarTech(next);
                     }}
                     disabled={radarLocked}
-                    className="rounded-full border border-white/10 bg-[var(--bg-elevated)] px-3 py-1.5 text-xs text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-full border-white/10 bg-[var(--bg-elevated)] px-3 py-1.5 text-xs text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-60"
                     aria-label="Technologie radar"
                   >
                     {RADAR_TECH_OPTIONS.map((option) => (
@@ -3121,13 +3133,26 @@ export default function CoachStudentDetailPage() {
                       if (isReadOnly) return;
                       radarInputRef.current?.click();
                     }}
-                    className={`rounded-full border border-white/10 bg-white/10 px-4 py-1.5 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20 ${
+                    className={`rounded-full border border-purple-400 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-purple-700 transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/70 ${
                       radarLocked || isReadOnly ? "cursor-not-allowed opacity-60" : ""
                     } disabled:opacity-60`}
                     aria-disabled={radarLocked || isReadOnly}
                   >
-                    Importer un fichier
+                    Importer
                   </button>
+                  <input
+                    ref={radarInputRef}
+                    type="file"
+                    accept="image/*,.heic,.heif"
+                    disabled={radarLocked || isReadOnly || radarUploading}
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] ?? null;
+                      // Reset so picking the same file twice still triggers onChange.
+                      event.target.value = "";
+                      if (file) void handleRadarFile(file);
+                    }}
+                  />
                 </div>
               </div>
               {radarLocked ? (
@@ -3142,53 +3167,6 @@ export default function CoachStudentDetailPage() {
                   </button>
                 </div>
               ) : null}
-              <div
-                className={`mt-4 rounded-xl border border-dashed px-4 py-4 text-sm text-[var(--muted)] transition ${
-                  radarUploading
-                    ? "border-violet-300/40 bg-violet-400/10 text-violet-100"
-                    : "border-white/10 bg-white/5"
-                }`}
-                onDragOver={(event) => {
-                  if (radarLocked || isReadOnly) return;
-                  event.preventDefault();
-                }}
-                onDrop={(event) => {
-                  if (isReadOnly) return;
-                  if (radarLocked) {
-                    setRadarError("Plan Pro requis pour importer un fichier datas.");
-                    openRadarAddonModal();
-                    return;
-                  }
-                  event.preventDefault();
-                  const file = event.dataTransfer.files?.[0];
-                  if (file) void handleRadarFile(file);
-                }}
-              >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm text-[var(--text)]">
-                      Glisse une image d export {radarTechMeta.label}.
-                    </p>
-                    <p className="mt-1 text-xs text-[var(--muted)]">
-                      OCR et detection de tableau automatiquement.
-                    </p>
-                  </div>
-                  <Badge tone="violet" size="sm">
-                    Extraction datas
-                  </Badge>
-                </div>
-                <input
-                  ref={radarInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  disabled={radarLocked || isReadOnly}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) void handleRadarFile(file);
-                  }}
-                />
-              </div>
 
               {radarUploading ? (
                 <div className="mt-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3">
@@ -3285,7 +3263,7 @@ export default function CoachStudentDetailPage() {
                     return (
                       <div
                         key={file.id}
-                        className="flex flex-col gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--text)] md:flex-row md:items-center md:justify-between"
+                        className="flex flex-col gap-3 rounded-xl border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--text)] md:flex-row md:items-center md:justify-between"
                       >
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
@@ -3342,37 +3320,99 @@ export default function CoachStudentDetailPage() {
                             onClick={() =>
                               canReview ? setRadarReview(file) : setRadarPreview(file)
                             }
-                            className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
+                            aria-label={isReview ? "Verifier le fichier" : "Voir le fichier"}
+                            title={isReview ? "Verifier" : "Voir"}
+                            className={`inline-flex h-9 w-9 items-center justify-center rounded-full border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50 ${
                               canOpen
-                                ? "border-white/10 bg-white/10 text-[var(--text)] hover:bg-white/20"
-                                : "cursor-not-allowed border-white/5 bg-white/5 text-[var(--muted)]"
+                                ? "border-white/10 bg-white/10 text-[var(--muted)] hover:bg-white/20 hover:text-[var(--text)]"
+                                : "cursor-not-allowed border-white/5 bg-white/5 text-[var(--muted)] opacity-60"
                             }`}
                           >
-                            {isReview ? "Verifier" : "Voir"}
+                            <svg
+                              viewBox="0 0 24 24"
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+                              <circle cx="12" cy="12" r="3" />
+                            </svg>
                           </button>
+
                           <button
                             type="button"
                             disabled={configDisabled}
                             onClick={() => handleOpenRadarConfig(file)}
-                            className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
+                            aria-label="Configurer le fichier"
+                            title="Configurer"
+                            className={`inline-flex h-9 w-9 items-center justify-center rounded-full border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50 ${
                               !configDisabled
-                                ? "border-white/10 bg-white/5 text-[var(--text)] hover:bg-white/10"
-                                : "cursor-not-allowed border-white/5 bg-white/5 text-[var(--muted)]"
+                                ? "border-white/10 bg-white/5 text-[var(--muted)] hover:bg-white/10 hover:text-[var(--text)]"
+                                : "cursor-not-allowed border-white/5 bg-white/5 text-[var(--muted)] opacity-60"
                             }`}
                           >
-                            Configurer
+                            <svg
+                              viewBox="0 0 24 24"
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <circle cx="12" cy="12" r="3" />
+                              <path d="M19.4 15a7.8 7.8 0 0 0 .1-6l2-1-2-3-2 1a8 8 0 0 0-5-2l-.5-2h-4l-.5 2a8 8 0 0 0-5 2l-2-1-2 3 2 1a7.8 7.8 0 0 0 .1 6l-2 1 2 3 2-1a8 8 0 0 0 5 2l.5 2h4l.5-2a8 8 0 0 0 5-2l2 1 2-3-2-1z" />
+                            </svg>
                           </button>
+
                           <button
                             type="button"
                             disabled={deleteDisabled}
                             onClick={() => handleDeleteRadarFile(file)}
-                            className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
+                            aria-label="Supprimer le fichier"
+                            title={radarDeletingId === file.id ? "Suppression..." : "Supprimer"}
+                            className={`inline-flex h-9 w-9 items-center justify-center rounded-full border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200/40 ${
                               deleteDisabled
-                                ? "cursor-not-allowed border-rose-300/20 bg-rose-400/10 text-rose-100/70"
+                                ? "cursor-not-allowed border-rose-300/20 bg-rose-400/10 text-rose-100/70 opacity-70"
                                 : "border-rose-300/30 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20"
                             }`}
                           >
-                            {radarDeletingId === file.id ? "Suppression..." : "Supprimer"}
+                            {radarDeletingId === file.id ? (
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="h-4 w-4 animate-spin"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden="true"
+                              >
+                                <path d="M21 12a9 9 0 1 1-3-6.7" />
+                              </svg>
+                            ) : (
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="h-4 w-4"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden="true"
+                              >
+                                <path d="M3 6h18" />
+                                <path d="M8 6V4h8v2" />
+                                <path d="M19 6l-1 14H6L5 6" />
+                                <path d="M10 11v6" />
+                                <path d="M14 11v6" />
+                              </svg>
+                            )}
                           </button>
                         </div>
                       </div>

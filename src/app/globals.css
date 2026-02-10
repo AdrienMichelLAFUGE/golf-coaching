@@ -363,8 +363,8 @@
     border-width: 1px;
     border-radius: 0.5rem;
     padding: 0.25rem 0.75rem;
-    font-size: 0.6rem;
-    text-transform: uppercase;
+    font-size: 0.55rem;
+    /*text-transform: uppercase;*/
     letter-spacing: 0.25em;
     max-width: 100%;
     min-width: 0;

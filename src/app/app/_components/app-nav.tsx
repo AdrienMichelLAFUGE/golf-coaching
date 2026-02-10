@@ -61,6 +61,7 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
       sections.push({
         title: "Organisation",
         items: [
+          { label: "Dashboard", href: "/app/coach" },
           { label: "Elèves", href: "/app/coach/eleves" },
           { label: "Tests", href: "/app/coach/tests" },
           { label: "Propositions", href: "/app/org/proposals" },
