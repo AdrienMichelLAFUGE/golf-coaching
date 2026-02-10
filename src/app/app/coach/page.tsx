@@ -466,15 +466,15 @@ export default function CoachDashboardPage() {
               <div className="mt-5">
                 {analyticsBars && analyticsBars.length > 0 ? (
                   <div className="grid gap-4">
-                    <div className="flex h-28 items-end gap-2">
+                    <div className="grid h-28 grid-cols-7 items-end gap-2 overflow-hidden">
                       {analyticsBars.map((bar, index) => {
                         const max = analyticsMax || 1;
                         const raw = Math.round((bar.value / max) * 100);
                         const height = Math.max(6, raw);
                         const isToday = index === analyticsBars.length - 1;
                         return (
-                          <div key={bar.key} className="flex flex-1 flex-col items-center gap-2">
-                             <div
+                          <div key={bar.key} className="flex min-w-0 flex-col items-center gap-2">
+                            <div
                               className="flex h-24 w-full items-end"
                               aria-label={`${bar.label}: ${bar.value} rapport${
                                 bar.value > 1 ? "s" : ""
