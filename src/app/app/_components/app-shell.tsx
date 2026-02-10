@@ -18,7 +18,7 @@ export default function AppShell({ children }: AppShellProps) {
       <LastAppPathTracker />
       <div className="mx-auto w-full max-w-[1400px] 2xl:max-w-[1600px]">
         <div className="grid gap-4 md:grid-cols-[auto_1fr] md:items-start">
-          <aside className="hidden md:sticky md:top-6 md:block md:self-start">
+          <aside className="hidden md:sticky md:top-6 md:block md:self-start md:h-[calc(100dvh-3rem)] md:overflow-hidden">
             <AppNav />
           </aside>
 

@@ -303,8 +303,8 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
 
   return (
     <aside
-      className={`flex w-auto flex-col rounded-3xl bg-[var(--app-surface)] transition-[width,padding] duration-200 ${
-        isCollapsed ? "py-4 lg:w-16" : " py-4 lg:w-60"
+      className={`flex h-full min-h-0 w-auto flex-col overflow-hidden rounded-3xl bg-[var(--app-surface)] transition-[width,padding] duration-200 ${
+        isCollapsed ? "py-4 lg:w-16" : "py-4 lg:w-60"
       }`}
     >
       <div className={`flex items-center justify-between gap-2 ${isCollapsed ? "px-1" : ""}`}>
@@ -474,7 +474,7 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
         ) : null}
         </nav>
 
-        <div className="mt-4 pt-4">
+        <div className="mt-4 shrink-0 pt-4">
           {!isCollapsed ? (
             <p className="text-xs pl-5 font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
               General
