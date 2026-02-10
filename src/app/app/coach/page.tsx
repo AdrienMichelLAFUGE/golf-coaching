@@ -474,8 +474,8 @@ export default function CoachDashboardPage() {
                         const isToday = index === analyticsBars.length - 1;
                         return (
                           <div key={bar.key} className="flex flex-1 flex-col items-center gap-2">
-                            <div
-                              className="flex h-24 w-15 items-end"
+                             <div
+                              className="flex h-24 w-full items-end"
                               aria-label={`${bar.label}: ${bar.value} rapport${
                                 bar.value > 1 ? "s" : ""
                               }`}

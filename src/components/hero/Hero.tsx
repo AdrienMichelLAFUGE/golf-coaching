@@ -84,17 +84,14 @@ export default function Hero() {
                 <p className={styles.kicker}>SwingFlow</p>
                 <h1 className={styles.title}>
                   Decouvrez SwingFlow,{" "}
-                  <span className={styles.titleBreak}>votre coaching, centralisé.</span>
+                  <span className={styles.titleBreak}>votre coaching, enfin centralisé.</span>
                 </h1>
                 <p className={styles.copy}>
                   Centralisez eleves, tests et donnees (TPI, Trackman...) pour un coaching plus clair et plus constant.
                 </p>
                 <div className={styles.ctaRow}>
                   <Link href="/login" className={styles.ctaPrimary}>
-                    Acceder a la plateforme
-                  </Link>
-                  <Link href="/demo" className={styles.ctaSecondary}>
-                    Voir une demo
+                    La plateforme arrive bientôt...
                   </Link>
                 </div>
                 <p className={styles.smallLine}>
