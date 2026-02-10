@@ -2414,7 +2414,7 @@ export default function CoachStudentDetailPage() {
           ) : null}
 
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-            <section className="border border-pink-200 bg-[var(--bg-panel)] rounded-2xl p-6">
+            <section className="border border-pink-200 bg-[var(--panel)] rounded-2xl p-6">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-[var(--text)]">Rapports</h3>
                 {!canWriteReports ? (
@@ -2583,7 +2583,7 @@ export default function CoachStudentDetailPage() {
 
             <section
               id="tpi"
-              className="border border-teal-200 bg-[var(--bg-panel)] relative scroll-mt-24 rounded-2xl p-6"
+              className="border border-teal-200 bg-[var(--panel)] relative scroll-mt-24 rounded-2xl p-6"
             >
               <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
                 <div className="min-w-0">
@@ -2913,7 +2913,7 @@ export default function CoachStudentDetailPage() {
 
             <section
               id="standard-tests"
-              className=" relative scroll-mt-24 rounded-2xl border border-orange-200 bg-[var(--bg-panel)] p-6 lg:col-span-2"
+              className=" relative scroll-mt-24 rounded-2xl border border-orange-200 bg-[var(--panel)] p-6 lg:col-span-2"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -3089,7 +3089,7 @@ export default function CoachStudentDetailPage() {
               ) : null}
             </section>
 
-            <section className=" border border-purple-200 bg-[var(--bg-panel)] relative rounded-2xl p-6 lg:col-span-2">
+            <section className=" border border-purple-200 bg-[var(--panel)] relative rounded-2xl p-6 lg:col-span-2">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-semibold text-[var(--text)]">
@@ -3113,7 +3113,7 @@ export default function CoachStudentDetailPage() {
                       setRadarTech(next);
                     }}
                     disabled={radarLocked}
-                    className="rounded-full border-white/10 bg-[var(--bg-panel)] px-3 py-1.5 text-xs text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-full border-white/10 bg-[var(--panel-strong)] px-3 py-1.5 text-xs text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-60"
                     aria-label="Technologie radar"
                   >
                     {RADAR_TECH_OPTIONS.map((option) => (

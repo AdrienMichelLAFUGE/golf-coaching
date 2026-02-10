@@ -80,7 +80,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
   };
 
   return (
-    <header className="relative sticky top-4 z-40 flex w-full items-center gap-3 rounded-3xl bg-[var(--app-surface)] px-4 py-3 min-[880px]:top-6 min-[880px]:px-6 min-[880px]:py-4">
+    <header className="relative sticky top-4 z-40 flex w-full items-center gap-3 rounded-3xl bg-[var(--app-surface)] px-4 py-3 md:px-6 md:py-4">
       <WorkspaceSwitcher />
       <div className="flex min-w-0 flex-1 items-center gap-3">
         {onToggleNav ? (

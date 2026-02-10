@@ -311,7 +311,7 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
 
   return (
     <aside
-      className={`flex h-full min-h-0 w-auto flex-col overflow-hidden rounded-3xl bg-[var(--app-surface)] transition-[width,padding] duration-200 ${
+      className={`flex h-auto top-4 min-h-0 w-auto flex-col rounded-3xl bg-[var(--app-surface)] transition-[width,padding] duration-200 ${
         isCollapsed ? "py-4 lg:w-16" : "py-4 lg:w-60"
       }`}
     >
