@@ -14,7 +14,7 @@ export default function AppShell({ children }: AppShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-[var(--app-canvas)] px-3 py-4 text-[var(--text)] md:px-6 md:py-6">
+    <div className="min-h-screen overflow-x-hidden bg-[var(--app-canvas)] px-3 py-4 text-[var(--text)] md:px-6 md:py-6">
       <LastAppPathTracker />
       <div className="mx-auto w-full max-w-[1400px] 2xl:max-w-[1600px]">
         <div className="grid gap-4 md:grid-cols-[auto_1fr] md:items-start">
@@ -28,7 +28,7 @@ export default function AppShell({ children }: AppShellProps) {
               isNavOpen={mobileNavOpen}
             />
             <ShareInvitesGate />
-            <main className="app-main min-w-0 space-y-4 rounded-3xl bg-[var(--app-surface)] p-4 md:p-6">
+            <main className="app-main min-w-0 space-y-4 overflow-x-hidden rounded-3xl bg-[var(--app-surface)] p-4 md:p-6">
               {children}
             </main>
           </div>

@@ -115,7 +115,7 @@ type KpiCardProps = {
 
 function KpiCard({ label, value, hint, tone = "default", href }: KpiCardProps) {
   const content = (
-    <div className="panel-soft relative overflow-hidden rounded-2xl p-5">
+    <div className="panel-soft relative overflow-hidden rounded-2xl p-2">
       {tone === "accent" ? (
         <div
           aria-hidden="true"
@@ -466,7 +466,7 @@ export default function CoachDashboardPage() {
               <div className="mt-5">
                 {analyticsBars && analyticsBars.length > 0 ? (
                   <div className="grid gap-4">
-                    <div className="grid h-28 grid-cols-7 items-end gap-2 overflow-hidden">
+                    <div className="grid h-40 grid-cols-7 items-end gap-2 overflow-hidden">
                       {analyticsBars.map((bar, index) => {
                         const max = analyticsMax || 1;
                         const raw = Math.round((bar.value / max) * 100);
