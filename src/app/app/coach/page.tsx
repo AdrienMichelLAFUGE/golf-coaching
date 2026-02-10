@@ -615,7 +615,7 @@ export default function CoachDashboardPage() {
               </div>
               </section>
 
-              <section className="border border-pink-200 bg-white/90 h-full rounded-2xl p-4">
+              <section className="bg-[var(--panel)] h-full rounded-2xl p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                 <h3 className=" text-2xl font-semibold text-[var(--text)]">
@@ -624,7 +624,7 @@ export default function CoachDashboardPage() {
                 </div>
                 <Link
                 href="/app/coach/rapports/nouveau"
-                className="inline-flex items-center gap-2 rounded-full border-2 border-pink-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-pink-700 transition hover:opacity-90"
+                className="inline-flex items-center gap-2 rounded-full border-2 border-pink-200 dark:border-pink-400 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-pink-700 transition hover:opacity-90"
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -641,7 +641,7 @@ export default function CoachDashboardPage() {
                 rapport
               </Link>
               </div>
-              <div className="mt-6">
+              <div className="mt-6 space-y-3">
                 {loading ? (
                   <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
                     Chargement des rapports...

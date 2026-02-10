@@ -89,7 +89,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
             onClick={onToggleNav}
             aria-label={isNavOpen ? "Fermer la navigation" : "Ouvrir la navigation"}
             aria-expanded={isNavOpen ?? false}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-[var(--muted)] transition hover:bg-white hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50 min-[880px]:hidden"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--bg-elevated)] text-[var(--muted)] transition hover:bg-white hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50 min-[880px]:hidden"
           >
             <svg
               viewBox="0 0 24 24"
@@ -153,7 +153,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
               type="search"
               placeholder="Rechercher..."
               aria-label="Rechercher"
-              className="w-full rounded-full border-white/20 bg-white/90 py-3 pl-9 pr-4 text-sm text-[var(--text)] placeholder:text-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
+              className="w-full rounded-full bg-[var(--panel)] py-3 pl-9 pr-4 text-sm text-[var(--text)] placeholder:text-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
             />
           </div>
         </div>
@@ -164,7 +164,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
           <button
             type="button"
             aria-label="Messages"
-            className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-[var(--muted)] transition hover:bg-white hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
+            className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--panel)] text-[var(--muted)] transition hover:bg-white hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
           >
             <svg
               viewBox="0 0 24 24"
@@ -184,7 +184,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
           <button
             type="button"
             aria-label="Notifications"
-            className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-[var(--muted)] transition hover:bg-white hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
+            className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--panel)] text-[var(--muted)] transition hover:bg-white hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
           >
             <svg
               viewBox="0 0 24 24"
