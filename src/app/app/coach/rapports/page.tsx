@@ -7,6 +7,7 @@ import RoleGuard from "../../_components/role-guard";
 import { useProfile } from "../../_components/profile-context";
 import PageBack from "../../_components/page-back";
 import PageHeader from "../../_components/page-header";
+import Badge from "../../_components/badge";
 
 type ReportRow = {
   id: string;
@@ -272,11 +273,9 @@ export default function CoachReportsPage() {
           title="Historique coach"
           subtitle="Consulte et supprime les rapports par eleve."
            meta={
-             <div
-              className={`inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
-             >
-              <span className="min-w-0 break-words">Vous travaillez dans {modeLabel}</span>
-             </div>
+             <Badge className={modeBadgeTone}>
+               <span className="min-w-0 break-words">Vous travaillez dans {modeLabel}</span>
+             </Badge>
            }
           actions={
             <Link
@@ -524,15 +523,15 @@ export default function CoachReportsPage() {
                     >
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-medium">{report.title}</p>
-                          {!report.sent_at ? (
-                            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                           <p className="font-medium">{report.title}</p>
+                           {!report.sent_at ? (
+                            <Badge tone="muted" size="sm">
                               Brouillon
-                            </span>
-                          ) : null}
-                        </div>
-                        <p className="mt-1 text-xs text-[var(--muted)]">
-                          {formatDate(
+                            </Badge>
+                           ) : null}
+                         </div>
+                         <p className="mt-1 text-xs text-[var(--muted)]">
+                           {formatDate(
                             report.report_date ?? report.created_at,
                             locale,
                             timezone

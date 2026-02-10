@@ -103,6 +103,14 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
     });
   }
 
+  const handleCollapse = () => {
+    if (onCollapse) {
+      onCollapse();
+      return;
+    }
+    setCollapsed((prev) => !prev);
+  };
+
   const isActive = (href: string) => {
     if (href === "/app") {
       return pathname === "/app";
@@ -128,7 +136,6 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
     router.replace("/");
   };
 
-  const settingsHref = profile?.role === "student" ? "/app/eleve/parametres" : "/app/coach/parametres";
   const brandIconUrl = "/branding/logo.png";
   const brandWordmarkUrl = "/branding/wordmark.png";
 
@@ -330,6 +337,51 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
             />
           ) : null}
         </Link>
+
+        {onCollapse ? (
+          <button
+            type="button"
+            onClick={handleCollapse}
+            aria-label="Fermer la navigation"
+            title="Fermer"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[var(--muted)] opacity-70 transition hover:bg-white/5 hover:text-[var(--text)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/40"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M18 6L6 18" />
+              <path d="M6 6l12 12" />
+            </svg>
+          </button>
+        ) : !forceExpanded ? (
+          <button
+            type="button"
+            onClick={handleCollapse}
+            title={isCollapsed ? "Etendre la navigation" : "Reduire la navigation"}
+            aria-label={isCollapsed ? "Etendre la navigation" : "Reduire la navigation"}
+            className="hidden h-9 w-9 items-center justify-center rounded-full text-[var(--muted)] opacity-70 transition hover:bg-white/5 hover:text-[var(--text)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/40 lg:inline-flex"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d={isCollapsed ? "M15 18l-6-6 6-6" : "M9 18l6-6-6-6"} />
+            </svg>
+          </button>
+        ) : null}
       </div>
 
       <div className="mt-4 flex min-h-0 flex-1 flex-col">
@@ -481,117 +533,82 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
             </p>
           ) : null}
           <div className={`mt-3 space-y-2 ${isCollapsed ? "" : "pl-1"}`}>
-            <button
-              type="button"
-              onClick={toggleTheme}
-              title="Theme"
-              aria-label="Theme"
-              className={`group relative flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition ${
-                isCollapsed
-                  ? "justify-center text-[var(--muted)] hover:bg-white/50 hover:text-[var(--text)]"
-                  : "justify-between text-[var(--muted)] hover:bg-white/50 hover:text-[var(--text)]"
-              }`}
-            >
-              <span className="flex min-w-0 flex-1 items-center gap-3">
-                <span className="flex h-8 w-8 items-center justify-center text-[var(--muted)] transition group-hover:text-[var(--text)]">
-                  {theme === "dark" ? (
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="h-4 w-4"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z" />
-                    </svg>
-                  ) : (
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="h-4 w-4"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <circle cx="12" cy="12" r="4" />
-                      <path d="M12 2v2" />
-                      <path d="M12 20v2" />
-                      <path d="M4.93 4.93l1.41 1.41" />
-                      <path d="M17.66 17.66l1.41 1.41" />
-                      <path d="M2 12h2" />
-                      <path d="M20 12h2" />
-                      <path d="M6.34 17.66l-1.41 1.41" />
-                      <path d="M19.07 4.93l-1.41 1.41" />
-                    </svg>
-                  )}
+              <button
+                type="button"
+                onClick={toggleTheme}
+                title="Theme"
+                aria-label={theme === "light" ? "Basculer en mode sombre" : "Basculer en mode clair"}
+                role="switch"
+                aria-checked={theme === "light"}
+                className={`group relative flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/40 ${
+                  isCollapsed
+                    ? "justify-center text-[var(--muted)] hover:bg-white/50 hover:text-[var(--text)]"
+                    : "justify-between text-[var(--muted)] hover:bg-white/50 hover:text-[var(--text)]"
+                }`}
+              >
+                <span className="flex min-w-0 flex-1 items-center gap-3">
+                  <span className="flex h-8 w-8 items-center justify-center text-[var(--muted)] transition group-hover:text-[var(--text)]">
+                    {theme === "dark" ? (
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z" />
+                      </svg>
+                    ) : (
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <circle cx="12" cy="12" r="4" />
+                        <path d="M12 2v2" />
+                        <path d="M12 20v2" />
+                        <path d="M4.93 4.93l1.41 1.41" />
+                        <path d="M17.66 17.66l1.41 1.41" />
+                        <path d="M2 12h2" />
+                        <path d="M20 12h2" />
+                        <path d="M6.34 17.66l-1.41 1.41" />
+                        <path d="M19.07 4.93l-1.41 1.41" />
+                      </svg>
+                    )}
+                  </span>
+                  {!isCollapsed ? <span className="truncate">Theme</span> : null}
                 </span>
-                {!isCollapsed ? <span className="whitespace-nowrap">Theme</span> : null}
-              </span>
-              {!isCollapsed ? (
-                <span className="text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                  {theme === "dark" ? "Clair" : "Sombre"}
-                </span>
-              ) : null}
-            </button>
 
-            <Link
-              href={settingsHref}
-              title="Parametres"
-              aria-label="Parametres"
-              onClick={onNavigate}
-              className={`group relative flex w-full items-center gap-3 rounded-xl px-3 py-2 transition ${
-                isCollapsed
-                  ? "justify-center text-[var(--muted)] hover:text-[var(--text)]"
-                  : "justify-between text-[var(--muted)] hover:text-[var(--text)]"
-              }`}
-            >
-              <span className="flex min-w-0 flex-1 items-center gap-3">
-                <span
-                  className={`flex h-8 w-8 items-center justify-center text-[var(--muted)] transition ${
-                    isCollapsed ? "group-hover:text-[var(--text)]" : "group-hover:text-[var(--text)]"
-                  }`}
-                >
-                  {iconForHref(settingsHref)}
-                </span>
-                {!isCollapsed ? <span className="whitespace-nowrap">Parametres</span> : null}
-              </span>
-            </Link>
-
-            <a
-              href="mailto:contact@adrienlafuge.com?subject=Support%20SwingFlow"
-              title="Aide"
-              aria-label="Aide"
-              className={`group relative flex w-full items-center gap-3 rounded-xl px-3 py-2 transition ${
-                isCollapsed
-                  ? "justify-center text-[var(--muted)] hover:text-[var(--text)]"
-                  : "justify-between text-[var(--muted)] hover:text-[var(--text)]"
-              }`}
-            >
-              <span className="flex min-w-0 flex-1 items-center gap-3">
-                <span className="flex h-8 w-8 items-center justify-center text-[var(--muted)] transition group-hover:text-[var(--text)]">
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-4 w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
-                    <path d="M8 9h8" />
-                    <path d="M8 13h6" />
-                  </svg>
-                </span>
-                {!isCollapsed ? <span className="whitespace-nowrap">Aide</span> : null}
-              </span>
-            </a>
+                {!isCollapsed ? (
+                  <span className="flex shrink-0 items-center gap-2">
+                    <span className="text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                      {theme === "light" ? "Clair" : "Sombre"}
+                    </span>
+                    <span
+                      aria-hidden="true"
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full border transition ${
+                        theme === "light"
+                          ? "border-emerald-300/40 bg-emerald-400/10"
+                          : "border-white/15 bg-white/5"
+                      }`}
+                    >
+                      <span
+                        className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full border border-white/10 bg-white shadow-sm transition-transform ${
+                          theme === "light" ? "translate-x-5" : "translate-x-0"
+                        }`}
+                      />
+                    </span>
+                  </span>
+                ) : null}
+              </button>
 
             <button
               type="button"
@@ -624,48 +641,6 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
                 {!isCollapsed ? <span className="whitespace-nowrap">Se deconnecter</span> : null}
               </span>
             </button>
-
-            {!forceExpanded ? (
-              <button
-                type="button"
-                onClick={() => {
-                  if (onCollapse) {
-                    onCollapse();
-                    return;
-                  }
-                  setCollapsed((prev) => !prev);
-                }}
-                title={isCollapsed ? "Etendre la navigation" : "Reduire la navigation"}
-                aria-label={isCollapsed ? "Etendre la navigation" : "Reduire la navigation"}
-                className={`group relative flex w-full items-center gap-3 rounded-xl px-3 py-2 transition ${
-                  isCollapsed
-                    ? "justify-center text-[var(--muted)] hover:bg-white/50 hover:text-[var(--text)]"
-                    : "justify-between text-[var(--muted)] hover:bg-white/50 hover:text-[var(--text)]"
-                }`}
-              >
-                <span className="flex min-w-0 flex-1 items-center gap-3">
-                  <span className="flex h-8 w-8 items-center justify-center text-[var(--muted)] transition group-hover:text-[var(--text)]">
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="h-4 w-4"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <path d={isCollapsed ? "M15 18l-6-6 6-6" : "M9 18l6-6-6-6"} />
-                    </svg>
-                  </span>
-                  {!isCollapsed ? (
-                    <span className="whitespace-nowrap">
-                      {isCollapsed ? "Etendre" : "Reduire"}
-                    </span>
-                  ) : null}
-                </span>
-              </button>
-            ) : null}
           </div>
         </div>
       </div>

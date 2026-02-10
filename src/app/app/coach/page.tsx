@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../_components/role-guard";
 import { useProfile } from "../_components/profile-context";
 import PageHeader from "../_components/page-header";
+import Badge from "../_components/badge";
 
 type ReportRow = {
   id: string;
@@ -417,11 +418,9 @@ export default function CoachDashboardPage() {
           />
 
           <section className="panel rounded-2xl p-6">
-            <div
-              className={`inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
-            >
+            <Badge className={modeBadgeTone}>
               <span className="min-w-0 break-words">Vous travaillez dans {modeLabel}</span>
-            </div>
+            </Badge>
             <div className="mt-4 flex flex-wrap gap-2">
               <button
                 type="button"
@@ -441,13 +440,8 @@ export default function CoachDashboardPage() {
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       <div className="space-y-6">
         <PageHeader
-          overline={
-            <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-              Dashboard coach
-            </p>
-          }
-          title="Vue d ensemble"
-          subtitle="Suivi rapide des eleves, rapports et tests."
+          title="Dashboard"
+          subtitle="Vos rapports, eleves et activite recente en un coup d oeil."
           actions={
             <>
               <Link
@@ -483,11 +477,9 @@ export default function CoachDashboardPage() {
             </>
           }
           meta={
-            <div
-              className={`inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
-            >
+            <Badge className={modeBadgeTone}>
               <span className="min-w-0 break-words">Vous travaillez dans {modeLabel}</span>
-            </div>
+            </Badge>
           }
         />
 
@@ -541,9 +533,7 @@ export default function CoachDashboardPage() {
                         : "Chargement..."}
                   </p>
                 </div>
-                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] text-[var(--muted)]">
-                  Rapports crees
-                </div>
+                <Badge tone="muted">Rapports crees</Badge>
               </div>
 
               <div className="mt-5">
@@ -679,11 +669,7 @@ export default function CoachDashboardPage() {
                           </div>
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
-                          <span
-                            className={`rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-wide ${status.tone}`}
-                          >
-                            {status.label}
-                          </span>
+                          <Badge className={status.tone}>{status.label}</Badge>
                         </div>
                       </Link>
                     );

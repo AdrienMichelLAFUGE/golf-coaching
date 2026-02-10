@@ -8,6 +8,7 @@ import RoleGuard from "../../_components/role-guard";
 import { useProfile } from "../../_components/profile-context";
 import PremiumOfferModal from "../../_components/premium-offer-modal";
 import PageHeader from "../../_components/page-header";
+import Badge from "../../_components/badge";
 import { isAdminEmail } from "@/lib/admin";
 import {
   PELZ_PUTTING_TEST,
@@ -76,6 +77,12 @@ const statusLabel: Record<AssignmentRow["status"], string> = {
   in_progress: "En cours",
   finalized: "Finalise",
 };
+
+const ASSIGNMENT_STATUS_TONE = {
+  assigned: "muted",
+  in_progress: "amber",
+  finalized: "emerald",
+} as const;
 
 export default function CoachTestsPage() {
   const { organization, userEmail, planTier } = useProfile();
@@ -587,11 +594,9 @@ export default function CoachTestsPage() {
           title="Bibliotheque de tests"
           subtitle="Selectionne un test normalise et assigne-le a tes eleves."
           meta={
-            <div
-              className={`inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
-            >
+            <Badge className={modeBadgeTone}>
               <span className="min-w-0 break-words">Vous travaillez dans {modeLabel}</span>
-            </div>
+            </Badge>
           }
         />
 
@@ -657,9 +662,9 @@ export default function CoachTestsPage() {
                           {test.title}
                         </h4>
                       </div>
-                      <span className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-emerald-200">
+                      <Badge tone="emerald" size="sm">
                         Normalise
-                      </span>
+                      </Badge>
                     </div>
                     <p className="mt-3 text-sm text-[var(--muted)]">{test.description}</p>
                     <div className="mt-4 flex items-center gap-3 text-xs text-[var(--muted)]">
@@ -825,13 +830,13 @@ export default function CoachTestsPage() {
                           </div>
                         </Link>
                         <div className="flex items-center gap-2">
-                          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                          <Badge tone={ASSIGNMENT_STATUS_TONE[assignment.status]} size="sm">
                             {statusLabel[assignment.status]}
-                          </span>
+                          </Badge>
                           {isArchived ? (
-                            <span className="rounded-full border border-amber-300/30 bg-amber-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-amber-200">
+                            <Badge tone="amber" size="sm">
                               Archive
-                            </span>
+                            </Badge>
                           ) : null}
                           {isArchived ? (
                             <button
@@ -970,9 +975,9 @@ export default function CoachTestsPage() {
                         </span>
                       </span>
                       {student.isShared ? (
-                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                        <Badge tone="sky" size="sm">
                           Partage
-                        </span>
+                        </Badge>
                       ) : null}
                     </label>
                   ))

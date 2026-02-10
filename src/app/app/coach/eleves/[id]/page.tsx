@@ -14,6 +14,7 @@ import PageHeader from "../../../_components/page-header";
 import PremiumOfferModal from "../../../_components/premium-offer-modal";
 import ShareStudentModal from "../../../_components/share-student-modal";
 import RadarReviewModal from "../../../_components/radar-review-modal";
+import Badge from "../../../_components/badge";
 import RadarCharts, {
   defaultRadarConfig,
   type RadarConfig,
@@ -1963,17 +1964,17 @@ export default function CoachStudentDetailPage() {
             title={`${student.first_name} ${student.last_name ?? ""}`.trim()}
             titleBadges={
               student.activated_at ? (
-                <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-emerald-200">
+                <Badge tone="emerald" size="sm">
                   Actif
-                </span>
+                </Badge>
               ) : student.invited_at ? (
-                <span className="rounded-full border border-amber-300/30 bg-amber-400/10 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-amber-200">
+                <Badge tone="amber" size="sm">
                   Invite
-                </span>
+                </Badge>
               ) : (
-                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)]">
+                <Badge tone="muted" size="sm">
                   A inviter
-                </span>
+                </Badge>
               )
             }
             subtitle={student.email || "-"}
@@ -2119,8 +2120,8 @@ export default function CoachStudentDetailPage() {
                 <h3 className="mt-2 text-lg font-semibold text-[var(--text)]">
                   Vue rapide, priorites, dernieres donnees.
                 </h3>
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-[0.65rem] uppercase tracking-[0.25em] text-[var(--muted)]">
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <Badge tone="muted" size="sm">
                     {latestPublishedReport
                       ? `Dernier rapport: ${formatDate(
                           latestPublishedReport.report_date ??
@@ -2129,18 +2130,19 @@ export default function CoachStudentDetailPage() {
                           timezone
                         )}`
                       : "Aucun rapport publie"}
-                  </span>
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+                  </Badge>
+                  <Badge tone="muted" size="sm">
                     TPI: {tpiCounts.red} rouge, {tpiCounts.orange} orange
-                  </span>
-                  <span
-                    className={`rounded-full border px-3 py-1 ${
+                  </Badge>
+                  <Badge
+                    size="sm"
+                    className={
                       aiKpisStatus === "ready"
                         ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-200"
                         : aiKpisStatus === "pending"
                           ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
                           : "border-white/10 bg-white/5 text-[var(--muted)]"
-                    }`}
+                    }
                   >
                     IA:{" "}
                     {aiKpisStatus === "ready"
@@ -2148,7 +2150,7 @@ export default function CoachStudentDetailPage() {
                       : aiKpisStatus === "pending"
                         ? "en cours"
                         : "off"}
-                  </span>
+                  </Badge>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -2230,12 +2232,12 @@ export default function CoachStudentDetailPage() {
                           </p>
                           {item.key === "physical" ? (
                             <div className="mt-3 flex flex-wrap gap-2 text-[0.7rem] text-[var(--muted)]">
-                              <span className="inline-flex items-center gap-1 rounded-full border border-rose-300/25 bg-rose-400/10 px-2 py-0.5 text-rose-200">
+                              <Badge tone="rose" size="sm">
                                 {tpiCounts.red} rouge
-                              </span>
-                              <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/25 bg-amber-400/10 px-2 py-0.5 text-amber-200">
+                              </Badge>
+                              <Badge tone="amber" size="sm">
                                 {tpiCounts.orange} orange
-                              </span>
+                              </Badge>
                             </div>
                           ) : null}
                         </div>
@@ -2330,12 +2332,14 @@ export default function CoachStudentDetailPage() {
                   <span>Aucun coach assigne</span>
                 ) : (
                   assignmentCoaches.map((entry) => (
-                    <span
+                    <Badge
                       key={entry.coach_id}
-                      className="rounded-full border border-white/10 bg-white/5 px-3 py-1"
+                      tone="muted"
+                      size="sm"
+                      className="normal-case tracking-normal"
                     >
                       {getCoachLabel(entry.profiles?.full_name, entry.coach_id)}
-                    </span>
+                    </Badge>
                   ))
                 )}
               </div>
@@ -2446,9 +2450,9 @@ export default function CoachStudentDetailPage() {
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-[var(--text)]">Rapports</h3>
                 {!canWriteReports ? (
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)]">
+                  <Badge tone="muted" size="sm">
                     Lecture seule
-                  </span>
+                  </Badge>
                 ) : (
                   <Link
                     href={`/app/coach/rapports/nouveau?studentId=${student.id}`}
@@ -2473,9 +2477,9 @@ export default function CoachStudentDetailPage() {
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-medium">{report.title}</p>
                           {!report.sent_at ? (
-                            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                            <Badge tone="muted" size="sm">
                               Brouillon
-                            </span>
+                            </Badge>
                           ) : null}
                           {(() => {
                             const label = formatSourceLabel(
@@ -2484,9 +2488,9 @@ export default function CoachStudentDetailPage() {
                             );
                             if (!label) return null;
                             return (
-                              <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                              <Badge tone="muted" size="sm">
                                 {label}
-                              </span>
+                              </Badge>
                             );
                           })()}
                         </div>
@@ -2554,15 +2558,15 @@ export default function CoachStudentDetailPage() {
                     travailler et des points forts.
                   </p>
                   {tpiSourceLabel ? (
-                    <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                    <Badge as="div" tone="muted" size="sm" className="mt-2">
                       <span className="h-1.5 w-1.5 rounded-full bg-white/30" />
                       Source: {tpiSourceLabel}
-                    </div>
+                    </Badge>
                   ) : null}
-                  <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-emerald-100">
+                  <Badge as="div" tone="emerald" size="sm" className="mt-2">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />L
                     assistant IA s appuie sur ce profil pour ses analyses.
-                  </div>
+                  </Badge>
                 </div>
               </div>
               {tpiLocked ? (
@@ -2973,13 +2977,23 @@ export default function CoachStudentDetailPage() {
                                     : ""}
                                 </p>
                               </div>
-                              <span className="shrink-0 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)]">
+                              <Badge
+                                tone={
+                                  item.status === "assigned"
+                                    ? "muted"
+                                    : item.status === "in_progress"
+                                      ? "amber"
+                                      : "emerald"
+                                }
+                                size="sm"
+                                className="shrink-0"
+                              >
                                 {item.status === "assigned"
                                   ? "A faire"
                                   : item.status === "in_progress"
                                     ? "En cours"
                                     : "Finalise"}
-                              </span>
+                              </Badge>
                             </div>
                             {item.indexOrFlagLabel ? (
                               <p className="mt-2 text-xs text-[var(--muted)]">
@@ -3036,9 +3050,13 @@ export default function CoachStudentDetailPage() {
                                     : ""}
                                 </p>
                               </div>
-                              <span className="shrink-0 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)]">
+                              <Badge
+                                tone={item.archivedAt ? "amber" : "emerald"}
+                                size="sm"
+                                className="shrink-0"
+                              >
                                 {item.archivedAt ? "Archive" : "Termine"}
-                              </span>
+                              </Badge>
                             </div>
                             {item.indexOrFlagLabel ? (
                               <p className="mt-2 text-xs text-[var(--muted)]">
@@ -3155,9 +3173,9 @@ export default function CoachStudentDetailPage() {
                       OCR et detection de tableau automatiquement.
                     </p>
                   </div>
-                  <span className="rounded-full border border-violet-300/30 bg-violet-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-violet-100">
+                  <Badge tone="violet" size="sm">
                     Extraction datas
-                  </span>
+                  </Badge>
                 </div>
                 <input
                   ref={radarInputRef}
@@ -3275,18 +3293,15 @@ export default function CoachStudentDetailPage() {
                               {file.original_name ||
                                 formatRadarSourceFallback(file.source)}
                             </p>
-                            <span
-                              className={`rounded-full border px-2 py-0.5 text-[0.6rem] uppercase tracking-wide ${
-                                radarTechTone[file.source] ?? radarTechTone.unknown
-                              }`}
+                            <Badge
+                              size="sm"
+                              className={radarTechTone[file.source] ?? radarTechTone.unknown}
                             >
                               {isRadarTech(file.source)
                                 ? getRadarTechMeta(file.source).prefix
                                 : "UNK"}
-                            </span>
-                            <span
-                              className={`rounded-full border px-2 py-0.5 text-[0.6rem] uppercase tracking-wide ${badgeTone}`}
-                            >
+                            </Badge>
+                            <Badge size="sm" className={badgeTone}>
                               {file.status === "ready"
                                 ? "Pret"
                                 : file.status === "review"
@@ -3295,11 +3310,11 @@ export default function CoachStudentDetailPage() {
                                   ? "Erreur"
                                   : "Analyse"}
                               {file.status === "processing" ? <LoadingDots /> : null}
-                            </span>
+                            </Badge>
                             {sourceLabel ? (
-                              <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                              <Badge tone="muted" size="sm">
                                 {sourceLabel}
-                              </span>
+                              </Badge>
                             ) : null}
                           </div>
                           <p className="mt-1 text-xs text-[var(--muted)]">

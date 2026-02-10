@@ -6,6 +6,7 @@ import { PLAN_LABELS } from "@/lib/plans";
 import RoleGuard from "../../_components/role-guard";
 import PageBack from "../../_components/page-back";
 import { useProfile } from "../../_components/profile-context";
+import Badge from "../../_components/badge";
 
 type MemberRow = {
   id: string;
@@ -176,14 +177,12 @@ export default function OrgMembersPage() {
           <p className="mt-2 text-sm text-[var(--muted)]">
             Gere les coachs et les acces.
           </p>
-          <div
-            className={`mt-3 inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
-          >
+          <Badge as="div" className={`mt-3 ${modeBadgeTone}`}>
             <span className="min-w-0 break-words">Vous travaillez dans {modeLabel}</span>
-          </div>
-          <div className="mt-3 inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-wide text-[var(--muted)]">
+          </Badge>
+          <Badge as="div" tone="muted" className="mt-3">
             Plan {PLAN_LABELS[planTier]}
-          </div>
+          </Badge>
         </section>
 
         <section className="panel-soft rounded-2xl p-5">

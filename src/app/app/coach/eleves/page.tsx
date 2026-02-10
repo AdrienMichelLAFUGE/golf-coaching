@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../_components/role-guard";
-import PageBack from "../../_components/page-back";
 import { useProfile } from "../../_components/profile-context";
 import PageHeader from "../../_components/page-header";
+import Badge from "../../_components/badge";
 
 type Student = {
   id: string;
@@ -559,22 +559,12 @@ export default function CoachStudentsPage() {
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       <div className="space-y-6">
         <PageHeader
-          overline={
-            <div className="flex items-center gap-2">
-              <PageBack />
-              <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                Eleves
-              </p>
-            </div>
-          }
-          title="Annuaire eleves"
-          subtitle="Recherche rapide, suivi et historique des rapports."
+          title="Elèves"
+          subtitle="Gerez vos élèves."
           meta={
-            <div
-              className={`inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
-            >
+            <Badge className={modeBadgeTone}>
               <span className="min-w-0 break-words">Vous travaillez dans {modeLabel}</span>
-            </div>
+            </Badge>
           }
         />
 
@@ -783,11 +773,11 @@ export default function CoachStudentsPage() {
               <span>Features</span>
             </div>
             {loading ? (
-              <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
+              <div className="rounded-xl border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
                 Chargement des eleves...
               </div>
             ) : filteredStudents.length === 0 ? (
-              <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-4 text-sm">
+              <div className="rounded-xl border-white/5 bg-white/5 px-4 py-4 text-sm">
                 <p className="text-[var(--text)]">
                   {currentWorkspaceType === "org"
                     ? "Aucun eleve dans cette organisation."
@@ -832,7 +822,7 @@ export default function CoachStudentsPage() {
                 return (
                   <div
                     key={student.id}
-                    className="relative grid gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-[var(--text)] md:grid-cols-[1.5fr_1fr_0.9fr_0.9fr]"
+                    className="relative grid gap-3 rounded-xl border-white/5 bg-white/5 px-4 py-3 text-[var(--text)] md:grid-cols-[1.5fr_1fr_0.9fr_0.9fr]"
                   >
                     <div>
                       <div className="flex items-center gap-3">
@@ -865,33 +855,33 @@ export default function CoachStudentsPage() {
                     </span>
                     <div className="flex flex-col gap-2">
                       {student.activated_at ? (
-                        <span className="inline-flex self-start rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-emerald-200">
+                        <Badge tone="emerald" size="sm" className="self-start">
                           Actif
-                        </span>
+                        </Badge>
                       ) : student.invited_at ? (
-                        <span className="inline-flex self-start rounded-full border border-amber-300/30 bg-amber-400/10 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-amber-200">
+                        <Badge tone="amber" size="sm" className="self-start">
                           Invite
-                        </span>
+                        </Badge>
                       ) : (
-                        <span className="inline-flex self-start rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)]">
+                        <Badge tone="muted" size="sm" className="self-start">
                           A inviter
-                        </span>
+                        </Badge>
                       )}
                     </div>
                     <div className="flex items-start justify-between gap-3">
                       {sharedStudentSet.has(student.id) ? (
-                        <span className="inline-flex self-start rounded-full border border-sky-300/30 bg-sky-400/10 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-sky-100">
+                        <Badge tone="sky" size="sm" className="self-start">
                           Partage
-                        </span>
+                        </Badge>
                       ) : null}
                       {tpiActive ? (
-                        <span className="inline-flex self-start rounded-full border border-rose-300/30 bg-rose-400/10 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-rose-200">
+                        <Badge tone="rose" size="sm" className="self-start">
                           TPI actif
-                        </span>
+                        </Badge>
                       ) : (
-                        <span className="inline-flex self-start rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)]">
+                        <Badge tone="muted" size="sm" className="self-start">
                           TPI inactif
-                        </span>
+                        </Badge>
                       )}
                       <div className="relative" data-student-menu>
                         <button

@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase/client";
 import PageBack from "../_components/page-back";
 import RoleGuard from "../_components/role-guard";
 import { useProfile } from "../_components/profile-context";
+import Badge from "../_components/badge";
 
 type GroupRow = {
   id: string;
@@ -116,11 +117,9 @@ export default function OrgOverviewPage() {
           <p className="mt-2 text-sm text-[var(--muted)]">
             Repartissez vos eleves dans des groupes et assignez les coachs.
           </p>
-          <div
-            className={`mt-3 inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
-          >
+          <Badge as="div" className={`mt-3 ${modeBadgeTone}`}>
             <span className="min-w-0 break-words">Vous travaillez dans {modeLabel}</span>
-          </div>
+          </Badge>
           {isOrgReadOnly ? (
             <p className="mt-3 text-sm text-amber-300">
               Plan Pro requis pour creer ou modifier des groupes.
@@ -193,12 +192,8 @@ export default function OrgOverviewPage() {
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--muted)]">
-                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-                      {group.studentCount} eleves
-                    </span>
-                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-                      {group.coachCount} coachs
-                    </span>
+                    <Badge tone="muted">{group.studentCount} eleves</Badge>
+                    <Badge tone="muted">{group.coachCount} coachs</Badge>
                     <Link
                       href={`/app/org/groups/${group.id}`}
                       className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"

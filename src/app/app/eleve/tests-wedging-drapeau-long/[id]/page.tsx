@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import Badge from "../../../_components/badge";
 import RoleGuard from "../../../_components/role-guard";
 import PageHeader from "../../../_components/page-header";
 import PelzDiagramModal from "../../../_components/pelz-diagram-modal";
@@ -320,9 +321,9 @@ export default function StudentWedgingDrapeauLongPage() {
             }
             meta={
               assignment.status === "finalized" ? (
-                <span className="inline-flex rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-emerald-200">
+                <Badge tone="emerald" size="sm">
                   Finalise
-                </span>
+                </Badge>
               ) : null
             }
             actions={

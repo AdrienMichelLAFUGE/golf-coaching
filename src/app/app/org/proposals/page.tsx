@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase/client";
 import { useProfile } from "../../_components/profile-context";
 import RoleGuard from "../../_components/role-guard";
 import PageBack from "../../_components/page-back";
+import Badge from "../../_components/badge";
 
 type ProposalRow = {
   id: string;
@@ -16,6 +17,12 @@ type ProposalRow = {
   payload: { title?: string } | null;
   created_at: string;
 };
+
+const PROPOSAL_STATUS_TONE = {
+  pending: "amber",
+  accepted: "emerald",
+  rejected: "rose",
+} as const;
 
 export default function OrgProposalsPage() {
   const { workspaceType, isWorkspacePremium, organization } = useProfile();
@@ -144,11 +151,9 @@ export default function OrgProposalsPage() {
           <p className="mt-2 text-sm text-[var(--muted)]">
             Accepte ou refuse les propositions des coachs non assignes.
           </p>
-          <div
-            className={`mt-3 inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
-          >
+          <Badge as="div" className={`mt-3 ${modeBadgeTone}`}>
             <span className="min-w-0 break-words">Vous travaillez dans {modeLabel}</span>
-          </div>
+          </Badge>
           {isOrgReadOnly ? (
             <p className="mt-3 text-sm text-amber-300">
               Freemium: lecture seule en organisation.
@@ -188,9 +193,9 @@ export default function OrgProposalsPage() {
                       </Link>
                     </p>
                   </div>
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                  <Badge tone={PROPOSAL_STATUS_TONE[proposal.status]} size="sm">
                     {proposal.status}
-                  </span>
+                  </Badge>
                 </div>
                 <p className="mt-3 text-sm text-[var(--muted)]">
                   {proposal.summary ?? "-"}

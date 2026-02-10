@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import Badge from "../../../_components/badge";
 import RoleGuard from "../../../_components/role-guard";
 import PelzDiagramModal from "../../../_components/pelz-diagram-modal";
 import {
@@ -243,9 +244,9 @@ export default function CoachWedgingDrapeauCourtPage() {
                 >
                   Schema
                 </button>
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                <Badge tone="muted" size="sm">
                   {statusLabel[assignment.status]}
-                </span>
+                </Badge>
               </div>
             </div>
           </section>

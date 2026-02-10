@@ -11,6 +11,7 @@ import RoleGuard from "../../../_components/role-guard";
 import { useProfile } from "../../../_components/profile-context";
 import PageBack from "../../../_components/page-back";
 import PageHeader from "../../../_components/page-header";
+import Badge from "../../../_components/badge";
 import RadarCharts, {
   type RadarConfig,
   type RadarColumn,
@@ -510,9 +511,9 @@ export default function CoachReportDetailPage() {
             titleBadges={
               <>
                 {!report.sent_at ? (
-                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                  <Badge tone="muted" size="sm">
                     Brouillon
-                  </span>
+                  </Badge>
                 ) : null}
                 {(() => {
                   const label = formatSourceLabel(
@@ -522,9 +523,9 @@ export default function CoachReportDetailPage() {
                   );
                   if (!label) return null;
                   return (
-                    <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                    <Badge tone="muted" size="sm">
                       {label}
-                    </span>
+                    </Badge>
                   );
                 })()}
               </>

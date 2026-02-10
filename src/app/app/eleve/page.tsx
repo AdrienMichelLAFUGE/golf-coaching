@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../_components/role-guard";
 import { useProfile } from "../_components/profile-context";
 import PageHeader from "../_components/page-header";
+import Badge from "../_components/badge";
 import { z } from "zod";
 import {
   ReportKpiRowSchema,
@@ -546,7 +547,7 @@ export default function StudentDashboardPage() {
                   Vue rapide, priorites, dernieres donnees.
                 </h3>
                 <div className="mt-3 flex flex-wrap items-center gap-2 text-[0.65rem] uppercase tracking-[0.25em] text-[var(--muted)]">
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+                  <Badge tone="muted">
                     {latestPublishedReport
                       ? `Dernier rapport: ${formatDate(
                           latestPublishedReport.report_date ??
@@ -555,18 +556,18 @@ export default function StudentDashboardPage() {
                           timezone
                         )}`
                       : "Aucun rapport publie"}
-                  </span>
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+                  </Badge>
+                  <Badge tone="muted">
                     TPI: {tpiCounts.red} rouge, {tpiCounts.orange} orange
-                  </span>
-                  <span
-                    className={`rounded-full border px-3 py-1 ${
+                  </Badge>
+                  <Badge
+                    className={
                       aiKpisStatus === "ready"
                         ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-200"
                         : aiKpisStatus === "pending"
                           ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
                           : "border-white/10 bg-white/5 text-[var(--muted)]"
-                    }`}
+                    }
                   >
                     IA:{" "}
                     {aiKpisStatus === "ready"
@@ -574,7 +575,7 @@ export default function StudentDashboardPage() {
                       : aiKpisStatus === "pending"
                         ? "en cours"
                         : "off"}
-                  </span>
+                  </Badge>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -664,12 +665,12 @@ export default function StudentDashboardPage() {
                           </p>
                           {item.key === "physical" ? (
                             <div className="mt-3 flex flex-wrap gap-2 text-[0.7rem] text-[var(--muted)]">
-                              <span className="inline-flex items-center gap-1 rounded-full border border-rose-300/25 bg-rose-400/10 px-2 py-0.5 text-rose-200">
+                              <Badge tone="rose" size="sm">
                                 {tpiCounts.red} rouge
-                              </span>
-                              <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/25 bg-amber-400/10 px-2 py-0.5 text-amber-200">
+                              </Badge>
+                              <Badge tone="amber" size="sm">
                                 {tpiCounts.orange} orange
-                              </span>
+                              </Badge>
                             </div>
                           ) : null}
                         </div>
@@ -860,20 +861,20 @@ export default function StudentDashboardPage() {
                   Resume visuel de ton screening physique pour suivre tes progres.
                 </p>
                 {tpiSourceLabel ? (
-                  <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                  <Badge as="div" tone="muted" className="mt-2">
                     <span className="h-1.5 w-1.5 rounded-full bg-white/30" />
                     Source: {tpiSourceLabel}
-                  </div>
+                  </Badge>
                 ) : null}
               </div>
               {tpiReport ? (
-                <span className="rounded-full border border-rose-300/30 bg-rose-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-rose-200">
+                <Badge tone="rose">
                   {tpiReport.status === "processing"
                     ? "Analyse en cours"
                     : tpiReport.status === "ready"
                       ? "Pret"
                       : "Erreur"}
-                </span>
+                </Badge>
               ) : null}
             </div>
 

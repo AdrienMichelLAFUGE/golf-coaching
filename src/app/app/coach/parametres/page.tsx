@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { PLAN_ENTITLEMENTS } from "@/lib/plans";
+import Badge from "../../_components/badge";
 import RoleGuard from "../../_components/role-guard";
 import { useProfile } from "../../_components/profile-context";
 import PageBack from "../../_components/page-back";
@@ -771,9 +772,9 @@ export default function CoachSettingsPage() {
                         </p>
                       </div>
                     </div>
-                    <span className="rounded-full border border-amber-300/40 bg-amber-400/20 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-amber-200">
+                    <Badge tone="amber" size="sm">
                       Voir les offres
-                    </span>
+                    </Badge>
                   </div>
                 </button>
               ) : null}
@@ -991,7 +992,7 @@ export default function CoachSettingsPage() {
             ) : null}
           </section>
 
-          <section className="panel-soft rounded-2xl p-5">
+          <section className="">
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"

@@ -356,6 +356,35 @@
 }
 
 @layer utilities {
+  .app-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-width: 1px;
+    border-radius: 0.5rem;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.25em;
+    max-width: 100%;
+    min-width: 0;
+    white-space: normal;
+  }
+
+  .app-badge--sm {
+    padding: 0.125rem 0.5rem;
+    font-size: 0.55rem;
+    letter-spacing: 0.2em;
+  }
+
+  .app-badge--dashed {
+    border-style: dashed;
+  }
+
+  .app-badge--nowrap {
+    white-space: nowrap;
+  }
+
   .panel {
     background: var(--panel);
     border: 0;

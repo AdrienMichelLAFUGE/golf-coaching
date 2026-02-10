@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import Badge from "../../../_components/badge";
 import RoleGuard from "../../../_components/role-guard";
 import PageHeader from "../../../_components/page-header";
 import PelzResponsiveAccordion from "../../../_components/pelz-responsive-accordion";
@@ -370,9 +371,9 @@ export default function StudentTestDetailPage() {
             >
               Schema
             </button>
-            <span className="rounded-full border border-white/5 bg-white/5 px-2 py-1 text-[0.55rem] uppercase tracking-wide text-[var(--muted)] opacity-70">
+            <Badge tone="muted" size="sm" className="opacity-70">
               {subtest.sequence.length} tentatives
-            </span>
+            </Badge>
           </div>
         </div>
 
@@ -521,9 +522,9 @@ export default function StudentTestDetailPage() {
             subtitle={`Assigne le ${formatDate(assignment.assigned_at)}.`}
             meta={
               assignment.status === "finalized" ? (
-                <span className="inline-flex rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-emerald-200">
+                <Badge tone="emerald" size="sm">
                   Finalise
-                </span>
+                </Badge>
               ) : null
             }
             actions={
@@ -638,9 +639,9 @@ export default function StudentTestDetailPage() {
                     >
                       Schema
                     </button>
-                    <span className="rounded-full border border-white/5 bg-white/5 px-2 py-1 text-[0.55rem] uppercase tracking-wide text-[var(--muted)] opacity-70">
+                    <Badge tone="muted" size="sm" className="opacity-70">
                       {subtest.sequence.length} tentatives
-                    </span>
+                    </Badge>
                   </div>
                 </div>
 

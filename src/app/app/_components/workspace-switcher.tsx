@@ -212,10 +212,10 @@ export default function WorkspaceSwitcher() {
         aria-haspopup="menu"
         aria-expanded={open}
         data-testid="workspace-switcher-button"
-        className="flex items-center gap-2 rounded-full border border-white/10 bg-white/90 px-3 py-2 text-xs uppercase tracking-wide text-[var(--text)] transition hover:border-white/30"
+        className="flex items-center gap-2 rounded-full border border-gray-400 bg-white/90 px-5 py-2 text-sm uppercase tracking-wide text-[var(--text)] transition hover:border-black/90"
       >
         <span
-          className={`inline-flex items-center gap-2 rounded-full border px-2 py-1 ${modeClass}`}
+          className={`inline-flex items-center gap-2 rounded-full px-1 py-1 ${modeClass}`}
         >
           {workspaceType === "org" ? <BuildingIcon /> : <UserIcon />}
         </span>

@@ -3,6 +3,7 @@
 import PageBack from "../../_components/page-back";
 import RoleGuard from "../../_components/role-guard";
 import { useProfile } from "../../_components/profile-context";
+import Badge from "../../_components/badge";
 
 export default function OrgAnalyticsPage() {
   const { organization } = useProfile();
@@ -31,11 +32,9 @@ export default function OrgAnalyticsPage() {
           <p className="mt-2 text-sm text-[var(--muted)]">
             Suivi des activites et tendances de l organisation.
           </p>
-          <div
-            className={`mt-3 inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
-          >
+          <Badge as="div" className={`mt-3 ${modeBadgeTone}`}>
             <span className="min-w-0 break-words">Vous travaillez dans {modeLabel}</span>
-          </div>
+          </Badge>
         </section>
       </div>
     </RoleGuard>

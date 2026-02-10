@@ -2,6 +2,7 @@
 
 import { type ReactNode, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Badge from "../../../_components/badge";
 import RoleGuard from "../../../_components/role-guard";
 import PelzResponsiveAccordion from "../../../_components/pelz-responsive-accordion";
 import PelzDiagramModal from "../../../_components/pelz-diagram-modal";
@@ -410,9 +411,9 @@ function PelzPuttingPreview({ onBack }: PreviewProps) {
             >
               Schema
             </button>
-            <span className="rounded-full border border-white/5 bg-white/5 px-2 py-1 text-[0.55rem] uppercase tracking-wide text-[var(--muted)] opacity-70">
+            <Badge tone="muted" size="sm" className="opacity-70">
               {subtest.sequence.length} tentatives
-            </span>
+            </Badge>
           </div>
         </div>
 
@@ -483,9 +484,9 @@ function PelzPuttingPreview({ onBack }: PreviewProps) {
           >
             Retour
           </button>
-          <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+          <Badge tone="muted" size="sm">
             Apercu
-          </span>
+          </Badge>
         </div>
       </section>
 
@@ -524,9 +525,9 @@ function PelzPuttingPreview({ onBack }: PreviewProps) {
                     >
                       Schema
                     </button>
-                    <span className="rounded-full border border-white/5 bg-white/5 px-2 py-1 text-[0.55rem] uppercase tracking-wide text-[var(--muted)] opacity-70">
+                    <Badge tone="muted" size="sm" className="opacity-70">
                       {subtest.sequence.length} tentatives
-                    </span>
+                    </Badge>
                   </div>
                 </div>
 
@@ -695,9 +696,9 @@ function PelzApprochesPreview({ onBack }: PreviewProps) {
             >
               Schema
             </button>
-            <span className="rounded-full border border-white/5 bg-white/5 px-2 py-1 text-[0.55rem] uppercase tracking-wide text-[var(--muted)] opacity-70">
+            <Badge tone="muted" size="sm" className="opacity-70">
               {subtest.sequence.length} tentatives
-            </span>
+            </Badge>
           </div>
         </div>
 
@@ -768,9 +769,9 @@ function PelzApprochesPreview({ onBack }: PreviewProps) {
           >
             Retour
           </button>
-          <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+          <Badge tone="muted" size="sm">
             Apercu
-          </span>
+          </Badge>
         </div>
       </section>
 
@@ -809,9 +810,9 @@ function PelzApprochesPreview({ onBack }: PreviewProps) {
                     >
                       Schema
                     </button>
-                    <span className="rounded-full border border-white/5 bg-white/5 px-2 py-1 text-[0.55rem] uppercase tracking-wide text-[var(--muted)] opacity-70">
+                    <Badge tone="muted" size="sm" className="opacity-70">
                       {subtest.sequence.length} tentatives
-                    </span>
+                    </Badge>
                   </div>
                 </div>
 
@@ -933,9 +934,9 @@ function WedgingDrapeauLongPreview({ onBack }: PreviewProps) {
             >
               Schema
             </button>
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+            <Badge tone="muted" size="sm">
               Apercu
-            </span>
+            </Badge>
           </div>
         </div>
       </section>
@@ -1100,9 +1101,9 @@ function WedgingDrapeauCourtPreview({ onBack }: PreviewProps) {
             >
               Schema
             </button>
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+            <Badge tone="muted" size="sm">
               Apercu
-            </span>
+            </Badge>
           </div>
         </div>
       </section>

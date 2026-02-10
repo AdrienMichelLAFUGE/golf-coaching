@@ -81,6 +81,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
 
   return (
     <header className="relative sticky top-4 z-40 flex w-full items-center gap-3 rounded-3xl bg-[var(--app-surface)] px-4 py-3 min-[880px]:top-6 min-[880px]:px-6 min-[880px]:py-4">
+      <WorkspaceSwitcher />
       <div className="flex min-w-0 flex-1 items-center gap-3">
         {onToggleNav ? (
           <button
@@ -136,7 +137,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]">
               <svg
                 viewBox="0 0 24 24"
-                className="h-4 w-4"
+                className="h-5 w-5"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"
@@ -152,12 +153,12 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
               type="search"
               placeholder="Rechercher..."
               aria-label="Rechercher"
-              className="w-full rounded-full border-white/30 bg-white/90 py-2 pl-9 pr-4 text-sm text-[var(--text)] placeholder:text-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
+              className="w-full rounded-full border-white/20 bg-white/90 py-4 pl-9 pr-4 text-sm text-[var(--text)] placeholder:text-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
             />
           </div>
         </div>
       </div>
-
+      
       <div className="flex items-center gap-2">
         <div className="hidden items-center gap-2 min-[880px]:flex">
           <button
@@ -167,7 +168,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
           >
             <svg
               viewBox="0 0 24 24"
-              className="h-6 w-6"
+              className="h-5 w-5"
               fill="none"
               stroke="currentColor"
               strokeWidth="2"
@@ -187,7 +188,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
           >
             <svg
               viewBox="0 0 24 24"
-              className="h-6 w-6"
+              className="h-5 w-5"
               fill="none"
               stroke="currentColor"
               strokeWidth="2"
@@ -201,7 +202,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
           </button>
         </div>
 
-        <WorkspaceSwitcher />
+        
 
         {needsProfileName ? (
           <button

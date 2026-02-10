@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase/client";
 import PageBack from "../../../_components/page-back";
 import RoleGuard from "../../../_components/role-guard";
 import { useProfile } from "../../../_components/profile-context";
+import Badge from "../../../_components/badge";
 
 type GroupRow = {
   id: string;
@@ -252,11 +253,9 @@ export default function OrgGroupDetailPage() {
           <p className="mt-2 text-sm text-[var(--muted)]">
             Assignez les eleves et les coachs pour organiser le travail en structure.
           </p>
-          <div
-            className={`mt-3 inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
-          >
+          <Badge as="div" className={`mt-3 ${modeBadgeTone}`}>
             <span className="min-w-0 break-words">Vous travaillez dans {modeLabel}</span>
-          </div>
+          </Badge>
           {isOrgReadOnly ? (
             <p className="mt-3 text-sm text-amber-300">
               Plan Pro requis pour modifier les groupes.

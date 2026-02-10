@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import Badge from "../../../_components/badge";
 import RoleGuard from "../../../_components/role-guard";
 import PelzResponsiveAccordion from "../../../_components/pelz-responsive-accordion";
 import PelzDiagramModal from "../../../_components/pelz-diagram-modal";
@@ -350,9 +351,9 @@ export default function CoachTestDetailPage() {
             >
               Schema
             </button>
-            <span className="rounded-full border border-white/5 bg-white/5 px-2 py-1 text-[0.55rem] uppercase tracking-wide text-[var(--muted)] opacity-70">
+            <Badge tone="muted" size="sm" className="opacity-70">
               {subtest.sequence.length} tentatives
-            </span>
+            </Badge>
           </div>
         </div>
 
@@ -415,9 +416,11 @@ export default function CoachTestDetailPage() {
               Eleve: {formatStudentName(student)} • Assigne le{" "}
               {formatDate(assignment.assigned_at)}
             </p>
-            <span className="mt-3 inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-              {statusLabel[assignment.status]}
-            </span>
+            <div className="mt-3">
+              <Badge tone="muted" size="sm">
+                {statusLabel[assignment.status]}
+              </Badge>
+            </div>
           </section>
 
           <PelzResponsiveAccordion
@@ -501,9 +504,9 @@ export default function CoachTestDetailPage() {
                     >
                       Schema
                     </button>
-                    <span className="rounded-full border border-white/5 bg-white/5 px-2 py-1 text-[0.55rem] uppercase tracking-wide text-[var(--muted)] opacity-70">
+                    <Badge tone="muted" size="sm" className="opacity-70">
                       {subtest.sequence.length} tentatives
-                    </span>
+                    </Badge>
                   </div>
                 </div>
 

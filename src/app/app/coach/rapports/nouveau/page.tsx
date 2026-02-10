@@ -21,6 +21,7 @@ import { useProfile } from "../../../_components/profile-context";
 import PageBack from "../../../_components/page-back";
 import PageHeader from "../../../_components/page-header";
 import PremiumOfferModal from "../../../_components/premium-offer-modal";
+import Badge from "../../../_components/badge";
 import RadarReviewModal from "../../../_components/radar-review-modal";
 import RadarCharts, {
   defaultRadarConfig,
@@ -4682,11 +4683,9 @@ export default function CoachReportBuilderPage() {
                     </div>
                   </div>
                 ) : null}
-                <div
-                  className={`mt-3 inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
-                >
+                <Badge as="div" className={`mt-3 ${modeBadgeTone}`}>
                   <span className="min-w-0 break-words">Vous travaillez dans {modeLabel}</span>
-                </div>
+                </Badge>
                 <div className="mt-4 flex flex-wrap items-center gap-2 text-[0.6rem] uppercase tracking-[0.25em] text-[var(--muted)]">
                   {[
                     { id: "layout", label: "Layout" },
@@ -6257,9 +6256,9 @@ export default function CoachReportBuilderPage() {
                               </p>
                             </div>
                           </div>
-                          <span className="rounded-full border border-amber-300/40 bg-amber-400/20 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-amber-200">
+                          <Badge tone="amber" size="sm">
                             Voir les offres
-                          </span>
+                          </Badge>
                         </div>
                       </button>
                     ) : null}
@@ -8807,20 +8806,21 @@ export default function CoachReportBuilderPage() {
                 </button>
               </div>
               <div className="flex flex-wrap items-center gap-2 px-6 text-xs text-[var(--muted)]">
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 uppercase tracking-wide">
+                <Badge tone="muted" size="sm">
                   {clarifyQuestions.length} question
                   {clarifyQuestions.length > 1 ? "s" : ""}
-                </span>
+                </Badge>
                 {clarifyConfidence !== null ? (
-                  <span
-                    className={`rounded-full border px-3 py-1 uppercase tracking-wide ${
+                  <Badge
+                    size="sm"
+                    className={
                       clarifyConfidence >= CLARIFY_THRESHOLD
                         ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-200"
                         : "border-amber-300/30 bg-amber-400/10 text-amber-200"
-                    }`}
+                    }
                   >
                     Certitude {Math.round(clarifyConfidence * 100)}%
-                  </span>
+                  </Badge>
                 ) : null}
               </div>
               <div className="mt-5 max-h-[60vh] space-y-4 overflow-y-auto px-6 pb-6">
