@@ -359,13 +359,13 @@
   .panel {
     background: var(--panel);
     border: 0;
-    box-shadow: var(--shadow-soft);
+    /*box-shadow: var(--shadow-soft);*/
   }
 
   .panel-soft {
     background: var(--panel);
     border: 0;
-    box-shadow: var(--shadow-soft);
+    /*box-shadow: var(--shadow-soft);*/
   }
 
   /* AppShell main: panels are borderless by default.
@@ -456,4 +456,8 @@ body {
     radial-gradient(900px 600px at 10% -10%, rgba(42, 195, 123, 0.12), transparent 60%),
     radial-gradient(1200px 700px at 85% -20%, rgba(58, 120, 217, 0.12), transparent 60%),
     var(--bg);
+}
+
+html {
+  overflow-x: hidden;
 }

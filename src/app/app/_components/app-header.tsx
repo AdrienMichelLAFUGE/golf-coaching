@@ -115,12 +115,19 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
           </button>
         ) : null}
 
-        <Link href="/app" className="flex items-center gap-2 min-[880px]:hidden">
-          <img src={brandIconUrl} alt="Logo SwingFlow" className="h-10 w-10 object-contain" />
+        <Link
+          href="/app"
+          className="flex min-w-0 items-center gap-2 min-[880px]:hidden"
+        >
+          <img
+            src={brandIconUrl}
+            alt="Logo SwingFlow"
+            className="h-10 w-10 shrink-0 object-contain"
+          />
           <img
             src={brandWordmarkUrl}
             alt="SwingFlow"
-            className="hidden h-8 w-auto max-w-[56vw] object-contain min-[460px]:block"
+            className="hidden h-7 w-auto min-w-0 max-w-[min(200px,45vw)] object-contain min-[460px]:block"
           />
         </Link>
 

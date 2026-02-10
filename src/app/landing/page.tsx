@@ -85,14 +85,14 @@ export default async function LandingPage() {
             className="flex flex-wrap items-center justify-between gap-4"
             data-reveal-item
           >
-            <Link href="/" className="flex items-center gap-3">
+            <Link href="/" className="flex min-w-0 items-center gap-2">
               <Image
                 src="/branding/logo.png"
                 alt="Logo SwingFlow"
-                width={250}
-                height={250}
+                width={64}
+                height={64}
                 priority
-                className="h-50 w-50 object-contain p-1"
+                className="h-10 w-10 shrink-0 object-contain"
               />
               <Image
                 src="/branding/wordmark.png"
@@ -100,7 +100,7 @@ export default async function LandingPage() {
                 width={320}
                 height={96}
                 priority
-                className="h-15 w-auto max-w-[min(420px,70vw)] object-contain"
+                className="h-7 w-auto min-w-0 max-w-[min(220px,60vw)] object-contain sm:h-8 sm:max-w-[min(320px,70vw)]"
               />
             </Link>
             <Link

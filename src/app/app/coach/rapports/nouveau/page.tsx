@@ -4683,9 +4683,9 @@ export default function CoachReportBuilderPage() {
                   </div>
                 ) : null}
                 <div
-                  className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
+                  className={`mt-3 inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
                 >
-                  Vous travaillez dans {modeLabel}
+                  <span className="min-w-0 break-words">Vous travaillez dans {modeLabel}</span>
                 </div>
                 <div className="mt-4 flex flex-wrap items-center gap-2 text-[0.6rem] uppercase tracking-[0.25em] text-[var(--muted)]">
                   {[

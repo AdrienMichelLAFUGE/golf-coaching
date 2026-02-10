@@ -571,9 +571,9 @@ export default function CoachStudentsPage() {
           subtitle="Recherche rapide, suivi et historique des rapports."
           meta={
             <div
-              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
+              className={`inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
             >
-              Vous travaillez dans {modeLabel}
+              <span className="min-w-0 break-words">Vous travaillez dans {modeLabel}</span>
             </div>
           }
         />

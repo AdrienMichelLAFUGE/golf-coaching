@@ -177,9 +177,9 @@ export default function OrgMembersPage() {
             Gere les coachs et les acces.
           </p>
           <div
-            className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
+            className={`mt-3 inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
           >
-            Vous travaillez dans {modeLabel}
+            <span className="min-w-0 break-words">Vous travaillez dans {modeLabel}</span>
           </div>
           <div className="mt-3 inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-wide text-[var(--muted)]">
             Plan {PLAN_LABELS[planTier]}

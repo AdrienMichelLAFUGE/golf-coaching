@@ -271,13 +271,13 @@ export default function CoachReportsPage() {
           }
           title="Historique coach"
           subtitle="Consulte et supprime les rapports par eleve."
-          meta={
-            <div
-              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
-            >
-              Vous travaillez dans {modeLabel}
-            </div>
-          }
+           meta={
+             <div
+              className={`inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border px-3 py-1 text-[0.6rem] uppercase tracking-[0.25em] ${modeBadgeTone}`}
+             >
+              <span className="min-w-0 break-words">Vous travaillez dans {modeLabel}</span>
+             </div>
+           }
           actions={
             <Link
               href="/app/coach/rapports/nouveau"
