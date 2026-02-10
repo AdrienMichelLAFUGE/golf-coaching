@@ -33,30 +33,23 @@ export default function AppShell({ children }: AppShellProps) {
             </main>
           </div>
 
-          <div
-            className={`fixed inset-0 z-40 flex justify-end bg-black/60 p-4 transition ${
-              mobileNavOpen ? "opacity-100" : "pointer-events-none opacity-0"
-            } md:hidden`}
-            aria-hidden={!mobileNavOpen}
-          >
-            <button
-              type="button"
-              onClick={() => setMobileNavOpen(false)}
-              className="absolute inset-0"
-              aria-label="Fermer la navigation"
-            />
-            <div
-              className={`relative w-[min(320px,90vw)] transition-transform duration-300 ${
-                mobileNavOpen ? "translate-x-0" : "translate-x-full"
-              }`}
-            >
-              <AppNav
-                onNavigate={() => setMobileNavOpen(false)}
-                onCollapse={() => setMobileNavOpen(false)}
-                forceExpanded
+          {mobileNavOpen ? (
+            <div className="fixed inset-0 z-40 flex justify-end bg-black/60 p-4 md:hidden">
+              <button
+                type="button"
+                onClick={() => setMobileNavOpen(false)}
+                className="absolute inset-0"
+                aria-label="Fermer la navigation"
               />
+              <div className="relative w-[min(320px,90vw)]">
+                <AppNav
+                  onNavigate={() => setMobileNavOpen(false)}
+                  onCollapse={() => setMobileNavOpen(false)}
+                  forceExpanded
+                />
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
       </div>
     </div>
