@@ -475,14 +475,14 @@ export default function CoachDashboardPage() {
                         return (
                           <div key={bar.key} className="flex min-w-0 flex-col items-center gap-2">
                             <div
-                              className="flex h-24 w-full items-end"
+                              className="flex h-24 w-5 items-end"
                               aria-label={`${bar.label}: ${bar.value} rapport${
                                 bar.value > 1 ? "s" : ""
                               }`}
                               title={`${bar.value} rapport${bar.value > 1 ? "s" : ""}`}
                             >
                               <div
-                                className={`w-full rounded-t-4xl ${
+                                className={`w-5 rounded-t-4xl ${
                                   isToday
                                     ? "bg-gradient-to-t from-emerald-300 via-emerald-200 to-sky-200"
                                     : "bg-[var(--border)] opacity-40"
