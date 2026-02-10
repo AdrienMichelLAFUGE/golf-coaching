@@ -156,10 +156,7 @@ export default function Hero() {
               </p>
               <div className={styles.ctaRow}>
                 <Link href="/login" className={styles.ctaPrimary}>
-                  Accéder à la plateforme
-                </Link>
-                <Link href="/demo" className={styles.ctaSecondary}>
-                  Voir une démo
+                  La plateforme arrive bientôt...
                 </Link>
               </div>
               <p className={styles.smallLine}>
