@@ -61,6 +61,13 @@ const formatStudentName = (value: ReportRow["students"]) => {
   return `${student.first_name} ${student.last_name ?? ""}`.trim();
 };
 
+const clampText = (value: string, maxChars: number) => {
+  const chars = Array.from(value.trim());
+  if (chars.length <= maxChars) return value;
+  const head = chars.slice(0, Math.max(0, maxChars - 3)).join("");
+  return `${head}...`;
+};
+
 const localDateKey = (date: Date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -658,7 +665,9 @@ export default function CoachDashboardPage() {
                       className="group flex w-full min-w-0 items-center gap-4 overflow-hidden rounded-2xl border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--text)] transition hover:border-white/20"
                     >
                       <div className="min-w-0 flex-1">
-                        <p className="truncate font-medium">{report.title}</p>
+                        <p className="truncate font-medium" title={report.title}>
+                          {clampText(report.title, 18)}
+                        </p>
                         <p className="mt-1 truncate text-xs text-[var(--muted)]">
                           {formatStudentName(report.students)}
                           {" - "}
