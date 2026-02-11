@@ -77,12 +77,6 @@ export default function CoachStudentsPage() {
 
   const sharedStudentSet = useMemo(() => new Set(sharedStudentIds), [sharedStudentIds]);
 
-  const formatStudentInitials = (student: Student) => {
-    const first = (student.first_name ?? "").trim().charAt(0).toUpperCase();
-    const last = (student.last_name ?? "").trim().charAt(0).toUpperCase();
-    return `${first}${last}`.trim() || "E";
-  };
-
   const getStudentAccessBadge = (student: Student) => {
     if (student.activated_at) {
       return { label: "Actif", tone: "emerald" } as const;
@@ -545,11 +539,11 @@ export default function CoachStudentsPage() {
             ) : null}
           </div>
 
-          <div className="hidden border-b border-white/10 bg-white/[0.02] px-6 py-3 text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--muted)] md:grid md:grid-cols-[1fr_0.3fr_1fr_1.2fr_56px]">
+          <div className="hidden border-b border-white/10 bg-white/[0.02] px-6 py-3 text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--muted)] md:grid md:grid-cols-[32px_1fr_0.3fr_1fr_56px]">
+            <span aria-hidden="true" />
             <span>Nom</span>
             <span>Acces</span>
             <span>Features</span>
-            <span>Email</span>
             <span className="text-right">Actions</span>
           </div>
 
@@ -604,34 +598,56 @@ export default function CoachStudentsPage() {
                 return (
                   <div
                     key={student.id}
-                    className="relative grid gap-3 px-6 py-4 text-[var(--text)] transition hover:bg-white/5 md:grid-cols-[1fr_0.3fr_1fr_1.2fr_56px]"
+                    className="relative grid grid-cols-[32px_minmax(0,1fr)] gap-x-3 gap-y-3 px-6 py-4 text-[var(--text)] transition hover:bg-white/5 md:grid-cols-[32px_1fr_0.3fr_1fr_56px] md:items-center"
                   >
-                    <div className="min-w-0">
+                    <div className="flex items-center justify-center self-center md:justify-self-center">
                       <Link
                         href={`/app/coach/eleves/${student.id}`}
-                        className="group flex min-w-0 items-center gap-3"
+                        aria-label={`Ouvrir la fiche de ${student.first_name} ${student.last_name ?? ""}`.trim()}
+                        title="Ouvrir la fiche eleve"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
                       >
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-xs font-semibold text-[var(--muted)]">
-                          {formatStudentInitials(student)}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-[var(--text)] transition group-hover:opacity-90">
-                            {student.first_name} {student.last_name ?? ""}
-                          </p>
-                          <p className="mt-0.5 truncate text-xs text-[var(--muted)]">
-                            #{student.id.slice(0, 8)}
-                          </p>
-                        </div>
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-3.5 w-3.5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M9 18l6-6-6-6" />
+                        </svg>
                       </Link>
                     </div>
+                    <div className="min-w-0">
+                        <div className="min-w-0">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <p className="truncate text-sm font-semibold text-[var(--text)]">
+                              {student.first_name} {student.last_name ?? ""}
+                            </p>
+                            {student.playing_hand ? (
+                              <Badge tone="muted" size="sm" className="shrink-0">
+                                {student.playing_hand === "right" ? "Droitier" : "Gaucher"}
+                              </Badge>
+                            ) : null}
+                          </div>
+                          <p className="mt-0.5 truncate text-xs text-[var(--muted)]">
+                            {student.email || "Aucun email"}
+                          </p>
+                        </div>
+                    </div>
 
-                    <div className="flex flex-col gap-2">
-                      <Badge tone={access.tone} size="sm" className="self-start">
+                    <div className="col-span-2 flex items-center justify-start gap-2 md:col-span-1 md:items-start md:justify-start">
+                      <span className="text-xs text-[var(--muted)] md:hidden">Acces :</span>
+                      <Badge tone={access.tone} size="sm">
                         {access.label}
                       </Badge>
                     </div>
 
-                    <div className="flex flex-wrap items-start gap-2">
+                    <div className="col-span-2 flex flex-wrap items-center justify-start gap-2 md:col-span-1 md:items-start md:justify-start">
+                      <span className="text-xs text-[var(--muted)] md:hidden">Features :</span>
                       {isShared ? (
                         <Badge tone="sky" size="sm" className="self-start">
                           Partage
@@ -646,18 +662,9 @@ export default function CoachStudentsPage() {
                           TPI inactif
                         </Badge>
                       )}
-                      {student.playing_hand ? (
-                        <Badge tone="muted" size="sm" className="self-start">
-                          {student.playing_hand === "right" ? "Droitier" : "Gaucher"}
-                        </Badge>
-                      ) : null}
                     </div>
 
-                    <div className="text-sm text-[var(--muted)]">
-                      {student.email || "-"}
-                    </div>
-
-                    <div className="flex items-start justify-end">
+                    <div className="col-span-2 flex items-start justify-end md:col-span-1">
                       <div className="relative" data-student-menu>
                         <button
                           type="button"

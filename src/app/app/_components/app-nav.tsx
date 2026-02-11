@@ -65,12 +65,9 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
           { label: "Tests", href: "/app/coach/tests" },
           { label: "Propositions", href: "/app/org/proposals" },
           { label: "Groupes / ecole", href: "/app/org" },
-          { label: "Espaces de travail", href: "/app" },
           ...(isWorkspaceAdmin
             ? [
-                { label: "Membres / Invitations", href: "/app/org/members" },
-                { label: "Tarifs (batch)", href: "/app/org/pricing" },
-                { label: "Analytics", href: "/app/org/analytics" },
+                { label: "Gestion Staff", href: "/app/org/members" },
               ]
             : []),
         ],
@@ -83,7 +80,6 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
           { label: "Elèves", href: "/app/coach/eleves" },
           { label: "Tests", href: "/app/coach/tests" },
           { label: "Rapports", href: "/app/coach/rapports" },
-          { label: "Espaces de travail", href: "/app" },
         ],
       });
     }
@@ -122,10 +118,6 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
     return pathname === href || pathname?.startsWith(`${href}/`);
   };
 
-  const showReportSectionsToggle = Boolean(
-    pathname?.startsWith("/app/coach/rapports/nouveau")
-  );
-
   const settingsNavItem: NavItem | null = !loading
     ? profile?.role === "student"
       ? { label: "Parametres", href: "/app/eleve/parametres" }
@@ -134,6 +126,10 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
           href: "/app/coach/parametres",
         }
     : null;
+  const workspacesNavItem: NavItem | null =
+    !loading && profile?.role !== "student"
+      ? { label: "Espace de travail", href: "/app" }
+      : null;
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -460,77 +456,6 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
             </div>
           </div>
         ))}
-        {showReportSectionsToggle ? (
-          <div className="space-y-3">
-            {!isCollapsed ? (
-              <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                Rapport
-              </p>
-            ) : null}
-            <div
-              className={`space-y-2 ${isCollapsed ? "" : "border-l border-white/10 pl-3"}`}
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  if (typeof window === "undefined") return;
-                  window.dispatchEvent(new CustomEvent("gc:toggle-report-sections"));
-                }}
-                className={`group relative flex w-full items-center gap-3 transition ${
-                  isCollapsed
-                    ? "justify-center rounded-xl border border-white/5 bg-white/5 px-2 py-3 text-[var(--muted)] hover:border-white/20 hover:bg-white/10 hover:text-[var(--text)]"
-                    : "justify-between px-2 py-2 text-[var(--muted)] hover:text-[var(--text)]"
-                }`}
-                aria-label="Sections du rapport"
-                title="Sections"
-              >
-                <span className="flex min-w-0 flex-1 items-center gap-3">
-                  <span
-                    className={`flex h-8 w-8 items-center justify-center text-[var(--muted)] transition ${
-                      isCollapsed
-                        ? "rounded-lg border border-transparent bg-transparent group-hover:text-[var(--text)]"
-                        : "group-hover:text-[var(--text)]"
-                    }`}
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="h-4 w-4"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <rect x="3" y="5" width="7" height="14" rx="1.5" />
-                      <rect x="14" y="5" width="7" height="14" rx="1.5" />
-                    </svg>
-                  </span>
-                  {!isCollapsed ? (
-                    <span className="whitespace-nowrap">Sections</span>
-                  ) : null}
-                </span>
-                {!isCollapsed ? (
-                  <span
-                    className="ml-auto flex h-5 w-5 items-center justify-center text-[var(--muted)] transition group-hover:text-[var(--text)]"
-                    aria-hidden="true"
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="h-3.5 w-3.5"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M9 6l6 6-6 6" />
-                    </svg>
-                  </span>
-                ) : null}
-              </button>
-            </div>
-          </div>
-        ) : null}
         </nav>
 
         <div className="mt-4 shrink-0 pt-4">
@@ -540,6 +465,44 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
             </p>
           ) : null}
           <div className={`mt-3 space-y-2 ${isCollapsed ? "" : "pl-1"}`}>
+            {workspacesNavItem ? (() => {
+              const active = isActive(workspacesNavItem.href);
+              return (
+                <Link
+                  href={workspacesNavItem.href}
+                  onClick={onNavigate}
+                  title={workspacesNavItem.label}
+                  aria-label={workspacesNavItem.label}
+                  className={`group relative flex w-full items-center gap-3 rounded-xl px-3 py-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/40 ${
+                    isCollapsed
+                      ? `justify-center ${
+                          active
+                            ? "text-[var(--text)]"
+                            : "text-[var(--muted)] hover:text-[var(--text)]"
+                        }`
+                      : `justify-between ${
+                          active
+                            ? "bg-white/10 text-[var(--text)]"
+                            : "text-[var(--muted)] hover:bg-white/5 hover:text-[var(--text)]"
+                        }`
+                  }`}
+                >
+                  <span className="flex min-w-0 flex-1 items-center gap-3">
+                    <span
+                      className={`flex h-8 w-8 items-center justify-center transition ${
+                        active
+                          ? "text-[var(--accent)]"
+                          : "text-[var(--muted)] group-hover:text-[var(--text)]"
+                      }`}
+                      aria-hidden="true"
+                    >
+                      {iconForHref(workspacesNavItem.href)}
+                    </span>
+                    {!isCollapsed ? <span className="truncate">{workspacesNavItem.label}</span> : null}
+                  </span>
+                </Link>
+              );
+            })() : null}
             {settingsNavItem ? (() => {
               const active = isActive(settingsNavItem.href);
               return (

@@ -95,13 +95,42 @@ export async function GET(request: Request, { params }: Params) {
 
   const { data: students } = await admin
     .from("students")
-    .select("id, first_name, last_name")
+    .select("id, first_name, last_name, email, activated_at")
     .eq("org_id", profile.org_id)
     .order("created_at", { ascending: true });
 
+  const studentIds = (students ?? []).map(
+    (row) => (row as { id: string }).id
+  );
+
+  const assignmentFlagsByStudent = new Map<
+    string,
+    { hasAssigned: boolean; hasInProgress: boolean; hasFinalized: boolean }
+  >();
+  if (studentIds.length > 0) {
+    const { data: assignments } = await admin
+      .from("normalized_test_assignments")
+      .select("student_id, status")
+      .eq("org_id", profile.org_id)
+      .in("student_id", studentIds)
+      .is("archived_at", null);
+    (assignments ?? []).forEach((row) => {
+      const typed = row as { student_id: string; status: string };
+      const existing = assignmentFlagsByStudent.get(typed.student_id) ?? {
+        hasAssigned: false,
+        hasInProgress: false,
+        hasFinalized: false,
+      };
+      if (typed.status === "assigned") existing.hasAssigned = true;
+      if (typed.status === "in_progress") existing.hasInProgress = true;
+      if (typed.status === "finalized") existing.hasFinalized = true;
+      assignmentFlagsByStudent.set(typed.student_id, existing);
+    });
+  }
+
   const { data: coaches } = await admin
     .from("org_memberships")
-    .select("user_id, role, status, profiles!org_memberships_user_id_fkey(full_name)")
+    .select("user_id, role, status, profiles!org_memberships_user_id_fkey(full_name, avatar_url)")
     .eq("org_id", profile.org_id)
     .eq("status", "active")
     .in("role", ["admin", "coach"]);
@@ -127,19 +156,42 @@ export async function GET(request: Request, { params }: Params) {
     const typed = row as {
       user_id: string;
       role: string;
-      profiles?: { full_name: string | null }[] | { full_name: string | null } | null;
+      profiles?:
+        | { full_name: string | null; avatar_url: string | null }[]
+        | { full_name: string | null; avatar_url: string | null }
+        | null;
     };
     const profileEntry = Array.isArray(typed.profiles) ? typed.profiles[0] : typed.profiles;
     return {
       id: typed.user_id,
       name: profileEntry?.full_name ?? "Coach",
       role: typed.role,
+      avatar_url: profileEntry?.avatar_url ?? null,
     };
   });
 
   return NextResponse.json({
     group: group as GroupRow,
-    students: students ?? [],
+    students: (students ?? []).map((row) => {
+      const typed = row as {
+        id: string;
+        first_name: string;
+        last_name: string | null;
+        email: string | null;
+        activated_at: string | null;
+      };
+      return {
+        ...typed,
+        has_tests: assignmentFlagsByStudent.has(typed.id),
+        test_status: assignmentFlagsByStudent.get(typed.id)?.hasInProgress
+          ? "in_progress"
+          : assignmentFlagsByStudent.get(typed.id)?.hasAssigned
+            ? "assigned"
+            : assignmentFlagsByStudent.get(typed.id)?.hasFinalized
+              ? "finalized"
+              : null,
+      };
+    }),
     coaches: coachRows,
     selectedStudentIds,
     selectedCoachIds,

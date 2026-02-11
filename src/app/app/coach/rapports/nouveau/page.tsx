@@ -48,6 +48,18 @@ import {
 } from "@/lib/report-video";
 
 type SectionType = "text" | "image" | "video" | "radar";
+type SectionLibraryFilterValue = "all" | SectionType;
+
+const SECTION_LIBRARY_FILTERS: ReadonlyArray<{
+  value: SectionLibraryFilterValue;
+  label: string;
+}> = [
+  { value: "all", label: "Tous" },
+  { value: "text", label: "Texte" },
+  { value: "image", label: "Image" },
+  { value: "video", label: "Video" },
+  { value: "radar", label: "Datas" },
+];
 
 type SectionTemplate = {
   id?: string;
@@ -511,7 +523,8 @@ export default function CoachReportBuilderPage() {
     initialBuilderStep
   );
   const [selectedLayoutOptionId, setSelectedLayoutOptionId] = useState("");
-  const [sectionsPanelCollapsed, setSectionsPanelCollapsed] = useState(true);
+  const [sectionLibraryOpen, setSectionLibraryOpen] = useState(false);
+  const [sectionCreateModalOpen, setSectionCreateModalOpen] = useState(false);
   const [aiLayoutOpen, setAiLayoutOpen] = useState(false);
   const [aiLayoutAnswers, setAiLayoutAnswers] = useState<AiLayoutAnswers>({
     goal: "",
@@ -539,6 +552,8 @@ export default function CoachReportBuilderPage() {
   const [customSection, setCustomSection] = useState("");
   const [customType, setCustomType] = useState<SectionType>("text");
   const [sectionSearch, setSectionSearch] = useState("");
+  const [sectionLibraryTypeFilter, setSectionLibraryTypeFilter] =
+    useState<SectionLibraryFilterValue>("all");
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [draggingAvailable, setDraggingAvailable] = useState<SectionTemplate | null>(
     null
@@ -561,7 +576,14 @@ export default function CoachReportBuilderPage() {
   const [students, setStudents] = useState<StudentOption[]>([]);
   const [studentsLoaded, setStudentsLoaded] = useState(false);
   const [studentsLoading, setStudentsLoading] = useState(false);
+  const sectionLibraryTitleId = useId();
+  const sectionCreateTitleId = useId();
+  const aiAssistantTitleId = useId();
+  const aiSettingsTitleId = useId();
   const studentPickerTitleId = useId();
+  const [aiAssistantModalOpen, setAiAssistantModalOpen] = useState(false);
+  const [aiSettingsModalOpen, setAiSettingsModalOpen] = useState(false);
+  const [stickyActionsExpanded, setStickyActionsExpanded] = useState(false);
   const [studentPickerOpen, setStudentPickerOpen] = useState(false);
   const [studentPickerQuery, setStudentPickerQuery] = useState("");
   const [radarFiles, setRadarFiles] = useState<RadarFile[]>([]);
@@ -844,6 +866,16 @@ export default function CoachReportBuilderPage() {
       section.title.toLowerCase().includes(normalizedSectionSearch)
     );
   }, [availableSections, normalizedSectionSearch]);
+  const filteredSectionLibrarySections = useMemo(() => {
+    const byType =
+      sectionLibraryTypeFilter === "all"
+        ? availableSections
+        : availableSections.filter((section) => section.type === sectionLibraryTypeFilter);
+    if (!normalizedSectionSearch) return byType;
+    return byType.filter((section) =>
+      section.title.toLowerCase().includes(normalizedSectionSearch)
+    );
+  }, [availableSections, normalizedSectionSearch, sectionLibraryTypeFilter]);
 
   const visibleAvailableSections = useMemo(() => {
     if (!normalizedSectionSearch) return filteredAvailableSections.slice(0, 5);
@@ -1388,12 +1420,12 @@ export default function CoachReportBuilderPage() {
     const next = customSection.trim();
     if (!next) {
       setSectionsNotice("Saisis un nom de section.", "error");
-      return;
+      return false;
     }
     if (customType === "radar" && !radarAddonEnabled) {
       setSectionsNotice("Plan Pro requis pour cette section.", "error");
       openRadarAddonModal();
-      return;
+      return false;
     }
 
     const exists = sectionTemplates.some(
@@ -1402,13 +1434,14 @@ export default function CoachReportBuilderPage() {
 
     if (exists) {
       setSectionsNotice("Cette section existe deja.", "error");
-      return;
+      return false;
     }
 
     const created = await createSectionTemplate(next, customType);
-    if (!created) return;
+    if (!created) return false;
     setCustomSection("");
     setCustomType("text");
+    return true;
   };
 
   const handleEditSection = (section: SectionTemplate) => {
@@ -2743,12 +2776,10 @@ export default function CoachReportBuilderPage() {
   };
 
   const handleContinueFromSections = () => {
-    setSectionsPanelCollapsed(true);
     setBuilderStep("report");
   };
 
   const handleSkipSetup = () => {
-    setSectionsPanelCollapsed(true);
     setBuilderStep("report");
   };
 
@@ -2821,19 +2852,6 @@ export default function CoachReportBuilderPage() {
       return;
     }
   };
-
-  const handleReportSectionsToggle = useCallback(() => {
-    setSectionsPanelCollapsed((prev) => !prev);
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const handleToggle = () => handleReportSectionsToggle();
-    window.addEventListener("gc:toggle-report-sections", handleToggle);
-    return () => {
-      window.removeEventListener("gc:toggle-report-sections", handleToggle);
-    };
-  }, [handleReportSectionsToggle]);
 
   const handleApplyLayout = () => {
     const layout = layouts.find((item) => item.id === selectedLayoutId);
@@ -4908,13 +4926,70 @@ export default function CoachReportBuilderPage() {
     if (!studentPickerOpen) return;
     if (studentId) setStudentPickerOpen(false);
   }, [studentId, studentPickerOpen]);
+  const hasAiRequestInProgress = Boolean(aiBusyId) || radarAiAutoBusy;
+  const hasMediaUploadInProgress =
+    radarUploading || Object.values(uploadingSections).some(Boolean);
+  const hasGlobalProcessingOverlay = hasAiRequestInProgress || hasMediaUploadInProgress;
+  const globalProcessingLabel = hasAiRequestInProgress
+    ? hasMediaUploadInProgress
+      ? "Traitement IA et upload en cours"
+      : "Traitement IA en cours"
+    : "Upload en cours";
+  const hasBlockingModalOpen =
+    layoutEditorOpen ||
+    aiLayoutOpen ||
+    radarConfigOpen ||
+    radarAiQaOpen ||
+    premiumModalOpen ||
+    aiAssistantModalOpen ||
+    aiSettingsModalOpen ||
+    sectionLibraryOpen ||
+    sectionCreateModalOpen ||
+    studentPickerOpen ||
+    radarImportOpen ||
+    clarifyOpen ||
+    axesOpen ||
+    radarReview !== null;
+  const shouldLockBackgroundScroll = hasBlockingModalOpen || hasGlobalProcessingOverlay;
+  useEffect(() => {
+    if (!shouldLockBackgroundScroll) return;
+    const { body, documentElement } = document;
+    const previousOverflow = body.style.overflow;
+    const previousPaddingRight = body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - documentElement.clientWidth;
+
+    body.style.overflow = "hidden";
+    if (scrollbarWidth > 0) {
+      body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+
+    return () => {
+      body.style.overflow = previousOverflow;
+      body.style.paddingRight = previousPaddingRight;
+    };
+  }, [shouldLockBackgroundScroll]);
   const showLayoutTools = false;
   const isReportStep = activeBuilderStep === "report";
-  const showSectionsPanel = !isReportStep || !sectionsPanelCollapsed;
-  const reportGridClass =
-    isReportStep && sectionsPanelCollapsed
-      ? "lg:grid-cols-1"
-      : "lg:grid-cols-[0.9fr_1.1fr]";
+  const showSectionsPanel = !isReportStep;
+  const reportGridClass = isReportStep ? "lg:grid-cols-1" : "lg:grid-cols-[0.9fr_1.1fr]";
+  const stickyActionShapeClass = stickyActionsExpanded
+    ? "w-[9.75rem] justify-start px-3 lg:w-[10.75rem] lg:px-3.5"
+    : "w-11 justify-center px-0 lg:w-12";
+  const stickyActionLabelClass = stickyActionsExpanded
+    ? "ml-2 max-w-[6.5rem] translate-x-0 opacity-100"
+    : "ml-0 max-w-0 -translate-x-1 opacity-0";
+  const stickyActionCount = 6;
+  const getStickyActionDelay = (index: number) => {
+    const stepMs = 45;
+    const orderIndex = stickyActionsExpanded ? index : index;
+    return `${orderIndex * stepMs}ms`;
+  };
+  const getStickyLabelDelay = (index: number) => {
+    const stepMs = 45;
+    const orderIndex = stickyActionsExpanded ? index : index;
+    const revealOffsetMs = stickyActionsExpanded ? 80 : 0;
+    return `${orderIndex * stepMs + revealOffsetMs}ms`;
+  };
 
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
@@ -4939,6 +5014,86 @@ export default function CoachReportBuilderPage() {
           }
           .tpi-dots span:nth-child(3) {
             animation-delay: 0.4s;
+          }
+          .global-loader-dots {
+            display: inline-flex;
+            gap: 0.16em;
+            margin-left: 0.3em;
+            vertical-align: middle;
+          }
+          .global-loader-dots span {
+            width: 0.36em;
+            height: 0.36em;
+            border-radius: 999px;
+            background: currentColor;
+            opacity: 0.3;
+            animation: tpiDotPulse 1s infinite ease-in-out;
+          }
+          .global-loader-dots span:nth-child(2) {
+            animation-delay: 0.18s;
+          }
+          .global-loader-dots span:nth-child(3) {
+            animation-delay: 0.36s;
+          }
+          .global-loader-spinner {
+            position: relative;
+            width: 4.5rem;
+            height: 4.5rem;
+          }
+          .global-loader-ring-base {
+            position: absolute;
+            inset: 0;
+            border: 3px solid var(--border);
+            border-radius: 9999px;
+            opacity: 0.7;
+          }
+          .global-loader-ring-outer {
+            position: absolute;
+            inset: 0;
+            border: 4px solid transparent;
+            border-top-color: var(--accent);
+            border-right-color: var(--accent-2);
+            border-radius: 9999px;
+            animation: globalLoaderSpin 0.82s linear infinite;
+            filter: drop-shadow(0 0 10px rgba(0, 0, 0, 0.18));
+          }
+          .global-loader-ring-inner {
+            position: absolute;
+            inset: 0.62rem;
+            border: 3px solid transparent;
+            border-bottom-color: var(--accent-2);
+            border-left-color: var(--accent);
+            border-radius: 9999px;
+            animation: globalLoaderSpinReverse 1.12s linear infinite;
+          }
+          .global-loader-core {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 0.66rem;
+            height: 0.66rem;
+            transform: translate(-50%, -50%);
+            border-radius: 9999px;
+            background: var(--text);
+            box-shadow:
+              0 0 0 4px rgba(148, 163, 184, 0.24),
+              0 0 14px rgba(56, 189, 248, 0.35);
+          }
+          @keyframes globalLoaderSpin {
+            from {
+              transform: rotate(0deg);
+            }
+            to {
+              transform: rotate(360deg);
+            }
+          }
+          @keyframes globalLoaderSpinReverse {
+            from {
+              transform: rotate(360deg);
+            }
+            to {
+              transform: rotate(0deg);
+            }
           }
           @keyframes tpiDotPulse {
             0%,
@@ -6456,52 +6611,6 @@ export default function CoachReportBuilderPage() {
                       Rapport en cours
                     </h3>
                     <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setBuilderStep("layout")}
-                        className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
-                        aria-label="Revenir aux layouts"
-                        title="Layouts"
-                      >
-                        <svg
-                          viewBox="0 0 24 24"
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <rect x="3" y="4" width="7" height="7" rx="1.5" />
-                          <rect x="14" y="4" width="7" height="7" rx="1.5" />
-                          <rect x="3" y="13" width="7" height="7" rx="1.5" />
-                          <rect x="14" y="13" width="7" height="7" rx="1.5" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleReportSectionsToggle}
-                        className={`flex h-9 w-9 items-center justify-center rounded-full border transition ${
-                          sectionsPanelCollapsed
-                            ? "border-emerald-300/40 bg-emerald-400/10 text-emerald-100"
-                            : "border-white/10 bg-white/5 text-[var(--muted)] hover:text-[var(--text)]"
-                        }`}
-                        aria-label="Afficher les sections"
-                        title="Sections"
-                      >
-                        <svg
-                          viewBox="0 0 24 24"
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <rect x="3" y="5" width="7" height="14" rx="1.5" />
-                          <rect x="14" y="5" width="7" height="14" rx="1.5" />
-                        </svg>
-                      </button>
                       <span
                         ref={(node) => {
                           if (node) {
@@ -6566,20 +6675,6 @@ export default function CoachReportBuilderPage() {
                       {tpiLoadingPhrase}
                     </p>
                   ) : null}
-                  {tpiContext ? (
-                    <div className="mt-3 inline-flex flex-wrap items-center gap-2 rounded-full border border-teal-300/20 bg-teal-50  px-3 py-1 text-[0.6rem] uppercase tracking-wide text-teal-500">
-                      <span className="h-1.5 w-1.5 rounded-full bg-teal-200" />
-                      Profil TPI detecte
-                      {selectedStudent ? (
-                        <span className="text-[0.55rem] text-teal-700">
-                          - {selectedStudent.first_name} {selectedStudent.last_name ?? ""}
-                        </span>
-                      ) : null}
-                      <span className="text-[0.55rem] text-teal-500">
-                        L assistant IA l utilisera pour ses recommandations.
-                      </span>
-                    </div>
-                  ) : null}
                   <div className="mt-4 flex flex-wrap items-center gap-3">
                     {showPublish ? (
                       <button
@@ -6611,7 +6706,7 @@ export default function CoachReportBuilderPage() {
                       </span>
                     ) : null}
                   </div>
-                  <div className="relative mt-5 -mx-6 border-y border-white/10 bg-gradient-to-r from-white/5 via-white/5 to-emerald-400/10 px-6 py-4">
+                  <div className="hidden">
                     {aiFullLocked ? (
                       <button
                         type="button"
@@ -6667,11 +6762,11 @@ export default function CoachReportBuilderPage() {
                         {aiStatusLabel}
                       </span>
                     </div>
-                    <p className="mt-2 text-xs text-[var(--muted)]">
+                    <p className="mt-2 hidden text-xs text-[var(--muted)] md:block">
                       L assistant IA utilise le profil TPI, les datas de seance et tes
                       constats/travaux en cours quand ils sont disponibles.
                     </p>
-                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border-white/10 bg-white/5 px-4 py-3">
                       <div>
                         <p className="text-[0.65rem] uppercase tracking-[0.2em] text-[var(--muted)]">
                           Validation apres propagation
@@ -6949,7 +7044,7 @@ export default function CoachReportBuilderPage() {
                     {aiError ? (
                       <p className="mt-3 text-xs text-red-400">{aiError}</p>
                     ) : null}
-                    <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div className="mt-4 rounded-2xl bg-white/5 p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
                           Travail en cours
@@ -6973,10 +7068,10 @@ export default function CoachReportBuilderPage() {
                               }
                               handleAiPropagateFromWorking();
                             }}
-                            className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
+                            className={`rounded-full border px-3.5 py-1.5 text-[0.65rem] font-semibold uppercase tracking-wide transition disabled:opacity-60 ${
                               aiFullLocked
-                                ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
-                                : "border-white/10 bg-white/10 text-[var(--text)]"
+                                ? "border-amber-300/35 bg-amber-400/15 text-amber-200"
+                                : "border-emerald-300/40 bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 text-zinc-900 shadow-[0_10px_24px_rgba(16,185,129,0.3)] hover:brightness-105"
                             }`}
                           >
                             <span className="flex items-center gap-2">
@@ -6993,7 +7088,21 @@ export default function CoachReportBuilderPage() {
                                   <rect x="3" y="11" width="18" height="11" rx="2" />
                                   <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                                 </svg>
-                              ) : null}
+                              ) : (
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  className="h-3.5 w-3.5"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  aria-hidden="true"
+                                >
+                                  <path d="M5 12h14" />
+                                  <path d="M13 6l6 6-6 6" />
+                                </svg>
+                              )}
                               {aiBusyId === "propagate" ? "IA..." : "Propager"}
                             </span>
                           </button>
@@ -7063,24 +7172,6 @@ export default function CoachReportBuilderPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
-                    <button
-                      type="button"
-                      disabled={saving || loadingReport || reportSections.length === 0}
-                      onClick={handleClearReportContent}
-                      className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-50"
-                    >
-                      Vider le contenu
-                    </button>
-                    <button
-                      type="button"
-                      disabled={saving || loadingReport || reportSections.length === 0}
-                      onClick={handleClearReportSections}
-                      className="rounded-full border border-rose-300/30 bg-rose-400/10 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-rose-100 transition hover:bg-rose-400/20 disabled:opacity-50"
-                    >
-                      Retirer tout
-                    </button>
-                  </div>
                   {aiSummary ? (
                     <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
                       <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
@@ -7091,6 +7182,266 @@ export default function CoachReportBuilderPage() {
                       </p>
                     </div>
                   ) : null}
+                  <div className="fixed bottom-24 right-3 z-40 flex flex-col items-end gap-2.5 lg:bottom-32">
+                    <button
+                      type="button"
+                      onClick={() => setStickyActionsExpanded((prev) => !prev)}
+                      className="flex h-8 w-11 items-center justify-center text-zinc-600 transition hover:text-zinc-800 lg:h-9 lg:w-12"
+                      aria-label={
+                        stickyActionsExpanded
+                          ? "Replier les actions"
+                          : "Afficher les actions"
+                      }
+                      title={
+                        stickyActionsExpanded
+                          ? "Replier les actions"
+                          : "Afficher les actions"
+                      }
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        className={`h-5 w-5 transition-transform duration-300 ease-in-out ${
+                          stickyActionsExpanded ? "rotate-90" : "rotate-0"
+                        }`}
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M6 9l6 6 6-6" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAiSettingsModalOpen(true)}
+                      className={`flex h-11 items-center overflow-hidden rounded-full border border-black/15 bg-white/95 text-zinc-700 shadow-[0_10px_24px_rgba(0,0,0,0.28)] transition-all duration-300 ease-in-out hover:bg-zinc-100 lg:h-12 ${stickyActionShapeClass}`}
+                      style={{ transitionDelay: getStickyActionDelay(0) }}
+                      aria-label="Ouvrir les reglages IA"
+                      title="Reglages IA"
+                    >
+                      <span className="shrink-0">
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <circle cx="12" cy="12" r="3" />
+                          <path d="M19.4 15a7.8 7.8 0 0 0 .1-6l2-1-2-3-2 1a8 8 0 0 0-5-2l-.5-2h-4l-.5 2a8 8 0 0 0-5 2l-2-1-2 3 2 1a7.8 7.8 0 0 0 .1 6l-2 1 2 3 2-1a8 8 0 0 0 5 2l.5 2h4l.5-2a8 8 0 0 0 5-2l2 1 2-3-2-1z" />
+                        </svg>
+                      </span>
+                      <span
+                        className={`inline-flex items-center overflow-hidden whitespace-nowrap text-[0.58rem] font-semibold uppercase leading-none tracking-wide transition-all duration-300 ease-in-out ${stickyActionLabelClass}`}
+                        style={{ transitionDelay: getStickyLabelDelay(0) }}
+                      >
+                        Reglages
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSectionsNotice("", "idle");
+                        setSectionSearch("");
+                        setSectionLibraryTypeFilter("all");
+                        setSectionLibraryOpen(true);
+                      }}
+                      className={`flex h-11 items-center overflow-hidden rounded-full border border-black/15 bg-white/95 text-zinc-700 shadow-[0_10px_24px_rgba(0,0,0,0.28)] transition-all duration-300 ease-in-out hover:bg-zinc-100 lg:h-12 ${stickyActionShapeClass}`}
+                      style={{ transitionDelay: getStickyActionDelay(1) }}
+                      aria-label="Ajouter une section"
+                      title="Ajouter une section"
+                    >
+                      <span className="shrink-0">
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M12 5v14" />
+                          <path d="M5 12h14" />
+                        </svg>
+                      </span>
+                      <span
+                        className={`inline-flex items-center overflow-hidden whitespace-nowrap text-[0.58rem] font-semibold uppercase leading-none tracking-wide transition-all duration-300 ease-in-out ${stickyActionLabelClass}`}
+                        style={{ transitionDelay: getStickyLabelDelay(1) }}
+                      >
+                        Ajouter section
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!!aiBusyId}
+                      onClick={() => {
+                        if (aiFullLocked) {
+                          openPremiumModal();
+                          return;
+                        }
+                        handleAiSummary();
+                      }}
+                      className={`flex h-11 items-center overflow-hidden rounded-full border shadow-[0_10px_24px_rgba(0,0,0,0.28)] transition-all duration-300 ease-in-out disabled:opacity-60 lg:h-12 ${stickyActionShapeClass} ${
+                        aiFullLocked
+                          ? "border-amber-300 bg-amber-50 text-amber-700"
+                          : "border-black/15 bg-white/95 text-zinc-700 hover:bg-zinc-100"
+                      }`}
+                      style={{ transitionDelay: getStickyActionDelay(2) }}
+                      aria-label="Resume du rapport"
+                      title={aiBusyId === "summary" ? "IA..." : "Resume du rapport"}
+                    >
+                      <span className="shrink-0">
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
+                          <path d="M14 3v5h5" />
+                          <path d="M8 13h8" />
+                          <path d="M8 17h5" />
+                        </svg>
+                      </span>
+                      <span
+                        className={`inline-flex items-center overflow-hidden whitespace-nowrap text-[0.58rem] font-semibold uppercase leading-none tracking-wide transition-all duration-300 ease-in-out ${stickyActionLabelClass}`}
+                        style={{ transitionDelay: getStickyLabelDelay(2) }}
+                      >
+                        Resume rapide
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAiAssistantModalOpen(true)}
+                      className={`flex h-11 items-center overflow-hidden rounded-full border border-cyan-300 bg-cyan-50 text-cyan-700 shadow-[0_10px_24px_rgba(0,0,0,0.28)] transition-all duration-300 ease-in-out hover:bg-cyan-100 lg:h-12 ${stickyActionShapeClass}`}
+                      style={{ transitionDelay: getStickyActionDelay(3) }}
+                      aria-label="Ouvrir l assistant IA"
+                      title="Assistant IA"
+                    >
+                      <span className="shrink-0">
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M12 3l1.6 3.7L17 8.3l-3.4 1.6L12 13.5l-1.6-3.6L7 8.3l3.4-1.6L12 3z" />
+                          <path d="M5 14l.8 1.9L7.8 17l-2 1-.8 2-.8-2-2-1 2-.9L5 14z" />
+                          <path d="M19 14l.8 1.9 2 1-2 .9-.8 2-.8-2-2-1 2-.9L19 14z" />
+                        </svg>
+                      </span>
+                      <span
+                        className={`inline-flex items-center overflow-hidden whitespace-nowrap text-[0.58rem] font-semibold uppercase leading-none tracking-wide transition-all duration-300 ease-in-out ${stickyActionLabelClass}`}
+                        style={{ transitionDelay: getStickyLabelDelay(3) }}
+                      >
+                        Assistant IA
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={radarAiAutoBusy}
+                      onClick={() => {
+                        if (aiFullLocked) {
+                          openPremiumModal();
+                          return;
+                        }
+                        setRadarAiQaAnswers({});
+                        setRadarAiQaError("");
+                        setRadarAiQaOpen(true);
+                        setRadarAiQuestions(DEFAULT_RADAR_AI_QUESTIONS);
+                        void loadRadarAiQuestions();
+                      }}
+                      className={`flex h-11 items-center overflow-hidden rounded-full border shadow-[0_10px_24px_rgba(0,0,0,0.28)] transition-all duration-300 ease-in-out disabled:opacity-60 lg:h-12 ${stickyActionShapeClass} ${
+                        aiFullLocked
+                          ? "border-amber-300 bg-amber-50 text-amber-700"
+                          : "border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100"
+                      }`}
+                      style={{ transitionDelay: getStickyActionDelay(4) }}
+                      aria-label="Auto detect datas graphs"
+                      title={radarAiAutoBusy ? "IA..." : "Auto detect datas graphs"}
+                    >
+                      <span className="shrink-0">
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M4 19h16" />
+                          <path d="M7 16l4-4 3 2 4-5" />
+                          <circle cx="7" cy="16" r="1" />
+                          <circle cx="11" cy="12" r="1" />
+                          <circle cx="14" cy="14" r="1" />
+                          <circle cx="18" cy="9" r="1" />
+                        </svg>
+                      </span>
+                      <span
+                        className={`inline-flex items-center overflow-hidden whitespace-nowrap text-[0.58rem] font-semibold uppercase leading-none tracking-wide transition-all duration-300 ease-in-out ${stickyActionLabelClass}`}
+                        style={{ transitionDelay: getStickyLabelDelay(4) }}
+                      >
+                        Mode datas
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!!aiBusyId}
+                      onClick={() => {
+                        if (aiFullLocked) {
+                          openPremiumModal();
+                          return;
+                        }
+                        handleAiFinalize();
+                      }}
+                      className={`flex h-11 items-center overflow-hidden rounded-full border shadow-[0_10px_24px_rgba(0,0,0,0.28)] transition-all duration-300 ease-in-out disabled:opacity-60 lg:h-12 ${stickyActionShapeClass} ${
+                        aiFullLocked
+                          ? "border-amber-300 bg-amber-50 text-amber-700"
+                          : "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                      }`}
+                      style={{ transitionDelay: getStickyActionDelay(5) }}
+                      aria-label="Finaliser"
+                      title={aiBusyId === "finalize" ? "IA..." : "Finaliser"}
+                    >
+                      <span className="shrink-0">
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M20 6L9 17l-5-5" />
+                        </svg>
+                      </span>
+                      <span
+                        className={`inline-flex items-center overflow-hidden whitespace-nowrap text-[0.58rem] font-semibold uppercase leading-none tracking-wide transition-all duration-300 ease-in-out ${stickyActionLabelClass}`}
+                        style={{ transitionDelay: getStickyLabelDelay(5) }}
+                      >
+                        Finition IA
+                      </span>
+                    </button>
+                  </div>
                   <div className="mt-4 space-y-3">
                     {reportSections.map((section, index) => {
                       const isCollapsed = collapsedSections[section.id] ?? false;
@@ -7166,8 +7517,8 @@ export default function CoachReportBuilderPage() {
                                   : "border-white/10 bg-white/5"
                             }`}
                           >
-                            <div className="flex flex-wrap items-center gap-3">
-                              <div className="flex min-w-0 flex-1 items-center gap-3">
+                            <div className="flex flex-col gap-3 md:flex-row md:items-center">
+                              <div className="flex min-w-0 w-full items-center gap-3 md:flex-1">
                                 {dragEnabled ? (
                                   <button
                                     type="button"
@@ -7180,120 +7531,121 @@ export default function CoachReportBuilderPage() {
                                     Glisser
                                   </button>
                                 ) : null}
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <p className="text-sm font-semibold text-[var(--text)] break-words">
+                                <div className="flex min-w-0 flex-1 items-center gap-2">
+                                  <p className="truncate text-sm font-semibold text-[var(--text)]">
                                     {section.title}
                                   </p>
                                   {renderFeatureBadge(featureKey)}
                                 </div>
                               </div>
-                              {showSectionBrowseButton ? (
-                                <div className="relative mx-auto flex items-center">
-                                  {section.type === "radar" ? (
-                                    <>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          if (radarLocked) {
-                                            openRadarAddonModal();
-                                            return;
-                                          }
-                                          openRadarImportModal(section.id);
-                                        }}
-                                        disabled={radarUploading}
-                                        className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition hover:opacity-90 ${
-                                          radarLocked
-                                            ? "cursor-not-allowed border-white/10 bg-white/10 text-[var(--text)] opacity-60"
-                                            : "border-purple-300 bg-purple-400/15 text-purple-700"
-                                        } disabled:opacity-60`}
-                                        aria-disabled={radarLocked}
-                                      >
-                                        Importer
-                                      </button>
-                                      <input
-                                        id={`radar-upload-${section.id}`}
-                                        type="file"
-                                        accept="image/*"
-                                        multiple
-                                        className="hidden"
-                                        onChange={(event) => {
-                                          const files = Array.from(
-                                            event.target.files ?? []
-                                          );
-                                          if (files.length) {
-                                            void handleRadarUploadBatch(files);
-                                          }
-                                          event.target.value = "";
-                                        }}
-                                      />
-                                    </>
-                                  ) : (
-                                    <>
-                                      <label
-                                        htmlFor={`${
-                                          section.type === "video"
-                                            ? "video-upload"
-                                            : "image-upload"
-                                        }-${section.id}`}
-                                        className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition hover:opacity-90 ${
-                                          section.type === "video"
-                                            ? "border-pink-300/40 bg-pink-400/15 text-pink-400"
-                                            : "border-sky-300/40 bg-sky-400/20 text-sky-100"
-                                        }`}
-                                      >
-                                        Importer
-                                      </label>
-                                      {section.type === "video" ? (
-                                        <p className="pointer-events-none absolute left-1/2 top-full mt-1 w-max -translate-x-1/2 text-[0.6rem] text-[var(--muted)]">
-                                          {VIDEO_PER_SECTION_LIMIT} max,{" "}
-                                          {VIDEO_DURATION_LIMIT_SECONDS}s max.
-                                        </p>
-                                      ) : null}
-                                      <input
-                                        id={`${
-                                          section.type === "video"
-                                            ? "video-upload"
-                                            : "image-upload"
-                                        }-${section.id}`}
-                                        type="file"
-                                        accept={
-                                          section.type === "video"
-                                            ? "video/*"
-                                            : "image/*"
-                                        }
-                                        multiple
-                                        onChange={(event) => {
-                                          if (!event.target.files) return;
-                                          if (section.type === "video") {
-                                            handleVideoFiles(
-                                              section.id,
-                                              event.target.files
+                              <div className="flex w-full items-center gap-2 md:w-auto">
+                                {showSectionBrowseButton ? (
+                                  <div className="relative flex items-center">
+                                    {section.type === "radar" ? (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (radarLocked) {
+                                              openRadarAddonModal();
+                                              return;
+                                            }
+                                            openRadarImportModal(section.id);
+                                          }}
+                                          disabled={radarUploading}
+                                          className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition hover:opacity-90 ${
+                                            radarLocked
+                                              ? "cursor-not-allowed border-white/10 bg-white/10 text-[var(--text)] opacity-60"
+                                              : "border-purple-300 bg-purple-400/15 text-purple-700"
+                                          } disabled:opacity-60`}
+                                          aria-disabled={radarLocked}
+                                        >
+                                          Importer
+                                        </button>
+                                        <input
+                                          id={`radar-upload-${section.id}`}
+                                          type="file"
+                                          accept="image/*"
+                                          multiple
+                                          className="hidden"
+                                          onChange={(event) => {
+                                            const files = Array.from(
+                                              event.target.files ?? []
                                             );
-                                          } else {
-                                            handleImageFiles(
-                                              section.id,
-                                              event.target.files
-                                            );
+                                            if (files.length) {
+                                              void handleRadarUploadBatch(files);
+                                            }
+                                            event.target.value = "";
+                                          }}
+                                        />
+                                      </>
+                                    ) : (
+                                      <>
+                                        <label
+                                          htmlFor={`${
+                                            section.type === "video"
+                                              ? "video-upload"
+                                              : "image-upload"
+                                          }-${section.id}`}
+                                          className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition hover:opacity-90 ${
+                                            section.type === "video"
+                                              ? "border-pink-300/40 bg-pink-400/15 text-pink-400"
+                                              : "border-sky-300/40 bg-sky-400/20 text-sky-100"
+                                          }`}
+                                        >
+                                          Importer
+                                        </label>
+                                        {section.type === "video" ? (
+                                          <p className="pointer-events-none absolute left-1/2 top-full mt-1 w-max -translate-x-1/2 text-[0.6rem] text-[var(--muted)]">
+                                            {VIDEO_PER_SECTION_LIMIT} max,{" "}
+                                            {VIDEO_DURATION_LIMIT_SECONDS}s max.
+                                          </p>
+                                        ) : null}
+                                        <input
+                                          id={`${
+                                            section.type === "video"
+                                              ? "video-upload"
+                                              : "image-upload"
+                                          }-${section.id}`}
+                                          type="file"
+                                          accept={
+                                            section.type === "video"
+                                              ? "video/*"
+                                              : "image/*"
                                           }
-                                          event.target.value = "";
-                                        }}
-                                        className="hidden"
-                                      />
-                                    </>
-                                  )}
-                                </div>
-                              ) : null}
-                              <div className="ml-auto flex flex-wrap items-center gap-2">
+                                          multiple
+                                          onChange={(event) => {
+                                            if (!event.target.files) return;
+                                            if (section.type === "video") {
+                                              handleVideoFiles(
+                                                section.id,
+                                                event.target.files
+                                              );
+                                            } else {
+                                              handleImageFiles(
+                                                section.id,
+                                                event.target.files
+                                              );
+                                            }
+                                            event.target.value = "";
+                                          }}
+                                          className="hidden"
+                                        />
+                                      </>
+                                    )}
+                                  </div>
+                                ) : null}
+                                <div className="ml-auto flex items-center gap-1.5 md:gap-2">
                                 <button
                                   type="button"
                                   onClick={() => toggleSectionCollapse(section.id)}
-                                  className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)]"
+                                  className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] md:h-8 md:w-8"
                                   aria-label={isCollapsed ? "Developper" : "Replier"}
                                   title={isCollapsed ? "Developper" : "Replier"}
                                 >
                                   <svg
                                     viewBox="0 0 24 24"
-                                    className={`h-4 w-4 transition-transform ${
+                                    className={`h-3.5 w-3.5 transition-transform md:h-4 md:w-4 ${
                                       isCollapsed ? "rotate-180" : ""
                                     }`}
                                     fill="none"
@@ -7311,13 +7663,13 @@ export default function CoachReportBuilderPage() {
                                       type="button"
                                       onClick={() => handleMoveSection(index, "up")}
                                       disabled={index === 0}
-                                      className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-40"
+                                      className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-40 md:h-8 md:w-8"
                                       aria-label="Monter"
                                       title="Monter"
                                     >
                                       <svg
                                         viewBox="0 0 24 24"
-                                        className="h-4 w-4"
+                                        className="h-3.5 w-3.5 md:h-4 md:w-4"
                                         fill="none"
                                         stroke="currentColor"
                                         strokeWidth="2"
@@ -7332,13 +7684,13 @@ export default function CoachReportBuilderPage() {
                                       type="button"
                                       onClick={() => handleMoveSection(index, "down")}
                                       disabled={index === reportSections.length - 1}
-                                      className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-40"
+                                      className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-40 md:h-8 md:w-8"
                                       aria-label="Descendre"
                                       title="Descendre"
                                     >
                                       <svg
                                         viewBox="0 0 24 24"
-                                        className="h-4 w-4"
+                                        className="h-3.5 w-3.5 md:h-4 md:w-4"
                                         fill="none"
                                         stroke="currentColor"
                                         strokeWidth="2"
@@ -7354,10 +7706,26 @@ export default function CoachReportBuilderPage() {
                                 <button
                                   type="button"
                                   onClick={() => handleRemoveFromReport(section)}
-                                  className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                                  className="flex h-7 w-7 items-center justify-center rounded-full border border-red-300/30 bg-red-400/10 text-red-300 transition hover:text-red-200 md:h-auto md:w-auto md:border-white/10 md:bg-white/10 md:px-3 md:py-1 md:text-[0.65rem] md:uppercase md:tracking-wide md:text-[var(--muted)] md:hover:text-[var(--text)]"
+                                  aria-label="Retirer"
+                                  title="Retirer"
                                 >
-                                  Retirer
+                                  <svg
+                                    viewBox="0 0 24 24"
+                                    className="h-3.5 w-3.5 md:hidden"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    aria-hidden="true"
+                                  >
+                                    <path d="M18 6L6 18" />
+                                    <path d="M6 6l12 12" />
+                                  </svg>
+                                  <span className="hidden md:inline">Retirer</span>
                                 </button>
+                              </div>
                               </div>
                             </div>
                             {isCollapsed ? (
@@ -8008,6 +8376,24 @@ export default function CoachReportBuilderPage() {
                         <div className="h-full rounded-full bg-white/10" />
                       )}
                     </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center justify-start gap-2 lg:justify-end">
+                    <button
+                      type="button"
+                      disabled={saving || loadingReport || reportSections.length === 0}
+                      onClick={handleClearReportContent}
+                      className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-50"
+                    >
+                      Vider le contenu
+                    </button>
+                    <button
+                      type="button"
+                      disabled={saving || loadingReport || reportSections.length === 0}
+                      onClick={handleClearReportSections}
+                      className="rounded-full border border-rose-300/30 bg-rose-400/10 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-rose-100 transition hover:bg-rose-400/20 disabled:opacity-50"
+                    >
+                      Retirer tout
+                    </button>
                   </div>
                   <div className="mt-6 flex flex-wrap items-center gap-3">
                     {showPublish ? (
@@ -9415,6 +9801,817 @@ export default function CoachReportBuilderPage() {
           onClose={closePremiumModal}
           notice={premiumNotice}
         />
+        {aiAssistantModalOpen ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={aiAssistantTitleId}
+          >
+            <button
+              type="button"
+              aria-label="Fermer"
+              className="absolute inset-0 bg-black/35 backdrop-blur-sm"
+              onClick={() => setAiAssistantModalOpen(false)}
+            />
+            <div className="relative w-full max-w-xl overflow-hidden rounded-2xl border border-white/10 bg-[var(--bg-elevated)] shadow-[var(--shadow-strong)]">
+              <div className="relative border-b border-white/10 px-6 py-4">
+                <h3
+                  id={aiAssistantTitleId}
+                  className="text-center text-base font-semibold text-[var(--text)]"
+                >
+                  Assistant IA
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setAiAssistantModalOpen(false)}
+                  className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                  aria-label="Fermer"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M18 6L6 18" />
+                    <path d="M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="max-h-[70vh] space-y-4 overflow-y-auto px-6 py-5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                    Assistant IA
+                  </p>
+                  <span
+                    className={`rounded-md border border-dashed px-2 py-1 text-[0.55rem] uppercase tracking-wide select-none ${
+                      aiEnabled
+                        ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
+                        : "border-amber-300/30 bg-amber-400/10 text-amber-200"
+                    }`}
+                    onClick={!aiEnabled ? () => openPremiumModal() : undefined}
+                    role={!aiEnabled ? "button" : undefined}
+                    aria-label={!aiEnabled ? "Voir les offres" : undefined}
+                  >
+                    {aiStatusLabel}
+                  </span>
+                </div>
+                {radarAiAutoBusy ? (
+                  <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+                    <div className="flex items-center justify-between text-xs text-[var(--muted)]">
+                      <span>
+                        Auto detect datas graph
+                        <span className="tpi-dots" aria-hidden="true">
+                          <span />
+                          <span />
+                          <span />
+                        </span>
+                      </span>
+                      <span className="min-w-[3ch] text-right text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                        {Math.round(radarAiAutoProgress)}%
+                      </span>
+                    </div>
+                    <div className="mt-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                      Mode:{" "}
+                      {radarAiAutoPreset === "ultra"
+                        ? "Ultra focus (1 min)"
+                        : "Standard (4 min)"}
+                    </div>
+                    <div className="mt-2 h-2 w-full rounded-full bg-white/10">
+                      <div
+                        className="h-2 rounded-full bg-violet-300 transition-all duration-700 ease-out"
+                        style={{ width: `${radarAiAutoProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+                {aiError ? <p className="text-xs text-red-400">{aiError}</p> : null}
+                <div className="rounded-2xl bg-white/5 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                      Travail en cours
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={aiFullLocked || !!aiBusyId}
+                        onClick={resetWorkingContext}
+                        className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-60"
+                      >
+                        Reinitialiser
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!!aiBusyId}
+                        onClick={() => {
+                          if (aiFullLocked) {
+                            openPremiumModal();
+                            return;
+                          }
+                          handleAiPropagateFromWorking();
+                        }}
+                        className={`rounded-full border px-3.5 py-1.5 text-[0.65rem] font-semibold uppercase tracking-wide transition disabled:opacity-60 ${
+                          aiFullLocked
+                            ? "border-amber-300/35 bg-amber-400/15 text-amber-200"
+                            : "border-emerald-300/40 bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 text-zinc-900 shadow-[0_10px_24px_rgba(16,185,129,0.3)] hover:brightness-105"
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          {aiFullLocked ? (
+                            <svg
+                              viewBox="0 0 24 24"
+                              className="h-3.5 w-3.5"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <rect x="3" y="11" width="18" height="11" rx="2" />
+                              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                            </svg>
+                          ) : (
+                            <svg
+                              viewBox="0 0 24 24"
+                              className="h-3.5 w-3.5"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <path d="M5 12h14" />
+                              <path d="M13 6l6 6-6 6" />
+                            </svg>
+                          )}
+                          {aiBusyId === "propagate" ? "IA..." : "Propager"}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                  {aiBusyId ? (
+                    <div className="mt-2 flex items-center gap-2 text-xs text-[var(--muted)]">
+                      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-white/10 bg-white/10">
+                        <span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-white/20 border-t-white/70" />
+                      </span>
+                      Traitement IA en cours...
+                    </div>
+                  ) : null}
+                  <div className="mt-3 grid gap-3">
+                    <div>
+                      <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                        Club concerne
+                      </label>
+                      <input
+                        type="text"
+                        value={workingClub}
+                        onChange={(event) => setWorkingClub(event.target.value)}
+                        placeholder="Ex: Fer 7, Driver, Putter..."
+                        className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                        Constats
+                      </label>
+                      <textarea
+                        ref={(node) => {
+                          workingObservationsRef.current = node;
+                          if (node) {
+                            node.style.height = `${node.scrollHeight}px`;
+                          }
+                        }}
+                        rows={3}
+                        placeholder="Ex: chemin de club trop a gauche, perte de posture..."
+                        value={workingObservations}
+                        onInput={handleWorkingObservationsInput}
+                        className="mt-2 w-full resize-none overflow-hidden rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                        Travail en cours
+                      </label>
+                      <textarea
+                        ref={(node) => {
+                          workingNotesRef.current = node;
+                          if (node) {
+                            node.style.height = `${node.scrollHeight}px`;
+                          }
+                        }}
+                        rows={3}
+                        placeholder="Ex: stabiliser l'appui pied droit au backswing."
+                        value={workingNotes}
+                        onInput={handleWorkingNotesInput}
+                        className="mt-2 w-full resize-none overflow-hidden rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+                {aiSummary ? (
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                      Resume IA
+                    </p>
+                    <p className="mt-2 whitespace-pre-wrap text-sm text-[var(--text)]">
+                      {aiSummary}
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {aiSettingsModalOpen ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={aiSettingsTitleId}
+          >
+            <button
+              type="button"
+              aria-label="Fermer"
+              className="absolute inset-0 bg-black/35 backdrop-blur-sm"
+              onClick={() => setAiSettingsModalOpen(false)}
+            />
+            <div className="relative w-full max-w-xl overflow-hidden rounded-2xl border border-white/10 bg-[var(--bg-elevated)] shadow-[var(--shadow-strong)]">
+              <div className="relative border-b border-white/10 px-6 py-4">
+                <h3
+                  id={aiSettingsTitleId}
+                  className="text-center text-base font-semibold text-[var(--text)]"
+                >
+                  Reglages IA
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setAiSettingsModalOpen(false)}
+                  className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                  aria-label="Fermer"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M18 6L6 18" />
+                    <path d="M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="max-h-[70vh] space-y-4 overflow-y-auto px-6 py-5">
+                <div className="flex items-center justify-between gap-3 rounded-2xl border-white/10 bg-white/5 px-4 py-3">
+                  <div>
+                    <p className="text-[0.65rem] uppercase tracking-[0.2em] text-[var(--muted)]">
+                      Validation apres propagation
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--muted)]">
+                      {aiPropagationReview
+                        ? "Le coach valide chaque section avant insertion."
+                        : "L IA remplit automatiquement les sections."}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={aiPropagationReview}
+                    aria-label="Basculer la validation apres propagation"
+                    onClick={() => setAiPropagationReview((prev) => !prev)}
+                    disabled={aiFullLocked}
+                    className={`relative inline-flex h-8 w-14 items-center rounded-full border px-1 transition ${
+                      aiFullLocked
+                        ? "cursor-not-allowed border-white/10 bg-white/5 opacity-60"
+                        : "border-white/10 bg-white/10 hover:border-white/30"
+                    }`}
+                  >
+                    <span
+                      className={`absolute left-1 top-1 flex h-6 w-6 items-center justify-center rounded-full border text-[0.55rem] font-semibold uppercase shadow-[0_6px_12px_rgba(0,0,0,0.25)] transition-transform ${
+                        aiPropagationReview
+                          ? "translate-x-0 border-emerald-300/40 bg-emerald-400/20 text-emerald-100"
+                          : "translate-x-6 border-rose-300/40 bg-rose-400/20 text-rose-100"
+                      }`}
+                    >
+                      {aiPropagationReview ? "On" : "Off"}
+                    </span>
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs text-[var(--muted)]">
+                    Reinitialise les reglages IA aux valeurs par defaut.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={resetAiSettings}
+                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                  >
+                    Reinitialiser IA
+                  </button>
+                </div>
+                <div className="grid gap-3">
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Ton
+                    </label>
+                    <select
+                      value={aiTone}
+                      onChange={(event) => setAiTone(event.target.value)}
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                    >
+                      <option value="bienveillant">Bienveillant</option>
+                      <option value="direct">Direct</option>
+                      <option value="motivant">Motivant</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Technicite
+                    </label>
+                    <select
+                      value={aiTechLevel}
+                      onChange={(event) => setAiTechLevel(event.target.value)}
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                    >
+                      <option value="debutant">Debutant</option>
+                      <option value="intermediaire">Intermediaire</option>
+                      <option value="avance">Avance</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Style
+                    </label>
+                    <select
+                      value={aiStyle}
+                      onChange={(event) => setAiStyle(event.target.value)}
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                    >
+                      <option value="redactionnel">Redactionnel</option>
+                      <option value="structure">Structure</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Longueur
+                    </label>
+                    <select
+                      value={aiLength}
+                      onChange={(event) => setAiLength(event.target.value)}
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                    >
+                      <option value="court">Court</option>
+                      <option value="normal">Normal</option>
+                      <option value="long">Long</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Metaphores
+                    </label>
+                    <select
+                      value={aiImagery}
+                      onChange={(event) => setAiImagery(event.target.value)}
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                    >
+                      <option value="faible">Faible</option>
+                      <option value="equilibre">Equilibre</option>
+                      <option value="fort">Fort</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Focus
+                    </label>
+                    <select
+                      value={aiFocus}
+                      onChange={(event) => setAiFocus(event.target.value)}
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                    >
+                      <option value="mix">Mix</option>
+                      <option value="technique">Technique</option>
+                      <option value="mental">Mental</option>
+                      <option value="strategie">Strategie</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {sectionLibraryOpen ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={sectionLibraryTitleId}
+          >
+            <button
+              type="button"
+              aria-label="Fermer"
+              className="absolute inset-0 bg-black/35 backdrop-blur-sm"
+              onClick={() => {
+                if (sectionCreateModalOpen) return;
+                setSectionLibraryOpen(false);
+              }}
+            />
+
+            <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-white/10 bg-[var(--bg-elevated)] shadow-[var(--shadow-strong)]">
+              <div className="relative border-b border-white/10 px-6 py-4">
+                <h3
+                  id={sectionLibraryTitleId}
+                  className="text-center text-base font-semibold text-[var(--text)]"
+                >
+                  Sections disponibles
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setSectionLibraryOpen(false)}
+                  className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                  aria-label="Fermer"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M18 6L6 18" />
+                    <path d="M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="max-h-[70vh] overflow-y-auto px-6 py-5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs text-[var(--muted)]">
+                    Ajoute une section au rapport ou cree une nouvelle section.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSectionsNotice("", "idle");
+                      setCustomSection("");
+                      setCustomType("text");
+                      setSectionCreateModalOpen(true);
+                    }}
+                    className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-3.5 w-3.5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M12 5v14" />
+                      <path d="M5 12h14" />
+                    </svg>
+                    Creer une section
+                  </button>
+                </div>
+
+                <div className="mt-4">
+                  <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Filtre par type de section
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {SECTION_LIBRARY_FILTERS.map((filterOption) => {
+                      const isActive = sectionLibraryTypeFilter === filterOption.value;
+                      const tone =
+                        filterOption.value === "text"
+                          ? {
+                              active:
+                                "border-emerald-300/50 bg-emerald-400/25 text-emerald-100",
+                              idle:
+                                "border-emerald-300/40 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/20",
+                            }
+                          : filterOption.value === "image"
+                            ? {
+                                active:
+                                  "border-sky-300/50 bg-sky-400/30 text-sky-100",
+                                idle:
+                                  "border-sky-300/40 bg-sky-400/15 text-sky-100 hover:bg-sky-400/25",
+                              }
+                            : filterOption.value === "video"
+                              ? {
+                                active:
+                                    "border-rose-300/40 bg-rose-400/20 text-rose-100",
+                                idle:
+                                    "border-rose-300/35 bg-rose-400/10 text-rose-200 hover:bg-rose-400/20",
+                                }
+                              : filterOption.value === "radar"
+                                ? {
+                                    active:
+                                      "border-violet-300/50 bg-violet-400/25 text-violet-100",
+                                    idle:
+                                      "border-violet-300/40 bg-violet-400/15 text-violet-200 hover:bg-violet-400/25",
+                                  }
+                                : {
+                                    active:
+                                      "border-white/20 bg-white/10 text-[var(--text)]",
+                                    idle:
+                                      "border-white/10 bg-white/5 text-[var(--muted)] hover:text-[var(--text)]",
+                                  };
+                      return (
+                        <button
+                          key={`section-library-filter-${filterOption.value}`}
+                          type="button"
+                          onClick={() => setSectionLibraryTypeFilter(filterOption.value)}
+                          className={`rounded-full border px-3 py-1 text-[0.62rem] font-semibold uppercase tracking-wide transition ${
+                            isActive ? tone.active : tone.idle
+                          }`}
+                          aria-pressed={isActive}
+                        >
+                          {filterOption.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Recherche
+                  </label>
+                  <input
+                    type="search"
+                    value={sectionSearch}
+                    onChange={(event) => setSectionSearch(event.target.value)}
+                    placeholder="Chercher une section"
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                  />
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  {templatesLoading ? (
+                    <p className="text-xs text-[var(--muted)]">Chargement des sections...</p>
+                  ) : filteredSectionLibrarySections.length === 0 ? (
+                    <p className="text-xs text-[var(--muted)]">
+                      Aucune section pour ce filtre.
+                    </p>
+                  ) : (
+                    filteredSectionLibrarySections.map((section) => {
+                      const featureKey = getSectionFeatureKey(section);
+                      const isLocked = isFeatureLocked(featureKey);
+                      return (
+                        <div
+                          key={`library-${section.title}-${section.type}`}
+                          className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm text-[var(--text)]">{section.title}</p>
+                            <div className="mt-1">
+                              {renderFeatureBadge(featureKey) ?? (
+                                <span className="text-[0.55rem] uppercase tracking-wide text-[var(--muted)]">
+                                  Texte
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (isLocked) {
+                                openFeatureModal(featureKey);
+                                return;
+                              }
+                              handleAddToReport(section);
+                            }}
+                            title={isLocked ? "Option requise" : "Ajouter"}
+                            className={`flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--text)] transition hover:bg-white/20 ${
+                              isLocked ? "cursor-not-allowed opacity-60" : ""
+                            }`}
+                            aria-label="Ajouter au rapport"
+                            aria-disabled={isLocked}
+                          >
+                            {isLocked ? (
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="h-4 w-4"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden="true"
+                              >
+                                <rect x="5" y="11" width="14" height="9" rx="2" />
+                                <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+                              </svg>
+                            ) : (
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="h-4 w-4"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M12 5v14" />
+                                <path d="M5 12h14" />
+                              </svg>
+                            )}
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {sectionsMessage ? (
+                  <p
+                    className={`mt-4 text-xs ${
+                      sectionsMessageType === "error" ? "text-red-400" : "text-[var(--muted)]"
+                    }`}
+                  >
+                    {sectionsMessage}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+
+            {sectionCreateModalOpen ? (
+              <div
+                className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={sectionCreateTitleId}
+              >
+                <button
+                  type="button"
+                  aria-label="Fermer"
+                  className="absolute inset-0 bg-black/45 backdrop-blur-sm"
+                  onClick={() => setSectionCreateModalOpen(false)}
+                />
+                <div className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-white/10 bg-[var(--bg-elevated)] shadow-[var(--shadow-strong)]">
+                  <div className="relative border-b border-white/10 px-6 py-4">
+                    <h3
+                      id={sectionCreateTitleId}
+                      className="text-center text-base font-semibold text-[var(--text)]"
+                    >
+                      Creer une section
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => setSectionCreateModalOpen(false)}
+                      className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                      aria-label="Fermer"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M18 6L6 18" />
+                        <path d="M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="space-y-4 px-6 py-5">
+                    <label className="block text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Nom de la section
+                    </label>
+                    <input
+                      type="text"
+                      value={customSection}
+                      onChange={(event) => setCustomSection(event.target.value)}
+                      placeholder="Ex: Routine pre-shot"
+                      className="-mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                    />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                        Type
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setCustomType("text")}
+                        className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
+                          customType === "text"
+                            ? "border-emerald-300/40 bg-emerald-400/15 text-emerald-100"
+                            : "border-white/10 bg-white/5 text-[var(--muted)]"
+                        }`}
+                        aria-pressed={customType === "text"}
+                      >
+                        Texte
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCustomType("image")}
+                        className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
+                          customType === "image"
+                            ? "border-sky-300/40 bg-sky-400/20 text-sky-100"
+                            : "border-white/10 bg-white/5 text-[var(--muted)]"
+                        }`}
+                        aria-pressed={customType === "image"}
+                      >
+                        Image
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCustomType("video")}
+                        className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
+                          customType === "video"
+                            ? "border-pink-400 bg-pink-200 text-pink-700"
+                            : "border-white/10 bg-white/5 text-[var(--muted)]"
+                        }`}
+                        aria-pressed={customType === "video"}
+                      >
+                        Video
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!radarAddonEnabled) {
+                            openRadarAddonModal();
+                            return;
+                          }
+                          setCustomType("radar");
+                        }}
+                        className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
+                          customType === "radar"
+                            ? "border-violet-300/40 bg-violet-400/20 text-violet-100"
+                            : "border-white/10 bg-white/5 text-[var(--muted)]"
+                        }`}
+                        aria-pressed={customType === "radar"}
+                      >
+                        Datas
+                      </button>
+                    </div>
+                    {customType === "image" ? (
+                      <p className="text-[0.7rem] text-[var(--muted)]">
+                        Image: upload d images et legendes.
+                      </p>
+                    ) : customType === "video" ? (
+                      <p className="text-[0.7rem] text-[var(--muted)]">
+                        Video: 1 section max par rapport, {VIDEO_PER_SECTION_LIMIT} videos max
+                        (max {VIDEO_DURATION_LIMIT_SECONDS}s chacune).
+                      </p>
+                    ) : customType === "radar" ? (
+                      <p className="text-[0.7rem] text-[var(--muted)]">
+                        Datas: import d exports et graphes.
+                      </p>
+                    ) : (
+                      <p className="text-[0.7rem] text-[var(--muted)]">
+                        Texte: section ecrite libre.
+                      </p>
+                    )}
+                    {sectionsMessage ? (
+                      <p
+                        className={`text-xs ${
+                          sectionsMessageType === "error" ? "text-red-400" : "text-[var(--muted)]"
+                        }`}
+                      >
+                        {sectionsMessage}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center justify-end gap-3 border-t border-white/10 px-6 py-4">
+                    <button
+                      type="button"
+                      onClick={() => setSectionCreateModalOpen(false)}
+                      className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-[var(--text)] transition hover:bg-white/10"
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const created = await handleAddCustomSection();
+                        if (!created) return;
+                        setSectionCreateModalOpen(false);
+                      }}
+                      className="rounded-xl bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-5 py-2 text-sm font-semibold text-zinc-900 transition hover:opacity-90"
+                    >
+                      Creer
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {studentPickerOpen ? (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -9878,6 +11075,36 @@ export default function CoachReportBuilderPage() {
                   {aiBusyId === "propagate" ? "Propagation..." : "Lancer la propagation"}
                 </button>
               </div>
+            </div>
+          </div>
+        ) : null}
+        {hasGlobalProcessingOverlay ? (
+          <div
+            className="fixed inset-0 z-[90] flex cursor-wait items-center justify-center bg-[var(--overlay)] backdrop-blur-md"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <div
+              role="status"
+              className="flex min-w-[17rem] flex-col items-center gap-4 rounded-3xl border border-[var(--border)] bg-[var(--bg-elevated)] px-6 py-5 text-[var(--text)] shadow-[var(--shadow-strong)]"
+            >
+              <span className="global-loader-spinner" aria-hidden="true">
+                <span className="global-loader-ring-base" />
+                <span className="global-loader-ring-outer" />
+                <span className="global-loader-ring-inner" />
+                <span className="global-loader-core" />
+              </span>
+              <p className="text-center text-sm font-semibold tracking-wide text-[var(--text)]">
+                {globalProcessingLabel}
+                <span className="global-loader-dots" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                </span>
+              </p>
+              <span className="text-[0.62rem] uppercase tracking-[0.2em] text-[var(--muted)]">
+                Merci de patienter
+              </span>
             </div>
           </div>
         ) : null}
