@@ -1922,6 +1922,18 @@ export default function CoachStudentDetailPage() {
               overflow: hidden;
               vertical-align: bottom;
             }
+            .reports-tpi-stack {
+              display: flex;
+              flex-direction: column;
+              gap: 1.5rem;
+            }
+            @media (min-width: 1401px) {
+              .reports-tpi-stack {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+                gap: 1.5rem;
+              }
+            }
             .tpi-dots::after {
               content: "...";
               display: block;
@@ -2413,8 +2425,8 @@ export default function CoachStudentDetailPage() {
             </section>
           ) : null}
 
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-            <section className="border border-pink-200 bg-[var(--panel)] rounded-2xl p-6">
+          <div className="reports-tpi-stack">
+            <section className="order-1 min-w-0 border border-pink-200 bg-[var(--panel)] rounded-2xl p-6">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-[var(--text)]">Rapports</h3>
                 {!canWriteReports ? (
@@ -2601,7 +2613,7 @@ export default function CoachStudentDetailPage() {
 
             <section
               id="tpi"
-              className="border border-teal-200 bg-[var(--panel)] relative scroll-mt-24 rounded-2xl p-6"
+              className="order-2 min-w-0 border border-teal-200 bg-[var(--panel)] relative scroll-mt-24 rounded-2xl p-6"
             >
               <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
                 <div className="min-w-0">
@@ -2928,6 +2940,7 @@ export default function CoachStudentDetailPage() {
                 </>
               ) : null}
             </section>
+          </div>
 
             <section
               id="standard-tests"
@@ -3966,8 +3979,6 @@ export default function CoachStudentDetailPage() {
                 </div>
               </div>
             ) : null}
-          </div>
-
           {editOpen ? (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6">
               <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[var(--bg-elevated)] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)]">
