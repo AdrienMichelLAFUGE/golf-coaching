@@ -67,6 +67,10 @@ describe("POST /api/reports/kpis/regenerate", () => {
     createSupabaseAdminClient: jest.Mock;
   };
 
+  const buildThenable = <T,>(value: T): PromiseLike<T> => ({
+    then: (onfulfilled, onrejected) => Promise.resolve(value).then(onfulfilled, onrejected),
+  });
+
   beforeEach(() => {
     generateReportKpisForPublishedReport.mockReset();
     generateReportKpisForPublishedReport.mockResolvedValue({ status: "ready" });
@@ -89,6 +93,8 @@ describe("POST /api/reports/kpis/regenerate", () => {
   });
 
   it("returns 403 when coach is not assigned in org workspace", async () => {
+    const orgId = "00000000-0000-0000-0000-000000000010";
+    const studentOrgId = "00000000-0000-0000-0000-000000000101";
     const supabase = {
       auth: {
         getUser: async () => ({
@@ -99,15 +105,17 @@ describe("POST /api/reports/kpis/regenerate", () => {
       from: (table: string) => {
         if (table === "reports") {
           return buildSelectSingle({
-            data: { id: "report-1", student_id: "student-1", sent_at: "2026-02-09T10:00:00Z" },
+            data: {
+              id: "report-1",
+              org_id: orgId,
+              student_id: studentOrgId,
+              sent_at: "2026-02-09T10:00:00Z",
+            },
             error: null,
           });
         }
         if (table === "profiles") {
-          return buildSelectSingle({ data: { org_id: "org-1" }, error: null });
-        }
-        if (table === "students") {
-          return buildSelectSingle({ data: { org_id: "org-1" }, error: null });
+          return buildSelectSingle({ data: { org_id: orgId }, error: null });
         }
         return buildSelectSingle({ data: null, error: null });
       },
@@ -117,7 +125,7 @@ describe("POST /api/reports/kpis/regenerate", () => {
       from: jest.fn((table: string) => {
         if (table === "organizations") {
           return buildSelectSingle({
-            data: { id: "org-1", workspace_type: "org", owner_profile_id: null },
+            data: { id: orgId, workspace_type: "org", owner_profile_id: null },
             error: null,
           });
         }
@@ -127,10 +135,27 @@ describe("POST /api/reports/kpis/regenerate", () => {
             error: null,
           });
         }
+        if (table === "student_accounts") {
+          return buildSelectMaybeSingle({ data: null, error: null });
+        }
+        if (table === "students") {
+          return {
+            select: () => ({
+              in: () => ({
+                eq: async () => ({
+                  data: [{ id: studentOrgId, org_id: orgId }],
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
         if (table === "student_assignments") {
           return {
             select: () => ({
-              eq: async () => ({ data: [], error: null }),
+              in: () => ({
+                eq: async () => ({ data: [], error: null }),
+              }),
             }),
           };
         }
@@ -147,6 +172,7 @@ describe("POST /api/reports/kpis/regenerate", () => {
   });
 
   it("returns 200 and triggers KPI generation when authorized", async () => {
+    const orgId = "00000000-0000-0000-0000-000000000010";
     const supabase = {
       auth: {
         getUser: async () => ({
@@ -157,15 +183,17 @@ describe("POST /api/reports/kpis/regenerate", () => {
       from: (table: string) => {
         if (table === "reports") {
           return buildSelectSingle({
-            data: { id: "report-1", student_id: "student-1", sent_at: "2026-02-09T10:00:00Z" },
+            data: {
+              id: "report-1",
+              org_id: orgId,
+              student_id: "student-1",
+              sent_at: "2026-02-09T10:00:00Z",
+            },
             error: null,
           });
         }
         if (table === "profiles") {
-          return buildSelectSingle({ data: { org_id: "org-1" }, error: null });
-        }
-        if (table === "students") {
-          return buildSelectSingle({ data: { org_id: "org-1" }, error: null });
+          return buildSelectSingle({ data: { org_id: orgId }, error: null });
         }
         return buildSelectSingle({ data: null, error: null });
       },
@@ -175,7 +203,7 @@ describe("POST /api/reports/kpis/regenerate", () => {
       from: jest.fn((table: string) => {
         if (table === "organizations") {
           return buildSelectSingle({
-            data: { id: "org-1", workspace_type: "personal", owner_profile_id: "user-1" },
+            data: { id: orgId, workspace_type: "personal", owner_profile_id: "user-1" },
             error: null,
           });
         }
@@ -189,5 +217,120 @@ describe("POST /api/reports/kpis/regenerate", () => {
     const response = await POST(buildRequest({ reportId: "00000000-0000-0000-0000-000000000001" }));
     expect(response.status).toBe(200);
     expect(generateReportKpisForPublishedReport).toHaveBeenCalled();
+  });
+
+  it("allows regeneration in org workspace for a report linked to an org student", async () => {
+    const orgId = "00000000-0000-0000-0000-000000000010";
+    const personalOrgId = "00000000-0000-0000-0000-000000000020";
+    const studentPersonalId = "00000000-0000-0000-0000-000000000201";
+    const studentUserId = "00000000-0000-0000-0000-000000000202";
+    const studentOrgId = "00000000-0000-0000-0000-000000000203";
+    const supabase = {
+      auth: {
+        getUser: async () => ({
+          data: { user: { id: "user-1", email: "coach@example.com" } },
+          error: null,
+        }),
+      },
+      from: (table: string) => {
+        if (table === "reports") {
+          // Report belongs to another workspace, but should be accessible via linked student.
+          return buildSelectSingle({
+            data: {
+              id: "report-1",
+              org_id: personalOrgId,
+              student_id: studentPersonalId,
+              sent_at: "2026-02-09T10:00:00Z",
+            },
+            error: null,
+          });
+        }
+        if (table === "profiles") {
+          return buildSelectSingle({ data: { org_id: orgId }, error: null });
+        }
+        return buildSelectSingle({ data: null, error: null });
+      },
+    } as unknown as SupabaseClient;
+
+    const admin = {
+      from: jest.fn((table: string) => {
+        if (table === "organizations") {
+          return buildSelectSingle({
+            data: { id: orgId, workspace_type: "org", owner_profile_id: null },
+            error: null,
+          });
+        }
+        if (table === "org_memberships") {
+          return buildSelectMaybeSingle({
+            data: { role: "coach", status: "active" },
+            error: null,
+          });
+        }
+        if (table === "student_accounts") {
+          return {
+            select: () => {
+              const chain: {
+                eq: (col: string) => unknown;
+                maybeSingle: () => Promise<{ data: unknown; error: null }>;
+              } = {
+                eq: (col: string) => {
+                  if (col === "student_id") return chain;
+                  // Second query: `.eq("user_id", ...)` is awaited directly.
+                  if (col === "user_id") {
+                    return buildThenable({
+                      data: [
+                        { student_id: studentPersonalId, user_id: studentUserId },
+                        { student_id: studentOrgId, user_id: studentUserId },
+                      ],
+                      error: null,
+                    });
+                  }
+                  return chain;
+                },
+                maybeSingle: async () => ({
+                  data: { student_id: studentPersonalId, user_id: studentUserId },
+                  error: null,
+                }),
+              };
+
+              return chain;
+            },
+          };
+        }
+        if (table === "students") {
+          return {
+            select: () => ({
+              in: () => ({
+                eq: async () => ({
+                  data: [{ id: studentOrgId, org_id: orgId }],
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === "student_assignments") {
+          return {
+            select: () => ({
+              in: () => ({
+                eq: async () => ({ data: [{ coach_id: "user-1" }], error: null }),
+              }),
+            }),
+          };
+        }
+        return {};
+      }),
+    };
+
+    serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
+    serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
+
+    const response = await POST(
+      buildRequest({ reportId: "00000000-0000-0000-0000-000000000001" })
+    );
+    expect(response.status).toBe(200);
+    expect(generateReportKpisForPublishedReport).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: personalOrgId, studentId: studentPersonalId })
+    );
   });
 });

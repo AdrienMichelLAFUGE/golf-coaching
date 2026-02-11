@@ -40,7 +40,7 @@ const buildRequest = (payload: unknown) =>
     headers: {
       get: () => null,
     },
-  }) as Request;
+  }) as unknown as Request;
 
 const buildSelectSingle = (result: QueryResult) => ({
   select: () => ({
@@ -81,7 +81,11 @@ describe("POST /api/radar/confirm", () => {
   });
 
   it("treats explicit club selection as authoritative", async () => {
-    let lastUpdatePayload: any = null;
+    let lastUpdatePayload: { analytics?: { meta?: { club?: string | null } | null } | null } | null =
+      null;
+    const getClub = (
+      payload: { analytics?: { meta?: { club?: string | null } | null } | null } | null
+    ) => payload?.analytics?.meta?.club ?? null;
 
     const supabase = {
       auth: {
@@ -106,7 +110,9 @@ describe("POST /api/radar/confirm", () => {
             }),
             update: (payload: unknown) => ({
               eq: async () => {
-                lastUpdatePayload = payload;
+                lastUpdatePayload = payload as {
+                  analytics?: { meta?: { club?: string | null } | null } | null;
+                };
                 return { data: null, error: null };
               },
             }),
@@ -147,7 +153,6 @@ describe("POST /api/radar/confirm", () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.ok).toBe(true);
-    expect(lastUpdatePayload?.analytics?.meta?.club).toBe("Driver");
+    expect(getClub(lastUpdatePayload)).toBe("Driver");
   });
 });
-

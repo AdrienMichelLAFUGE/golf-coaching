@@ -13,6 +13,40 @@ const schema = z.object({
   reportId: z.string().uuid(),
 });
 
+const StudentAccountRowSchema = z.object({
+  student_id: z.string().uuid(),
+  user_id: z.string().uuid(),
+});
+
+const StudentRowSchema = z.object({
+  id: z.string().uuid(),
+  org_id: z.string().uuid(),
+});
+
+const resolveLinkedStudentIds = async (admin: ReturnType<typeof createSupabaseAdminClient>, studentId: string) => {
+  const { data: accountData, error: accountError } = await admin
+    .from("student_accounts")
+    .select("student_id, user_id")
+    .eq("student_id", studentId)
+    .maybeSingle();
+
+  if (accountError || !accountData) return [studentId];
+  const parsedAccount = StudentAccountRowSchema.safeParse(accountData);
+  if (!parsedAccount.success) return [studentId];
+
+  const { data: linkedData, error: linkedError } = await admin
+    .from("student_accounts")
+    .select("student_id, user_id")
+    .eq("user_id", parsedAccount.data.user_id);
+
+  if (linkedError) return [studentId];
+  const parsedLinked = z.array(StudentAccountRowSchema).safeParse(linkedData ?? []);
+  if (!parsedLinked.success) return [studentId];
+
+  const ids = Array.from(new Set(parsedLinked.data.map((row) => row.student_id)));
+  return ids.length ? ids : [studentId];
+};
+
 export async function POST(req: Request) {
   const parsed = await parseRequestJson(req, schema);
   if (!parsed.success) {
@@ -33,7 +67,7 @@ export async function POST(req: Request) {
 
   const { data: report, error: reportError } = await supabase
     .from("reports")
-    .select("id, student_id, sent_at")
+    .select("id, org_id, student_id, sent_at")
     .eq("id", reportId)
     .single();
 
@@ -90,10 +124,33 @@ export async function POST(req: Request) {
       );
     }
 
+    const linkedStudentIds = await resolveLinkedStudentIds(admin, report.student_id);
+    const { data: orgStudentRows, error: orgStudentsError } = await admin
+      .from("students")
+      .select("id, org_id")
+      .in("id", linkedStudentIds)
+      .eq("org_id", profileData.org_id);
+
+    if (orgStudentsError) {
+      return Response.json({ error: "Acces refuse." }, { status: 403 });
+    }
+
+    const orgStudentsParsed = z.array(StudentRowSchema).safeParse(orgStudentRows ?? []);
+    const orgStudentIds = orgStudentsParsed.success
+      ? orgStudentsParsed.data.map((row) => row.id)
+      : [];
+
+    // If the report belongs to another workspace, only allow regeneration when it is linked
+    // to a student present in the current organization workspace.
+    if (orgStudentIds.length === 0) {
+      return Response.json({ error: "Acces refuse." }, { status: 403 });
+    }
+
     const { data: assignments } = await admin
       .from("student_assignments")
       .select("coach_id")
-      .eq("student_id", report.student_id);
+      .in("student_id", orgStudentIds)
+      .eq("org_id", profileData.org_id);
 
     const assignedIds = (assignments ?? []).map(
       (row) => (row as { coach_id: string }).coach_id
@@ -104,19 +161,9 @@ export async function POST(req: Request) {
     }
   }
 
-  const { data: studentData } = await supabase
-    .from("students")
-    .select("org_id")
-    .eq("id", report.student_id)
-    .single();
-
-  if (!studentData || String(studentData.org_id) !== String(profileData.org_id)) {
-    return Response.json({ error: "Acces refuse." }, { status: 403 });
-  }
-
   const result = await generateReportKpisForPublishedReport({
     admin,
-    orgId: profileData.org_id,
+    orgId: report.org_id,
     studentId: report.student_id,
     reportId,
     actorUserId: userId,
