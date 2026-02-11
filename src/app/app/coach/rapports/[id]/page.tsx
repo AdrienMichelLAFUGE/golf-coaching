@@ -63,7 +63,7 @@ type RadarFile = {
   analytics?: RadarAnalytics | null;
 };
 
-type FeatureKey = "image" | "radar" | "tpi";
+type FeatureKey = "image" | "video" | "radar" | "tpi";
 
 const featureTones = {
   image: {
@@ -72,6 +72,13 @@ const featureTones = {
     dot: "bg-sky-300",
     panel: "border-sky-400/50 bg-sky-400/10",
     border: "border-sky-400/50",
+  },
+  video: {
+    label: "Video",
+    badge: "border-pink-300/30 bg-pink-400/10 text-pink-100",
+    dot: "bg-pink-300",
+    panel: "border-pink-400/50 bg-pink-400/10",
+    border: "border-pink-400/50",
   },
   radar: {
     label: "Datas",
@@ -94,6 +101,7 @@ const getSectionFeatureKey = (section: {
   title?: string | null;
 }): FeatureKey | null => {
   if (section.type === "image") return "image";
+  if (section.type === "video") return "video";
   if (section.type === "radar") return "radar";
   if ((section.title ?? "").toLowerCase().includes("tpi")) return "tpi";
   return null;
@@ -320,6 +328,41 @@ export default function CoachReportDetailPage() {
       return (
         <p className="mt-3 text-sm text-[var(--muted)]">
           Aucune image pour cette section.
+        </p>
+      );
+    }
+
+    if (section.type === "video") {
+      if (section.media_urls && section.media_urls.length > 0) {
+        return (
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {section.media_urls.map((url, index) => (
+              <div
+                key={url}
+                className="overflow-hidden rounded-xl border border-white/10 bg-black/30"
+              >
+                <div className="relative w-full" style={{ aspectRatio: "16 / 9" }}>
+                  <video
+                    src={url}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    className="absolute inset-0 h-full w-full object-cover"
+                  />
+                </div>
+                {section.media_captions?.[index] ? (
+                  <div className="border-t border-white/10 bg-black/60 px-3 py-2 text-xs text-white/80">
+                    {section.media_captions[index]}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        );
+      }
+      return (
+        <p className="mt-3 text-sm text-[var(--muted)]">
+          Aucune video pour cette section.
         </p>
       );
     }

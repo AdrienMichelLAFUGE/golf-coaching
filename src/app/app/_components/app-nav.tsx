@@ -54,7 +54,6 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
           { label: "Dashboard eleve", href: "/app/eleve" },
           { label: "Tests", href: "/app/eleve/tests" },
           { label: "Rapports", href: "/app/eleve/rapports" },
-          { label: "Parametres", href: "/app/eleve/parametres" },
         ],
       });
     } else if (workspaceType === "org") {
@@ -67,7 +66,6 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
           { label: "Propositions", href: "/app/org/proposals" },
           { label: "Groupes / ecole", href: "/app/org" },
           { label: "Espaces de travail", href: "/app" },
-          { label: "Paramètres org", href: "/app/coach/parametres" },
           ...(isWorkspaceAdmin
             ? [
                 { label: "Membres / Invitations", href: "/app/org/members" },
@@ -86,7 +84,6 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
           { label: "Tests", href: "/app/coach/tests" },
           { label: "Rapports", href: "/app/coach/rapports" },
           { label: "Espaces de travail", href: "/app" },
-          { label: "Paramètres", href: "/app/coach/parametres" },
         ],
       });
     }
@@ -128,6 +125,15 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
   const showReportSectionsToggle = Boolean(
     pathname?.startsWith("/app/coach/rapports/nouveau")
   );
+
+  const settingsNavItem: NavItem | null = !loading
+    ? profile?.role === "student"
+      ? { label: "Parametres", href: "/app/eleve/parametres" }
+      : {
+          label: workspaceType === "org" ? "Parametres org" : "Parametres",
+          href: "/app/coach/parametres",
+        }
+    : null;
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -311,7 +317,7 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
 
   return (
     <aside
-      className={`flex h-auto top-4 min-h-0 w-auto flex-col rounded-3xl bg-[var(--app-surface)] transition-[width,padding] duration-200 ${
+      className={`flex h-full min-h-0 w-auto flex-col overflow-hidden rounded-3xl bg-[var(--app-surface)] transition-[width,padding] duration-200 ${
         isCollapsed ? "py-4 lg:w-16" : "py-4 lg:w-60"
       }`}
     >
@@ -534,6 +540,44 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
             </p>
           ) : null}
           <div className={`mt-3 space-y-2 ${isCollapsed ? "" : "pl-1"}`}>
+            {settingsNavItem ? (() => {
+              const active = isActive(settingsNavItem.href);
+              return (
+                <Link
+                  href={settingsNavItem.href}
+                  onClick={onNavigate}
+                  title={settingsNavItem.label}
+                  aria-label={settingsNavItem.label}
+                  className={`group relative flex w-full items-center gap-3 rounded-xl px-3 py-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/40 ${
+                    isCollapsed
+                      ? `justify-center ${
+                          active
+                            ? "text-[var(--text)]"
+                            : "text-[var(--muted)] hover:text-[var(--text)]"
+                        }`
+                      : `justify-between ${
+                          active
+                            ? "bg-white/10 text-[var(--text)]"
+                            : "text-[var(--muted)] hover:bg-white/5 hover:text-[var(--text)]"
+                        }`
+                  }`}
+                >
+                  <span className="flex min-w-0 flex-1 items-center gap-3">
+                    <span
+                      className={`flex h-8 w-8 items-center justify-center transition ${
+                        active
+                          ? "text-[var(--accent)]"
+                          : "text-[var(--muted)] group-hover:text-[var(--text)]"
+                      }`}
+                      aria-hidden="true"
+                    >
+                      {iconForHref(settingsNavItem.href)}
+                    </span>
+                    {!isCollapsed ? <span className="truncate">{settingsNavItem.label}</span> : null}
+                  </span>
+                </Link>
+              );
+            })() : null}
               <button
                 type="button"
                 onClick={toggleTheme}

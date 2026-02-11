@@ -33,6 +33,9 @@
   --impact-face-grad-3: rgba(255, 255, 255, 0.05);
   --impact-face-stroke: rgba(255, 255, 255, 0.18);
   --impact-face-detail: rgba(255, 255, 255, 0.08);
+
+  /* Sticky offset for AppHeader/AppNav (tweak here if you see a 1px "jump" on some devices). */
+  --app-sticky-top: 1.5rem;
 }
 
 :root[data-theme="light"] {
@@ -356,6 +359,24 @@
 }
 
 @layer utilities {
+  /* Sticky helpers: some global CSS (or browser quirks) can disable sticky.
+     These scoped utilities force expected behavior for the app shell only. */
+  .app-header {
+    position: -webkit-sticky !important;
+    position: sticky !important;
+    top: var(--app-sticky-top) !important;
+    z-index: 40 !important;
+  }
+
+  @media (min-width: 768px) {
+    .app-sidebar {
+      position: -webkit-sticky !important;
+      position: sticky !important;
+      top: var(--app-sticky-top) !important;
+      align-self: flex-start;
+    }
+  }
+
   .app-badge {
     display: inline-flex;
     align-items: center;
@@ -477,7 +498,6 @@ body {
   color: var(--text);
   font-family: var(--font-ui), "Segoe UI", sans-serif;
   min-height: 100vh;
-  overflow-x: hidden;
 }
 
 :root[data-theme="light"] body {
@@ -488,7 +508,6 @@ body {
 }
 
 html {
-  overflow-x: hidden;
   /* iOS Safari can auto-increase text size, which may create small horizontal overflows. */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;

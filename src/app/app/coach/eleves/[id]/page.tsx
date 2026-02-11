@@ -2423,7 +2423,11 @@ export default function CoachStudentDetailPage() {
                   </Badge>
                 ) : (
                   <Link
-                href="/app/coach/rapports/nouveau"
+                href={
+                  studentId
+                    ? `/app/coach/rapports/nouveau?studentId=${studentId}`
+                    : "/app/coach/rapports/nouveau"
+                }
                 className="inline-flex items-center gap-2 rounded-full border border-pink-200 px-4 py-2 text-xs text-pink-700 font-semibold uppercase tracking-wide transition hover:opacity-90"
               >
                 <svg
@@ -2448,135 +2452,149 @@ export default function CoachStudentDetailPage() {
                 </div>
               ) : (
                 <div className="mt-4 space-y-3">
-                  {reports.map((report) => (
-                    <div
-                      key={report.id}
-                      className="flex flex-col gap-3 rounded-xl border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--text)] md:flex-row md:items-center md:justify-between"
-                    >
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-medium">{report.title}</p>
-                          {!report.sent_at ? (
-                            <Badge tone="muted" size="sm">
-                              Brouillon
-                            </Badge>
-                          ) : null}
-                          {(() => {
-                            const label = formatSourceLabel(
-                              report.org_id,
-                              getOrgName(report.organizations)
-                            );
-                            if (!label) return null;
-                            return (
-                              <Badge tone="muted" size="sm">
-                                {label}
-                              </Badge>
-                            );
-                          })()}
+                  {reports.map((report) => {
+                    const contributorLabel = formatSourceLabel(
+                      report.org_id,
+                      getOrgName(report.organizations)
+                    );
+
+                    return (
+                      <div
+                        key={report.id}
+                        className="relative flex flex-col gap-3 overflow-visible rounded-xl border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--text)] md:flex-row md:items-center md:justify-between"
+                      >
+                        {!report.sent_at ? (
+                          <Badge
+                            tone="muted"
+                            size="sm"
+                            className="absolute -left-2 top-0 -translate-y-1/2 shadow-[0_10px_24px_rgba(0,0,0,0.35)]"
+                          >
+                            Brouillon
+                          </Badge>
+                        ) : null}
+
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-lg font-semibold">{report.title}</p>
+                          </div>
+                          <p className="mt-1 text-xs text-[var(--muted)]">
+                            le {formatDate(
+                              report.report_date ?? report.created_at,
+                              locale,
+                              timezone
+                            )}
+                          </p>
                         </div>
-                        <p className="mt-1 text-xs text-[var(--muted)]">
-                          {formatDate(
-                            report.report_date ?? report.created_at,
-                            locale,
-                            timezone
-                          )}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 self-end md:self-auto">
-                        <Link
-                          href={`/app/coach/rapports/${report.id}`}
-                          aria-label="Ouvrir le rapport"
-                          title="Ouvrir"
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:bg-white/20 hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
-                        >
-                          <svg
-                            viewBox="0 0 24 24"
-                            className="h-4 w-4"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            aria-hidden="true"
-                          >
-                            <path d="M7 17L17 7" />
-                            <path d="M9 7h8v8" />
-                          </svg>
-                        </Link>
 
-                        <Link
-                          href={`/app/coach/rapports/nouveau?reportId=${report.id}`}
-                          onClick={(event) => {
-                            if (!canWriteReports) event.preventDefault();
-                          }}
-                          aria-disabled={!canWriteReports}
-                          tabIndex={!canWriteReports ? -1 : undefined}
-                          aria-label="Modifier le rapport"
-                          title={canWriteReports ? "Modifier" : "Lecture seule"}
-                          className={`inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50 ${
-                            !canWriteReports
-                              ? "cursor-not-allowed text-[var(--muted)] opacity-50"
-                              : "text-[var(--muted)] hover:bg-white/10 hover:text-[var(--text)]"
-                          }`}
-                        >
-                          <svg
-                            viewBox="0 0 24 24"
-                            className="h-4 w-4"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            aria-hidden="true"
-                          >
-                            <path d="M12 20h9" />
-                            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
-                          </svg>
-                        </Link>
+                        <div className="flex flex-col items-end gap-2 self-end md:self-auto">
+                          <div className="flex items-center gap-2">
+                            <Link
+                              href={`/app/coach/rapports/${report.id}`}
+                              aria-label="Ouvrir le rapport"
+                              title="Ouvrir"
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:bg-white/20 hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
+                            >
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="h-4 w-4"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden="true"
+                              >
+                                <path d="M7 17L17 7" />
+                                <path d="M9 7h8v8" />
+                              </svg>
+                            </Link>
 
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteReport(report)}
-                          disabled={!canWriteReports || deletingId === report.id}
-                          aria-label="Supprimer le rapport"
-                          title={deletingId === report.id ? "Suppression..." : "Supprimer"}
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-red-300 transition hover:bg-white/10 hover:text-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200/40 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {deletingId === report.id ? (
-                            <svg
-                              viewBox="0 0 24 24"
-                              className="h-4 w-4 animate-spin"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              aria-hidden="true"
+                            <Link
+                              href={`/app/coach/rapports/nouveau?reportId=${report.id}`}
+                              onClick={(event) => {
+                                if (!canWriteReports) event.preventDefault();
+                              }}
+                              aria-disabled={!canWriteReports}
+                              tabIndex={!canWriteReports ? -1 : undefined}
+                              aria-label="Modifier le rapport"
+                              title={canWriteReports ? "Modifier" : "Lecture seule"}
+                              className={`inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50 ${
+                                !canWriteReports
+                                  ? "cursor-not-allowed text-[var(--muted)] opacity-50"
+                                  : "text-[var(--muted)] hover:bg-white/10 hover:text-[var(--text)]"
+                              }`}
                             >
-                              <path d="M21 12a9 9 0 1 1-3-6.7" />
-                            </svg>
-                          ) : (
-                            <svg
-                              viewBox="0 0 24 24"
-                              className="h-4 w-4"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              aria-hidden="true"
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="h-4 w-4"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden="true"
+                              >
+                                <path d="M12 20h9" />
+                                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                              </svg>
+                            </Link>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteReport(report)}
+                              disabled={!canWriteReports || deletingId === report.id}
+                              aria-label="Supprimer le rapport"
+                              title={
+                                deletingId === report.id ? "Suppression..." : "Supprimer"
+                              }
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-red-300 transition hover:bg-white/10 hover:text-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200/40 disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                              <path d="M3 6h18" />
-                              <path d="M8 6V4h8v2" />
-                              <path d="M19 6l-1 14H6L5 6" />
-                              <path d="M10 11v6" />
-                              <path d="M14 11v6" />
-                            </svg>
-                          )}
-                        </button>
+                              {deletingId === report.id ? (
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  className="h-4 w-4 animate-spin"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  aria-hidden="true"
+                                >
+                                  <path d="M21 12a9 9 0 1 1-3-6.7" />
+                                </svg>
+                              ) : (
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  className="h-4 w-4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  aria-hidden="true"
+                                >
+                                  <path d="M3 6h18" />
+                                  <path d="M8 6V4h8v2" />
+                                  <path d="M19 6l-1 14H6L5 6" />
+                                  <path d="M10 11v6" />
+                                  <path d="M14 11v6" />
+                                </svg>
+                              )}
+                            </button>
+                          </div>
+
+                          {contributorLabel ? (
+                            <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
+                              <span>Par :</span>
+                              <Badge tone="muted" size="sm" className="app-badge--nowrap">
+                                {contributorLabel}
+                              </Badge>
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </section>

@@ -16,15 +16,15 @@ export default function AppShell({ children }: AppShellProps) {
   return (
     <div className="min-h-screen bg-[var(--app-canvas)] px-3 py-4 text-[var(--text)] md:px-6 md:py-6">
       <LastAppPathTracker />
+      {/* Covers the 1rem "top gap" (sticky top-4) so scrolled content never shows above the header/nav. */}
+      <div className="pointer-events-none fixed inset-x-0 top-0 z-30 h-[var(--app-sticky-top)] bg-[var(--app-canvas)]" />
       <div className="mx-auto w-full max-w-[1400px] 2xl:max-w-[1600px]">
-        <div className="grid gap-4 md:grid-cols-[auto_1fr] md:items-start">
-          <aside className="hidden md:sticky md:top-4 md:block md:self-start">
-            <div className="h-[calc(100dvh-2rem)] overflow-hidden">
-              <AppNav />
-            </div>
+        <div className="flex flex-col gap-4 md:flex-row md:items-start">
+          <aside className="app-sidebar hidden md:sticky md:top-[var(--app-sticky-top)] md:block md:h-[calc(100dvh-(2*var(--app-sticky-top)))] md:shrink-0 md:self-start">
+            <AppNav />
           </aside>
 
-          <div className="min-w-0 space-y-4">
+          <div className="min-w-0 flex-1 space-y-4">
             <AppHeader
               onToggleNav={() => setMobileNavOpen((prev) => !prev)}
               isNavOpen={mobileNavOpen}

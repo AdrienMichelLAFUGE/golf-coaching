@@ -316,7 +316,11 @@ export async function POST(req: Request) {
     config,
     metadata,
   });
-  analytics.meta.club = resolveClubFromAnalytics(metadata.club, analytics);
+  // If the reviewer explicitly selected Driver/Fers in the UI, treat it as authoritative.
+  // Otherwise, try to normalize/infer the club from extracted metadata + evidence.
+  analytics.meta.club = clubOverride
+    ? clubOverride
+    : resolveClubFromAnalytics(metadata.club, analytics);
 
   const summary = radarFile.summary ?? analytics.summary ?? null;
 

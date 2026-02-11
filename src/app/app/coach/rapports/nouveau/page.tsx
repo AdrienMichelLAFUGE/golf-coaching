@@ -5,6 +5,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -39,8 +40,14 @@ import {
   isRadarTech,
 } from "@/lib/radar/file-naming";
 import type { RadarAnalytics } from "@/lib/radar/types";
+import {
+  validateVideoSections,
+  VIDEO_MAX_DURATION_SECONDS as VIDEO_DURATION_LIMIT_SECONDS,
+  VIDEO_MAX_PER_SECTION as VIDEO_PER_SECTION_LIMIT,
+  VIDEO_MAX_SECTIONS_PER_REPORT as VIDEO_SECTIONS_LIMIT,
+} from "@/lib/report-video";
 
-type SectionType = "text" | "image" | "radar";
+type SectionType = "text" | "image" | "video" | "radar";
 
 type SectionTemplate = {
   id?: string;
@@ -263,15 +270,27 @@ const formatDateInputValue = (value?: string | null) => {
   return formatDateInput(parsed);
 };
 
+const UUID_LIKE_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const isUuidLike = (value?: string | null) =>
+  typeof value === "string" && UUID_LIKE_REGEX.test(value);
+
 const isSummaryTitle = (title: string) => /resume|synthese|bilan/i.test(title);
 
 const isPlanTitle = (title: string) =>
   /plan|planning|programme|routine|semaine/i.test(title);
 
 const normalizeSectionType = (value?: string | null): SectionType =>
-  value === "image" ? "image" : value === "radar" ? "radar" : "text";
+  value === "image"
+    ? "image"
+    : value === "video"
+      ? "video"
+      : value === "radar"
+        ? "radar"
+        : "text";
 
-type FeatureKey = "ai" | "image" | "radar" | "tpi";
+type FeatureKey = "ai" | "image" | "video" | "radar" | "tpi";
 
 const featureTones = {
   ai: {
@@ -291,6 +310,15 @@ const featureTones = {
     panel: "border-sky-400/50 bg-sky-400/10",
     border: "border-sky-400/50",
     button: "border-sky-300/40 bg-sky-400/10 text-sky-100",
+  },
+  video: {
+    label: "Video",
+    badge: "border-pink-300/30 bg-pink-400/10 text-pink-400",
+    chip: "border-pink-300/30 bg-pink-400/10 text-pink-400",
+    dot: "bg-pink-300",
+    panel: "border-pink-400/50 bg-pink-400/10",
+    border: "border-pink-400/50",
+    button: "border-pink-300/40 bg-pink-400/10 text-pink-400",
   },
   radar: {
     label: "Datas",
@@ -327,6 +355,7 @@ const getSectionFeatureKey = (section: {
   tags?: string[] | null;
 }): FeatureKey | null => {
   if (section.type === "image") return "image";
+  if (section.type === "video") return "video";
   if (section.type === "radar") return "radar";
   if (hasTpiHint(section.title, section.tags)) return "tpi";
   return null;
@@ -441,7 +470,10 @@ export default function CoachReportBuilderPage() {
       : "border-sky-300/30 bg-sky-400/10 text-sky-100";
   const searchParams = useSearchParams();
   const router = useRouter();
-  const requestedStudentId = searchParams.get("studentId") ?? "";
+  const requestedStudentIdRaw = searchParams.get("studentId");
+  const requestedStudentId = isUuidLike(requestedStudentIdRaw)
+    ? requestedStudentIdRaw
+    : "";
   const [editingReportId, setEditingReportId] = useState<string | null>(null);
   const [loadingReport, setLoadingReport] = useState(false);
   const isEditing = Boolean(editingReportId);
@@ -472,6 +504,8 @@ export default function CoachReportBuilderPage() {
   const [layoutSaving, setLayoutSaving] = useState(false);
   const [layoutCustomTitle, setLayoutCustomTitle] = useState("");
   const [layoutCustomType, setLayoutCustomType] = useState<SectionType>("text");
+  const [layoutTemplateSearch, setLayoutTemplateSearch] = useState("");
+  const [layoutTemplateSearchOpen, setLayoutTemplateSearchOpen] = useState(false);
   const initialBuilderStep = searchParams.get("reportId") ? "report" : "layout";
   const [builderStep, setBuilderStep] = useState<"layout" | "sections" | "report">(
     initialBuilderStep
@@ -525,10 +559,26 @@ export default function CoachReportBuilderPage() {
   const skipResetRef = useRef(false);
   const showSlots = dragEnabled && (dragIndex !== null || draggingAvailable !== null);
   const [students, setStudents] = useState<StudentOption[]>([]);
+  const [studentsLoaded, setStudentsLoaded] = useState(false);
+  const [studentsLoading, setStudentsLoading] = useState(false);
+  const studentPickerTitleId = useId();
+  const [studentPickerOpen, setStudentPickerOpen] = useState(false);
+  const [studentPickerQuery, setStudentPickerQuery] = useState("");
   const [radarFiles, setRadarFiles] = useState<RadarFile[]>([]);
   const [radarLoading, setRadarLoading] = useState(false);
   const [radarError, setRadarError] = useState("");
   const [radarTech, setRadarTech] = useState<RadarTech>("flightscope");
+  const radarTechRef = useRef<RadarTech>("flightscope");
+  useEffect(() => {
+    radarTechRef.current = radarTech;
+  }, [radarTech]);
+  const radarImportTitleId = useId();
+  const [radarImportOpen, setRadarImportOpen] = useState(false);
+  const [radarImportSectionId, setRadarImportSectionId] = useState<string | null>(
+    null
+  );
+  const [radarImportTech, setRadarImportTech] = useState<RadarTech>("flightscope");
+  const [radarImportError, setRadarImportError] = useState("");
   const [radarUploading, setRadarUploading] = useState(false);
   const [radarUploadProgress, setRadarUploadProgress] = useState(0);
   const [radarReview, setRadarReview] = useState<RadarFile | null>(null);
@@ -538,7 +588,6 @@ export default function CoachReportBuilderPage() {
   } | null>(null);
   const [radarShowAllFiles, setRadarShowAllFiles] = useState(false);
   const radarUploadTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const radarInputRef = useRef<HTMLInputElement | null>(null);
   const [radarSessionFileIds, setRadarSessionFileIds] = useState<string[]>([]);
   const [radarConfigOpen, setRadarConfigOpen] = useState(false);
   const [radarConfigDraft, setRadarConfigDraft] =
@@ -866,6 +915,48 @@ export default function CoachReportBuilderPage() {
       ),
     [sectionTemplates, layoutTemplateIds]
   );
+
+  const normalizedLayoutTemplateSearch = useMemo(
+    () =>
+      layoutTemplateSearch
+        .toLocaleLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim(),
+    [layoutTemplateSearch]
+  );
+
+  const filteredLayoutAvailableTemplates = useMemo(() => {
+    const query = normalizedLayoutTemplateSearch;
+    if (!query) return layoutAvailableTemplates;
+
+    const normalizeTitle = (title: string) =>
+      title
+        .toLocaleLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+
+    const matches = layoutAvailableTemplates.filter((template) =>
+      normalizeTitle(template.title).includes(query)
+    );
+
+    // Prefer "startsWith" matches first for a better autocomplete feel.
+    matches.sort((a, b) => {
+      const aTitle = normalizeTitle(a.title);
+      const bTitle = normalizeTitle(b.title);
+      const aStarts = aTitle.startsWith(query);
+      const bStarts = bTitle.startsWith(query);
+      if (aStarts !== bStarts) return aStarts ? -1 : 1;
+      return aTitle.localeCompare(bTitle, "fr");
+    });
+
+    return matches;
+  }, [layoutAvailableTemplates, normalizedLayoutTemplateSearch]);
+
+  const layoutTemplateSuggestions = useMemo(() => {
+    if (!normalizedLayoutTemplateSearch) return [];
+    return filteredLayoutAvailableTemplates.slice(0, 8);
+  }, [filteredLayoutAvailableTemplates, normalizedLayoutTemplateSearch]);
 
   const layoutOptions = useMemo(() => {
     const presets: LayoutOption[] = [];
@@ -1376,6 +1467,13 @@ export default function CoachReportBuilderPage() {
     setReportSections((prev) => {
       const exists = prev.some((item) => item.title.toLowerCase() === normalized);
       if (exists) return prev;
+      if (
+        section.type === "video" &&
+        prev.filter((item) => item.type === "video").length >= VIDEO_SECTIONS_LIMIT
+      ) {
+        setSectionsNotice("Une seule section video est autorisee par rapport.", "error");
+        return prev;
+      }
       return [...prev, createSection(section)];
     });
     shouldAnimate.current = true;
@@ -1476,6 +1574,13 @@ export default function CoachReportBuilderPage() {
       setReportSections((prev) => {
         const exists = prev.some((item) => item.title.toLowerCase() === normalized);
         if (exists) return prev;
+        if (
+          droppedTemplate.type === "video" &&
+          prev.filter((item) => item.type === "video").length >= VIDEO_SECTIONS_LIMIT
+        ) {
+          setSectionsNotice("Une seule section video est autorisee par rapport.", "error");
+          return prev;
+        }
         const next = [...prev];
         next.splice(index, 0, createSection(droppedTemplate));
         return next;
@@ -1597,11 +1702,122 @@ export default function CoachReportBuilderPage() {
     setUploadingSections((prev) => ({ ...prev, [sectionId]: false }));
   };
 
-  const handleImageDrop = (sectionId: string, event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    if (event.dataTransfer.files?.length) {
-      handleImageFiles(sectionId, event.dataTransfer.files);
+  const getVideoDurationSeconds = (file: File) =>
+    new Promise<number>((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const video = document.createElement("video");
+      video.preload = "metadata";
+
+      const cleanup = () => {
+        URL.revokeObjectURL(url);
+      };
+
+      video.onloadedmetadata = () => {
+        const duration = Number(video.duration);
+        cleanup();
+        if (!Number.isFinite(duration) || duration <= 0) {
+          reject(new Error("Impossible de lire la duree de la video."));
+          return;
+        }
+        resolve(duration);
+      };
+
+      video.onerror = () => {
+        cleanup();
+        reject(new Error("Impossible de lire le fichier video."));
+      };
+
+      video.src = url;
+    });
+
+  const handleVideoFiles = async (sectionId: string, files: FileList | File[]) => {
+    if (!organization?.id) {
+      setImageErrors((prev) => ({
+        ...prev,
+        [sectionId]: "Organisation introuvable.",
+      }));
+      return;
     }
+
+    const list = Array.from(files).filter((file) => file.type.startsWith("video/"));
+    if (list.length === 0) {
+      setImageErrors((prev) => ({
+        ...prev,
+        [sectionId]: "Formats acceptes: MP4, MOV, WebM.",
+      }));
+      return;
+    }
+
+    const currentCount =
+      reportSections.find((section) => section.id === sectionId)?.mediaUrls.length ?? 0;
+    const remainingSlots = Math.max(0, VIDEO_PER_SECTION_LIMIT - currentCount);
+    if (remainingSlots === 0) {
+      setImageErrors((prev) => ({
+        ...prev,
+        [sectionId]: `Maximum ${VIDEO_PER_SECTION_LIMIT} videos dans cette section.`,
+      }));
+      return;
+    }
+
+    setImageErrors((prev) => ({ ...prev, [sectionId]: "" }));
+    setUploadingSections((prev) => ({ ...prev, [sectionId]: true }));
+
+    const uploaded: string[] = [];
+    let warning = "";
+
+    for (const file of list) {
+      if (uploaded.length >= remainingSlots) break;
+
+      try {
+        const duration = await getVideoDurationSeconds(file);
+        if (duration > VIDEO_DURATION_LIMIT_SECONDS) {
+          warning = `Video trop longue (max ${VIDEO_DURATION_LIMIT_SECONDS}s).`;
+          continue;
+        }
+      } catch (error) {
+        warning =
+          error instanceof Error ? error.message : "Impossible de verifier la video.";
+        continue;
+      }
+
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+      const path = `${organization.id}/drafts/${draftId}/${sectionId}/${Date.now()}-${safeName}`;
+      const { error } = await supabase.storage
+        .from("report-media")
+        .upload(path, file, { cacheControl: "3600", upsert: false });
+
+      if (error) {
+        warning = error.message;
+        continue;
+      }
+
+      const { data } = supabase.storage.from("report-media").getPublicUrl(path);
+      if (data?.publicUrl) {
+        uploaded.push(data.publicUrl);
+      }
+    }
+
+    if (uploaded.length > 0) {
+      setReportSections((prev) =>
+        prev.map((section) => {
+          if (section.id !== sectionId) return section;
+          return {
+            ...section,
+            mediaUrls: [...section.mediaUrls, ...uploaded].slice(0, VIDEO_PER_SECTION_LIMIT),
+            mediaCaptions: [
+              ...section.mediaCaptions,
+              ...uploaded.map(() => ""),
+            ].slice(0, VIDEO_PER_SECTION_LIMIT),
+          };
+        })
+      );
+    }
+
+    if (warning) {
+      setImageErrors((prev) => ({ ...prev, [sectionId]: warning }));
+    }
+
+    setUploadingSections((prev) => ({ ...prev, [sectionId]: false }));
   };
 
   const handleRemoveImage = (sectionId: string, index: number) => {
@@ -1676,10 +1892,15 @@ export default function CoachReportBuilderPage() {
   };
 
   const loadStudents = async () => {
+    setStudentsLoading(true);
+    setStudentsLoaded(false);
     const { data, error } = await supabase
       .from("students")
       .select("id, first_name, last_name, email, tpi_report_id")
       .order("created_at", { ascending: false });
+
+    setStudentsLoading(false);
+    setStudentsLoaded(true);
 
     if (error) {
       setStatusMessage(error.message);
@@ -1811,7 +2032,8 @@ export default function CoachReportBuilderPage() {
       setRadarError("Choisis un eleve avant d importer un fichier datas.");
       return false;
     }
-    const techMeta = getRadarTechMeta(radarTech);
+    const tech = radarTechRef.current;
+    const techMeta = getRadarTechMeta(tech);
     if (!isRadarImageFile(file)) {
       setRadarError(`Importe une image ${techMeta.label} (jpg, png, heic...).`);
       return false;
@@ -1828,7 +2050,7 @@ export default function CoachReportBuilderPage() {
       .join(" ")
       .trim();
     const displayName = buildRadarFileDisplayName({
-      tech: radarTech,
+      tech,
       studentName: studentLabel,
       reportDate,
       club: workingClub,
@@ -1914,6 +2136,19 @@ export default function CoachReportBuilderPage() {
       setRadarReview(reviewFile);
     }
     return true;
+  };
+
+  const openRadarImportModal = (sectionId: string) => {
+    setRadarImportSectionId(sectionId);
+    setRadarImportTech(radarTechRef.current);
+    setRadarImportError("");
+    setRadarImportOpen(true);
+  };
+
+  const closeRadarImportModal = () => {
+    setRadarImportOpen(false);
+    setRadarImportSectionId(null);
+    setRadarImportError("");
   };
 
   const handleConfirmRadarReview = async (payload: {
@@ -2235,6 +2470,8 @@ export default function CoachReportBuilderPage() {
     setLayoutTemplateIds([]);
     setLayoutCustomTitle("");
     setLayoutCustomType("text");
+    setLayoutTemplateSearch("");
+    setLayoutTemplateSearchOpen(false);
     setLayoutEditorOpen(false);
     setLayoutNotice("", "idle");
   };
@@ -2245,6 +2482,8 @@ export default function CoachReportBuilderPage() {
     setLayoutTemplateIds([]);
     setLayoutCustomTitle("");
     setLayoutCustomType("text");
+    setLayoutTemplateSearch("");
+    setLayoutTemplateSearchOpen(false);
     setLayoutEditorOpen(true);
     setLayoutNotice("", "idle");
   };
@@ -2253,6 +2492,8 @@ export default function CoachReportBuilderPage() {
     setLayoutEditingId(layout.id);
     setLayoutTitle(layout.title);
     setLayoutTemplateIds(layout.templateIds);
+    setLayoutTemplateSearch("");
+    setLayoutTemplateSearchOpen(false);
     setLayoutEditorOpen(true);
     setLayoutNotice("", "idle");
   };
@@ -2262,6 +2503,13 @@ export default function CoachReportBuilderPage() {
     const featureKey = template ? getSectionFeatureKey(template) : null;
     if (isFeatureLocked(featureKey)) {
       openFeatureModal(featureKey);
+      return;
+    }
+    if (
+      template?.type === "video" &&
+      layoutTemplateIds.some((id) => templateById.get(id)?.type === "video")
+    ) {
+      setLayoutNotice("Une seule section video par layout (et par rapport).", "error");
       return;
     }
     setLayoutTemplateIds((prev) =>
@@ -2411,8 +2659,29 @@ export default function CoachReportBuilderPage() {
     mode: "append" | "replace"
   ) => {
     setLayoutNotice("", "idle");
+    let skippedVideo = false;
+    const normalizedTemplates =
+      templates.filter((template) => template.type !== "video").length === templates.length
+        ? templates
+        : (() => {
+            let usedVideo = false;
+            return templates.filter((template) => {
+              if (template.type !== "video") return true;
+              if (usedVideo) {
+                skippedVideo = true;
+                return false;
+              }
+              usedVideo = true;
+              return true;
+            });
+          })();
+
+    if (skippedVideo) {
+      setLayoutNotice("Une seule section video par rapport. Sections video en trop ignorees.", "error");
+    }
+
     if (mode === "replace") {
-      setReportSections(templates.map(createSection));
+      setReportSections(normalizedTemplates.map(createSection));
       setAiPreviews({});
       setCollapsedSections({});
       setImageErrors({});
@@ -2424,14 +2693,24 @@ export default function CoachReportBuilderPage() {
     setReportSections((prev) => {
       const existing = new Set(prev.map((section) => section.title.toLowerCase()));
       const next = [...prev];
+      let hasVideo = prev.some((section) => section.type === "video");
       templates.forEach((template) => {
         const key = template.title.toLowerCase();
         if (existing.has(key)) return;
+        if (template.type === "video" && hasVideo) {
+          skippedVideo = true;
+          return;
+        }
         next.push(createSection(template));
         existing.add(key);
+        if (template.type === "video") hasVideo = true;
       });
       return next;
     });
+
+    if (skippedVideo) {
+      setLayoutNotice("Une seule section video par rapport. Sections video en trop ignorees.", "error");
+    }
     shouldAnimate.current = true;
   };
 
@@ -2587,6 +2866,13 @@ export default function CoachReportBuilderPage() {
     if (layoutCustomType === "radar" && !radarAddonEnabled) {
       setLayoutNotice("Plan Pro requis pour cette section.", "error");
       openRadarAddonModal();
+      return;
+    }
+    if (
+      layoutCustomType === "video" &&
+      layoutTemplateIds.some((id) => templateById.get(id)?.type === "video")
+    ) {
+      setLayoutNotice("Une seule section video par layout (et par rapport).", "error");
       return;
     }
 
@@ -3287,7 +3573,19 @@ export default function CoachReportBuilderPage() {
     }
 
     if (Object.values(uploadingSections).some(Boolean)) {
-      setStatusMessage("Attends la fin des uploads d images.");
+      setStatusMessage("Attends la fin des uploads de medias.");
+      setStatusType("error");
+      return;
+    }
+
+    const videoError = validateVideoSections(
+      reportSections.map((section) => ({
+        type: section.type,
+        mediaUrls: section.mediaUrls,
+      }))
+    );
+    if (videoError) {
+      setStatusMessage(videoError);
       setStatusType("error");
       return;
     }
@@ -3396,8 +3694,12 @@ export default function CoachReportBuilderPage() {
         section.type === "text" ? (section.contentFormatted ?? null) : null,
       content_format_hash:
         section.type === "text" ? (section.contentFormatHash ?? null) : null,
-      media_urls: section.type === "image" ? section.mediaUrls : null,
-      media_captions: section.type === "image" ? section.mediaCaptions : null,
+      media_urls:
+        section.type === "image" || section.type === "video" ? section.mediaUrls : null,
+      media_captions:
+        section.type === "image" || section.type === "video"
+          ? section.mediaCaptions
+          : null,
       radar_file_id: section.type === "radar" ? (section.radarFileId ?? null) : null,
       radar_config: section.type === "radar" ? (section.radarConfig ?? null) : null,
       position: index,
@@ -4544,13 +4846,12 @@ export default function CoachReportBuilderPage() {
   }, []);
 
   useLayoutEffect(() => {
-    const studentFromQuery = searchParams.get("studentId");
-    if (!studentFromQuery || studentId) return;
-    const match = students.find((student) => student.id === studentFromQuery);
+    if (!requestedStudentId || studentId) return;
+    const match = students.find((student) => student.id === requestedStudentId);
     if (match) {
       setStudentId(match.id);
     }
-  }, [searchParams, students, studentId]);
+  }, [requestedStudentId, students, studentId]);
 
   useEffect(() => {
     if (!studentId) {
@@ -4574,6 +4875,39 @@ export default function CoachReportBuilderPage() {
   );
   const hasReportId = Boolean(searchParams.get("reportId"));
   const activeBuilderStep = hasReportId || isEditing ? "report" : builderStep;
+  const studentPickerCandidates = useMemo(() => {
+    const query = studentPickerQuery.trim().toLowerCase();
+    if (!query) return students;
+    return students.filter((student) => {
+      const label = [
+        student.first_name,
+        student.last_name ?? "",
+        student.email ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return label.includes(query);
+    });
+  }, [studentPickerQuery, students]);
+
+  const shouldForceStudentPick =
+    isNewReport &&
+    !hasReportId &&
+    builderStep === "report" &&
+    !requestedStudentId &&
+    !studentId;
+
+  useEffect(() => {
+    if (!studentsLoaded) return;
+    if (!shouldForceStudentPick) return;
+    setStudentPickerQuery("");
+    setStudentPickerOpen(true);
+  }, [shouldForceStudentPick, studentsLoaded]);
+
+  useEffect(() => {
+    if (!studentPickerOpen) return;
+    if (studentId) setStudentPickerOpen(false);
+  }, [studentId, studentPickerOpen]);
   const showLayoutTools = false;
   const isReportStep = activeBuilderStep === "report";
   const showSectionsPanel = !isReportStep || !sectionsPanelCollapsed;
@@ -4728,7 +5062,7 @@ export default function CoachReportBuilderPage() {
                   <button
                     type="button"
                     onClick={startCreateLayout}
-                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                    className="rounded-full bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
                   >
                     Creer un layout
                   </button>
@@ -4760,10 +5094,6 @@ export default function CoachReportBuilderPage() {
                       Layout IA
                     </span>
                   </button>
-                  <span className="text-[0.6rem] uppercase tracking-[0.2em] text-[var(--muted)]">
-                    {layoutOptions.length} option
-                    {layoutOptions.length > 1 ? "s" : ""}
-                  </span>
                 </div>
               </div>
               <div className="mt-5 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
@@ -4775,7 +5105,7 @@ export default function CoachReportBuilderPage() {
                         key={option.id}
                         type="button"
                         onClick={() => handleSelectLayoutOption(option)}
-                        className={`rounded-2xl border p-4 text-left transition ${
+                        className={`rounded-2xl p-4 text-left transition ${
                           selected
                             ? "border-emerald-300/40 bg-emerald-400/10"
                             : "border-white/10 bg-white/5 hover:border-white/20"
@@ -5434,6 +5764,18 @@ export default function CoachReportBuilderPage() {
                               </button>
                               <button
                                 type="button"
+                                onClick={() => setLayoutCustomType("video")}
+                                className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
+                                  layoutCustomType === "video"
+                                    ? "border-pink-300 bg-pink-150 text-pink-700"
+                                    : "border-white/10 bg-white/5 text-[var(--muted)]"
+                                }`}
+                                aria-pressed={layoutCustomType === "video"}
+                              >
+                                Video
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => {
                                   if (!radarAddonEnabled) {
                                     openRadarAddonModal();
@@ -5467,6 +5809,23 @@ export default function CoachReportBuilderPage() {
                                   <circle cx="12" cy="13" r="3" />
                                 </svg>
                                 Image: upload d images et legendes.
+                              </div>
+                            ) : layoutCustomType === "video" ? (
+                              <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-pink-400 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-pink-700 select-none">
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  className="h-3.5 w-3.5"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <path d="M10 8l6 4-6 4V8z" />
+                                  <rect x="3" y="6" width="18" height="12" rx="2" />
+                                </svg>
+                                Video: jusqu a {VIDEO_PER_SECTION_LIMIT} videos (max{" "}
+                                {VIDEO_DURATION_LIMIT_SECONDS}s chacune).
                               </div>
                             ) : layoutCustomType === "radar" ? (
                               <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-violet-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-violet-100/80 select-none">
@@ -5592,6 +5951,18 @@ export default function CoachReportBuilderPage() {
                       </button>
                       <button
                         type="button"
+                        onClick={() => setCustomType("video")}
+                        className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition ${
+                          customType === "video"
+                            ? "border-pink-400 bg-pink-200 text-pink-700"
+                            : "border-white/10 bg-white/5 text-[var(--muted)]"
+                        }`}
+                        aria-pressed={customType === "video"}
+                      >
+                        Video
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => {
                           if (!radarAddonEnabled) {
                             openRadarAddonModal();
@@ -5611,7 +5982,7 @@ export default function CoachReportBuilderPage() {
                       </button>
                     </div>
                     {customType === "image" ? (
-                      <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-sky-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-sky-100/80 select-none">
+                      <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-sky-300 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-sky-700 select-none">
                         <svg
                           viewBox="0 0 24 24"
                           className="h-3.5 w-3.5"
@@ -5626,8 +5997,25 @@ export default function CoachReportBuilderPage() {
                         </svg>
                         Image: upload d images et legendes.
                       </div>
+                    ) : customType === "video" ? (
+                      <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-pink-300 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-pink-600 select-none">
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-3.5 w-3.5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M10 8l6 4-6 4V8z" />
+                          <rect x="3" y="6" width="18" height="12" rx="2" />
+                        </svg>
+                        Video: 1 section max par rapport, {VIDEO_PER_SECTION_LIMIT} videos
+                        max (max {VIDEO_DURATION_LIMIT_SECONDS}s chacune).
+                      </div>
                     ) : customType === "radar" ? (
-                      <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-violet-300/30 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-violet-100/80 select-none">
+                      <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-dashed border-violet-300 bg-transparent px-2.5 py-1 text-[0.6rem] font-medium text-violet-100/80 select-none">
                         <svg
                           viewBox="0 0 24 24"
                           className="h-3.5 w-3.5"
@@ -6179,15 +6567,15 @@ export default function CoachReportBuilderPage() {
                     </p>
                   ) : null}
                   {tpiContext ? (
-                    <div className="mt-3 inline-flex flex-wrap items-center gap-2 rounded-full border border-rose-300/20 bg-rose-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-rose-100">
-                      <span className="h-1.5 w-1.5 rounded-full bg-rose-300" />
+                    <div className="mt-3 inline-flex flex-wrap items-center gap-2 rounded-full border border-teal-300/20 bg-teal-50  px-3 py-1 text-[0.6rem] uppercase tracking-wide text-teal-500">
+                      <span className="h-1.5 w-1.5 rounded-full bg-teal-200" />
                       Profil TPI detecte
                       {selectedStudent ? (
-                        <span className="text-[0.55rem] text-rose-100/80">
+                        <span className="text-[0.55rem] text-teal-700">
                           - {selectedStudent.first_name} {selectedStudent.last_name ?? ""}
                         </span>
                       ) : null}
-                      <span className="text-[0.55rem] text-rose-100/80">
+                      <span className="text-[0.55rem] text-teal-500">
                         L assistant IA l utilisera pour ses recommandations.
                       </span>
                     </div>
@@ -6712,10 +7100,14 @@ export default function CoachReportBuilderPage() {
                             trimmedContent.length > 160 ? "..." : ""
                           }`
                         : "Section repliee.";
-                      const imagePreview =
-                        section.mediaUrls.length > 0
-                          ? `${section.mediaUrls.length} image(s)`
-                          : "Aucune image ajoutee.";
+                      const mediaPreview =
+                        section.type === "video"
+                          ? section.mediaUrls.length > 0
+                            ? `${section.mediaUrls.length} video(s)`
+                            : "Aucune video ajoutee."
+                          : section.mediaUrls.length > 0
+                            ? `${section.mediaUrls.length} image(s)`
+                            : "Aucune image ajoutee.";
                       const radarFile = section.radarFileId
                         ? radarFileMap.get(section.radarFileId)
                         : null;
@@ -6729,6 +7121,10 @@ export default function CoachReportBuilderPage() {
                       const featureKey = getSectionFeatureKey(section);
                       const tone = featureKey ? featureTones[featureKey] : null;
                       const radarLocked = section.type === "radar" && !radarAddonEnabled;
+                      const showSectionBrowseButton =
+                        section.type === "image" ||
+                        section.type === "video" ||
+                        section.type === "radar";
 
                       return (
                         <div key={`${section.id}-slot`} className="space-y-3">
@@ -6791,7 +7187,103 @@ export default function CoachReportBuilderPage() {
                                   {renderFeatureBadge(featureKey)}
                                 </div>
                               </div>
-                              <div className="flex flex-wrap items-center gap-2">
+                              {showSectionBrowseButton ? (
+                                <div className="relative mx-auto flex items-center">
+                                  {section.type === "radar" ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (radarLocked) {
+                                            openRadarAddonModal();
+                                            return;
+                                          }
+                                          openRadarImportModal(section.id);
+                                        }}
+                                        disabled={radarUploading}
+                                        className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition hover:opacity-90 ${
+                                          radarLocked
+                                            ? "cursor-not-allowed border-white/10 bg-white/10 text-[var(--text)] opacity-60"
+                                            : "border-purple-300 bg-purple-400/15 text-purple-700"
+                                        } disabled:opacity-60`}
+                                        aria-disabled={radarLocked}
+                                      >
+                                        Importer
+                                      </button>
+                                      <input
+                                        id={`radar-upload-${section.id}`}
+                                        type="file"
+                                        accept="image/*"
+                                        multiple
+                                        className="hidden"
+                                        onChange={(event) => {
+                                          const files = Array.from(
+                                            event.target.files ?? []
+                                          );
+                                          if (files.length) {
+                                            void handleRadarUploadBatch(files);
+                                          }
+                                          event.target.value = "";
+                                        }}
+                                      />
+                                    </>
+                                  ) : (
+                                    <>
+                                      <label
+                                        htmlFor={`${
+                                          section.type === "video"
+                                            ? "video-upload"
+                                            : "image-upload"
+                                        }-${section.id}`}
+                                        className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition hover:opacity-90 ${
+                                          section.type === "video"
+                                            ? "border-pink-300/40 bg-pink-400/15 text-pink-400"
+                                            : "border-sky-300/40 bg-sky-400/20 text-sky-100"
+                                        }`}
+                                      >
+                                        Importer
+                                      </label>
+                                      {section.type === "video" ? (
+                                        <p className="pointer-events-none absolute left-1/2 top-full mt-1 w-max -translate-x-1/2 text-[0.6rem] text-[var(--muted)]">
+                                          {VIDEO_PER_SECTION_LIMIT} max,{" "}
+                                          {VIDEO_DURATION_LIMIT_SECONDS}s max.
+                                        </p>
+                                      ) : null}
+                                      <input
+                                        id={`${
+                                          section.type === "video"
+                                            ? "video-upload"
+                                            : "image-upload"
+                                        }-${section.id}`}
+                                        type="file"
+                                        accept={
+                                          section.type === "video"
+                                            ? "video/*"
+                                            : "image/*"
+                                        }
+                                        multiple
+                                        onChange={(event) => {
+                                          if (!event.target.files) return;
+                                          if (section.type === "video") {
+                                            handleVideoFiles(
+                                              section.id,
+                                              event.target.files
+                                            );
+                                          } else {
+                                            handleImageFiles(
+                                              section.id,
+                                              event.target.files
+                                            );
+                                          }
+                                          event.target.value = "";
+                                        }}
+                                        className="hidden"
+                                      />
+                                    </>
+                                  )}
+                                </div>
+                              ) : null}
+                              <div className="ml-auto flex flex-wrap items-center gap-2">
                                 <button
                                   type="button"
                                   onClick={() => toggleSectionCollapse(section.id)}
@@ -6874,7 +7366,7 @@ export default function CoachReportBuilderPage() {
                                   ? contentPreview
                                   : section.type === "radar"
                                     ? radarPreview
-                                    : imagePreview}
+                                    : mediaPreview}
                               </p>
                             ) : section.type === "text" ? (
                               <>
@@ -7170,46 +7662,6 @@ export default function CoachReportBuilderPage() {
                                       );
                                     })}
                                   </select>
-                                  <div className="flex flex-wrap items-center gap-2 rounded-full border border-white/10 bg-white/5 px-2 py-1">
-                                    <select
-                                      value={radarTech}
-                                      onChange={(event) => {
-                                        const next = event.target.value;
-                                        if (!isRadarTech(next)) {
-                                          setRadarError("Technologie datas invalide.");
-                                          return;
-                                        }
-                                        setRadarError("");
-                                        setRadarTech(next);
-                                      }}
-                                      disabled={radarLocked}
-                                      className="min-w-[160px] rounded-full border border-white/10 bg-[var(--bg-elevated)] px-3 py-1.5 text-sm text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-60"
-                                      aria-label="Technologie radar"
-                                    >
-                                      {RADAR_TECH_OPTIONS.map((option) => (
-                                        <option key={option.id} value={option.id}>
-                                          {option.label}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        if (radarLocked) {
-                                          openRadarAddonModal();
-                                          return;
-                                        }
-                                        radarInputRef.current?.click();
-                                      }}
-                                      disabled={radarUploading}
-                                      className={`rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20 ${
-                                        radarLocked ? "cursor-not-allowed opacity-60" : ""
-                                      } disabled:opacity-60`}
-                                      aria-disabled={radarLocked}
-                                    >
-                                      Importer
-                                    </button>
-                                  </div>
                                   <button
                                     type="button"
                                     onClick={() =>
@@ -7224,19 +7676,6 @@ export default function CoachReportBuilderPage() {
                                   >
                                     Configurer
                                   </button>
-                                  <input
-                                    ref={radarInputRef}
-                                    type="file"
-                                    accept="image/*"
-                                    multiple
-                                    className="hidden"
-                                    onChange={(event) => {
-                                      const files = Array.from(event.target.files ?? []);
-                                      if (files.length)
-                                        void handleRadarUploadBatch(files);
-                                      event.target.value = "";
-                                    }}
-                                  />
                                 </div>
                                 <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-[var(--muted)]">
                                   <label className="flex items-center gap-2">
@@ -7372,34 +7811,94 @@ export default function CoachReportBuilderPage() {
                                   </div>
                                 )}
                               </div>
+                            ) : section.type === "video" ? (
+                              <div className="mt-3 space-y-3">
+                                {uploadingSections[section.id] ? (
+                                  <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
+                                    Upload en cours
+                                    <span className="tpi-dots" aria-hidden="true">
+                                      <span />
+                                      <span />
+                                      <span />
+                                    </span>
+                                  </div>
+                                ) : null}
+                                {imageErrors[section.id] ? (
+                                  <p className="text-xs text-red-400">
+                                    {imageErrors[section.id]}
+                                  </p>
+                                ) : null}
+                                {section.mediaUrls.length > 0 ? (
+                                  <div className="grid gap-2 sm:grid-cols-2">
+                                    {section.mediaUrls.map((url, index) => (
+                                      <div
+                                        key={url}
+                                        className="relative overflow-hidden rounded-xl border border-white/10 bg-black/30"
+                                      >
+                                        <video
+                                          src={url}
+                                          controls
+                                          playsInline
+                                          className="h-40 w-full object-cover"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleRemoveImage(section.id, index)
+                                          }
+                                          className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-black/50 text-white/70 transition hover:text-white"
+                                          aria-label="Supprimer la video"
+                                          title="Supprimer"
+                                        >
+                                          <svg
+                                            viewBox="0 0 24 24"
+                                            className="h-3.5 w-3.5"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                          >
+                                            <path d="M18 6L6 18" />
+                                            <path d="M6 6l12 12" />
+                                          </svg>
+                                        </button>
+                                        <div className="bg-black/60 p-2">
+                                          <div className="flex items-center gap-2">
+                                            <input
+                                              type="text"
+                                              value={section.mediaCaptions[index] ?? ""}
+                                              onChange={(event) =>
+                                                handleCaptionChange(
+                                                  section.id,
+                                                  index,
+                                                  event.target.value
+                                                )
+                                              }
+                                              maxLength={CAPTION_LIMIT}
+                                              placeholder="Ajouter une legende..."
+                                              className="flex-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-[var(--text)] placeholder:text-zinc-400"
+                                            />
+                                            <span className="text-[0.6rem] text-white/50">
+                                              {
+                                                (section.mediaCaptions[index] ?? "")
+                                                  .length
+                                              }
+                                              /{CAPTION_LIMIT}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-xs text-[var(--muted)]">
+                                    Aucune video ajoutee pour le moment.
+                                  </p>
+                                )}
+                              </div>
                             ) : (
                               <div className="mt-3 space-y-3">
-                                <div
-                                  onDragOver={(event) => event.preventDefault()}
-                                  onDrop={(event) => handleImageDrop(section.id, event)}
-                                  className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 bg-white/5 px-4 py-6 text-center text-xs text-[var(--muted)]"
-                                >
-                                  <p>Glisse des images ici</p>
-                                  <label
-                                    htmlFor={`image-upload-${section.id}`}
-                                    className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
-                                  >
-                                    Parcourir
-                                  </label>
-                                  <input
-                                    id={`image-upload-${section.id}`}
-                                    type="file"
-                                    accept="image/*"
-                                    multiple
-                                    onChange={(event) => {
-                                      if (event.target.files) {
-                                        handleImageFiles(section.id, event.target.files);
-                                        event.target.value = "";
-                                      }
-                                    }}
-                                    className="hidden"
-                                  />
-                                </div>
                                 {uploadingSections[section.id] ? (
                                   <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
                                     Upload en cours
@@ -7701,13 +8200,158 @@ export default function CoachReportBuilderPage() {
                   <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
                     Ajouter une section existante
                   </p>
-                  <div className="mt-2 flex flex-wrap gap-2">
+                  <div className="mt-2 space-y-2">
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]">
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <circle cx="11" cy="11" r="7" />
+                          <path d="M21 21l-4.3-4.3" />
+                        </svg>
+                      </span>
+                      <input
+                        type="search"
+                        role="combobox"
+                        value={layoutTemplateSearch}
+                        onChange={(event) => {
+                          setLayoutTemplateSearch(event.target.value);
+                          setLayoutTemplateSearchOpen(true);
+                        }}
+                        onFocus={() => setLayoutTemplateSearchOpen(true)}
+                        onBlur={() => {
+                          window.setTimeout(() => setLayoutTemplateSearchOpen(false), 120);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Escape") {
+                            setLayoutTemplateSearchOpen(false);
+                            return;
+                          }
+                          if (event.key !== "Enter") return;
+                          const first = layoutTemplateSuggestions[0];
+                          if (!first?.id) return;
+                          event.preventDefault();
+                          handleAddTemplateToLayout(first.id as string);
+                          setLayoutTemplateSearch("");
+                          setLayoutTemplateSearchOpen(false);
+                        }}
+                        disabled={layoutAvailableTemplates.length === 0}
+                        placeholder="Rechercher une section..."
+                        aria-label="Rechercher une section"
+                        aria-autocomplete="list"
+                        aria-haspopup="listbox"
+                        aria-expanded={
+                          layoutTemplateSearchOpen && layoutTemplateSuggestions.length > 0
+                        }
+                        aria-controls="layout-template-suggestions"
+                        className="w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] py-2 pl-10 pr-10 text-sm text-[var(--text)] placeholder:text-[var(--muted)] disabled:cursor-not-allowed disabled:opacity-60"
+                      />
+                      {layoutTemplateSearch ? (
+                        <button
+                          type="button"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => {
+                            setLayoutTemplateSearch("");
+                            setLayoutTemplateSearchOpen(false);
+                          }}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                          aria-label="Effacer la recherche"
+                          title="Effacer"
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-3.5 w-3.5"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden="true"
+                          >
+                            <path d="M18 6L6 18" />
+                            <path d="M6 6l12 12" />
+                          </svg>
+                        </button>
+                      ) : null}
+
+                      {layoutTemplateSearchOpen && layoutTemplateSuggestions.length > 0 ? (
+                        <div
+                          id="layout-template-suggestions"
+                          role="listbox"
+                          className="absolute z-20 mt-2 w-full overflow-hidden rounded-2xl border border-white/10 bg-[var(--bg-elevated)] shadow-[0_24px_60px_rgba(0,0,0,0.45)]"
+                        >
+                          <div className="max-h-64 overflow-auto p-2">
+                            {layoutTemplateSuggestions.map((template) => {
+                              const featureKey = getSectionFeatureKey(template);
+                              const tone = featureKey ? featureTones[featureKey] : null;
+                              const isLocked = isFeatureLocked(featureKey);
+                              return (
+                                <button
+                                  key={`layout-suggest-${template.id}`}
+                                  type="button"
+                                  role="option"
+                                  aria-selected={false}
+                                  onMouseDown={(event) => {
+                                    event.preventDefault();
+                                    handleAddTemplateToLayout(template.id as string);
+                                    setLayoutTemplateSearch("");
+                                    setLayoutTemplateSearchOpen(false);
+                                  }}
+                                  className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm text-[var(--text)] transition hover:bg-white/5"
+                                  aria-disabled={isLocked}
+                                >
+                                  <span className="flex min-w-0 items-center gap-2">
+                                    {tone ? (
+                                      <span
+                                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${tone.dot}`}
+                                      />
+                                    ) : null}
+                                    <span className="min-w-0 truncate">
+                                      {template.title}
+                                    </span>
+                                  </span>
+                                  {isLocked ? (
+                                    <svg
+                                      viewBox="0 0 24 24"
+                                      className="h-4 w-4 shrink-0 text-[var(--muted)]"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      aria-hidden="true"
+                                    >
+                                      <rect x="5" y="11" width="14" height="9" rx="2" />
+                                      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+                                    </svg>
+                                  ) : null}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+
                     {layoutAvailableTemplates.length === 0 ? (
                       <span className="text-xs text-[var(--muted)]">
                         Toutes les sections sont deja dans ce layout.
                       </span>
                     ) : (
-                      layoutAvailableTemplates.map((template) => {
+                      <div className="flex flex-wrap gap-2">
+                        {filteredLayoutAvailableTemplates.length === 0 ? (
+                          <span className="text-xs text-[var(--muted)]">
+                            Aucune section ne correspond.
+                          </span>
+                        ) : (
+                          filteredLayoutAvailableTemplates.map((template) => {
                         const featureKey = getSectionFeatureKey(template);
                         const tone = featureKey ? featureTones[featureKey] : null;
                         const isLocked = isFeatureLocked(featureKey);
@@ -7747,7 +8391,9 @@ export default function CoachReportBuilderPage() {
                             ) : null}
                           </button>
                         );
-                      })
+                          })
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -8769,6 +9415,212 @@ export default function CoachReportBuilderPage() {
           onClose={closePremiumModal}
           notice={premiumNotice}
         />
+        {studentPickerOpen ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={studentPickerTitleId}
+          >
+            <div className="absolute inset-0 bg-black/35 backdrop-blur-sm" />
+
+            <div className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-white/10 bg-[var(--bg-elevated)] shadow-[var(--shadow-strong)]">
+              <div className="border-b border-white/10 px-6 py-4">
+                <h3
+                  id={studentPickerTitleId}
+                  className="text-center text-base font-semibold text-[var(--text)]"
+                >
+                  Choisir un eleve
+                </h3>
+                <p className="mt-1 text-center text-xs text-[var(--muted)]">
+                  Selection obligatoire pour continuer la creation du rapport.
+                </p>
+              </div>
+
+              <div className="px-6 py-5">
+                <label className="text-xs font-medium text-[var(--text)]">
+                  Rechercher
+                </label>
+                <input
+                  type="text"
+                  value={studentPickerQuery}
+                  onChange={(event) => setStudentPickerQuery(event.target.value)}
+                  placeholder="Nom ou email..."
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                />
+
+                <div className="mt-4 max-h-[45vh] overflow-y-auto rounded-2xl border border-white/10 bg-white/5 p-2">
+                  {studentsLoading && !studentsLoaded ? (
+                    <div className="px-3 py-8 text-center text-sm text-[var(--muted)]">
+                      Chargement des eleves...
+                    </div>
+                  ) : studentPickerCandidates.length === 0 ? (
+                    <div className="px-3 py-8 text-center text-sm text-[var(--muted)]">
+                      Aucun eleve trouve.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {studentPickerCandidates.map((student) => (
+                        <button
+                          key={student.id}
+                          type="button"
+                          onClick={() => {
+                            setStudentId(student.id);
+                            setStudentPickerOpen(false);
+                            setStudentPickerQuery("");
+                          }}
+                          className="w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-3 text-left text-sm text-[var(--text)] transition hover:bg-white/10"
+                        >
+                          <p className="font-semibold">
+                            {student.first_name} {student.last_name ?? ""}
+                          </p>
+                          {student.email ? (
+                            <p className="mt-1 text-xs text-[var(--muted)]">
+                              {student.email}
+                            </p>
+                          ) : null}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-5 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStudentPickerOpen(false);
+                      setStudentPickerQuery("");
+                      setBuilderStep("sections");
+                    }}
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                  >
+                    Retour
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/app/coach/rapports")}
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                  >
+                    Annuler
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {radarImportOpen ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={radarImportTitleId}
+          >
+            <button
+              type="button"
+              aria-label="Fermer"
+              className="absolute inset-0 bg-black/35 backdrop-blur-sm"
+              onClick={closeRadarImportModal}
+            />
+
+            <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-[var(--bg-elevated)] shadow-[var(--shadow-strong)]">
+              <div className="relative border-b border-white/10 px-6 py-4">
+                <h3
+                  id={radarImportTitleId}
+                  className="text-center text-base font-semibold text-[var(--text)]"
+                >
+                  Importer un fichier datas
+                </h3>
+                <button
+                  type="button"
+                  onClick={closeRadarImportModal}
+                  className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                  aria-label="Fermer"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M18 6L6 18" />
+                    <path d="M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="px-6 py-5">
+                <label className="text-xs font-medium text-[var(--text)]">
+                  Technologie
+                </label>
+                <select
+                  value={radarImportTech}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    if (!isRadarTech(next)) {
+                      setRadarImportError("Technologie datas invalide.");
+                      return;
+                    }
+                    setRadarImportError("");
+                    setRadarImportTech(next);
+                  }}
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)]"
+                >
+                  {RADAR_TECH_OPTIONS.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                {radarImportError ? (
+                  <p className="mt-2 text-xs text-red-400">{radarImportError}</p>
+                ) : null}
+
+                <div className="mt-6 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={closeRadarImportModal}
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!radarImportSectionId) {
+                        setRadarImportError("Section datas introuvable.");
+                        return;
+                      }
+                      if (!isRadarTech(radarImportTech)) {
+                        setRadarImportError("Technologie datas invalide.");
+                        return;
+                      }
+                      radarTechRef.current = radarImportTech;
+                      setRadarTech(radarImportTech);
+                      const input = document.getElementById(
+                        `radar-upload-${radarImportSectionId}`
+                      );
+                      if (input instanceof HTMLInputElement) {
+                        input.click();
+                      } else {
+                        setRadarImportError("Import indisponible.");
+                        return;
+                      }
+                      closeRadarImportModal();
+                    }}
+                    className="rounded-full bg-gradient-to-r from-amber-300 via-amber-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90"
+                  >
+                    Continuer
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
         {clarifyOpen ? (
           <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 px-4 py-10">
             <div className="mx-auto flex w-full max-w-2xl flex-col rounded-3xl border border-white/10 bg-[var(--bg-elevated)] shadow-[0_30px_80px_rgba(0,0,0,0.45)]">

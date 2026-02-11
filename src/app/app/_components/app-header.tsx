@@ -80,61 +80,90 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
   };
 
   return (
-    <header className="relative sticky top-4 z-40 flex w-full items-center gap-3 rounded-3xl bg-[var(--app-surface)] px-4 py-3 md:px-6 md:py-4">
-      <WorkspaceSwitcher />
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        {onToggleNav ? (
-          <button
-            type="button"
-            onClick={onToggleNav}
-            aria-label={isNavOpen ? "Fermer la navigation" : "Ouvrir la navigation"}
-            aria-expanded={isNavOpen ?? false}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--bg-elevated)] text-[var(--muted)] transition hover:bg-white hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50 min-[880px]:hidden"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+    <header className="app-header sticky top-[var(--app-sticky-top)] z-40">
+      <div className="relative flex w-full items-center gap-3 rounded-3xl bg-[var(--app-surface)] px-4 py-3 md:px-6 md:py-4">
+        <WorkspaceSwitcher />
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          {onToggleNav ? (
+            <button
+              type="button"
+              onClick={onToggleNav}
+              aria-label={isNavOpen ? "Fermer la navigation" : "Ouvrir la navigation"}
+              aria-expanded={isNavOpen ?? false}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--bg-elevated)] text-[var(--muted)] transition hover:bg-white hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50 min-[880px]:hidden"
             >
-              {isNavOpen ? (
-                <>
-                  <path d="M18 6L6 18" />
-                  <path d="M6 6l12 12" />
-                </>
-              ) : (
-                <>
-                  <path d="M3 6h18" />
-                  <path d="M3 12h18" />
-                  <path d="M3 18h18" />
-                </>
-              )}
-            </svg>
-          </button>
-        ) : null}
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                {isNavOpen ? (
+                  <>
+                    <path d="M18 6L6 18" />
+                    <path d="M6 6l12 12" />
+                  </>
+                ) : (
+                  <>
+                    <path d="M3 6h18" />
+                    <path d="M3 12h18" />
+                    <path d="M3 18h18" />
+                  </>
+                )}
+              </svg>
+            </button>
+          ) : null}
 
-        <Link
-          href="/app"
-          className="flex min-w-0 items-center gap-2 min-[880px]:hidden"
-        >
-          <img
-            src={brandIconUrl}
-            alt="Logo SwingFlow"
-            className="h-10 w-10 shrink-0 object-contain"
-          />
-          <img
-            src={brandWordmarkUrl}
-            alt="SwingFlow"
-            className="hidden h-7 w-auto min-w-0 max-w-[min(200px,45vw)] object-contain min-[460px]:block"
-          />
-        </Link>
+          <Link href="/app" className="flex min-w-0 items-center gap-2 min-[880px]:hidden">
+            <img
+              src={brandIconUrl}
+              alt="Logo SwingFlow"
+              className="h-10 w-10 shrink-0 object-contain"
+            />
+            <img
+              src={brandWordmarkUrl}
+              alt="SwingFlow"
+              className="hidden h-7 w-auto min-w-0 max-w-[min(200px,45vw)] object-contain min-[460px]:block"
+            />
+          </Link>
 
-        <div className="hidden min-w-0 flex-1 min-[880px]:block">
-          <div className="relative w-[min(420px,45vw)]">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]">
+          <div className="hidden min-w-0 flex-1 min-[880px]:block">
+            <div className="relative w-[min(420px,45vw)]">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]">
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="M21 21l-4.3-4.3" />
+                </svg>
+              </span>
+              <input
+                type="search"
+                placeholder="Rechercher..."
+                aria-label="Rechercher"
+                className="w-full rounded-full bg-[var(--panel)] py-3 pl-9 pr-4 text-sm text-[var(--text)] placeholder:text-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <div className="hidden items-center gap-2 min-[880px]:flex">
+            <button
+              type="button"
+              aria-label="Messages"
+              className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--panel)] text-[var(--muted)] transition hover:bg-white hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
+            >
               <svg
                 viewBox="0 0 24 24"
                 className="h-5 w-5"
@@ -145,62 +174,31 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
                 strokeLinejoin="round"
                 aria-hidden="true"
               >
-                <circle cx="11" cy="11" r="7" />
-                <path d="M21 21l-4.3-4.3" />
+                <path d="M4 4h16v14H5.2L4 19.2V4z" />
+                <path d="M6 8h12" />
+                <path d="M6 12h10" />
               </svg>
-            </span>
-            <input
-              type="search"
-              placeholder="Rechercher..."
-              aria-label="Rechercher"
-              className="w-full rounded-full bg-[var(--panel)] py-3 pl-9 pr-4 text-sm text-[var(--text)] placeholder:text-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
-            />
+            </button>
+            <button
+              type="button"
+              aria-label="Notifications"
+              className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--panel)] text-[var(--muted)] transition hover:bg-white hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
+                <path d="M13.7 21a2 2 0 01-3.4 0" />
+              </svg>
+            </button>
           </div>
-        </div>
-      </div>
-      
-      <div className="flex items-center gap-2">
-        <div className="hidden items-center gap-2 min-[880px]:flex">
-          <button
-            type="button"
-            aria-label="Messages"
-            className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--panel)] text-[var(--muted)] transition hover:bg-white hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M4 4h16v14H5.2L4 19.2V4z" />
-              <path d="M6 8h12" />
-              <path d="M6 12h10" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            aria-label="Notifications"
-            className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--panel)] text-[var(--muted)] transition hover:bg-white hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
-              <path d="M13.7 21a2 2 0 01-3.4 0" />
-            </svg>
-          </button>
-        </div>
 
         
 
@@ -270,6 +268,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
               </button>
             </div>
           ) : null}
+        </div>
         </div>
       </div>
     </header>
