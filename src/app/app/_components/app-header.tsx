@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { useProfile } from "./profile-context";
@@ -18,8 +18,6 @@ type AppHeaderProps = {
 export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
   const router = useRouter();
   const [email, setEmail] = useState<string | null>(null);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const mobileMenuRef = useRef<HTMLDivElement | null>(null);
   useThemePreference();
   const { profile } = useProfile();
 
@@ -47,76 +45,13 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
     };
   }, []);
 
-  useEffect(() => {
-    if (!mobileMenuOpen) return;
-
-    const handleOutsideClick = (event: MouseEvent | TouchEvent) => {
-      if (!mobileMenuRef.current) return;
-      if (mobileMenuRef.current.contains(event.target as Node)) return;
-      setMobileMenuOpen(false);
-    };
-
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMobileMenuOpen(false);
-    };
-
-    document.addEventListener("mousedown", handleOutsideClick);
-    document.addEventListener("touchstart", handleOutsideClick);
-    document.addEventListener("keydown", handleKey);
-
-    return () => {
-      document.removeEventListener("mousedown", handleOutsideClick);
-      document.removeEventListener("touchstart", handleOutsideClick);
-      document.removeEventListener("keydown", handleKey);
-    };
-  }, [mobileMenuOpen]);
-
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    if (typeof window !== "undefined") {
-      window.sessionStorage.removeItem("gc.rememberMe");
-    }
-    router.replace("/");
-  };
-
   return (
     <header className="app-header sticky top-[var(--app-sticky-top)] z-40">
       <div className="relative flex w-full items-center gap-3 rounded-3xl bg-[var(--app-surface)] px-4 py-3 md:px-6 md:py-4">
-        <WorkspaceSwitcher />
+        <div className="hidden min-[880px]:block">
+          <WorkspaceSwitcher />
+        </div>
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          {onToggleNav ? (
-            <button
-              type="button"
-              onClick={onToggleNav}
-              aria-label={isNavOpen ? "Fermer la navigation" : "Ouvrir la navigation"}
-              aria-expanded={isNavOpen ?? false}
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--bg-elevated)] text-[var(--muted)] transition hover:bg-white hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50 min-[880px]:hidden"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                {isNavOpen ? (
-                  <>
-                    <path d="M18 6L6 18" />
-                    <path d="M6 6l12 12" />
-                  </>
-                ) : (
-                  <>
-                    <path d="M3 6h18" />
-                    <path d="M3 12h18" />
-                    <path d="M3 18h18" />
-                  </>
-                )}
-              </svg>
-            </button>
-          ) : null}
-
           <Link href="/app" className="flex min-w-0 items-center gap-2 min-[880px]:hidden">
             <img
               src={brandIconUrl}
@@ -234,41 +169,41 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
             </p>
           </div>
         </div>
-
-        <div className="relative min-[880px]:hidden" ref={mobileMenuRef}>
+        <div className="min-[880px]:hidden">
+          <WorkspaceSwitcher />
+        </div>
+        {onToggleNav ? (
           <button
             type="button"
-            onClick={() => setMobileMenuOpen((prev) => !prev)}
-            aria-haspopup="menu"
-            aria-expanded={mobileMenuOpen}
-            aria-label="Actions"
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--muted)] transition hover:text-[var(--text)]"
+            onClick={onToggleNav}
+            aria-label={isNavOpen ? "Fermer la navigation" : "Ouvrir la navigation"}
+            aria-expanded={isNavOpen ?? false}
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--bg-elevated)] text-[var(--muted)] transition hover:bg-white hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50 min-[880px]:hidden"
           >
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
-              <circle cx="5" cy="12" r="2" />
-              <circle cx="12" cy="12" r="2" />
-              <circle cx="19" cy="12" r="2" />
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              {isNavOpen ? (
+                <>
+                  <path d="M18 6L6 18" />
+                  <path d="M6 6l12 12" />
+                </>
+              ) : (
+                <>
+                  <path d="M3 6h18" />
+                  <path d="M3 12h18" />
+                  <path d="M3 18h18" />
+                </>
+              )}
             </svg>
           </button>
-          {mobileMenuOpen ? (
-            <div
-              role="menu"
-              className="absolute right-0 z-50 mt-2 w-44 rounded-2xl border border-white/10 bg-[var(--bg-elevated)] p-2 shadow-[0_20px_50px_rgba(0,0,0,0.45)]"
-            >
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  void handleSignOut();
-                }}
-                className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs text-[var(--text)] transition hover:bg-white/5"
-              >
-                <span>Se deconnecter</span>
-              </button>
-            </div>
-          ) : null}
-        </div>
+        ) : null}
         </div>
       </div>
     </header>
