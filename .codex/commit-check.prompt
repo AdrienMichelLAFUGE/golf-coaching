@@ -61,10 +61,10 @@ npm run lint
 npm run typecheck
 npm test
 
-Build:
-- Dans l'environnement Codex / agent (Windows sandbox), `npm run build` peut echouer avec `spawn EPERM` (limitation de sous-process).
-- Dans ce cas: NE PAS insister, NE PAS tenter de workaround, et marquer "BUILD: a verifier manuellement".
-- Toujours demander a l'humain de lancer `npm run build` en local et de confirmer "build ok" avant le commit.
+Build (hors sandbox obligatoire):
+- Ne JAMAIS lancer `npm run build` dans le sandbox en premier.
+- Lancer directement `npm run build` avec execution hors sandbox (escalation / require_escalated), avec une demande d'autorisation claire si necessaire.
+- Si l'autorisation est refusee ou impossible: marquer "BUILD: a verifier manuellement" et demander explicitement a l'humain de lancer `npm run build` en local puis confirmer "build ok".
 - Si l'humain confirme "build ok", alors la qualite est consideree verte.
 
 

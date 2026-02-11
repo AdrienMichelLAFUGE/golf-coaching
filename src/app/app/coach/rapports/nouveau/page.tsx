@@ -2913,6 +2913,7 @@ export default function CoachReportBuilderPage() {
   const peekLocalDraft = useCallback((): LocalDraft | null => {
     if (typeof window === "undefined") return null;
     if (!isNewReport || loadingReport) return null;
+    if (!requestedStudentId) return null;
     try {
       const directRaw = window.localStorage.getItem(draftKey);
       const legacyRaw =
@@ -2961,12 +2962,6 @@ export default function CoachReportBuilderPage() {
     // After a restore, show the editor step so the user immediately sees recovered content.
     setBuilderStep(draft.builderStep ?? "report");
   }, []);
-
-  const loadLocalDraft = useCallback(() => {
-    const draft = peekLocalDraft();
-    if (!draft) return;
-    applyLocalDraft(draft);
-  }, [applyLocalDraft, peekLocalDraft]);
 
   const persistLocalDraft = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -3115,7 +3110,10 @@ export default function CoachReportBuilderPage() {
   };
 
   const handleResumeLocalDraft = () => {
-    loadLocalDraft();
+    const draft = peekLocalDraft();
+    if (draft) {
+      applyLocalDraft(draft);
+    }
     setLocalDraftPrompt(null);
     setLocalDraftHandled(true);
   };
@@ -4731,25 +4729,18 @@ export default function CoachReportBuilderPage() {
     const draft = peekLocalDraft();
     if (!draft) return;
 
-    if (requestedStudentId) {
-      // When "New report" is opened for a specific student, do not auto-restore.
-      // Show a clear choice: resume existing draft or start fresh.
-      if (!localDraftPrompt) {
-        setLocalDraftPrompt({ key: draftKey, savedAt: draft.savedAt ?? null });
-      }
-      return;
+    // For a student-scoped entrypoint, do not auto-restore.
+    // Show a clear choice: resume existing draft or start fresh.
+    if (!localDraftPrompt) {
+      setLocalDraftPrompt({ key: draftKey, savedAt: draft.savedAt ?? null });
     }
-
-    loadLocalDraft();
   }, [
     draftKey,
     isNewReport,
-    loadLocalDraft,
     loadingReport,
     localDraftHandled,
     localDraftPrompt,
     peekLocalDraft,
-    requestedStudentId,
   ]);
 
   useEffect(() => {
