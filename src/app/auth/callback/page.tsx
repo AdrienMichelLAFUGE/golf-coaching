@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { resolvePostLoginPath } from "@/lib/auth/post-login-path";
 
 export default function AuthCallbackPage() {
   const router = useRouter();
@@ -33,14 +34,19 @@ export default function AuthCallbackPage() {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
         });
+        const payload = (await response.json()) as { error?: string; role?: string };
         if (!response.ok) {
-          const payload = (await response.json()) as { error?: string };
           await supabase.auth.signOut();
           setMessage(payload.error ?? "Acces refuse.");
           return;
         }
 
-        router.replace("/app");
+        router.replace(
+          resolvePostLoginPath({
+            role: payload.role ?? null,
+            email: data.session.user.email ?? null,
+          })
+        );
         return;
       }
 

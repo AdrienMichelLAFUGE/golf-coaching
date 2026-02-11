@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { resolvePostLoginPath } from "@/lib/auth/post-login-path";
 
 type Status = "idle" | "sending" | "sent" | "error";
 type ResetStatus = "idle" | "sending" | "sent" | "error";
@@ -42,6 +43,24 @@ export default function LoginClient({
   const [resetStatus, setResetStatus] = useState<ResetStatus>("idle");
   const [resetMessage, setResetMessage] = useState("");
 
+  async function ensureProfile() {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      return { ok: false as const, error: "Session invalide.", role: null };
+    }
+
+    const response = await fetch("/api/onboarding/ensure-profile", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = (await response.json()) as { error?: string; role?: string };
+    if (!response.ok) {
+      return { ok: false as const, error: data.error ?? "Acces refuse.", role: null };
+    }
+    return { ok: true as const, role: data.role ?? null };
+  }
+
   useEffect(() => {
     let active = true;
 
@@ -49,7 +68,21 @@ export default function LoginClient({
       const { data } = await supabase.auth.getSession();
       if (!active) return;
       if (data.session) {
-        router.replace(nextPath ?? "/app");
+        const ensured = await ensureProfile();
+        if (!active) return;
+        if (!ensured.ok) {
+          await supabase.auth.signOut();
+          setStatus("error");
+          setMessage(ensured.error ?? "Acces refuse.");
+          return;
+        }
+        router.replace(
+          nextPath ??
+            resolvePostLoginPath({
+              role: ensured.role,
+              email: data.session.user.email ?? null,
+            })
+        );
       }
     };
 
@@ -76,24 +109,6 @@ export default function LoginClient({
     window.sessionStorage.setItem(rememberStorageKey, "false");
   };
 
-  const ensureProfile = async () => {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const token = sessionData.session?.access_token;
-    if (!token) {
-      return { ok: false, error: "Session invalide." };
-    }
-
-    const response = await fetch("/api/onboarding/ensure-profile", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const data = (await response.json()) as { error?: string };
-    if (!response.ok) {
-      return { ok: false, error: data.error ?? "Acces refuse." };
-    }
-    return { ok: true };
-  };
-
   const signInWithPassword = async (trimmedEmail: string, trimmedPassword: string) => {
     const { error } = await supabase.auth.signInWithPassword({
       email: trimmedEmail,
@@ -114,7 +129,13 @@ export default function LoginClient({
       return;
     }
 
-    router.replace(nextPath ?? "/app");
+    router.replace(
+      nextPath ??
+        resolvePostLoginPath({
+          role: ensured.role,
+          email: trimmedEmail,
+        })
+    );
   };
 
   const signUpCoach = async (

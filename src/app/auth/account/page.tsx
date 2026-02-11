@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { z } from "zod";
 import { supabase } from "@/lib/supabase/client";
+import { resolvePostLoginPath } from "@/lib/auth/post-login-path";
 
 const paramsSchema = z.object({
   flow: z.enum(["coach", "student"]).optional(),
@@ -40,6 +41,9 @@ function AccountStatusContent() {
     return raw;
   })();
 
+  const fallbackRole = flow === "student" ? "student" : "coach";
+  const fallbackRedirectPath = nextPath ?? resolvePostLoginPath({ role: fallbackRole });
+
   useEffect(() => {
     if (state !== "ready") return;
     let active = true;
@@ -51,7 +55,13 @@ function AccountStatusContent() {
       if (!active) return;
       if (data.session) {
         setSessionStatus("ready");
-        timer = setTimeout(() => router.replace(nextPath ?? "/app"), 1200);
+        const redirectPath =
+          nextPath ??
+          resolvePostLoginPath({
+            role: fallbackRole,
+            email: data.session.user.email ?? null,
+          });
+        timer = setTimeout(() => router.replace(redirectPath), 1200);
         return;
       }
       setSessionStatus("missing");
@@ -63,7 +73,7 @@ function AccountStatusContent() {
       active = false;
       if (timer) clearTimeout(timer);
     };
-  }, [router, state, nextPath]);
+  }, [router, state, nextPath, fallbackRole]);
 
   const headline = state === "verify" ? "Compte cree" : "Compte pret, connexion en cours";
   const description =
@@ -101,7 +111,7 @@ function AccountStatusContent() {
           ) : (
             <button
               type="button"
-              onClick={() => router.replace(nextPath ?? "/app")}
+              onClick={() => router.replace(fallbackRedirectPath)}
               className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)]"
             >
               Acceder a l app
