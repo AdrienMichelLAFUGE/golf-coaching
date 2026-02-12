@@ -2523,7 +2523,7 @@ export default function CoachStudentDetailPage() {
                     return (
                       <div
                         key={report.id}
-                        className="relative flex flex-col gap-3 overflow-visible rounded-xl border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--text)] md:flex-row md:items-center md:justify-between"
+                        className="relative grid gap-3 overflow-visible rounded-xl border-white/5 bg-white/5 px-4 py-3 text-sm text-[var(--text)] md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
                       >
                         {!report.sent_at ? (
                           <Badge
@@ -2639,16 +2639,16 @@ export default function CoachStudentDetailPage() {
                               </>
                             ) : null}
                           </div>
-
-                          {contributorLabel ? (
-                            <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
-                              <span>Par :</span>
-                              <Badge tone="muted" size="sm" className="app-badge--nowrap">
-                                {contributorLabel}
-                              </Badge>
-                            </div>
-                          ) : null}
                         </div>
+
+                        {contributorLabel ? (
+                          <div className="flex items-center gap-2 text-xs text-[var(--muted)] md:col-span-2">
+                            <span>Par :</span>
+                            <Badge tone="muted" size="sm" className="app-badge--nowrap">
+                              {contributorLabel}
+                            </Badge>
+                          </div>
+                        ) : null}
                       </div>
                     );
                   })}
