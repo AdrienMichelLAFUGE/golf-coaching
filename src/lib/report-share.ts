@@ -12,32 +12,86 @@ const escapePdfText = (value: string) =>
   value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
 
 const wrapText = (value: string, maxChars = 92) => {
-  const words = normalizeAscii(value).split(/\s+/).filter(Boolean);
+  const normalized = normalizeAscii(value).replace(/\r\n?/g, "\n");
+  const trimmed = normalized.trim();
+  if (!trimmed) return [""];
+
+  const bulletMatch = trimmed.match(/^([-*]|\d+\.)\s+/);
+  const prefix = bulletMatch ? `${bulletMatch[1]} ` : "";
+  const body = bulletMatch ? trimmed.slice(bulletMatch[0].length) : trimmed;
+
+  const words = body.split(/\s+/).filter(Boolean);
   if (words.length === 0) return [""];
 
   const lines: string[] = [];
-  let current = "";
+  let current = prefix;
+  const continuationPrefix = " ".repeat(prefix.length);
+
   for (const word of words) {
     if (!current) {
       current = word;
       continue;
     }
-    if ((current + " " + word).length <= maxChars) {
-      current += " " + word;
+    const candidate = current.endsWith(" ") ? `${current}${word}` : `${current} ${word}`;
+    if (candidate.length <= maxChars) {
+      current = candidate;
       continue;
     }
     lines.push(current);
-    current = word;
+    current = `${continuationPrefix}${word}`;
   }
   if (current) lines.push(current);
   return lines;
+};
+
+const normalizeRichText = (value: string) =>
+  value
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^\s*>\s?/gm, "")
+    .replace(/^\s*[-*+]\s+/gm, "- ")
+    .replace(/^\s*(\d+)\)\s+/gm, "$1. ")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)")
+    .replace(/\n{3,}/g, "\n\n");
+
+const describeMediaNote = (input: {
+  type?: string | null;
+  hasRichMedia?: boolean;
+  mediaCount?: number;
+}) => {
+  if (!input.hasRichMedia && !input.mediaCount) return null;
+  const mediaCount = input.mediaCount ?? 0;
+  const label =
+    input.type === "image"
+      ? "images"
+      : input.type === "video"
+        ? "videos"
+        : input.type === "radar"
+          ? "graphiques/donnees"
+          : "contenus multimedia";
+  if (mediaCount > 0) {
+    return `Note media: ${mediaCount} ${label}. Consultez la version SwingFlow pour voir ce contenu.`;
+  }
+  return "Note media: contenu multimedia disponible uniquement dans SwingFlow.";
 };
 
 const toPdfLines = (input: {
   title: string;
   reportDate: string;
   studentName: string;
-  sections: Array<{ title: string; content: string }>;
+  sections: Array<{
+    title: string;
+    content: string;
+    type?: string | null;
+    hasRichMedia?: boolean;
+    mediaCount?: number;
+  }>;
 }) => {
   const lines: string[] = [];
   lines.push(`Rapport SwingFlow: ${input.title}`);
@@ -47,16 +101,23 @@ const toPdfLines = (input: {
 
   input.sections.forEach((section, index) => {
     lines.push(`${index + 1}. ${section.title}`);
-    const contentLines = section.content
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
-    if (contentLines.length === 0) {
+    const contentLines = normalizeRichText(section.content).split("\n");
+    if (contentLines.every((line) => !line.trim())) {
       lines.push("Aucun contenu.");
     } else {
       contentLines.forEach((line) => {
+        if (!line.trim()) {
+          if (lines[lines.length - 1] !== "") {
+            lines.push("");
+          }
+          return;
+        }
         wrapText(line).forEach((wrapped) => lines.push(wrapped));
       });
+    }
+    const mediaNote = describeMediaNote(section);
+    if (mediaNote) {
+      wrapText(mediaNote).forEach((wrapped) => lines.push(wrapped));
     }
     lines.push("");
   });
@@ -160,7 +221,13 @@ export const buildSharedReportPdf = (input: {
   title: string;
   reportDate: string;
   studentName: string;
-  sections: Array<{ title: string; content: string }>;
+  sections: Array<{
+    title: string;
+    content: string;
+    type?: string | null;
+    hasRichMedia?: boolean;
+    mediaCount?: number;
+  }>;
 }) => {
   const lines = toPdfLines(input);
   return buildPdfBufferFromLines(lines);

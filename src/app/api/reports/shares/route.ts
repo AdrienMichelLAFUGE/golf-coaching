@@ -25,23 +25,42 @@ const getStudentRef = (value: StudentRef) => {
   return value;
 };
 
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
 const sendSharedReportEmail = async (input: {
   to: string;
   senderName: string;
   reportTitle: string;
+  studentName: string;
+  viewFullReportUrl: string;
   pdfFileName: string;
   pdfBase64: string;
 }) => {
+  const senderName = escapeHtml(input.senderName);
+  const reportTitle = escapeHtml(input.reportTitle);
+  const studentName = escapeHtml(input.studentName);
+  const viewFullReportUrl = escapeHtml(input.viewFullReportUrl);
+
   const apiInstance = new Brevo.TransactionalEmailsApi();
   apiInstance.setApiKey(Brevo.TransactionalEmailsApiApiKeys.apiKey, env.BREVO_API_KEY);
   await apiInstance.sendTransacEmail({
     sender: { email: env.BREVO_SENDER_EMAIL, name: env.BREVO_SENDER_NAME },
     to: [{ email: input.to }],
-    subject: `Rapport partage: ${input.reportTitle}`,
+    subject: `Rapport partage: ${input.reportTitle} - ${input.studentName}`,
     htmlContent: `
       <p>Bonjour,</p>
-      <p>${input.senderName} vous a partage un rapport SwingFlow.</p>
-      <p>Le rapport est joint a cet email au format PDF.</p>
+      <p>${senderName} vous a partage un rapport SwingFlow.</p>
+      <p>Rapport: <strong>${reportTitle}</strong></p>
+      <p>Eleve: <strong>${studentName}</strong></p>
+      <p>Le PDF joint contient le texte du rapport.</p>
+      <p>Pour consulter le rapport complet (images, videos, graphiques/donnees), creez un compte SwingFlow avec cet email puis ouvrez l application :</p>
+      <p><a href="${viewFullReportUrl}" target="_blank" rel="noopener noreferrer">${viewFullReportUrl}</a></p>
       <p>Bonne lecture,</p>
       <p>${env.BREVO_SENDER_NAME}</p>
     `,
@@ -110,7 +129,7 @@ export async function POST(request: Request) {
 
   const { data: sourceSections, error: sectionsError } = await supabase
     .from("report_sections")
-    .select("title, content, content_formatted, position")
+    .select("title, type, content, content_formatted, media_urls, radar_file_id, position")
     .eq("report_id", sourceReport.id)
     .order("position", { ascending: true });
 
@@ -204,6 +223,13 @@ export async function POST(request: Request) {
   const sectionsForPdf = (sourceSections ?? []).map((section) => ({
     title: section.title ?? "Section",
     content: (section.content_formatted ?? section.content ?? "").trim(),
+    type: section.type ?? "text",
+    hasRichMedia:
+      (Array.isArray(section.media_urls) && section.media_urls.length > 0) ||
+      Boolean(section.radar_file_id),
+    mediaCount:
+      (Array.isArray(section.media_urls) ? section.media_urls.length : 0) +
+      (section.radar_file_id ? 1 : 0),
   }));
   const reportDate = sourceReport.report_date ?? sourceReport.created_at.slice(0, 10);
   const pdfBuffer = buildSharedReportPdf({
@@ -221,12 +247,15 @@ export async function POST(request: Request) {
     .replace(/^-+|-+$/g, "")
     .slice(0, 64);
   const pdfFileName = `${safeBaseName || "rapport-swingflow"}.pdf`;
+  const viewFullReportUrl = `${env.NEXT_PUBLIC_SITE_URL}/login`;
 
   try {
     await sendSharedReportEmail({
       to: normalizedRecipientEmail,
       senderName,
       reportTitle: sourceReport.title,
+      studentName: sourceStudentName || "Eleve",
+      viewFullReportUrl,
       pdfFileName,
       pdfBase64,
     });

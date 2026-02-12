@@ -177,6 +177,16 @@ describe("POST /api/onboarding/ensure-profile", () => {
         in: async () => ({ data: null, error: null }),
       }),
     }));
+    const reportSharesSelect = jest.fn(() => ({
+      eq: () => ({
+        in: () => ({
+          order: async () => ({ data: [], error: null }),
+        }),
+      }),
+    }));
+    const reportSharesUpdate = jest.fn(() => ({
+      in: async () => ({ error: null }),
+    }));
 
     const admin = {
       from: jest.fn((table: string) => {
@@ -198,6 +208,12 @@ describe("POST /api/onboarding/ensure-profile", () => {
             insert: orgMembershipInsert,
             select: orgMembershipSelect,
             delete: orgMembershipDelete,
+          };
+        }
+        if (table === "report_shares") {
+          return {
+            select: reportSharesSelect,
+            update: reportSharesUpdate,
           };
         }
         return buildSelectMaybeSingle({ data: null, error: null });
@@ -241,5 +257,139 @@ describe("POST /api/onboarding/ensure-profile", () => {
         premium_active: true,
       },
     ]);
+    expect(reportSharesSelect).toHaveBeenCalled();
+  });
+
+  it("claims emailed report shares as in-app pending notifications for new coach", async () => {
+    const supabase = {
+      auth: {
+        getUser: async () => ({
+          data: {
+            user: {
+              id: "coach-2",
+              email: "coach2@example.com",
+              user_metadata: { role: "coach", full_name: "Coach Deux" },
+            },
+          },
+          error: null,
+        }),
+      },
+    } as SupabaseClient;
+
+    const profileSelect = jest.fn(() => ({
+      eq: () => ({
+        maybeSingle: async () => ({ data: null, error: null }),
+      }),
+    }));
+    const profileUpsert = jest.fn(async () => ({ error: null }));
+    const profileUpdateEq = jest.fn(async () => ({ error: null }));
+    const profileUpdate = jest.fn(() => ({ eq: profileUpdateEq }));
+
+    const orgSelect = jest.fn(() => ({
+      eq: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({ data: null, error: null }),
+        }),
+      }),
+      in: async () => ({ data: [], error: null }),
+    }));
+    const orgInsert = jest.fn(() => ({
+      select: () => ({
+        single: async () => ({ data: { id: "personal-2" }, error: null }),
+      }),
+    }));
+
+    const orgMembershipInsert = jest.fn(async () => ({ error: null }));
+    const orgMembershipSelect = jest.fn(() => ({
+      eq: async () => ({ data: [], error: null }),
+    }));
+    const orgMembershipDelete = jest.fn(() => ({
+      eq: () => ({
+        in: async () => ({ data: null, error: null }),
+      }),
+    }));
+
+    const reportSharesSelect = jest.fn(() => ({
+      eq: () => ({
+        in: () => ({
+          order: async () => ({
+            data: [
+              {
+                id: "share-new",
+                source_report_id: "source-report-1",
+                status: "emailed",
+                created_at: "2026-02-12T10:00:00.000Z",
+              },
+              {
+                id: "share-old",
+                source_report_id: "source-report-1",
+                status: "emailed",
+                created_at: "2026-02-11T10:00:00.000Z",
+              },
+            ],
+            error: null,
+          }),
+        }),
+      }),
+    }));
+
+    const promoteIn = jest.fn(async () => ({ error: null }));
+    const rejectIn = jest.fn(async () => ({ error: null }));
+    const reportSharesUpdate = jest.fn((payload: unknown) => {
+      const status = (payload as { status?: string }).status;
+      if (status === "pending") {
+        return { in: promoteIn };
+      }
+      return { in: rejectIn };
+    });
+
+    const admin = {
+      from: jest.fn((table: string) => {
+        if (table === "profiles") {
+          return {
+            select: profileSelect,
+            upsert: profileUpsert,
+            update: profileUpdate,
+          };
+        }
+        if (table === "students") {
+          return buildSelectList({ data: [], error: null });
+        }
+        if (table === "organizations") {
+          return { select: orgSelect, insert: orgInsert };
+        }
+        if (table === "org_memberships") {
+          return {
+            insert: orgMembershipInsert,
+            select: orgMembershipSelect,
+            delete: orgMembershipDelete,
+          };
+        }
+        if (table === "report_shares") {
+          return {
+            select: reportSharesSelect,
+            update: reportSharesUpdate,
+          };
+        }
+        return buildSelectMaybeSingle({ data: null, error: null });
+      }),
+    };
+
+    serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
+    serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
+
+    const response = await POST(buildRequest());
+
+    expect(response.status).toBe(200);
+    expect(promoteIn).toHaveBeenCalledWith("id", ["share-new"]);
+    expect(rejectIn).toHaveBeenCalledWith("id", ["share-old"]);
+    expect(reportSharesUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recipient_user_id: "coach-2",
+        recipient_org_id: "personal-2",
+        status: "pending",
+        delivery: "in_app",
+      })
+    );
   });
 });

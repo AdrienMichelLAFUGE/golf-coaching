@@ -12,6 +12,13 @@ type StudentRow = {
   created_at?: string | null;
 };
 
+type ReportShareClaimRow = {
+  id: string;
+  source_report_id: string;
+  status: "pending" | "emailed";
+  created_at: string;
+};
+
 const ensurePersonalWorkspace = async (
   admin: ReturnType<typeof createSupabaseAdminClient>,
   userId: string,
@@ -114,6 +121,84 @@ const linkStudentAccounts = async (
   await admin.from("student_accounts").upsert(payload, { onConflict: "student_id" });
 };
 
+const claimEmailedReportShares = async (
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  input: {
+    email: string;
+    userId: string;
+    targetOrgId: string;
+  }
+) => {
+  const normalizedEmail = input.email.trim().toLowerCase();
+  if (!normalizedEmail) return;
+
+  const { data: shareRows, error: shareRowsError } = await admin
+    .from("report_shares")
+    .select("id, source_report_id, status, created_at")
+    .eq("recipient_email", normalizedEmail)
+    .in("status", ["pending", "emailed"])
+    .order("created_at", { ascending: false });
+
+  if (shareRowsError) {
+    console.error("[onboarding] report_shares lookup failed:", shareRowsError.message);
+    return;
+  }
+
+  const rows = (shareRows ?? []) as ReportShareClaimRow[];
+  if (rows.length === 0) return;
+
+  const pendingSourceIds = new Set(
+    rows.filter((row) => row.status === "pending").map((row) => row.source_report_id)
+  );
+
+  const promoteIds: string[] = [];
+  const rejectIds: string[] = [];
+  const promotedSourceIds = new Set<string>();
+
+  rows.forEach((row) => {
+    if (row.status !== "emailed") return;
+    if (pendingSourceIds.has(row.source_report_id)) {
+      rejectIds.push(row.id);
+      return;
+    }
+    if (promotedSourceIds.has(row.source_report_id)) {
+      rejectIds.push(row.id);
+      return;
+    }
+    promoteIds.push(row.id);
+    promotedSourceIds.add(row.source_report_id);
+  });
+
+  if (promoteIds.length > 0) {
+    const { error: promoteError } = await admin
+      .from("report_shares")
+      .update({
+        recipient_user_id: input.userId,
+        recipient_org_id: input.targetOrgId,
+        status: "pending",
+        delivery: "in_app",
+        decided_at: null,
+      })
+      .in("id", promoteIds);
+    if (promoteError) {
+      console.error("[onboarding] report_shares claim failed:", promoteError.message);
+    }
+  }
+
+  if (rejectIds.length > 0) {
+    const { error: rejectError } = await admin
+      .from("report_shares")
+      .update({
+        status: "rejected",
+        decided_at: new Date().toISOString(),
+      })
+      .in("id", rejectIds);
+    if (rejectError) {
+      console.error("[onboarding] report_shares dedupe failed:", rejectError.message);
+    }
+  }
+};
+
 export async function POST(request: Request) {
   const supabase = createSupabaseServerClientFromRequest(request);
 
@@ -165,6 +250,15 @@ export async function POST(request: Request) {
             active_workspace_id: personalWorkspaceId,
           })
           .eq("id", profile.id);
+      }
+      const targetWorkspaceId =
+        personalWorkspaceId ?? profile.active_workspace_id ?? profile.org_id ?? null;
+      if (targetWorkspaceId) {
+        await claimEmailedReportShares(admin, {
+          email,
+          userId: profile.id,
+          targetOrgId: targetWorkspaceId,
+        });
       }
     } else if (profile.role === "student") {
       const students = await loadStudentsByEmail(admin, email);
@@ -292,6 +386,12 @@ export async function POST(request: Request) {
         .in("org_id", legacyOrgIds);
     }
   }
+
+  await claimEmailedReportShares(admin, {
+    email,
+    userId: user.id,
+    targetOrgId: personalWorkspaceId,
+  });
 
   return NextResponse.json({
     ok: true,
