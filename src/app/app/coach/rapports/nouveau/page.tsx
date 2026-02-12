@@ -487,7 +487,9 @@ export default function CoachReportBuilderPage() {
     ? requestedStudentIdRaw
     : "";
   const [editingReportId, setEditingReportId] = useState<string | null>(null);
+  const [editingReportOrgId, setEditingReportOrgId] = useState<string | null>(null);
   const [loadingReport, setLoadingReport] = useState(false);
+  const [isSharedReadOnly, setIsSharedReadOnly] = useState(false);
   const isEditing = Boolean(editingReportId);
   const isNewReport = !editingReportId;
   const legacyDraftKey = "gc.reportDraft.new";
@@ -694,6 +696,12 @@ export default function CoachReportBuilderPage() {
   const isOrgPublishLocked =
     workspaceType === "org" &&
     (!isWorkspacePremium || (assignmentChecked && !isAssignedCoach && !isOrgAdmin));
+  const isSourceWorkspaceLocked =
+    Boolean(editingReportOrgId) &&
+    Boolean(organization?.id) &&
+    editingReportOrgId !== organization?.id;
+  const isReportWriteLocked =
+    isOrgPublishLocked || isSharedReadOnly || isSourceWorkspaceLocked;
   const entitlements = PLAN_ENTITLEMENTS[planTier];
   const aiProofreadEnabled = entitlements.aiProofreadEnabled;
   const aiEnabled = entitlements.aiEnabled;
@@ -3014,7 +3022,7 @@ export default function CoachReportBuilderPage() {
     const { data: reportData, error: reportError } = await supabase
       .from("reports")
       .select(
-        "id, title, report_date, created_at, student_id, sent_at, coach_observations, coach_work, coach_club"
+        "id, title, report_date, created_at, student_id, sent_at, coach_observations, coach_work, coach_club, org_id, origin_share_id"
       )
       .eq("id", reportId)
       .single();
@@ -3024,6 +3032,22 @@ export default function CoachReportBuilderPage() {
       setStatusType("error");
       setLoadingReport(false);
       return;
+    }
+
+    if (reportData.origin_share_id) {
+      setStatusMessage("Ce rapport partage est en lecture seule.");
+      setStatusType("error");
+      setLoadingReport(false);
+      setIsSharedReadOnly(true);
+      router.replace(`/app/coach/rapports/${reportId}`);
+      return;
+    }
+
+    if (organization?.id && reportData.org_id && reportData.org_id !== organization.id) {
+      setStatusMessage(
+        "Ce rapport a ete cree dans un autre workspace. Bascule sur ce workspace pour le modifier."
+      );
+      setStatusType("error");
     }
 
     const { data: sectionsData, error: sectionsError } = await supabase
@@ -3072,6 +3096,8 @@ export default function CoachReportBuilderPage() {
         : defaultReportSections.map(createSection);
 
     setEditingReportId(reportData.id);
+    setEditingReportOrgId(reportData.org_id ?? null);
+    setIsSharedReadOnly(false);
     setStudentId(reportData.student_id ?? "");
     setTitle(reportData.title ?? "");
     setSentAt(reportData.sent_at ?? null);
@@ -3092,6 +3118,8 @@ export default function CoachReportBuilderPage() {
 
   const resetBuilderState = () => {
     setEditingReportId(null);
+    setEditingReportOrgId(null);
+    setIsSharedReadOnly(false);
     setStudentId("");
     setTitle("");
     setReportDate(formatDateInput(new Date()));
@@ -3576,6 +3604,19 @@ export default function CoachReportBuilderPage() {
       }
     }
 
+    if (isSharedReadOnly) {
+      setStatusMessage("Ce rapport partage est en lecture seule.");
+      setStatusType("error");
+      return;
+    }
+    if (isSourceWorkspaceLocked) {
+      setStatusMessage(
+        "Ce rapport a ete cree dans un autre workspace. Bascule sur ce workspace pour le modifier."
+      );
+      setStatusType("error");
+      return;
+    }
+
     if (!title.trim()) {
       setStatusMessage("Ajoute un titre au rapport.");
       setStatusType("error");
@@ -3688,6 +3729,7 @@ export default function CoachReportBuilderPage() {
 
       reportId = report.id;
       setEditingReportId(reportId);
+      setEditingReportOrgId(organization.id);
       skipResetRef.current = true;
       router.replace(`/app/coach/rapports/nouveau?reportId=${reportId}`);
       setSentAt(null);
@@ -3726,7 +3768,13 @@ export default function CoachReportBuilderPage() {
       .insert(sectionsPayload);
 
     if (sectionsError) {
-      setStatusMessage(sectionsError.message);
+      const message =
+        sectionsError.message?.includes("row-level security") && isEditing
+          ? isSourceWorkspaceLocked
+            ? "Ce rapport a ete cree dans un autre workspace. Bascule sur ce workspace pour le modifier."
+            : "Ce rapport ne peut pas etre modifie depuis cet espace."
+          : sectionsError.message;
+      setStatusMessage(message);
       setStatusType("error");
       setSaving(false);
       return;
@@ -6670,7 +6718,7 @@ export default function CoachReportBuilderPage() {
                     {showPublish ? (
                       <button
                         type="button"
-                        disabled={saving || loadingReport || isOrgPublishLocked}
+                        disabled={saving || loadingReport || isReportWriteLocked}
                         onClick={() => handleSaveReport(true)}
                         className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
                       >
@@ -6679,7 +6727,7 @@ export default function CoachReportBuilderPage() {
                     ) : null}
                     <button
                       type="button"
-                      disabled={saving || loadingReport || isOrgPublishLocked}
+                      disabled={saving || loadingReport || isReportWriteLocked}
                       onClick={() => handleSaveReport(false)}
                       className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10 disabled:opacity-60"
                     >
@@ -8390,7 +8438,7 @@ export default function CoachReportBuilderPage() {
                     {showPublish ? (
                       <button
                         type="button"
-                        disabled={saving || loadingReport || isOrgPublishLocked}
+                        disabled={saving || loadingReport || isReportWriteLocked}
                         onClick={() => handleSaveReport(true)}
                         className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
                       >
@@ -8399,7 +8447,7 @@ export default function CoachReportBuilderPage() {
                     ) : null}
                     <button
                       type="button"
-                      disabled={saving || loadingReport || isOrgPublishLocked}
+                      disabled={saving || loadingReport || isReportWriteLocked}
                       onClick={() => handleSaveReport(false)}
                       className="rounded-full border border-white/10 bg-white/5 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10 disabled:opacity-60"
                     >
@@ -8410,6 +8458,17 @@ export default function CoachReportBuilderPage() {
                     <p className="mt-3 text-xs text-amber-300">
                       Plan requis (Pro/Entreprise) et assignation pour publier en
                       organisation.
+                    </p>
+                  ) : null}
+                  {isSharedReadOnly ? (
+                    <p className="mt-3 text-xs text-amber-300">
+                      Rapport partage en lecture seule.
+                    </p>
+                  ) : null}
+                  {isSourceWorkspaceLocked ? (
+                    <p className="mt-3 text-xs text-amber-300">
+                      Rapport cree dans un autre workspace. Bascule de workspace pour
+                      le modifier.
                     </p>
                   ) : null}
                   {statusMessage ? (

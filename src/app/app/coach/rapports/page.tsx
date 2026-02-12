@@ -15,11 +15,22 @@ type ReportRow = {
   report_date: string | null;
   created_at: string;
   sent_at: string | null;
+  org_id: string;
+  origin_share_id: string | null;
+  organizations?: OrganizationRef;
   students:
     | { id: string; first_name: string; last_name: string | null }
     | { id: string; first_name: string; last_name: string | null }[]
     | null;
 };
+
+type OrganizationRef =
+  | {
+      name: string | null;
+      workspace_type?: "personal" | "org" | null;
+    }
+  | { name: string | null; workspace_type?: "personal" | "org" | null }[]
+  | null;
 
 const formatDate = (
   value?: string | null,
@@ -29,6 +40,18 @@ const formatDate = (
   if (!value) return "-";
   const options = timezone ? { timeZone: timezone } : undefined;
   return new Date(value).toLocaleDateString(locale ?? "fr-FR", options);
+};
+
+const getOrgName = (value?: OrganizationRef) => {
+  if (!value) return null;
+  if (Array.isArray(value)) return value[0]?.name ?? null;
+  return value.name ?? null;
+};
+
+const getOrgWorkspaceType = (value?: OrganizationRef) => {
+  if (!value) return null;
+  if (Array.isArray(value)) return value[0]?.workspace_type ?? null;
+  return value.workspace_type ?? null;
 };
 
 export default function CoachReportsPage() {
@@ -75,7 +98,7 @@ export default function CoachReportsPage() {
     const { data, error: fetchError } = await supabase
       .from("reports")
       .select(
-        "id, title, report_date, created_at, sent_at, students(id, first_name, last_name)"
+        "id, title, report_date, created_at, sent_at, org_id, origin_share_id, organizations(name, workspace_type), students(id, first_name, last_name)"
       )
       .order("created_at", { ascending: false });
 
@@ -91,6 +114,17 @@ export default function CoachReportsPage() {
     return Array.isArray(report.students)
       ? report.students[0]
       : (report.students ?? null);
+  };
+
+  const formatSourceLabel = (report: ReportRow) => {
+    if (report.org_id === organization?.id) return "Source: Workspace actuel";
+    const orgName = getOrgName(report.organizations);
+    const workspaceType = getOrgWorkspaceType(report.organizations);
+    if (workspaceType === "personal") {
+      return orgName ? `Source: Perso - ${orgName}` : "Source: Workspace perso";
+    }
+    if (orgName) return `Source: Orga - ${orgName}`;
+    return "Source: Autre workspace";
   };
 
   const studentOptions = useMemo(() => {
@@ -239,6 +273,16 @@ export default function CoachReportsPage() {
   }, [organization?.id]);
 
   const handleDeleteReport = async (report: ReportRow) => {
+    if (report.origin_share_id) {
+      setError("Ce rapport partage est en lecture seule.");
+      return;
+    }
+    if (organization?.id && report.org_id !== organization.id) {
+      setError(
+        "Ce rapport a ete cree dans un autre workspace. Bascule sur ce workspace pour le modifier."
+      );
+      return;
+    }
     const confirmed = window.confirm(`Supprimer le rapport "${report.title}" ?`);
     if (!confirmed) return;
 
@@ -516,7 +560,11 @@ export default function CoachReportsPage() {
                     </div>
                     <span>Actions</span>
                   </div>
-                  {filteredReports.map((report) => (
+                  {filteredReports.map((report) => {
+                    const canMutateReport =
+                      !report.origin_share_id &&
+                      (!organization?.id || report.org_id === organization.id);
+                    return (
                     <div
                       key={report.id}
                       className="grid gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-[var(--text)] md:grid-cols-[1.4fr_1fr_0.8fr]"
@@ -527,6 +575,16 @@ export default function CoachReportsPage() {
                            {!report.sent_at ? (
                             <Badge tone="muted" size="sm">
                               Brouillon
+                            </Badge>
+                           ) : null}
+                           {report.origin_share_id ? (
+                            <Badge tone="sky" size="sm">
+                              Lecture seule
+                            </Badge>
+                           ) : null}
+                           {report.org_id !== organization?.id ? (
+                            <Badge tone="muted" size="sm">
+                              {formatSourceLabel(report)}
                             </Badge>
                            ) : null}
                          </div>
@@ -568,23 +626,27 @@ export default function CoachReportsPage() {
                         >
                           Ouvrir
                         </Link>
-                        <Link
-                          href={`/app/coach/rapports/nouveau?reportId=${report.id}`}
-                          className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
-                        >
-                          Modifier
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteReport(report)}
-                          disabled={deletingId === report.id}
-                          className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:text-red-200 disabled:opacity-60"
-                        >
-                          {deletingId === report.id ? "Suppression..." : "Supprimer"}
-                        </button>
+                        {canMutateReport ? (
+                          <>
+                            <Link
+                              href={`/app/coach/rapports/nouveau?reportId=${report.id}`}
+                              className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                            >
+                              Modifier
+                            </Link>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteReport(report)}
+                              disabled={deletingId === report.id}
+                              className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:text-red-200 disabled:opacity-60"
+                            >
+                              {deletingId === report.id ? "Suppression..." : "Supprimer"}
+                            </button>
+                          </>
+                        ) : null}
                       </div>
                     </div>
-                  ))}
+                  )})}
                 </>
               )}
             </div>

@@ -34,6 +34,15 @@ type ProposalRow = {
   created_at: string;
 };
 
+type ReportShareInviteRow = {
+  id: string;
+  source_report_id: string;
+  report_title: string;
+  sender_name: string;
+  source_student_name: string | null;
+  created_at: string;
+};
+
 const isStudentLinkRequest = (proposal: ProposalRow) =>
   proposal.payload?.kind === "student_link_request";
 
@@ -44,6 +53,10 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
   const [requestsLoading, setRequestsLoading] = useState(false);
   const [requestsError, setRequestsError] = useState("");
   const [requestActionId, setRequestActionId] = useState<string | null>(null);
+  const [reportShareInvites, setReportShareInvites] = useState<ReportShareInviteRow[]>([]);
+  const [reportShareLoading, setReportShareLoading] = useState(false);
+  const [reportShareError, setReportShareError] = useState("");
+  const [reportShareActionId, setReportShareActionId] = useState<string | null>(null);
   const [requestsOpen, setRequestsOpen] = useState(false);
   useThemePreference();
   const { profile, isWorkspaceAdmin } = useProfile();
@@ -60,7 +73,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
     () => requests.filter((request) => request.status === "pending"),
     [requests]
   );
-  const pendingCount = pendingLinkRequests.length;
+  const pendingCount = pendingLinkRequests.length + reportShareInvites.length;
 
   const loadLinkRequests = useCallback(async () => {
     if (!profile || isStudent || !isWorkspaceAdmin) {
@@ -98,6 +111,41 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
     setRequestsLoading(false);
   }, [isStudent, isWorkspaceAdmin, profile]);
 
+  const loadReportShareInvites = useCallback(async () => {
+    if (!profile || isStudent) {
+      setReportShareInvites([]);
+      setReportShareError("");
+      return;
+    }
+
+    setReportShareLoading(true);
+    setReportShareError("");
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setReportShareInvites([]);
+      setReportShareLoading(false);
+      return;
+    }
+
+    const response = await fetch("/api/reports/shares/inbox", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const payload = (await response.json().catch(() => ({}))) as {
+      shares?: ReportShareInviteRow[];
+      error?: string;
+    };
+    if (!response.ok) {
+      setReportShareError(payload.error ?? "Chargement des partages impossible.");
+      setReportShareInvites([]);
+      setReportShareLoading(false);
+      return;
+    }
+
+    setReportShareInvites(payload.shares ?? []);
+    setReportShareLoading(false);
+  }, [isStudent, profile]);
+
   const handleRequestDecision = useCallback(
     async (proposalId: string, decision: "accept" | "reject") => {
       setRequestActionId(proposalId);
@@ -129,6 +177,43 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
     [loadLinkRequests]
   );
 
+  const handleReportShareDecision = useCallback(
+    async (shareId: string, decision: "accept" | "reject") => {
+      setReportShareActionId(shareId);
+      setReportShareError("");
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        setReportShareError("Session invalide.");
+        setReportShareActionId(null);
+        return;
+      }
+      const response = await fetch("/api/reports/shares/respond", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ shareId, decision }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        reportId?: string;
+      };
+      if (!response.ok) {
+        setReportShareError(payload.error ?? "Action impossible.");
+        setReportShareActionId(null);
+        return;
+      }
+      await loadReportShareInvites();
+      if (decision === "accept" && payload.reportId) {
+        router.push(`/app/coach/rapports/${payload.reportId}`);
+      }
+      setReportShareActionId(null);
+    },
+    [loadReportShareInvites, router]
+  );
+
   useEffect(() => {
     let active = true;
 
@@ -150,22 +235,32 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
     Promise.resolve().then(() => {
       if (cancelled) return;
       void loadLinkRequests();
+      void loadReportShareInvites();
     });
     return () => {
       cancelled = true;
     };
-  }, [loadLinkRequests]);
+  }, [loadLinkRequests, loadReportShareInvites]);
 
   useEffect(() => {
     if (!requestsOpen) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (requestActionId) return;
+      if (requestActionId || reportShareActionId) return;
       setRequestsOpen(false);
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [requestsOpen, requestActionId]);
+  }, [requestsOpen, requestActionId, reportShareActionId]);
+
+  useEffect(() => {
+    const handleFocus = () => {
+      void loadLinkRequests();
+      void loadReportShareInvites();
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [loadLinkRequests, loadReportShareInvites]);
 
   return (
     <header className="app-header sticky top-[var(--app-sticky-top)] z-40">
@@ -215,13 +310,14 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
         </div>
 
         <div className="flex items-center gap-2">
-          {!isStudent && isWorkspaceAdmin ? (
+          {!isStudent ? (
             <button
               type="button"
-              aria-label="Demandes d ajout eleve"
+              aria-label="Notifications"
               onClick={() => {
                 setRequestsOpen(true);
                 void loadLinkRequests();
+                void loadReportShareInvites();
               }}
               className="relative flex h-12 w-12 items-center justify-center rounded-full bg-[var(--panel)] text-[var(--muted)] transition hover:bg-white hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
             >
@@ -329,7 +425,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
             aria-label="Fermer"
             className="absolute inset-0 bg-black/35 backdrop-blur-sm"
             onClick={() => {
-              if (!requestActionId) setRequestsOpen(false);
+              if (!requestActionId && !reportShareActionId) setRequestsOpen(false);
             }}
           />
           <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-white/10 bg-[var(--bg-elevated)] shadow-[var(--shadow-strong)]">
@@ -338,12 +434,12 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
                 id="header-link-requests-title"
                 className="text-center text-base font-semibold text-[var(--text)]"
               >
-                Demandes d ajout eleve
+                Notifications
               </h3>
               <button
                 type="button"
                 onClick={() => setRequestsOpen(false)}
-                disabled={Boolean(requestActionId)}
+                disabled={Boolean(requestActionId || reportShareActionId)}
                 className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-60"
                 aria-label="Fermer"
               >
@@ -366,63 +462,108 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
               {requestsError ? (
                 <p className="text-sm text-red-400">{requestsError}</p>
               ) : null}
-              {requestsLoading ? (
+              {reportShareError ? (
+                <p className="text-sm text-red-400">{reportShareError}</p>
+              ) : null}
+              {requestsLoading || reportShareLoading ? (
                 <p className="text-sm text-[var(--muted)]">Chargement...</p>
-              ) : pendingLinkRequests.length === 0 ? (
+              ) : pendingLinkRequests.length === 0 && reportShareInvites.length === 0 ? (
                 <p className="text-sm text-[var(--muted)]">Aucune demande en attente.</p>
               ) : (
-                pendingLinkRequests.map((request) => {
-                  const requesterOrgName =
-                    request.payload?.requester_org_name?.trim() ||
-                    "Organisation externe";
-                  const studentEmail = request.payload?.requested_student?.email ?? null;
-                  return (
+                <>
+                  {reportShareInvites.map((share) => (
                     <div
-                      key={request.id}
-                      className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                      key={share.id}
+                      className="rounded-2xl border border-sky-300/25 bg-sky-400/10 p-4"
                     >
-                      <p className="text-sm font-semibold text-[var(--text)]">
-                        Demande d ajout cross-org
+                      <p className="text-sm font-semibold text-[var(--text)]">Rapport partage</p>
+                      <p className="mt-2 text-[0.65rem] uppercase tracking-[0.25em] text-sky-100">
+                        Envoye par
                       </p>
-                      <p className="mt-2 text-[0.65rem] uppercase tracking-[0.25em] text-emerald-100">
-                        Structure demandeuse
+                      <p className="mt-1 text-sm font-semibold text-sky-200">
+                        {share.sender_name}
                       </p>
-                      <p className="mt-1 text-sm font-semibold text-emerald-200">
-                        {requesterOrgName}
+                      <p className="mt-2 text-xs text-[var(--muted)]">
+                        Rapport: {share.report_title}
                       </p>
-                      {studentEmail ? (
-                        <p className="mt-2 text-xs text-[var(--muted)]">
-                          Eleve: {studentEmail}
+                      {share.source_student_name ? (
+                        <p className="mt-1 text-xs text-[var(--muted)]">
+                          Eleve source: {share.source_student_name}
                         </p>
                       ) : null}
                       <div className="mt-3 flex items-center gap-2">
                         <button
                           type="button"
-                          disabled={requestActionId === request.id}
-                          onClick={() => handleRequestDecision(request.id, "accept")}
-                          className="rounded-full bg-emerald-300/90 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-950 transition hover:bg-emerald-200 disabled:opacity-60"
+                          disabled={reportShareActionId === share.id}
+                          onClick={() => handleReportShareDecision(share.id, "accept")}
+                          className="rounded-full bg-sky-300/90 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-sky-950 transition hover:bg-sky-200 disabled:opacity-60"
                         >
-                          Autoriser
+                          Ajouter a mes rapports
                         </button>
                         <button
                           type="button"
-                          disabled={requestActionId === request.id}
-                          onClick={() => handleRequestDecision(request.id, "reject")}
+                          disabled={reportShareActionId === share.id}
+                          onClick={() => handleReportShareDecision(share.id, "reject")}
                           className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-60"
                         >
                           Refuser
                         </button>
-                        <Link
-                          href={`/app/coach/eleves/${request.student_id}`}
-                          className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
-                          onClick={() => setRequestsOpen(false)}
-                        >
-                          Fiche eleve
-                        </Link>
                       </div>
                     </div>
-                  );
-                })
+                  ))}
+                  {pendingLinkRequests.map((request) => {
+                    const requesterOrgName =
+                      request.payload?.requester_org_name?.trim() ||
+                      "Organisation externe";
+                    const studentEmail = request.payload?.requested_student?.email ?? null;
+                    return (
+                      <div
+                        key={request.id}
+                        className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                      >
+                        <p className="text-sm font-semibold text-[var(--text)]">
+                          Demande d ajout cross-org
+                        </p>
+                        <p className="mt-2 text-[0.65rem] uppercase tracking-[0.25em] text-emerald-100">
+                          Structure demandeuse
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-emerald-200">
+                          {requesterOrgName}
+                        </p>
+                        {studentEmail ? (
+                          <p className="mt-2 text-xs text-[var(--muted)]">
+                            Eleve: {studentEmail}
+                          </p>
+                        ) : null}
+                        <div className="mt-3 flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={requestActionId === request.id}
+                            onClick={() => handleRequestDecision(request.id, "accept")}
+                            className="rounded-full bg-emerald-300/90 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-950 transition hover:bg-emerald-200 disabled:opacity-60"
+                          >
+                            Autoriser
+                          </button>
+                          <button
+                            type="button"
+                            disabled={requestActionId === request.id}
+                            onClick={() => handleRequestDecision(request.id, "reject")}
+                            className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-60"
+                          >
+                            Refuser
+                          </button>
+                          <Link
+                            href={`/app/coach/eleves/${request.student_id}`}
+                            className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                            onClick={() => setRequestsOpen(false)}
+                          >
+                            Fiche eleve
+                          </Link>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
               )}
             </div>
           </div>

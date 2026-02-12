@@ -18,6 +18,7 @@ import RadarCharts, {
   type RadarShot,
   type RadarStats,
 } from "../../../_components/radar-charts";
+import ShareReportModal from "../../../_components/share-report-modal";
 import type { RadarAnalytics } from "@/lib/radar/types";
 
 type Report = {
@@ -28,6 +29,7 @@ type Report = {
   student_id: string;
   sent_at: string | null;
   org_id: string;
+  origin_share_id: string | null;
   organizations?: OrganizationRef;
 };
 
@@ -284,6 +286,9 @@ export default function CoachReportDetailPage() {
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareMessage, setShareMessage] = useState("");
+  const [shareError, setShareError] = useState("");
   const locale = organization?.locale ?? "fr-FR";
   const timezone = organization?.timezone ?? "Europe/Paris";
 
@@ -406,7 +411,9 @@ export default function CoachReportDetailPage() {
 
       const { data: reportData, error: reportError } = await supabase
         .from("reports")
-        .select("id, title, report_date, created_at, student_id, sent_at, org_id, organizations(name)")
+        .select(
+          "id, title, report_date, created_at, student_id, sent_at, org_id, origin_share_id, organizations(name)"
+        )
         .eq("id", reportId)
         .single();
 
@@ -475,6 +482,16 @@ export default function CoachReportDetailPage() {
 
   const handleDelete = async () => {
     if (!report) return;
+    if (report.origin_share_id) {
+      setError("Ce rapport partage est en lecture seule.");
+      return;
+    }
+    if (organization?.id && report.org_id !== organization.id) {
+      setError(
+        "Ce rapport a ete cree dans un autre workspace. Bascule sur ce workspace pour le modifier."
+      );
+      return;
+    }
     const confirmed = window.confirm(`Supprimer le rapport "${report.title}" ?`);
     if (!confirmed) return;
 
@@ -495,6 +512,16 @@ export default function CoachReportDetailPage() {
 
   const handlePublish = async () => {
     if (!report || report.sent_at) return;
+    if (report.origin_share_id) {
+      setError("Ce rapport partage est en lecture seule.");
+      return;
+    }
+    if (organization?.id && report.org_id !== organization.id) {
+      setError(
+        "Ce rapport a ete cree dans un autre workspace. Bascule sur ce workspace pour le modifier."
+      );
+      return;
+    }
     const confirmed = window.confirm(`Publier le rapport "${report.title}" ?`);
     if (!confirmed) return;
 
@@ -529,6 +556,43 @@ export default function CoachReportDetailPage() {
     setPublishing(false);
   };
 
+  const handleShare = async (recipientEmail: string) => {
+    if (!report) return { error: "Rapport introuvable." };
+    setShareError("");
+    setShareMessage("");
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setShareError("Session invalide.");
+      return { error: "Session invalide." };
+    }
+
+    const response = await fetch("/api/reports/shares", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        reportId: report.id,
+        recipientEmail,
+      }),
+    });
+
+    const payload = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      message?: string;
+    };
+    if (!response.ok) {
+      const message = payload.error ?? "Partage impossible.";
+      setShareError(message);
+      return { error: message };
+    }
+    const message = payload.message ?? "Partage envoye.";
+    setShareMessage(message);
+    return { message };
+  };
+
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       {loading ? (
@@ -541,6 +605,16 @@ export default function CoachReportDetailPage() {
         </section>
       ) : (
         <div className="space-y-6">
+          {shareError ? (
+            <section className="panel rounded-2xl p-4">
+              <p className="text-sm text-red-400">{shareError}</p>
+            </section>
+          ) : null}
+          {shareMessage ? (
+            <section className="panel rounded-2xl p-4">
+              <p className="text-sm text-[var(--muted)]">{shareMessage}</p>
+            </section>
+          ) : null}
           <PageHeader
             overline={
               <div className="flex items-center gap-2">
@@ -556,6 +630,11 @@ export default function CoachReportDetailPage() {
                 {!report.sent_at ? (
                   <Badge tone="muted" size="sm">
                     Brouillon
+                  </Badge>
+                ) : null}
+                {report.origin_share_id ? (
+                  <Badge tone="sky" size="sm">
+                    Lecture seule
                   </Badge>
                 ) : null}
                 {(() => {
@@ -586,13 +665,41 @@ export default function CoachReportDetailPage() {
                 >
                   Voir eleve
                 </Link>
-                <Link
-                  href={`/app/coach/rapports/nouveau?reportId=${report.id}`}
-                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                <button
+                  type="button"
+                  onClick={() => setShareOpen(true)}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                  aria-label="Partager le rapport"
+                  title="Partager le rapport"
                 >
-                  Modifier
-                </Link>
-                {!report.sent_at ? (
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="18" cy="5" r="3" />
+                    <circle cx="6" cy="12" r="3" />
+                    <circle cx="18" cy="19" r="3" />
+                    <path d="M8.6 13.5l6.8 4" />
+                    <path d="M15.4 6.5l-6.8 4" />
+                  </svg>
+                </button>
+                {!report.origin_share_id &&
+                (!organization?.id || report.org_id === organization.id) ? (
+                  <Link
+                    href={`/app/coach/rapports/nouveau?reportId=${report.id}`}
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                  >
+                    Modifier
+                  </Link>
+                ) : null}
+                {!report.sent_at &&
+                !report.origin_share_id &&
+                (!organization?.id || report.org_id === organization.id) ? (
                   <button
                     type="button"
                     onClick={handlePublish}
@@ -602,14 +709,17 @@ export default function CoachReportDetailPage() {
                     {publishing ? "Publication..." : "Publier"}
                   </button>
                 ) : null}
-                <button
-                  type="button"
-                  onClick={handleDelete}
-                  disabled={deleting}
-                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-red-300 transition hover:text-red-200 disabled:opacity-60"
-                >
-                  {deleting ? "Suppression..." : "Supprimer"}
-                </button>
+                {!report.origin_share_id &&
+                (!organization?.id || report.org_id === organization.id) ? (
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-red-300 transition hover:text-red-200 disabled:opacity-60"
+                  >
+                    {deleting ? "Suppression..." : "Supprimer"}
+                  </button>
+                ) : null}
               </>
             }
             meta={
@@ -668,6 +778,9 @@ export default function CoachReportDetailPage() {
           </section>
         </div>
       )}
+      {shareOpen ? (
+        <ShareReportModal onClose={() => setShareOpen(false)} onShare={handleShare} />
+      ) : null}
     </RoleGuard>
   );
 }

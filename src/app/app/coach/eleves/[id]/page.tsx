@@ -83,17 +83,28 @@ type Report = {
   created_at: string;
   sent_at: string | null;
   org_id: string;
+  author_id: string;
+  origin_share_id: string | null;
   coach_observations?: string | null;
   coach_work?: string | null;
   coach_club?: string | null;
   organizations?: OrganizationRef;
+  author_profile?: AuthorProfileRef;
 };
 
 type OrganizationRef =
   | {
       name: string | null;
+      workspace_type?: "personal" | "org" | null;
     }
-  | { name: string | null }[]
+  | { name: string | null; workspace_type?: "personal" | "org" | null }[]
+  | null;
+
+type AuthorProfileRef =
+  | {
+      full_name: string | null;
+    }
+  | { full_name: string | null }[]
   | null;
 
 type TpiReport = {
@@ -361,10 +372,27 @@ export default function CoachStudentDetailPage() {
     if (Array.isArray(value)) return value[0]?.name ?? null;
     return value.name ?? null;
   }, []);
+  const getOrgWorkspaceType = useCallback((value?: OrganizationRef) => {
+    if (!value) return null;
+    if (Array.isArray(value)) return value[0]?.workspace_type ?? null;
+    return value.workspace_type ?? null;
+  }, []);
+  const getAuthorName = useCallback((value?: AuthorProfileRef) => {
+    if (!value) return null;
+    if (Array.isArray(value)) return value[0]?.full_name?.trim() || null;
+    return value.full_name?.trim() || null;
+  }, []);
   const formatSourceLabel = useCallback(
-    (orgId?: string | null, orgName?: string | null) => {
-      if (orgName) return orgName;
+    (
+      orgId?: string | null,
+      orgName?: string | null,
+      workspace?: "personal" | "org" | null
+    ) => {
       if (!orgId) return null;
+      if (workspace === "personal") {
+        return orgName ? `Perso - ${orgName}` : "Workspace perso";
+      }
+      if (orgName) return `Orga - ${orgName}`;
       if (orgId === organization?.id) return "Workspace actuel";
       return "Autre workspace";
     },
@@ -372,7 +400,8 @@ export default function CoachStudentDetailPage() {
   );
   const tpiSourceLabel = formatSourceLabel(
     tpiReport?.org_id,
-    getOrgName(tpiReport?.organizations)
+    getOrgName(tpiReport?.organizations),
+    getOrgWorkspaceType(tpiReport?.organizations)
   );
   const resolveLinkedStudentIds = useCallback(
     async (targetStudentId?: string | null) => {
@@ -667,7 +696,7 @@ export default function CoachStudentDetailPage() {
         const { data, error } = await supabase
           .from("tpi_reports")
           .select(
-            "id, status, file_url, file_type, original_name, created_at, org_id, organizations(name)"
+            "id, status, file_url, file_type, original_name, created_at, org_id, organizations(name, workspace_type)"
           )
           .in("student_id", linkedIds)
           .order("created_at", { ascending: false })
@@ -680,7 +709,7 @@ export default function CoachStudentDetailPage() {
         const { data, error } = await supabase
           .from("tpi_reports")
           .select(
-            "id, status, file_url, file_type, original_name, created_at, org_id, organizations(name)"
+            "id, status, file_url, file_type, original_name, created_at, org_id, organizations(name, workspace_type)"
           )
           .in("student_id", linkedIds)
           .eq("status", "ready")
@@ -750,7 +779,7 @@ export default function CoachStudentDetailPage() {
     const { data, error } = await supabase
       .from("radar_files")
       .select(
-        "id, status, source, original_name, file_url, file_mime, columns, shots, stats, config, summary, analytics, created_at, extracted_at, error, org_id, organizations(name)"
+        "id, status, source, original_name, file_url, file_mime, columns, shots, stats, config, summary, analytics, created_at, extracted_at, error, org_id, organizations(name, workspace_type)"
       )
       .in("student_id", linkedIds)
       .order("created_at", { ascending: false });
@@ -1200,7 +1229,7 @@ export default function CoachStudentDetailPage() {
       const { data: reportData, error: reportError } = await supabase
         .from("reports")
         .select(
-          "id, title, report_date, created_at, sent_at, org_id, organizations(name), coach_observations, coach_work, coach_club"
+          "id, title, report_date, created_at, sent_at, org_id, author_id, origin_share_id, organizations(name, workspace_type), author_profile:profiles!reports_author_id_fkey(full_name), coach_observations, coach_work, coach_club"
         )
         .in("student_id", linkedIds)
         .order("created_at", { ascending: false });
@@ -1666,6 +1695,16 @@ export default function CoachStudentDetailPage() {
 
   const handleDeleteReport = async (report: Report) => {
     if (isReadOnly) return;
+    if (report.origin_share_id) {
+      setError("Ce rapport partage est en lecture seule.");
+      return;
+    }
+    if (organization?.id && report.org_id !== organization.id) {
+      setError(
+        "Ce rapport a ete cree dans un autre workspace. Bascule sur ce workspace pour le modifier."
+      );
+      return;
+    }
     const confirmed = window.confirm(`Supprimer le rapport "${report.title}" ?`);
     if (!confirmed) return;
 
@@ -2465,10 +2504,21 @@ export default function CoachStudentDetailPage() {
               ) : (
                 <div className="mt-4 space-y-3">
                   {reports.map((report) => {
-                    const contributorLabel = formatSourceLabel(
+                    const sourceLabel = formatSourceLabel(
                       report.org_id,
-                      getOrgName(report.organizations)
+                      getOrgName(report.organizations),
+                      getOrgWorkspaceType(report.organizations)
                     );
+                    const authorName = getAuthorName(report.author_profile);
+                    const contributorLabel = authorName
+                      ? sourceLabel
+                        ? `${authorName} - ${sourceLabel}`
+                        : authorName
+                      : sourceLabel;
+                    const canMutateReport =
+                      canWriteReports &&
+                      !report.origin_share_id &&
+                      (!organization?.id || report.org_id === organization.id);
 
                     return (
                       <div
@@ -2521,78 +2571,73 @@ export default function CoachStudentDetailPage() {
                               </svg>
                             </Link>
 
-                            <Link
-                              href={`/app/coach/rapports/nouveau?reportId=${report.id}`}
-                              onClick={(event) => {
-                                if (!canWriteReports) event.preventDefault();
-                              }}
-                              aria-disabled={!canWriteReports}
-                              tabIndex={!canWriteReports ? -1 : undefined}
-                              aria-label="Modifier le rapport"
-                              title={canWriteReports ? "Modifier" : "Lecture seule"}
-                              className={`inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50 ${
-                                !canWriteReports
-                                  ? "cursor-not-allowed text-[var(--muted)] opacity-50"
-                                  : "text-[var(--muted)] hover:bg-white/10 hover:text-[var(--text)]"
-                              }`}
-                            >
-                              <svg
-                                viewBox="0 0 24 24"
-                                className="h-4 w-4"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                aria-hidden="true"
-                              >
-                                <path d="M12 20h9" />
-                                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
-                              </svg>
-                            </Link>
+                            {canMutateReport ? (
+                              <>
+                                <Link
+                                  href={`/app/coach/rapports/nouveau?reportId=${report.id}`}
+                                  aria-label="Modifier le rapport"
+                                  title="Modifier"
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:bg-white/10 hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
+                                >
+                                  <svg
+                                    viewBox="0 0 24 24"
+                                    className="h-4 w-4"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    aria-hidden="true"
+                                  >
+                                    <path d="M12 20h9" />
+                                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                                  </svg>
+                                </Link>
 
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteReport(report)}
-                              disabled={!canWriteReports || deletingId === report.id}
-                              aria-label="Supprimer le rapport"
-                              title={
-                                deletingId === report.id ? "Suppression..." : "Supprimer"
-                              }
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-red-300 transition hover:bg-white/10 hover:text-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200/40 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              {deletingId === report.id ? (
-                                <svg
-                                  viewBox="0 0 24 24"
-                                  className="h-4 w-4 animate-spin"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  aria-hidden="true"
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteReport(report)}
+                                  disabled={deletingId === report.id}
+                                  aria-label="Supprimer le rapport"
+                                  title={
+                                    deletingId === report.id ? "Suppression..." : "Supprimer"
+                                  }
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-red-300 transition hover:bg-white/10 hover:text-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200/40 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
-                                  <path d="M21 12a9 9 0 1 1-3-6.7" />
-                                </svg>
-                              ) : (
-                                <svg
-                                  viewBox="0 0 24 24"
-                                  className="h-4 w-4"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  aria-hidden="true"
-                                >
-                                  <path d="M3 6h18" />
-                                  <path d="M8 6V4h8v2" />
-                                  <path d="M19 6l-1 14H6L5 6" />
-                                  <path d="M10 11v6" />
-                                  <path d="M14 11v6" />
-                                </svg>
-                              )}
-                            </button>
+                                  {deletingId === report.id ? (
+                                    <svg
+                                      viewBox="0 0 24 24"
+                                      className="h-4 w-4 animate-spin"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      aria-hidden="true"
+                                    >
+                                      <path d="M21 12a9 9 0 1 1-3-6.7" />
+                                    </svg>
+                                  ) : (
+                                    <svg
+                                      viewBox="0 0 24 24"
+                                      className="h-4 w-4"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      aria-hidden="true"
+                                    >
+                                      <path d="M3 6h18" />
+                                      <path d="M8 6V4h8v2" />
+                                      <path d="M19 6l-1 14H6L5 6" />
+                                      <path d="M10 11v6" />
+                                      <path d="M14 11v6" />
+                                    </svg>
+                                  )}
+                                </button>
+                              </>
+                            ) : null}
                           </div>
 
                           {contributorLabel ? (
