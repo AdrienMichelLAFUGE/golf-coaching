@@ -6,6 +6,7 @@ import {
 } from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
+import { createOrgNotifications } from "@/lib/org-notifications";
 
 const studentSchema = z.object({
   first_name: z.string().min(1),
@@ -60,6 +61,105 @@ export async function POST(request: Request) {
     );
   }
 
+  const normalizedEmail = parsed.data.email?.trim().toLowerCase() ?? "";
+  if (normalizedEmail) {
+    const { data: existingElsewhere } = await admin
+      .from("students")
+      .select("id, org_id, first_name, last_name, email, created_at")
+      .ilike("email", normalizedEmail)
+      .neq("org_id", profile.org_id)
+      .order("created_at", { ascending: true })
+      .limit(1);
+
+    const ownerStudent = (existingElsewhere ?? [])[0] as
+      | {
+          id: string;
+          org_id: string;
+          first_name: string;
+          last_name: string | null;
+          email: string | null;
+        }
+      | undefined;
+
+    if (ownerStudent?.id && ownerStudent.org_id) {
+      const { data: ownerAdmin } = await admin
+        .from("org_memberships")
+        .select("user_id")
+        .eq("org_id", ownerStudent.org_id)
+        .eq("role", "admin")
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (!ownerAdmin?.user_id) {
+        return NextResponse.json(
+          { error: "Aucun admin actif trouve pour l organisation proprietaire." },
+          { status: 409 }
+        );
+      }
+
+      const { data: requesterOrg } = await admin
+        .from("organizations")
+        .select("name")
+        .eq("id", profile.org_id)
+        .maybeSingle();
+
+      const requestSummary =
+        "Demande d ajout cross-organisation pour un eleve deja existant.";
+
+      const { data: proposal, error: proposalError } = await admin
+        .from("org_proposals")
+        .insert([
+          {
+            org_id: ownerStudent.org_id,
+            student_id: ownerStudent.id,
+            created_by: profile.id,
+            summary: requestSummary,
+            payload: {
+              kind: "student_link_request",
+              title: "Demande d ajout eleve",
+              summary: requestSummary,
+              requester_user_id: profile.id,
+              requester_org_id: profile.org_id,
+              requester_org_name: requesterOrg?.name ?? null,
+              requested_student: {
+                first_name: parsed.data.first_name.trim(),
+                last_name: parsed.data.last_name?.trim() || null,
+                email: normalizedEmail,
+                playing_hand: parsed.data.playing_hand || null,
+              },
+            },
+          },
+        ])
+        .select("id")
+        .single();
+
+      if (proposalError || !proposal?.id) {
+        return NextResponse.json(
+          { error: proposalError?.message ?? "Creation de la demande impossible." },
+          { status: 400 }
+        );
+      }
+
+      await createOrgNotifications(admin, {
+        orgId: ownerStudent.org_id,
+        userIds: [ownerAdmin.user_id],
+        type: "student.link_request.created",
+        payload: {
+          proposalId: proposal.id,
+          studentId: ownerStudent.id,
+          requesterOrgId: profile.org_id,
+        },
+      });
+
+      return NextResponse.json({
+        ok: true,
+        pendingRequest: true,
+        message:
+          "Eleve deja present dans une autre organisation. Une demande a ete envoyee a l admin proprietaire.",
+      });
+    }
+  }
+
   const { data: student, error: insertError } = await admin
     .from("students")
     .insert([
@@ -67,7 +167,7 @@ export async function POST(request: Request) {
         org_id: profile.org_id,
         first_name: parsed.data.first_name.trim(),
         last_name: parsed.data.last_name?.trim() || null,
-        email: parsed.data.email?.trim() || null,
+        email: normalizedEmail || null,
         playing_hand: parsed.data.playing_hand || null,
       },
     ])

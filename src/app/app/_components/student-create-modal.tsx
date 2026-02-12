@@ -40,6 +40,8 @@ const CoachesResponseSchema = z.object({
 
 const CreateStudentResponseSchema = z.object({
   error: z.string().optional(),
+  pendingRequest: z.boolean().optional(),
+  message: z.string().optional(),
 });
 
 export function StudentCreateButton({
@@ -283,6 +285,25 @@ export default function StudentCreateModal({
       if (!response.ok) {
         setError(payload.error ?? "Creation impossible.");
         setCreating(false);
+        return;
+      }
+
+      if (payload.pendingRequest) {
+        try {
+          window.dispatchEvent(
+            new CustomEvent("gc:students-link-requested", {
+              detail: {
+                message:
+                  payload.message ??
+                  "Demande envoyee a l admin de l organisation proprietaire.",
+              },
+            })
+          );
+        } catch {
+          // ignore
+        }
+        setCreating(false);
+        onClose();
         return;
       }
     } else {

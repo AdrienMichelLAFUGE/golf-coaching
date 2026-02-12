@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { useProfile } from "./profile-context";
@@ -15,11 +15,38 @@ type AppHeaderProps = {
   isNavOpen?: boolean;
 };
 
+type ProposalRow = {
+  id: string;
+  student_id: string;
+  status: "pending" | "accepted" | "rejected";
+  summary: string | null;
+  payload:
+    | {
+        kind?: string;
+        requester_org_name?: string | null;
+        requested_student?: {
+          email?: string | null;
+          first_name?: string | null;
+          last_name?: string | null;
+        } | null;
+      }
+    | null;
+  created_at: string;
+};
+
+const isStudentLinkRequest = (proposal: ProposalRow) =>
+  proposal.payload?.kind === "student_link_request";
+
 export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
   const router = useRouter();
   const [email, setEmail] = useState<string | null>(null);
+  const [requests, setRequests] = useState<ProposalRow[]>([]);
+  const [requestsLoading, setRequestsLoading] = useState(false);
+  const [requestsError, setRequestsError] = useState("");
+  const [requestActionId, setRequestActionId] = useState<string | null>(null);
+  const [requestsOpen, setRequestsOpen] = useState(false);
   useThemePreference();
-  const { profile } = useProfile();
+  const { profile, isWorkspaceAdmin } = useProfile();
 
   const roleLabel = profile?.role === "student" ? "Eleve" : "Coach";
   const needsProfileName =
@@ -28,6 +55,79 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
   const brandIconUrl = "/branding/logo.png";
   const brandWordmarkUrl = "/branding/wordmark.png";
   const displayName = (profile?.full_name ?? "").trim() || (email ?? "Compte");
+  const isStudent = profile?.role === "student";
+  const pendingLinkRequests = useMemo(
+    () => requests.filter((request) => request.status === "pending"),
+    [requests]
+  );
+  const pendingCount = pendingLinkRequests.length;
+
+  const loadLinkRequests = useCallback(async () => {
+    if (!profile || isStudent || !isWorkspaceAdmin) {
+      setRequests([]);
+      setRequestsError("");
+      return;
+    }
+    setRequestsLoading(true);
+    setRequestsError("");
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setRequests([]);
+      setRequestsLoading(false);
+      return;
+    }
+
+    const response = await fetch("/api/orgs/proposals", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const payload = (await response.json().catch(() => ({}))) as {
+      proposals?: ProposalRow[];
+      error?: string;
+    };
+    if (!response.ok) {
+      setRequestsError(payload.error ?? "Chargement des demandes impossible.");
+      setRequests([]);
+      setRequestsLoading(false);
+      return;
+    }
+
+    const rows = (payload.proposals ?? []).filter(isStudentLinkRequest);
+    setRequests(rows);
+    setRequestsLoading(false);
+  }, [isStudent, isWorkspaceAdmin, profile]);
+
+  const handleRequestDecision = useCallback(
+    async (proposalId: string, decision: "accept" | "reject") => {
+      setRequestActionId(proposalId);
+      setRequestsError("");
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        setRequestsError("Session invalide.");
+        setRequestActionId(null);
+        return;
+      }
+      const response = await fetch("/api/orgs/proposals/decide", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ proposalId, decision }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) {
+        setRequestsError(payload.error ?? "Action impossible.");
+        setRequestActionId(null);
+        return;
+      }
+      await loadLinkRequests();
+      setRequestActionId(null);
+    },
+    [loadLinkRequests]
+  );
 
   useEffect(() => {
     let active = true;
@@ -44,6 +144,28 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (cancelled) return;
+      void loadLinkRequests();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadLinkRequests]);
+
+  useEffect(() => {
+    if (!requestsOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (requestActionId) return;
+      setRequestsOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [requestsOpen, requestActionId]);
 
   return (
     <header className="app-header sticky top-[var(--app-sticky-top)] z-40">
@@ -93,31 +215,15 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="hidden items-center gap-2 min-[880px]:flex">
+          {!isStudent && isWorkspaceAdmin ? (
             <button
               type="button"
-              aria-label="Messages"
-              className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--panel)] text-[var(--muted)] transition hover:bg-white hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                className="h-5 w-5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M4 4h16v14H5.2L4 19.2V4z" />
-                <path d="M6 8h12" />
-                <path d="M6 12h10" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              aria-label="Notifications"
-              className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--panel)] text-[var(--muted)] transition hover:bg-white hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
+              aria-label="Demandes d ajout eleve"
+              onClick={() => {
+                setRequestsOpen(true);
+                void loadLinkRequests();
+              }}
+              className="relative flex h-12 w-12 items-center justify-center rounded-full bg-[var(--panel)] text-[var(--muted)] transition hover:bg-white hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -132,8 +238,13 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
                 <path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
                 <path d="M13.7 21a2 2 0 01-3.4 0" />
               </svg>
+              {pendingCount > 0 ? (
+                <span className="absolute -right-1 -top-1 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-rose-400 px-1 text-[0.65rem] font-semibold text-zinc-900">
+                  {pendingCount > 9 ? "9+" : pendingCount}
+                </span>
+              ) : null}
             </button>
-          </div>
+          ) : null}
 
         
 
@@ -206,6 +317,117 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
         ) : null}
         </div>
       </div>
+      {requestsOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="header-link-requests-title"
+        >
+          <button
+            type="button"
+            aria-label="Fermer"
+            className="absolute inset-0 bg-black/35 backdrop-blur-sm"
+            onClick={() => {
+              if (!requestActionId) setRequestsOpen(false);
+            }}
+          />
+          <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-white/10 bg-[var(--bg-elevated)] shadow-[var(--shadow-strong)]">
+            <div className="relative border-b border-white/10 px-6 py-4">
+              <h3
+                id="header-link-requests-title"
+                className="text-center text-base font-semibold text-[var(--text)]"
+              >
+                Demandes d ajout eleve
+              </h3>
+              <button
+                type="button"
+                onClick={() => setRequestsOpen(false)}
+                disabled={Boolean(requestActionId)}
+                className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-60"
+                aria-label="Fermer"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M18 6L6 18" />
+                  <path d="M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="max-h-[70vh] space-y-3 overflow-auto px-6 py-5">
+              {requestsError ? (
+                <p className="text-sm text-red-400">{requestsError}</p>
+              ) : null}
+              {requestsLoading ? (
+                <p className="text-sm text-[var(--muted)]">Chargement...</p>
+              ) : pendingLinkRequests.length === 0 ? (
+                <p className="text-sm text-[var(--muted)]">Aucune demande en attente.</p>
+              ) : (
+                pendingLinkRequests.map((request) => {
+                  const requesterOrgName =
+                    request.payload?.requester_org_name?.trim() ||
+                    "Organisation externe";
+                  const studentEmail = request.payload?.requested_student?.email ?? null;
+                  return (
+                    <div
+                      key={request.id}
+                      className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                    >
+                      <p className="text-sm font-semibold text-[var(--text)]">
+                        Demande d ajout cross-org
+                      </p>
+                      <p className="mt-2 text-[0.65rem] uppercase tracking-[0.25em] text-emerald-100">
+                        Structure demandeuse
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-emerald-200">
+                        {requesterOrgName}
+                      </p>
+                      {studentEmail ? (
+                        <p className="mt-2 text-xs text-[var(--muted)]">
+                          Eleve: {studentEmail}
+                        </p>
+                      ) : null}
+                      <div className="mt-3 flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={requestActionId === request.id}
+                          onClick={() => handleRequestDecision(request.id, "accept")}
+                          className="rounded-full bg-emerald-300/90 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-950 transition hover:bg-emerald-200 disabled:opacity-60"
+                        >
+                          Autoriser
+                        </button>
+                        <button
+                          type="button"
+                          disabled={requestActionId === request.id}
+                          onClick={() => handleRequestDecision(request.id, "reject")}
+                          className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-60"
+                        >
+                          Refuser
+                        </button>
+                        <Link
+                          href={`/app/coach/eleves/${request.student_id}`}
+                          className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                          onClick={() => setRequestsOpen(false)}
+                        >
+                          Fiche eleve
+                        </Link>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </header>
   );
 }

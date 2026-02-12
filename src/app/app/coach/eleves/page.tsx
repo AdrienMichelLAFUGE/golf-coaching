@@ -23,7 +23,38 @@ type Student = {
   playing_hand: "right" | "left" | null;
 };
 
-type StatusFilter = "all" | "active" | "invited" | "to_invite" | "shared";
+type PendingStudentRequest = {
+  proposal_id: string;
+  created_at: string;
+  first_name: string;
+  last_name: string | null;
+  email: string | null;
+  playing_hand: "right" | "left" | null;
+};
+
+type StudentListItem =
+  | ({ kind: "student" } & Student)
+  | {
+      kind: "pending";
+      id: string;
+      proposal_id: string;
+      created_at: string;
+      first_name: string;
+      last_name: string | null;
+      email: string | null;
+      playing_hand: "right" | "left" | null;
+      invited_at: null;
+      activated_at: null;
+      tpi_report_id: null;
+    };
+
+type StatusFilter =
+  | "all"
+  | "active"
+  | "invited"
+  | "to_invite"
+  | "shared"
+  | "pending";
 type TpiFilter = "all" | "active" | "inactive";
 
 export default function CoachStudentsPage() {
@@ -58,6 +89,9 @@ export default function CoachStudentsPage() {
   const [editError, setEditError] = useState("");
   const [sharedStudentIds, setSharedStudentIds] = useState<string[]>([]);
   const [tpiActiveById, setTpiActiveById] = useState<Record<string, boolean>>({});
+  const [pendingStudentRequests, setPendingStudentRequests] = useState<
+    PendingStudentRequest[]
+  >([]);
   const isOrgReadOnly = organization?.workspace_type === "org" && !isWorkspacePremium;
   const currentWorkspaceType = workspaceType ?? "personal";
   const workspaceName = organization?.name ?? "Organisation";
@@ -77,7 +111,10 @@ export default function CoachStudentsPage() {
 
   const sharedStudentSet = useMemo(() => new Set(sharedStudentIds), [sharedStudentIds]);
 
-  const getStudentAccessBadge = (student: Student) => {
+  const getStudentAccessBadge = (student: StudentListItem) => {
+    if (student.kind === "pending") {
+      return { label: "En attente", tone: "amber" } as const;
+    }
     if (student.activated_at) {
       return { label: "Actif", tone: "emerald" } as const;
     }
@@ -90,9 +127,32 @@ export default function CoachStudentsPage() {
   const getStudentTpiActive = (student: Student) =>
     tpiActiveById[student.id] ?? Boolean(student.tpi_report_id);
 
+  const studentsWithPending = useMemo<StudentListItem[]>(() => {
+    const pendingRows: StudentListItem[] = pendingStudentRequests.map((request) => ({
+      kind: "pending",
+      id: `pending-${request.proposal_id}`,
+      proposal_id: request.proposal_id,
+      created_at: request.created_at,
+      first_name: request.first_name,
+      last_name: request.last_name,
+      email: request.email,
+      playing_hand: request.playing_hand,
+      invited_at: null,
+      activated_at: null,
+      tpi_report_id: null,
+    }));
+    const studentRows: StudentListItem[] = students.map((student) => ({
+      kind: "student",
+      ...student,
+    }));
+    return [...pendingRows, ...studentRows].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }, [pendingStudentRequests, students]);
+
   const filteredStudents = useMemo(() => {
     const search = query.trim().toLowerCase();
-    const searched = students.filter((student) => {
+    const searched = studentsWithPending.filter((student) => {
       if (!search) return true;
       const name = `${student.first_name} ${student.last_name ?? ""}`.trim();
       return (
@@ -103,7 +163,9 @@ export default function CoachStudentsPage() {
 
     const filteredByStatus = searched.filter((student) => {
       if (statusFilter === "all") return true;
+      if (student.kind === "pending") return statusFilter === "pending";
       if (statusFilter === "shared") return sharedStudentSet.has(student.id);
+      if (statusFilter === "pending") return false;
       if (statusFilter === "active") return Boolean(student.activated_at);
       if (statusFilter === "invited") return Boolean(student.invited_at) && !student.activated_at;
       if (statusFilter === "to_invite") return !student.invited_at && !student.activated_at;
@@ -111,13 +173,14 @@ export default function CoachStudentsPage() {
     });
 
     return filteredByStatus.filter((student) => {
+      if (student.kind === "pending") return tpiFilter === "all";
       const tpiActive = tpiActiveById[student.id] ?? Boolean(student.tpi_report_id);
       if (tpiFilter === "all") return true;
       if (tpiFilter === "active") return tpiActive;
       if (tpiFilter === "inactive") return !tpiActive;
       return true;
     });
-  }, [query, students, statusFilter, tpiFilter, sharedStudentSet, tpiActiveById]);
+  }, [query, studentsWithPending, statusFilter, tpiFilter, sharedStudentSet, tpiActiveById]);
 
   const totalPages = Math.max(1, Math.ceil(filteredStudents.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -173,6 +236,36 @@ export default function CoachStudentsPage() {
     setLoading(false);
   }, [loadTpiStatus]);
 
+  const loadPendingStudentRequests = useCallback(async () => {
+    if (currentWorkspaceType !== "org") {
+      setPendingStudentRequests([]);
+      return;
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setPendingStudentRequests([]);
+      return;
+    }
+
+    const response = await fetch("/api/orgs/students/pending-links", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const payload = (await response.json().catch(() => ({}))) as {
+      requests?: PendingStudentRequest[];
+      error?: string;
+    };
+
+    if (!response.ok) {
+      setPendingStudentRequests([]);
+      if (payload.error) setError(payload.error);
+      return;
+    }
+
+    setPendingStudentRequests(payload.requests ?? []);
+  }, [currentWorkspaceType]);
+
   useEffect(() => {
     let cancelled = false;
     Promise.resolve().then(async () => {
@@ -183,6 +276,17 @@ export default function CoachStudentsPage() {
       cancelled = true;
     };
   }, [loadStudents]);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.resolve().then(async () => {
+      if (cancelled) return;
+      await loadPendingStudentRequests();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadPendingStudentRequests]);
 
   useEffect(() => {
     let cancelled = false;
@@ -224,6 +328,29 @@ export default function CoachStudentsPage() {
     window.addEventListener("click", handleClick);
     return () => window.removeEventListener("click", handleClick);
   }, [menuOpenId]);
+
+  useEffect(() => {
+    const handleLinkRequest = (event: Event) => {
+      const detail = (event as CustomEvent<{ message?: string }>).detail;
+      setInviteError("");
+      setInviteMessage(
+        detail?.message ??
+          "Demande envoyee a l admin de l organisation proprietaire."
+      );
+      void loadPendingStudentRequests();
+    };
+    window.addEventListener("gc:students-link-requested", handleLinkRequest);
+    return () =>
+      window.removeEventListener("gc:students-link-requested", handleLinkRequest);
+  }, [loadPendingStudentRequests]);
+
+  useEffect(() => {
+    const handleFocus = () => {
+      void loadPendingStudentRequests();
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [loadPendingStudentRequests]);
 
   const handleInviteStudent = async (student: Student) => {
     if (isOrgReadOnly) {
@@ -434,6 +561,7 @@ export default function CoachStudentsPage() {
                   <option value="invited">Statut: Invites</option>
                   <option value="to_invite">Statut: A inviter</option>
                   <option value="shared">Statut: Partages</option>
+                  <option value="pending">Statut: En attente d approbation</option>
                 </select>
 
                 <select
@@ -585,10 +713,13 @@ export default function CoachStudentsPage() {
               </div>
             ) : (
               pagedStudents.map((student) => {
-                const inviteDisabled = Boolean(student.activated_at);
-                const isShared = sharedStudentSet.has(student.id);
-                const isReadOnlyAction = isShared || isOrgReadOnly;
-                const tpiActive = getStudentTpiActive(student);
+                const isPendingApproval = student.kind === "pending";
+                const inviteDisabled = isPendingApproval || Boolean(student.activated_at);
+                const isShared =
+                  student.kind === "student" ? sharedStudentSet.has(student.id) : false;
+                const isReadOnlyAction = isPendingApproval || isShared || isOrgReadOnly;
+                const tpiActive =
+                  student.kind === "student" ? getStudentTpiActive(student) : false;
                 const access = getStudentAccessBadge(student);
                 const inviteLabel = inviteDisabled
                   ? "Inviter"
@@ -598,45 +729,72 @@ export default function CoachStudentsPage() {
                 return (
                   <div
                     key={student.id}
-                    className="relative grid grid-cols-[32px_minmax(0,1fr)] gap-x-3 gap-y-3 px-6 py-4 text-[var(--text)] transition hover:bg-white/5 md:grid-cols-[32px_1fr_0.3fr_1fr_56px] md:items-center"
+                    className={`relative grid grid-cols-[32px_minmax(0,1fr)] gap-x-3 gap-y-3 px-6 py-4 text-[var(--text)] transition md:grid-cols-[32px_1fr_0.3fr_1fr_56px] md:items-center ${
+                      isPendingApproval ? "bg-white/[0.015] opacity-65" : "hover:bg-white/5"
+                    }`}
                   >
                     <div className="flex items-center justify-center self-center md:justify-self-center">
-                      <Link
-                        href={`/app/coach/eleves/${student.id}`}
-                        aria-label={`Ouvrir la fiche de ${student.first_name} ${student.last_name ?? ""}`.trim()}
-                        title="Ouvrir la fiche eleve"
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
-                      >
-                        <svg
-                          viewBox="0 0 24 24"
-                          className="h-3.5 w-3.5"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
+                      {isPendingApproval ? (
+                        <span
                           aria-hidden="true"
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)]"
                         >
-                          <path d="M9 18l6-6-6-6" />
-                        </svg>
-                      </Link>
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-3.5 w-3.5"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <circle cx="12" cy="12" r="9" />
+                            <path d="M12 7v5l3 2" />
+                          </svg>
+                        </span>
+                      ) : (
+                        <Link
+                          href={`/app/coach/eleves/${student.id}`}
+                          aria-label={`Ouvrir la fiche de ${student.first_name} ${student.last_name ?? ""}`.trim()}
+                          title="Ouvrir la fiche eleve"
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-3.5 w-3.5"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden="true"
+                          >
+                            <path d="M9 18l6-6-6-6" />
+                          </svg>
+                        </Link>
+                      )}
                     </div>
                     <div className="min-w-0">
-                        <div className="min-w-0">
-                          <div className="flex min-w-0 items-center gap-2">
-                            <p className="truncate text-sm font-semibold text-[var(--text)]">
-                              {student.first_name} {student.last_name ?? ""}
-                            </p>
-                            {student.playing_hand ? (
-                              <Badge tone="muted" size="sm" className="shrink-0">
-                                {student.playing_hand === "right" ? "Droitier" : "Gaucher"}
-                              </Badge>
-                            ) : null}
-                          </div>
-                          <p className="mt-0.5 truncate text-xs text-[var(--muted)]">
-                            {student.email || "Aucun email"}
+                      <div className="min-w-0">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <p className="truncate text-sm font-semibold text-[var(--text)]">
+                            {student.first_name} {student.last_name ?? ""}
                           </p>
+                          {student.playing_hand ? (
+                            <Badge tone="muted" size="sm" className="shrink-0">
+                              {student.playing_hand === "right" ? "Droitier" : "Gaucher"}
+                            </Badge>
+                          ) : null}
                         </div>
+                        <p className="mt-0.5 truncate text-xs text-[var(--muted)]">
+                          {student.email || "Aucun email"}
+                        </p>
+                        {isPendingApproval ? (
+                          <p className="mt-1 text-[0.7rem] text-amber-100">
+                            En attente d approbation par le coach proprietaire.
+                          </p>
+                        ) : null}
+                      </div>
                     </div>
 
                     <div className="col-span-2 flex items-center justify-start gap-2 md:col-span-1 md:items-start md:justify-start">
@@ -648,12 +806,17 @@ export default function CoachStudentsPage() {
 
                     <div className="col-span-2 flex flex-wrap items-center justify-start gap-2 md:col-span-1 md:items-start md:justify-start">
                       <span className="text-xs text-[var(--muted)] md:hidden">Features :</span>
+                      {isPendingApproval ? (
+                        <Badge tone="amber" size="sm" className="self-start">
+                          Demande envoyee
+                        </Badge>
+                      ) : null}
                       {isShared ? (
                         <Badge tone="sky" size="sm" className="self-start">
                           Partage
                         </Badge>
                       ) : null}
-                      {tpiActive ? (
+                      {isPendingApproval ? null : tpiActive ? (
                         <Badge tone="rose" size="sm" className="self-start">
                           TPI actif
                         </Badge>
@@ -665,92 +828,98 @@ export default function CoachStudentsPage() {
                     </div>
 
                     <div className="col-span-2 flex items-start justify-end md:col-span-1">
-                      <div className="relative" data-student-menu>
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setMenuOpenId((prev) => (prev === student.id ? null : student.id));
-                          }}
-                          className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
-                          aria-label="Actions eleve"
-                          aria-expanded={menuOpenId === student.id}
-                          aria-haspopup="menu"
-                        >
-                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
-                            <circle cx="12" cy="5" r="2" />
-                            <circle cx="12" cy="12" r="2" />
-                            <circle cx="12" cy="19" r="2" />
-                          </svg>
-                        </button>
-                        {menuOpenId === student.id ? (
-                          <div
-                            role="menu"
-                            onClick={(event) => event.stopPropagation()}
-                            className="absolute bottom-full right-0 z-50 mb-2 w-40 rounded-xl border border-white/10 bg-[var(--bg-elevated)] p-1 text-xs shadow-[0_12px_30px_rgba(0,0,0,0.35)]"
+                      {isPendingApproval ? (
+                        <Badge tone="amber" size="sm" className="text-right">
+                          En attente
+                        </Badge>
+                      ) : (
+                        <div className="relative" data-student-menu>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setMenuOpenId((prev) => (prev === student.id ? null : student.id));
+                            }}
+                            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                            aria-label="Actions eleve"
+                            aria-expanded={menuOpenId === student.id}
+                            aria-haspopup="menu"
                           >
-                            <Link
-                              href={`/app/coach/rapports/nouveau?studentId=${student.id}`}
-                              onClick={(event) => {
-                                if (isReadOnlyAction) event.preventDefault();
-                                setMenuOpenId(null);
-                              }}
-                              aria-disabled={isReadOnlyAction}
-                              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide transition ${
-                                isReadOnlyAction
-                                  ? "cursor-not-allowed text-[var(--muted)]"
-                                  : "text-[var(--text)] hover:bg-white/10"
-                              }`}
+                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                              <circle cx="12" cy="5" r="2" />
+                              <circle cx="12" cy="12" r="2" />
+                              <circle cx="12" cy="19" r="2" />
+                            </svg>
+                          </button>
+                          {menuOpenId === student.id ? (
+                            <div
+                              role="menu"
+                              onClick={(event) => event.stopPropagation()}
+                              className="absolute bottom-full right-0 z-50 mb-2 w-40 rounded-xl border border-white/10 bg-[var(--bg-elevated)] p-1 text-xs shadow-[0_12px_30px_rgba(0,0,0,0.35)]"
                             >
-                              Nouveau rapport
-                            </Link>
-                            <button
-                              type="button"
-                              role="menuitem"
-                              onClick={() => handleMenuEdit(student)}
-                              disabled={isReadOnlyAction}
-                              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide transition ${
-                                isReadOnlyAction
-                                  ? "cursor-not-allowed text-[var(--muted)]"
-                                  : "text-[var(--text)] hover:bg-white/10"
-                              }`}
-                            >
-                              Editer
-                            </button>
-                            <Link
-                              href={`/app/coach/eleves/${student.id}`}
-                              onClick={() => setMenuOpenId(null)}
-                              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10"
-                            >
-                              Profil TPI
-                            </Link>
-                            <button
-                              type="button"
-                              role="menuitem"
-                              onClick={() => handleMenuInvite(student)}
-                              disabled={
-                                isReadOnlyAction || inviteDisabled || invitingId === student.id
-                              }
-                              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide transition ${
-                                inviteDisabled || isReadOnlyAction
-                                  ? "cursor-not-allowed text-[var(--muted)]"
-                                  : "text-[var(--text)] hover:bg-white/10"
-                              }`}
-                            >
-                              {inviteLabel}
-                            </button>
-                            <button
-                              type="button"
-                              role="menuitem"
-                              onClick={() => handleMenuDelete(student)}
-                              disabled={isReadOnlyAction || deletingId === student.id}
-                              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:bg-white/10 hover:text-red-200 disabled:opacity-60"
-                            >
-                              {deletingId === student.id ? "Suppression..." : "Supprimer"}
-                            </button>
-                          </div>
-                        ) : null}
-                      </div>
+                              <Link
+                                href={`/app/coach/rapports/nouveau?studentId=${student.id}`}
+                                onClick={(event) => {
+                                  if (isReadOnlyAction) event.preventDefault();
+                                  setMenuOpenId(null);
+                                }}
+                                aria-disabled={isReadOnlyAction}
+                                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide transition ${
+                                  isReadOnlyAction
+                                    ? "cursor-not-allowed text-[var(--muted)]"
+                                    : "text-[var(--text)] hover:bg-white/10"
+                                }`}
+                              >
+                                Nouveau rapport
+                              </Link>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                onClick={() => handleMenuEdit(student)}
+                                disabled={isReadOnlyAction}
+                                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide transition ${
+                                  isReadOnlyAction
+                                    ? "cursor-not-allowed text-[var(--muted)]"
+                                    : "text-[var(--text)] hover:bg-white/10"
+                                }`}
+                              >
+                                Editer
+                              </button>
+                              <Link
+                                href={`/app/coach/eleves/${student.id}`}
+                                onClick={() => setMenuOpenId(null)}
+                                className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10"
+                              >
+                                Profil TPI
+                              </Link>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                onClick={() => handleMenuInvite(student)}
+                                disabled={
+                                  isReadOnlyAction || inviteDisabled || invitingId === student.id
+                                }
+                                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide transition ${
+                                  inviteDisabled || isReadOnlyAction
+                                    ? "cursor-not-allowed text-[var(--muted)]"
+                                    : "text-[var(--text)] hover:bg-white/10"
+                                }`}
+                              >
+                                {inviteLabel}
+                              </button>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                onClick={() => handleMenuDelete(student)}
+                                disabled={isReadOnlyAction || deletingId === student.id}
+                                className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:bg-white/10 hover:text-red-200 disabled:opacity-60"
+                              >
+                                {deletingId === student.id ? "Suppression..." : "Supprimer"}
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );

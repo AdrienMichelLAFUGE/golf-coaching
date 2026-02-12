@@ -14,6 +14,19 @@ const decideSchema = z.object({
   decision: z.enum(["accept", "reject"]),
 });
 
+const studentLinkRequestPayloadSchema = z.object({
+  kind: z.literal("student_link_request"),
+  requester_user_id: z.string().uuid(),
+  requester_org_id: z.string().uuid(),
+  requester_org_name: z.string().nullable().optional(),
+  requested_student: z.object({
+    first_name: z.string().min(1),
+    last_name: z.string().nullable().optional(),
+    email: z.string().email(),
+    playing_hand: z.enum(["right", "left"]).nullable().optional(),
+  }),
+});
+
 export async function POST(request: Request) {
   const parsed = await parseRequestJson(request, decideSchema);
   if (!parsed.success) {
@@ -73,6 +86,185 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Proposition deja traitee." }, { status: 400 });
   }
 
+  const isAdmin = membership.role === "admin";
+  const parsedLinkRequestPayload = studentLinkRequestPayloadSchema.safeParse(
+    proposal.payload ?? {}
+  );
+  const isStudentLinkRequest =
+    parsedLinkRequestPayload.success &&
+    parsedLinkRequestPayload.data.kind === "student_link_request";
+
+  if (isStudentLinkRequest) {
+    if (!isAdmin) {
+      return NextResponse.json(
+        {
+          error:
+            "Seul l admin de l organisation proprietaire peut valider cette demande.",
+        },
+        { status: 403 }
+      );
+    }
+
+    const linkRequestPayload = parsedLinkRequestPayload.data;
+
+    if (parsed.data.decision === "accept") {
+      const { data: sourceStudent } = await admin
+        .from("students")
+        .select("id, first_name, last_name, email, playing_hand")
+        .eq("id", proposal.student_id)
+        .maybeSingle();
+
+      if (!sourceStudent?.id) {
+        return NextResponse.json({ error: "Eleve source introuvable." }, { status: 404 });
+      }
+
+      const { data: requesterMembership } = await admin
+        .from("org_memberships")
+        .select("id")
+        .eq("org_id", linkRequestPayload.requester_org_id)
+        .eq("user_id", linkRequestPayload.requester_user_id)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (!requesterMembership?.id) {
+        return NextResponse.json(
+          { error: "Le coach demandeur n est plus actif dans son organisation." },
+          { status: 409 }
+        );
+      }
+
+      const targetEmail = linkRequestPayload.requested_student.email
+        .trim()
+        .toLowerCase();
+
+      const { data: targetStudentCandidate } = await admin
+        .from("students")
+        .select("id")
+        .eq("org_id", linkRequestPayload.requester_org_id)
+        .ilike("email", targetEmail)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      let targetStudentId = targetStudentCandidate?.id ?? null;
+      if (!targetStudentId) {
+        const { data: insertedTargetStudent, error: targetStudentInsertError } = await admin
+          .from("students")
+          .insert([
+            {
+              org_id: linkRequestPayload.requester_org_id,
+              first_name:
+                sourceStudent.first_name ??
+                linkRequestPayload.requested_student.first_name.trim(),
+              last_name:
+                sourceStudent.last_name ??
+                linkRequestPayload.requested_student.last_name ??
+                null,
+              email: targetEmail,
+              playing_hand:
+                sourceStudent.playing_hand ??
+                linkRequestPayload.requested_student.playing_hand ??
+                null,
+            },
+          ])
+          .select("id")
+          .single();
+
+        if (targetStudentInsertError || !insertedTargetStudent?.id) {
+          return NextResponse.json(
+            {
+              error:
+                targetStudentInsertError?.message ??
+                "Creation de l eleve dans l organisation demandeuse impossible.",
+            },
+            { status: 400 }
+          );
+        }
+        targetStudentId = insertedTargetStudent.id;
+      }
+
+      const { error: assignmentError } = await admin
+        .from("student_assignments")
+        .upsert(
+          [
+            {
+              org_id: linkRequestPayload.requester_org_id,
+              student_id: targetStudentId,
+              coach_id: linkRequestPayload.requester_user_id,
+              created_by: profile.id,
+            },
+          ],
+          { onConflict: "student_id,coach_id" }
+        );
+
+      if (assignmentError) {
+        return NextResponse.json({ error: assignmentError.message }, { status: 400 });
+      }
+
+      const { data: sourceAccount } = await admin
+        .from("student_accounts")
+        .select("user_id")
+        .eq("student_id", proposal.student_id)
+        .maybeSingle();
+
+      if (sourceAccount?.user_id) {
+        const { data: existingTargetAccount } = await admin
+          .from("student_accounts")
+          .select("user_id")
+          .eq("student_id", targetStudentId)
+          .maybeSingle();
+
+        if (
+          existingTargetAccount?.user_id &&
+          existingTargetAccount.user_id !== sourceAccount.user_id
+        ) {
+          return NextResponse.json(
+            {
+              error:
+                "Conflit de liaison: cet eleve cible est deja relie a un autre compte eleve.",
+            },
+            { status: 409 }
+          );
+        }
+
+        const { error: linkError } = await admin.from("student_accounts").upsert([
+          {
+            student_id: targetStudentId,
+            user_id: sourceAccount.user_id,
+          },
+        ]);
+        if (linkError) {
+          return NextResponse.json({ error: linkError.message }, { status: 400 });
+        }
+      }
+    }
+
+    const { error: linkRequestUpdateError } = await admin
+      .from("org_proposals")
+      .update({
+        status: parsed.data.decision === "accept" ? "accepted" : "rejected",
+        decided_at: new Date().toISOString(),
+        decided_by: profile.id,
+      })
+      .eq("id", proposal.id);
+
+    if (linkRequestUpdateError) {
+      return NextResponse.json({ error: linkRequestUpdateError.message }, { status: 400 });
+    }
+
+    await createOrgNotifications(admin, {
+      orgId: linkRequestPayload.requester_org_id,
+      userIds: [proposal.created_by],
+      type:
+        parsed.data.decision === "accept"
+          ? "student.link_request.accepted"
+          : "student.link_request.rejected",
+      payload: { proposalId: proposal.id, studentId: proposal.student_id },
+    });
+
+    return NextResponse.json({ ok: true });
+  }
+
   const { data: assignments } = await admin
     .from("student_assignments")
     .select("coach_id")
@@ -82,7 +274,6 @@ export async function POST(request: Request) {
     (row) => (row as { coach_id: string }).coach_id
   );
   const isAssigned = assignedIds.includes(profile.id);
-  const isAdmin = membership.role === "admin";
   if (!isAssigned && !isAdmin) {
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }

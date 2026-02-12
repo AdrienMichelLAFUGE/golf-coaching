@@ -14,8 +14,29 @@ type ProposalRow = {
   created_by: string;
   status: "pending" | "accepted" | "rejected";
   summary: string | null;
-  payload: { title?: string } | null;
+  payload:
+    | {
+        title?: string;
+        kind?: string;
+        requester_org_name?: string | null;
+        requested_student?: {
+          email?: string | null;
+          first_name?: string | null;
+          last_name?: string | null;
+        } | null;
+      }
+    | null;
   created_at: string;
+};
+
+type LinkRequestPayload = {
+  kind: "student_link_request";
+  requester_org_name: string | null;
+  requested_student?: {
+    email?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+  } | null;
 };
 
 const PROPOSAL_STATUS_TONE = {
@@ -23,6 +44,17 @@ const PROPOSAL_STATUS_TONE = {
   accepted: "emerald",
   rejected: "rose",
 } as const;
+
+const extractLinkRequestPayload = (
+  payload: ProposalRow["payload"]
+): LinkRequestPayload | null => {
+  if (!payload || payload.kind !== "student_link_request") return null;
+  return {
+    kind: "student_link_request",
+    requester_org_name: payload.requester_org_name ?? null,
+    requested_student: payload.requested_student ?? null,
+  };
+};
 
 export default function OrgProposalsPage() {
   const { workspaceType, isWorkspacePremium, organization } = useProfile();
@@ -149,7 +181,7 @@ export default function OrgProposalsPage() {
             Propositions en attente
           </h2>
           <p className="mt-2 text-sm text-[var(--muted)]">
-            Accepte ou refuse les propositions des coachs non assignes.
+            Accepte ou refuse les propositions et les demandes d ajout eleve cross-org.
           </p>
           <Badge as="div" className={`mt-3 ${modeBadgeTone}`}>
             <span className="min-w-0 break-words">Vous travaillez dans {modeLabel}</span>
@@ -174,76 +206,98 @@ export default function OrgProposalsPage() {
             </div>
           ) : (
             proposals.map((proposal) => (
-              <div
-                key={proposal.id}
-                className="panel rounded-2xl border border-white/10 p-5"
-              >
-                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-[var(--text)]">
-                      {proposal.payload?.title ?? "Proposition"}
-                    </p>
-                    <p className="mt-1 text-xs text-[var(--muted)]">
-                      Eleve:{" "}
-                      <Link
-                        href={`/app/coach/eleves/${proposal.student_id}`}
-                        className="underline"
-                      >
-                        Voir fiche
-                      </Link>
-                    </p>
-                  </div>
-                  <Badge tone={PROPOSAL_STATUS_TONE[proposal.status]} size="sm">
-                    {proposal.status}
-                  </Badge>
-                </div>
-                <p className="mt-3 text-sm text-[var(--muted)]">
-                  {proposal.summary ?? "-"}
-                </p>
-                {proposal.status === "pending" ? (
-                  <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center">
-                    <button
-                      type="button"
-                      disabled={actionId === proposal.id || isOrgReadOnly}
-                      onClick={() => handleDecision(proposal.id, "accept")}
-                      className="rounded-full bg-emerald-300/90 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-950 transition hover:bg-emerald-200 disabled:opacity-60"
-                    >
-                      Accepter
-                    </button>
-                    <button
-                      type="button"
-                      disabled={actionId === proposal.id || isOrgReadOnly}
-                      onClick={() => handleDecision(proposal.id, "reject")}
-                      className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-60"
-                    >
-                      Refuser
-                    </button>
-                    <div className="flex flex-1 items-center gap-2">
-                      <input
-                        type="text"
-                        value={commentById[proposal.id] ?? ""}
-                        onChange={(event) =>
-                          setCommentById((prev) => ({
-                            ...prev,
-                            [proposal.id]: event.target.value,
-                          }))
-                        }
-                        placeholder="Ajouter un commentaire"
-                        disabled={isOrgReadOnly || actionId === proposal.id}
-                        className="w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text)]"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleComment(proposal.id)}
-                        disabled={actionId === proposal.id || isOrgReadOnly}
-                        className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[0.6rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-60"
-                      >
-                        Envoyer
-                      </button>
+              (() => {
+                const linkRequest = extractLinkRequestPayload(proposal.payload);
+                return (
+                  <div
+                    key={proposal.id}
+                    className="panel rounded-2xl border border-white/10 p-5"
+                  >
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-[var(--text)]">
+                          {linkRequest
+                            ? "Demande d ajout eleve cross-org"
+                            : proposal.payload?.title ?? "Proposition"}
+                        </p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">
+                          Eleve:{" "}
+                          <Link
+                            href={`/app/coach/eleves/${proposal.student_id}`}
+                            className="underline"
+                          >
+                            Voir fiche
+                          </Link>
+                        </p>
+                        {linkRequest ? (
+                          <div className="mt-2 rounded-xl border border-emerald-300/25 bg-emerald-400/10 px-3 py-2">
+                            <p className="text-[0.65rem] uppercase tracking-[0.25em] text-emerald-100">
+                              Structure demandeuse
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-emerald-200">
+                              {linkRequest.requester_org_name ?? "Organisation externe"}
+                            </p>
+                            {linkRequest.requested_student?.email ? (
+                              <p className="mt-1 text-xs text-emerald-100/80">
+                                Eleve: {linkRequest.requested_student.email}
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                      <Badge tone={PROPOSAL_STATUS_TONE[proposal.status]} size="sm">
+                        {proposal.status}
+                      </Badge>
                     </div>
+                    <p className="mt-3 text-sm text-[var(--muted)]">
+                      {proposal.summary ?? "-"}
+                    </p>
+                    {proposal.status === "pending" ? (
+                      <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center">
+                        <button
+                          type="button"
+                          disabled={actionId === proposal.id || isOrgReadOnly}
+                          onClick={() => handleDecision(proposal.id, "accept")}
+                          className="rounded-full bg-emerald-300/90 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-950 transition hover:bg-emerald-200 disabled:opacity-60"
+                        >
+                          {linkRequest ? "Autoriser l ajout" : "Accepter"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={actionId === proposal.id || isOrgReadOnly}
+                          onClick={() => handleDecision(proposal.id, "reject")}
+                          className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-60"
+                        >
+                          Refuser
+                        </button>
+                        <div className="flex flex-1 items-center gap-2">
+                          <input
+                            type="text"
+                            value={commentById[proposal.id] ?? ""}
+                            onChange={(event) =>
+                              setCommentById((prev) => ({
+                                ...prev,
+                                [proposal.id]: event.target.value,
+                              }))
+                            }
+                            placeholder="Ajouter un commentaire"
+                            disabled={isOrgReadOnly || actionId === proposal.id}
+                            className="w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text)]"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleComment(proposal.id)}
+                            disabled={actionId === proposal.id || isOrgReadOnly}
+                            className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[0.6rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-60"
+                          >
+                            Envoyer
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
-              </div>
+                );
+              })()
             ))
           )}
         </section>

@@ -7,6 +7,14 @@ jest.mock("@/lib/supabase/server", () => ({
   createSupabaseAdminClient: jest.fn(),
 }));
 
+jest.mock("@/lib/plan-access", () => ({
+  loadPersonalPlanTier: jest.fn(),
+}));
+
+jest.mock("@/lib/org-notifications", () => ({
+  createOrgNotifications: jest.fn(),
+}));
+
 type QueryResult = { data: unknown; error?: { message?: string } | null };
 
 const buildRequest = (payload: unknown) =>
@@ -42,15 +50,56 @@ const buildSelectListWithIn = (result: QueryResult) => ({
   },
 });
 
+const buildStudentsTable = ({
+  searchResult,
+  insert,
+}: {
+  searchResult: QueryResult;
+  insert?: jest.Mock;
+}) => {
+  const table: {
+    select: () => {
+      ilike: () => {
+        neq: () => {
+          order: () => {
+            limit: () => Promise<QueryResult>;
+          };
+        };
+      };
+    };
+    insert?: jest.Mock;
+  } = {
+    select: () => ({
+      ilike: () => ({
+        neq: () => ({
+          order: () => ({
+            limit: async () => searchResult,
+          }),
+        }),
+      }),
+    }),
+  };
+  if (insert) table.insert = insert;
+  return table;
+};
+
 describe("POST /api/orgs/students", () => {
   const serverMocks = jest.requireMock("@/lib/supabase/server") as {
     createSupabaseServerClientFromRequest: jest.Mock;
     createSupabaseAdminClient: jest.Mock;
   };
+  const planAccessMocks = jest.requireMock("@/lib/plan-access") as {
+    loadPersonalPlanTier: jest.Mock;
+  };
+  const notificationMocks = jest.requireMock("@/lib/org-notifications") as {
+    createOrgNotifications: jest.Mock;
+  };
 
   beforeEach(() => {
     serverMocks.createSupabaseServerClientFromRequest.mockReset();
     serverMocks.createSupabaseAdminClient.mockReset();
+    planAccessMocks.loadPersonalPlanTier.mockReset();
+    notificationMocks.createOrgNotifications.mockReset();
   });
 
   it("blocks creation for free org member", async () => {
@@ -89,6 +138,7 @@ describe("POST /api/orgs/students", () => {
 
     serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
     serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
+    planAccessMocks.loadPersonalPlanTier.mockResolvedValue("free");
 
     const response = await POST(
       buildRequest({
@@ -133,12 +183,6 @@ describe("POST /api/orgs/students", () => {
             error: null,
           });
         }
-        if (table === "organizations") {
-          return buildSelectMaybeSingle({
-            data: { plan_tier: "pro" },
-            error: null,
-          });
-        }
         if (table === "org_memberships") {
           membershipCall += 1;
           if (membershipCall === 1) {
@@ -156,7 +200,10 @@ describe("POST /api/orgs/students", () => {
           });
         }
         if (table === "students") {
-          return { insert: studentInsert };
+          return buildStudentsTable({
+            searchResult: { data: [], error: null },
+            insert: studentInsert,
+          });
         }
         if (table === "student_assignments") {
           return { insert: assignmentsInsert };
@@ -167,6 +214,7 @@ describe("POST /api/orgs/students", () => {
 
     serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
     serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
+    planAccessMocks.loadPersonalPlanTier.mockResolvedValue("pro");
 
     const response = await POST(
       buildRequest({
@@ -194,5 +242,113 @@ describe("POST /api/orgs/students", () => {
         created_by: "11111111-1111-1111-1111-111111111111",
       },
     ]);
+  });
+
+  it("creates a cross-org link request when student email already exists elsewhere", async () => {
+    const supabase = {
+      auth: {
+        getUser: async () => ({
+          data: { user: { id: "11111111-1111-1111-1111-111111111111" } },
+          error: null,
+        }),
+      },
+    };
+
+    const studentInsert = jest.fn();
+    const proposalInsert = jest.fn(() => ({
+      select: () => ({
+        single: async () => ({
+          data: { id: "proposal-1" },
+          error: null,
+        }),
+      }),
+    }));
+
+    let membershipCall = 0;
+    let orgCall = 0;
+    const admin = {
+      from: jest.fn((table: string) => {
+        if (table === "profiles") {
+          return buildSelectSingle({
+            data: { id: "11111111-1111-1111-1111-111111111111", org_id: "org-2" },
+            error: null,
+          });
+        }
+        if (table === "org_memberships") {
+          membershipCall += 1;
+          if (membershipCall === 1) {
+            return buildSelectMaybeSingle({
+              data: { role: "coach", status: "active" },
+              error: null,
+            });
+          }
+          return buildSelectMaybeSingle({
+            data: { user_id: "admin-owner-1" },
+            error: null,
+          });
+        }
+        if (table === "students") {
+          return buildStudentsTable({
+            searchResult: {
+              data: [
+                {
+                  id: "student-owner-1",
+                  org_id: "org-1",
+                  first_name: "Camille",
+                  last_name: "Dupont",
+                  email: "camille@example.com",
+                },
+              ],
+              error: null,
+            },
+            insert: studentInsert,
+          });
+        }
+        if (table === "organizations") {
+          orgCall += 1;
+          if (orgCall === 1) {
+            return buildSelectMaybeSingle({
+              data: { name: "Academie Cible" },
+              error: null,
+            });
+          }
+          return buildSelectMaybeSingle({
+            data: { name: "Academie Cible" },
+            error: null,
+          });
+        }
+        if (table === "org_proposals") {
+          return { insert: proposalInsert };
+        }
+        return {};
+      }),
+    };
+
+    serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
+    serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
+    planAccessMocks.loadPersonalPlanTier.mockResolvedValue("pro");
+
+    const response = await POST(
+      buildRequest({
+        first_name: "Camille",
+        last_name: "Dupont",
+        email: "camille@example.com",
+        playing_hand: "right",
+      })
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.pendingRequest).toBe(true);
+    expect(studentInsert).not.toHaveBeenCalled();
+    expect(proposalInsert).toHaveBeenCalled();
+    expect(notificationMocks.createOrgNotifications).toHaveBeenCalledWith(
+      admin,
+      expect.objectContaining({
+        orgId: "org-1",
+        userIds: ["admin-owner-1"],
+        type: "student.link_request.created",
+      })
+    );
   });
 });
