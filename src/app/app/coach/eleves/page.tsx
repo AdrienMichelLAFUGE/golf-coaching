@@ -528,7 +528,7 @@ export default function CoachStudentsPage() {
           </div>
         </section>
 
-        <section className="panel overflow-hidden rounded-2xl">
+        <section className="panel overflow-visible rounded-2xl">
           <div className="grid gap-3 px-6 py-1 text-sm text-[var(--muted)]">
             {error ? <p className="text-sm text-red-400">{error}</p> : null}
             {inviteError ? (
@@ -687,7 +687,7 @@ export default function CoachStudentsPage() {
                           <div
                             role="menu"
                             onClick={(event) => event.stopPropagation()}
-                            className="absolute right-0 z-50 mt-2 w-40 rounded-xl border border-white/10 bg-[var(--bg-elevated)] p-1 text-xs shadow-[0_12px_30px_rgba(0,0,0,0.35)]"
+                            className="absolute bottom-full right-0 z-50 mb-2 w-40 rounded-xl border border-white/10 bg-[var(--bg-elevated)] p-1 text-xs shadow-[0_12px_30px_rgba(0,0,0,0.35)]"
                           >
                             <Link
                               href={`/app/coach/rapports/nouveau?studentId=${student.id}`}
