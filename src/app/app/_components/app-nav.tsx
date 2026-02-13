@@ -93,6 +93,7 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
         { label: "Tarifs", href: "/app/admin/pricing" },
         { label: "Coachs", href: "/app/admin/coaches" },
         { label: "Analytics", href: "/app/admin/analytics" },
+        { label: "Logs", href: "/app/admin/logs" },
       ],
     });
   }
@@ -132,6 +133,16 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
       : null;
 
   const handleSignOut = async () => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (token) {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }).catch(() => null);
+    }
     await supabase.auth.signOut();
     if (typeof window !== "undefined") {
       window.sessionStorage.removeItem("gc.rememberMe");
@@ -301,6 +312,16 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
           <path d="M6 16V9" />
           <path d="M12 16V5" />
           <path d="M18 16v-7" />
+        </svg>
+      );
+    }
+    if (href === "/app/admin/logs") {
+      return (
+        <svg viewBox="0 0 24 24" {...sharedProps}>
+          <path d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
+          <path d="M7 8h10" />
+          <path d="M7 12h10" />
+          <path d="M7 16h6" />
         </svg>
       );
     }

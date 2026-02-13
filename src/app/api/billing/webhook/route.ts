@@ -5,6 +5,7 @@ import { env } from "@/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { stripe } from "@/lib/stripe";
 import { computeAccess, isProPriceId } from "@/lib/billing";
+import { recordActivity } from "@/lib/activity-log";
 
 export const runtime = "nodejs";
 
@@ -128,8 +129,16 @@ const syncSubscriptionToOrg = async (
 };
 
 export async function POST(request: Request) {
+  const admin = createSupabaseAdminClient();
   const signature = request.headers.get("stripe-signature");
   if (!signature) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "payment.webhook.denied",
+      source: "stripe_webhook",
+      message: "Webhook Stripe refuse: signature manquante.",
+    });
     return NextResponse.json({ error: "Signature Stripe manquante." }, { status: 400 });
   }
 
@@ -139,10 +148,16 @@ export async function POST(request: Request) {
   try {
     event = stripe.webhooks.constructEvent(rawBody, signature, env.STRIPE_WEBHOOK_SECRET);
   } catch {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "payment.webhook.denied",
+      source: "stripe_webhook",
+      message: "Webhook Stripe refuse: signature invalide.",
+    });
     return NextResponse.json({ error: "Signature Stripe invalide." }, { status: 400 });
   }
 
-  const admin = createSupabaseAdminClient();
   const payloadHash = crypto.createHash("sha256").update(rawBody).digest("hex");
 
   const { data: existing } = await admin
@@ -153,6 +168,16 @@ export async function POST(request: Request) {
 
   if (existing) {
     logStripeEvent(event.id, event.type);
+    await recordActivity({
+      admin,
+      action: "payment.webhook.duplicate",
+      source: "stripe_webhook",
+      message: "Webhook Stripe deja traite.",
+      metadata: {
+        eventId: event.id,
+        eventType: event.type,
+      },
+    });
     return NextResponse.json({ ok: true });
   }
 
@@ -168,8 +193,29 @@ export async function POST(request: Request) {
   if (insertError) {
     if (insertError.code === "23505") {
       logStripeEvent(event.id, event.type);
+      await recordActivity({
+        admin,
+        action: "payment.webhook.duplicate",
+        source: "stripe_webhook",
+        message: "Webhook Stripe deja traite.",
+        metadata: {
+          eventId: event.id,
+          eventType: event.type,
+        },
+      });
       return NextResponse.json({ ok: true });
     }
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "payment.webhook.failed",
+      source: "stripe_webhook",
+      message: insertError.message ?? "Enregistrement webhook Stripe impossible.",
+      metadata: {
+        eventId: event.id,
+        eventType: event.type,
+      },
+    });
     return NextResponse.json({ error: insertError.message }, { status: 500 });
   }
 
@@ -208,8 +254,32 @@ export async function POST(request: Request) {
             await syncSubscriptionToOrg(admin, org, subscription);
           }
           logStripeEvent(event.id, event.type, org.id);
+          await recordActivity({
+            admin,
+            action: "payment.webhook.success",
+            source: "stripe_webhook",
+            orgId: org.id,
+            entityType: "organization",
+            entityId: org.id,
+            message: "Webhook checkout traite.",
+            metadata: {
+              eventId: event.id,
+              eventType: event.type,
+            },
+          });
         } else {
           logStripeEvent(event.id, event.type);
+          await recordActivity({
+            admin,
+            level: "warn",
+            action: "payment.webhook.unlinked",
+            source: "stripe_webhook",
+            message: "Webhook checkout recu sans organisation resolue.",
+            metadata: {
+              eventId: event.id,
+              eventType: event.type,
+            },
+          });
         }
         break;
       }
@@ -227,8 +297,32 @@ export async function POST(request: Request) {
         if (org) {
           await syncSubscriptionToOrg(admin, org, subscription);
           logStripeEvent(event.id, event.type, org.id);
+          await recordActivity({
+            admin,
+            action: "payment.webhook.success",
+            source: "stripe_webhook",
+            orgId: org.id,
+            entityType: "organization",
+            entityId: org.id,
+            message: "Webhook abonnement traite.",
+            metadata: {
+              eventId: event.id,
+              eventType: event.type,
+            },
+          });
         } else {
           logStripeEvent(event.id, event.type);
+          await recordActivity({
+            admin,
+            level: "warn",
+            action: "payment.webhook.unlinked",
+            source: "stripe_webhook",
+            message: "Webhook abonnement recu sans organisation resolue.",
+            metadata: {
+              eventId: event.id,
+              eventType: event.type,
+            },
+          });
         }
         break;
       }
@@ -239,6 +333,17 @@ export async function POST(request: Request) {
         const subscriptionId = getSubscriptionId(invoice.subscription);
         if (!subscriptionId) {
           logStripeEvent(event.id, event.type);
+          await recordActivity({
+            admin,
+            level: "warn",
+            action: "payment.webhook.unlinked",
+            source: "stripe_webhook",
+            message: "Webhook facture recu sans abonnement.",
+            metadata: {
+              eventId: event.id,
+              eventType: event.type,
+            },
+          });
           break;
         }
         const subscription = await stripe.subscriptions.retrieve(subscriptionId);
@@ -252,20 +357,83 @@ export async function POST(request: Request) {
         if (org) {
           await syncSubscriptionToOrg(admin, org, subscription);
           logStripeEvent(event.id, event.type, org.id);
+          await recordActivity({
+            admin,
+            level: event.type === "invoice.payment_failed" ? "warn" : "info",
+            action:
+              event.type === "invoice.payment_failed"
+                ? "payment.invoice.failed"
+                : "payment.invoice.success",
+            source: "stripe_webhook",
+            orgId: org.id,
+            entityType: "organization",
+            entityId: org.id,
+            message:
+              event.type === "invoice.payment_failed"
+                ? "Paiement facture echoue."
+                : "Paiement facture confirme.",
+            metadata: {
+              eventId: event.id,
+              eventType: event.type,
+            },
+          });
         } else {
           logStripeEvent(event.id, event.type);
+          await recordActivity({
+            admin,
+            level: "warn",
+            action: "payment.webhook.unlinked",
+            source: "stripe_webhook",
+            message: "Webhook facture recu sans organisation resolue.",
+            metadata: {
+              eventId: event.id,
+              eventType: event.type,
+            },
+          });
         }
         break;
       }
       case "checkout.session.async_payment_failed": {
         logStripeEvent(event.id, event.type);
+        await recordActivity({
+          admin,
+          level: "warn",
+          action: "payment.checkout.failed",
+          source: "stripe_webhook",
+          message: "Checkout Stripe echoue (async).",
+          metadata: {
+            eventId: event.id,
+            eventType: event.type,
+          },
+        });
         break;
       }
       default: {
         logStripeEvent(event.id, event.type);
+        await recordActivity({
+          admin,
+          action: "payment.webhook.received",
+          source: "stripe_webhook",
+          message: "Webhook Stripe recu.",
+          metadata: {
+            eventId: event.id,
+            eventType: event.type,
+          },
+        });
       }
     }
   } catch {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "payment.webhook.failed",
+      source: "stripe_webhook",
+      message: "Traitement webhook Stripe en erreur.",
+      metadata: {
+        eventId: event.id,
+        eventType: event.type,
+      },
+    });
     await admin.from("stripe_events").delete().eq("event_id", event.id);
     return NextResponse.json({ error: "Erreur webhook Stripe." }, { status: 500 });
   }

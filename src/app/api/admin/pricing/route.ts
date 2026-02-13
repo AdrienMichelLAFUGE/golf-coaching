@@ -6,6 +6,7 @@ import {
   createSupabaseServerClientFromRequest,
 } from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
+import { recordActivity } from "@/lib/activity-log";
 
 export const runtime = "nodejs";
 
@@ -85,6 +86,7 @@ const requireAdmin = async (request: Request) => {
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
   const email = userData.user?.email ?? "";
+  const userId = userData.user?.id ?? null;
   if (userError || !isAdminEmail(email)) {
     return {
       error: NextResponse.json({ error: "Unauthorized." }, { status: 403 }),
@@ -93,6 +95,7 @@ const requireAdmin = async (request: Request) => {
 
   return {
     admin: createSupabaseAdminClient(),
+    userId,
   };
 };
 
@@ -131,6 +134,13 @@ export async function POST(request: Request) {
   const id = (rawPlan as PricingPlanPayload).id ?? null;
 
   if (!plan.slug) {
+    await recordActivity({
+      admin: auth.admin,
+      level: "warn",
+      action: "admin.pricing.update.denied",
+      actorUserId: auth.userId,
+      message: "Modification pricing refusee: slug manquant.",
+    });
     return NextResponse.json({ error: "Slug requis." }, { status: 400 });
   }
 
@@ -141,8 +151,29 @@ export async function POST(request: Request) {
       .eq("id", id);
 
     if (updateError) {
+      await recordActivity({
+        admin: auth.admin,
+        level: "error",
+        action: "admin.pricing.update.failed",
+        actorUserId: auth.userId,
+        entityType: "pricing_plan",
+        entityId: id,
+        message: updateError.message ?? "Mise a jour plan impossible.",
+      });
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
+
+    await recordActivity({
+      admin: auth.admin,
+      action: "admin.pricing.update.success",
+      actorUserId: auth.userId,
+      entityType: "pricing_plan",
+      entityId: id,
+      message: "Plan tarifaire mis a jour.",
+      metadata: {
+        slug: plan.slug,
+      },
+    });
 
     return NextResponse.json({ ok: true });
   }
@@ -150,8 +181,28 @@ export async function POST(request: Request) {
   const { error: insertError } = await auth.admin.from("pricing_plans").insert([plan]);
 
   if (insertError) {
+    await recordActivity({
+      admin: auth.admin,
+      level: "error",
+      action: "admin.pricing.create.failed",
+      actorUserId: auth.userId,
+      message: insertError.message ?? "Creation plan impossible.",
+      metadata: {
+        slug: plan.slug,
+      },
+    });
     return NextResponse.json({ error: insertError.message }, { status: 500 });
   }
+
+  await recordActivity({
+    admin: auth.admin,
+    action: "admin.pricing.create.success",
+    actorUserId: auth.userId,
+    message: "Plan tarifaire cree.",
+    metadata: {
+      slug: plan.slug,
+    },
+  });
 
   return NextResponse.json({ ok: true });
 }
@@ -175,8 +226,26 @@ export async function DELETE(request: Request) {
     .eq("id", id);
 
   if (deleteError) {
+    await recordActivity({
+      admin: auth.admin,
+      level: "error",
+      action: "admin.pricing.delete.failed",
+      actorUserId: auth.userId,
+      entityType: "pricing_plan",
+      entityId: id,
+      message: deleteError.message ?? "Suppression plan impossible.",
+    });
     return NextResponse.json({ error: deleteError.message }, { status: 500 });
   }
+
+  await recordActivity({
+    admin: auth.admin,
+    action: "admin.pricing.delete.success",
+    actorUserId: auth.userId,
+    entityType: "pricing_plan",
+    entityId: id,
+    message: "Plan tarifaire supprime.",
+  });
 
   return NextResponse.json({ ok: true });
 }

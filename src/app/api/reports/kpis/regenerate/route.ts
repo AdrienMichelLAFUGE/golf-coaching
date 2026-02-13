@@ -6,6 +6,7 @@ import {
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
 import { generateReportKpisForPublishedReport } from "@/lib/ai/report-kpis";
+import { recordActivity } from "@/lib/activity-log";
 
 export const runtime = "nodejs";
 
@@ -57,9 +58,16 @@ export async function POST(req: Request) {
   }
 
   const supabase = createSupabaseServerClientFromRequest(req);
+  const admin = createSupabaseAdminClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();
   const userId = userData.user?.id;
   if (userError || !userId) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "report_kpis.regenerate.denied",
+      message: "Regeneration KPIs refusee: session invalide.",
+    });
     return Response.json({ error: "Session invalide." }, { status: 401 });
   }
 
@@ -72,10 +80,29 @@ export async function POST(req: Request) {
     .single();
 
   if (reportError || !report) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "report_kpis.regenerate.denied",
+      actorUserId: userId,
+      entityType: "report",
+      entityId: reportId,
+      message: "Regeneration KPIs refusee: rapport introuvable.",
+    });
     return Response.json({ error: "Rapport introuvable." }, { status: 404 });
   }
 
   if (!report.sent_at) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "report_kpis.regenerate.denied",
+      actorUserId: userId,
+      orgId: report.org_id,
+      entityType: "report",
+      entityId: reportId,
+      message: "Regeneration KPIs refusee: rapport non publie.",
+    });
     return Response.json({ error: "Rapport non publie." }, { status: 400 });
   }
 
@@ -86,10 +113,16 @@ export async function POST(req: Request) {
     .single();
 
   if (!profileData?.org_id) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "report_kpis.regenerate.denied",
+      actorUserId: userId,
+      message: "Regeneration KPIs refusee: organisation introuvable.",
+    });
     return Response.json({ error: "Organisation introuvable." }, { status: 403 });
   }
 
-  const admin = createSupabaseAdminClient();
   const { data: workspace, error: workspaceError } = await admin
     .from("organizations")
     .select("id, workspace_type, owner_profile_id")
@@ -97,11 +130,27 @@ export async function POST(req: Request) {
     .single();
 
   if (workspaceError || !workspace) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "report_kpis.regenerate.denied",
+      actorUserId: userId,
+      orgId: profileData.org_id,
+      message: "Regeneration KPIs refusee: workspace introuvable.",
+    });
     return Response.json({ error: "Workspace introuvable." }, { status: 404 });
   }
 
   if (workspace.workspace_type === "personal") {
     if (workspace.owner_profile_id !== userId) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "report_kpis.regenerate.denied",
+        actorUserId: userId,
+        orgId: profileData.org_id,
+        message: "Regeneration KPIs refusee: non proprietaire workspace perso.",
+      });
       return Response.json({ error: "Acces refuse." }, { status: 403 });
     }
   } else {
@@ -113,11 +162,27 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (!membership || membership.status !== "active") {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "report_kpis.regenerate.denied",
+        actorUserId: userId,
+        orgId: profileData.org_id,
+        message: "Regeneration KPIs refusee: membership invalide.",
+      });
       return Response.json({ error: "Acces refuse." }, { status: 403 });
     }
 
     const planTier = await loadPersonalPlanTier(admin, userId);
     if (planTier === "free") {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "report_kpis.regenerate.denied",
+        actorUserId: userId,
+        orgId: profileData.org_id,
+        message: "Regeneration KPIs refusee: plan Free.",
+      });
       return Response.json(
         { error: "Lecture seule: plan Free en organisation." },
         { status: 403 }
@@ -132,6 +197,16 @@ export async function POST(req: Request) {
       .eq("org_id", profileData.org_id);
 
     if (orgStudentsError) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "report_kpis.regenerate.denied",
+        actorUserId: userId,
+        orgId: profileData.org_id,
+        entityType: "report",
+        entityId: reportId,
+        message: "Regeneration KPIs refusee: verification eleve impossible.",
+      });
       return Response.json({ error: "Acces refuse." }, { status: 403 });
     }
 
@@ -143,6 +218,16 @@ export async function POST(req: Request) {
     // If the report belongs to another workspace, only allow regeneration when it is linked
     // to a student present in the current organization workspace.
     if (orgStudentIds.length === 0) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "report_kpis.regenerate.denied",
+        actorUserId: userId,
+        orgId: profileData.org_id,
+        entityType: "report",
+        entityId: reportId,
+        message: "Regeneration KPIs refusee: eleve non present dans orga.",
+      });
       return Response.json({ error: "Acces refuse." }, { status: 403 });
     }
 
@@ -157,6 +242,16 @@ export async function POST(req: Request) {
     );
     const isAssigned = assignedIds.includes(userId);
     if (membership.role !== "admin" && !isAssigned) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "report_kpis.regenerate.denied",
+        actorUserId: userId,
+        orgId: profileData.org_id,
+        entityType: "report",
+        entityId: reportId,
+        message: "Regeneration KPIs refusee: coach non assigne.",
+      });
       return Response.json({ error: "Acces refuse." }, { status: 403 });
     }
   }
@@ -168,6 +263,18 @@ export async function POST(req: Request) {
     reportId,
     actorUserId: userId,
     timeoutMs: 12_000,
+  });
+  await recordActivity({
+    admin,
+    action: "report_kpis.regenerate.success",
+    actorUserId: userId,
+    orgId: report.org_id,
+    entityType: "report",
+    entityId: reportId,
+    message: "Regeneration KPIs executee.",
+    metadata: {
+      status: result.status,
+    },
   });
 
   return Response.json({ status: result.status });

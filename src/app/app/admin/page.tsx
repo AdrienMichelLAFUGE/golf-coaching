@@ -107,7 +107,7 @@ export default function AdminDashboardPage() {
           </section>
         ) : null}
 
-        <section className="grid gap-6 lg:grid-cols-3">
+        <section className="grid gap-6 lg:grid-cols-4">
           {[
             {
               title: "Tarifs & features",
@@ -126,6 +126,12 @@ export default function AdminDashboardPage() {
               description: "Suivi des appels IA, tokens et activite par coach.",
               href: "/app/admin/analytics",
               cta: "Voir les analytics",
+            },
+            {
+              title: "Logs applicatifs",
+              description: "Monitor les actions clefs des coachs et du systeme.",
+              href: "/app/admin/logs",
+              cta: "Voir les logs",
             },
           ].map((card) => (
             <div key={card.title} className="panel rounded-2xl p-6">

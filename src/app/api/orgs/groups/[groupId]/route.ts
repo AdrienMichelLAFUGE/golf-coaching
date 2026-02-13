@@ -6,6 +6,7 @@ import {
 } from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
+import { recordActivity } from "@/lib/activity-log";
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -213,7 +214,19 @@ export async function PATCH(request: Request, { params }: Params) {
 
   const { admin, profile, membership } = context;
   const permissionError = await ensureWriteAccess(admin, profile.id, membership.role);
-  if (permissionError) return permissionError;
+  if (permissionError) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "group.update.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "org_group",
+      entityId: groupId,
+      message: "Modification groupe refusee: plan insuffisant.",
+    });
+    return permissionError;
+  }
 
   const payload: Record<string, string | null> = {};
   if (typeof parsed.data.name !== "undefined") {
@@ -234,8 +247,28 @@ export async function PATCH(request: Request, { params }: Params) {
     .eq("id", groupId);
 
   if (updateError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "group.update.failed",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "org_group",
+      entityId: groupId,
+      message: updateError.message ?? "Modification groupe impossible.",
+    });
     return NextResponse.json({ error: updateError.message }, { status: 400 });
   }
+
+  await recordActivity({
+    admin,
+    action: "group.update.success",
+    actorUserId: profile.id,
+    orgId: profile.org_id,
+    entityType: "org_group",
+    entityId: groupId,
+    message: "Groupe modifie.",
+  });
 
   return NextResponse.json({ ok: true });
 }
@@ -247,7 +280,19 @@ export async function DELETE(request: Request, { params }: Params) {
 
   const { admin, profile, membership } = context;
   const permissionError = await ensureWriteAccess(admin, profile.id, membership.role);
-  if (permissionError) return permissionError;
+  if (permissionError) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "group.delete.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "org_group",
+      entityId: groupId,
+      message: "Suppression groupe refusee: plan insuffisant.",
+    });
+    return permissionError;
+  }
 
   const { error: deleteError } = await admin
     .from("org_groups")
@@ -256,8 +301,28 @@ export async function DELETE(request: Request, { params }: Params) {
     .eq("id", groupId);
 
   if (deleteError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "group.delete.failed",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "org_group",
+      entityId: groupId,
+      message: deleteError.message ?? "Suppression groupe impossible.",
+    });
     return NextResponse.json({ error: deleteError.message }, { status: 400 });
   }
+
+  await recordActivity({
+    admin,
+    action: "group.delete.success",
+    actorUserId: profile.id,
+    orgId: profile.org_id,
+    entityType: "org_group",
+    entityId: groupId,
+    message: "Groupe supprime.",
+  });
 
   return NextResponse.json({ ok: true });
 }

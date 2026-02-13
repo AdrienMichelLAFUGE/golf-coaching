@@ -6,6 +6,7 @@ import {
 } from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
+import { recordActivity } from "@/lib/activity-log";
 
 const createOrgSchema = z.object({
   name: z.string().min(2).max(80),
@@ -38,11 +39,26 @@ export async function POST(request: Request) {
   }
 
   if (!profile.org_id) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "organization.create.denied",
+      actorUserId: profile.id,
+      message: "Creation organisation refusee: organisation active introuvable.",
+    });
     return NextResponse.json({ error: "Organisation introuvable." }, { status: 403 });
   }
 
   const planTier = await loadPersonalPlanTier(admin, profile.id);
   if (planTier === "free") {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "organization.create.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: "Creation organisation refusee: plan Free.",
+    });
     return NextResponse.json(
       { error: "Plan Free: creation d organisation indisponible." },
       { status: 403 }
@@ -62,6 +78,14 @@ export async function POST(request: Request) {
     .single();
 
   if (orgError || !org) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "organization.create.failed",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: orgError?.message ?? "Creation organisation impossible.",
+    });
     return NextResponse.json(
       { error: orgError?.message ?? "Creation impossible." },
       { status: 400 }
@@ -79,8 +103,26 @@ export async function POST(request: Request) {
   ]);
 
   if (membershipError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "organization.create.failed",
+      actorUserId: profile.id,
+      orgId: org.id,
+      message: membershipError.message ?? "Creation membership admin impossible.",
+    });
     return NextResponse.json({ error: membershipError.message }, { status: 400 });
   }
+
+  await recordActivity({
+    admin,
+    action: "organization.create.success",
+    actorUserId: profile.id,
+    orgId: org.id,
+    entityType: "organization",
+    entityId: org.id,
+    message: "Organisation creee.",
+  });
 
   return NextResponse.json({ ok: true, orgId: org.id });
 }

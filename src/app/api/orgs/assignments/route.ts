@@ -6,6 +6,7 @@ import {
 } from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
+import { recordActivity } from "@/lib/activity-log";
 
 const assignmentSchema = z.object({
   studentId: z.string().uuid(),
@@ -104,6 +105,13 @@ export async function POST(request: Request) {
     .single();
 
   if (!profile?.org_id) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "student.assign_coaches.denied",
+      actorUserId: userData.user.id,
+      message: "Assignation coachs refusee: organisation introuvable.",
+    });
     return NextResponse.json({ error: "Organisation introuvable." }, { status: 403 });
   }
 
@@ -115,11 +123,27 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (!membership || membership.status !== "active") {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "student.assign_coaches.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: "Assignation coachs refusee: membre inactif ou absent.",
+    });
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
   const planTier = await loadPersonalPlanTier(admin, profile.id);
   if (planTier === "free") {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "student.assign_coaches.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: "Assignation coachs refusee: plan Free.",
+    });
     return NextResponse.json(
       { error: "Lecture seule: plan Free en organisation." },
       { status: 403 }
@@ -133,6 +157,16 @@ export async function POST(request: Request) {
     .single();
 
   if (!student || student.org_id !== profile.org_id) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "student.assign_coaches.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "student",
+      entityId: parsed.data.studentId,
+      message: "Assignation coachs refusee: eleve introuvable.",
+    });
     return NextResponse.json({ error: "Eleve introuvable." }, { status: 404 });
   }
 
@@ -148,6 +182,16 @@ export async function POST(request: Request) {
   );
 
   if (validCoachIds.length === 0) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "student.assign_coaches.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "student",
+      entityId: parsed.data.studentId,
+      message: "Assignation coachs refusee: aucun coach actif.",
+    });
     return NextResponse.json(
       { error: "Selectionne au moins un coach actif." },
       { status: 400 }
@@ -160,6 +204,16 @@ export async function POST(request: Request) {
     .eq("student_id", parsed.data.studentId);
 
   if (deleteError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "student.assign_coaches.failed",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "student",
+      entityId: parsed.data.studentId,
+      message: deleteError.message ?? "Nettoyage assignations impossible.",
+    });
     return NextResponse.json({ error: deleteError.message }, { status: 400 });
   }
 
@@ -172,8 +226,29 @@ export async function POST(request: Request) {
 
   const { error: insertError } = await admin.from("student_assignments").insert(payload);
   if (insertError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "student.assign_coaches.failed",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "student",
+      entityId: parsed.data.studentId,
+      message: insertError.message ?? "Assignation coachs impossible.",
+    });
     return NextResponse.json({ error: insertError.message }, { status: 400 });
   }
+
+  await recordActivity({
+    admin,
+    action: "student.assign_coaches.success",
+    actorUserId: profile.id,
+    orgId: profile.org_id,
+    entityType: "student",
+    entityId: parsed.data.studentId,
+    message: "Assignation coachs mise a jour.",
+    metadata: { coachCount: validCoachIds.length },
+  });
 
   return NextResponse.json({ ok: true });
 }

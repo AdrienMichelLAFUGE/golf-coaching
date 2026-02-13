@@ -6,6 +6,7 @@ import {
   createSupabaseServerClientFromRequest,
 } from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
+import { recordActivity } from "@/lib/activity-log";
 
 const deleteSchema = z.object({
   password: z.string().min(8),
@@ -42,7 +43,17 @@ export async function POST(request: Request) {
 
   const email = userData.user.email?.trim();
   const userId = userData.user.id;
+  const admin = createSupabaseAdminClient();
   if (!email) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "student.delete.denied",
+      actorUserId: userId,
+      entityType: "profile",
+      entityId: userId,
+      message: "Suppression eleve refusee: email introuvable.",
+    });
     return NextResponse.json({ error: "Email introuvable." }, { status: 400 });
   }
 
@@ -52,11 +63,19 @@ export async function POST(request: Request) {
     password: parsed.data.password,
   });
   if (signInError) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "student.delete.denied",
+      actorUserId: userId,
+      entityType: "profile",
+      entityId: userId,
+      message: "Suppression eleve refusee: mot de passe invalide.",
+    });
     return NextResponse.json({ error: "Mot de passe incorrect." }, { status: 401 });
   }
 
   const now = new Date().toISOString();
-  const admin = createSupabaseAdminClient();
 
   const { data: accountRows, error: accountError } = await admin
     .from("student_accounts")
@@ -64,6 +83,15 @@ export async function POST(request: Request) {
     .eq("user_id", userId);
 
   if (accountError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "student.delete.failed",
+      actorUserId: userId,
+      entityType: "profile",
+      entityId: userId,
+      message: accountError.message ?? "Chargement comptes eleve impossible.",
+    });
     return NextResponse.json(
       { error: accountError.message ?? "Erreur lors du chargement eleve." },
       { status: 500 }
@@ -72,6 +100,15 @@ export async function POST(request: Request) {
 
   const studentIds = (accountRows ?? []).map((row) => row.student_id);
   if (studentIds.length === 0) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "student.delete.denied",
+      actorUserId: userId,
+      entityType: "profile",
+      entityId: userId,
+      message: "Suppression eleve refusee: aucun profil eleve lie.",
+    });
     return NextResponse.json({ error: "Eleve introuvable." }, { status: 404 });
   }
 
@@ -81,6 +118,15 @@ export async function POST(request: Request) {
     .in("id", studentIds);
 
   if (studentsError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "student.delete.failed",
+      actorUserId: userId,
+      entityType: "profile",
+      entityId: userId,
+      message: studentsError.message ?? "Chargement eleves impossible.",
+    });
     return NextResponse.json(
       { error: studentsError.message ?? "Erreur lors du chargement eleve." },
       { status: 500 }
@@ -95,6 +141,15 @@ export async function POST(request: Request) {
   );
 
   if (authUpdateError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "student.delete.failed",
+      actorUserId: userId,
+      entityType: "profile",
+      entityId: userId,
+      message: authUpdateError.message ?? "Anonymisation auth impossible.",
+    });
     return NextResponse.json(
       { error: authUpdateError.message ?? "Anonymisation auth impossible." },
       { status: 500 }
@@ -113,6 +168,15 @@ export async function POST(request: Request) {
 
   if (revokeError) {
     await admin.auth.admin.updateUserById(userData.user.id, { email });
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "student.delete.failed",
+      actorUserId: userId,
+      entityType: "profile",
+      entityId: userId,
+      message: revokeError.message ?? "Revocation partages eleve impossible.",
+    });
     return NextResponse.json(
       { error: revokeError.message ?? "Erreur lors de la revocation." },
       { status: 500 }
@@ -134,6 +198,15 @@ export async function POST(request: Request) {
 
     if (studentUpdateError) {
       await admin.auth.admin.updateUserById(userId, { email });
+      await recordActivity({
+        admin,
+        level: "error",
+        action: "student.delete.failed",
+        actorUserId: userId,
+        entityType: "student",
+        entityId: student.id,
+        message: studentUpdateError.message ?? "Anonymisation eleve impossible.",
+      });
       return NextResponse.json(
         { error: studentUpdateError.message ?? "Anonymisation eleve impossible." },
         { status: 500 }
@@ -152,6 +225,15 @@ export async function POST(request: Request) {
 
   if (profileUpdateError) {
     await admin.auth.admin.updateUserById(userData.user.id, { email });
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "student.delete.failed",
+      actorUserId: userId,
+      entityType: "profile",
+      entityId: userId,
+      message: profileUpdateError.message ?? "Anonymisation profil impossible.",
+    });
     return NextResponse.json(
       { error: profileUpdateError.message ?? "Anonymisation profil impossible." },
       { status: 500 }
@@ -166,6 +248,15 @@ export async function POST(request: Request) {
       .from(STORAGE_BUCKET)
       .remove([path]);
     if (removeError) {
+      await recordActivity({
+        admin,
+        level: "error",
+        action: "student.delete.failed",
+        actorUserId: userId,
+        entityType: "student",
+        entityId: student.id,
+        message: removeError.message ?? "Suppression avatar impossible.",
+      });
       return NextResponse.json(
         { error: removeError.message ?? "Suppression avatar impossible." },
         { status: 500 }
@@ -179,6 +270,15 @@ export async function POST(request: Request) {
     .eq("user_id", userId);
 
   if (unlinkError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "student.delete.failed",
+      actorUserId: userId,
+      entityType: "profile",
+      entityId: userId,
+      message: unlinkError.message ?? "Suppression liens eleve impossible.",
+    });
     return NextResponse.json(
       { error: unlinkError.message ?? "Suppression compte eleve impossible." },
       { status: 500 }
@@ -192,6 +292,18 @@ export async function POST(request: Request) {
   if (token) {
     await admin.auth.admin.signOut(token, "global");
   }
+
+  await recordActivity({
+    admin,
+    action: "student.delete.success",
+    actorUserId: userId,
+    entityType: "profile",
+    entityId: userId,
+    message: "Compte eleve supprime.",
+    metadata: {
+      studentCount: studentIds.length,
+    },
+  });
 
   return NextResponse.json({ ok: true });
 }

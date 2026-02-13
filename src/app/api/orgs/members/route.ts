@@ -5,6 +5,7 @@ import {
   createSupabaseServerClientFromRequest,
 } from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
+import { recordActivity } from "@/lib/activity-log";
 
 const updateSchema = z.object({
   memberId: z.string().uuid(),
@@ -98,6 +99,14 @@ export async function PATCH(request: Request) {
     .maybeSingle();
 
   if (!membership || membership.status !== "active" || membership.role !== "admin") {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "organization.member.update.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: "Modification membre refusee: droits insuffisants.",
+    });
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
@@ -121,6 +130,16 @@ export async function PATCH(request: Request) {
     .maybeSingle();
 
   if (!currentMember) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "organization.member.update.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "org_membership",
+      entityId: parsed.data.memberId,
+      message: "Modification membre refusee: membre introuvable.",
+    });
     return NextResponse.json({ error: "Membre introuvable." }, { status: 404 });
   }
 
@@ -136,6 +155,16 @@ export async function PATCH(request: Request) {
 
   if (nextRole === "admin" && nextStatus === "active") {
     if (!nextPremium) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "organization.member.update.denied",
+        actorUserId: profile.id,
+        orgId: profile.org_id,
+        entityType: "org_membership",
+        entityId: parsed.data.memberId,
+        message: "Modification membre refusee: admin sans premium.",
+      });
       return NextResponse.json({ error: "Un admin doit etre premium." }, { status: 400 });
     }
     const { data: activeAdmins } = await admin
@@ -148,6 +177,16 @@ export async function PATCH(request: Request) {
       (row) => (row as { id: string }).id !== currentMember.id
     );
     if (otherAdmin) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "organization.member.update.denied",
+        actorUserId: profile.id,
+        orgId: profile.org_id,
+        entityType: "org_membership",
+        entityId: parsed.data.memberId,
+        message: "Modification membre refusee: un admin actif existe deja.",
+      });
       return NextResponse.json({ error: "Un admin actif existe deja." }, { status: 409 });
     }
   }
@@ -159,8 +198,36 @@ export async function PATCH(request: Request) {
     .eq("org_id", profile.org_id);
 
   if (updateError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "organization.member.update.failed",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "org_membership",
+      entityId: parsed.data.memberId,
+      message: updateError.message ?? "Modification membre impossible.",
+    });
     return NextResponse.json({ error: updateError.message }, { status: 400 });
   }
+
+  await recordActivity({
+    admin,
+    action: "organization.member.update.success",
+    actorUserId: profile.id,
+    orgId: profile.org_id,
+    entityType: "org_membership",
+    entityId: parsed.data.memberId,
+    message: "Membre organisation modifie.",
+    metadata: {
+      status: parsed.data.status ?? null,
+      premiumActive:
+        typeof parsed.data.premium_active === "boolean"
+          ? parsed.data.premium_active
+          : null,
+      role: parsed.data.role ?? null,
+    },
+  });
 
   return NextResponse.json({ ok: true });
 }
@@ -199,6 +266,14 @@ export async function DELETE(request: Request) {
     .maybeSingle();
 
   if (!membership || membership.status !== "active" || membership.role !== "admin") {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "organization.member.delete.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: "Suppression membre refusee: droits insuffisants.",
+    });
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
@@ -210,14 +285,44 @@ export async function DELETE(request: Request) {
     .maybeSingle();
 
   if (!target) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "organization.member.delete.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "org_membership",
+      entityId: parsed.data.memberId,
+      message: "Suppression membre refusee: membre introuvable.",
+    });
     return NextResponse.json({ error: "Membre introuvable." }, { status: 404 });
   }
 
   if (target.user_id === profile.id) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "organization.member.delete.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "org_membership",
+      entityId: parsed.data.memberId,
+      message: "Suppression membre refusee: auto suppression.",
+    });
     return NextResponse.json({ error: "Impossible de vous retirer." }, { status: 400 });
   }
 
   if (target.role === "admin") {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "organization.member.delete.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "org_membership",
+      entityId: parsed.data.memberId,
+      message: "Suppression membre refusee: membre admin.",
+    });
     return NextResponse.json(
       { error: "Impossible de retirer un admin." },
       { status: 400 }
@@ -231,6 +336,16 @@ export async function DELETE(request: Request) {
     .eq("org_id", profile.org_id);
 
   if (deleteError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "organization.member.delete.failed",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "org_membership",
+      entityId: parsed.data.memberId,
+      message: deleteError.message ?? "Suppression membre impossible.",
+    });
     return NextResponse.json({ error: deleteError.message }, { status: 400 });
   }
 
@@ -250,6 +365,16 @@ export async function DELETE(request: Request) {
       .update({ active_workspace_id: nextWorkspaceId })
       .eq("id", targetProfile.id);
   }
+
+  await recordActivity({
+    admin,
+    action: "organization.member.delete.success",
+    actorUserId: profile.id,
+    orgId: profile.org_id,
+    entityType: "org_membership",
+    entityId: parsed.data.memberId,
+    message: "Membre organisation retire.",
+  });
 
   return NextResponse.json({ ok: true });
 }

@@ -85,6 +85,14 @@ function ResetPasswordContent() {
     // Recovery flow authenticates the user. Sign out so /login doesn't immediately redirect to /app.
     setStatus("redirecting");
     setMessage("Mot de passe mis a jour. Redirection...");
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (token) {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => null);
+    }
     const { error: signOutError } = await supabase.auth.signOut();
     if (signOutError) {
       setStatus("error");

@@ -10,6 +10,7 @@ import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
 import { loadPromptSection } from "@/lib/promptLoader";
 import { generateReportKpisForPublishedReport } from "@/lib/ai/report-kpis";
+import { recordActivity } from "@/lib/activity-log";
 
 export const runtime = "nodejs";
 
@@ -91,6 +92,7 @@ export async function POST(req: Request) {
   if (userError || !userId) {
     return Response.json({ error: "Session invalide." }, { status: 401 });
   }
+  const admin = createSupabaseAdminClient();
 
   const { reportId } = parsed.data;
 
@@ -101,6 +103,15 @@ export async function POST(req: Request) {
     .single();
 
   if (reportError || !report) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "report.publish.not_found",
+      actorUserId: userId,
+      entityType: "report",
+      entityId: reportId,
+      message: "Tentative de publication d un rapport introuvable.",
+    });
     return Response.json({ error: "Rapport introuvable." }, { status: 404 });
   }
 
@@ -111,10 +122,18 @@ export async function POST(req: Request) {
     .single();
 
   if (!profileData?.org_id) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "report.publish.denied",
+      actorUserId: userId,
+      entityType: "report",
+      entityId: report.id,
+      message: "Organisation active introuvable pour la publication.",
+    });
     return Response.json({ error: "Organisation introuvable." }, { status: 403 });
   }
 
-  const admin = createSupabaseAdminClient();
   const { data: workspace, error: workspaceError } = await admin
     .from("organizations")
     .select("id, workspace_type, owner_profile_id")
@@ -122,11 +141,34 @@ export async function POST(req: Request) {
     .single();
 
   if (workspaceError || !workspace) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "report.publish.workspace_missing",
+      actorUserId: userId,
+      orgId: profileData.org_id,
+      entityType: "report",
+      entityId: report.id,
+      message: "Workspace introuvable au moment de publier un rapport.",
+      metadata: {
+        workspaceError: workspaceError?.message ?? null,
+      },
+    });
     return Response.json({ error: "Workspace introuvable." }, { status: 404 });
   }
 
   if (workspace.workspace_type === "personal") {
     if (workspace.owner_profile_id !== userId) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "report.publish.denied",
+        actorUserId: userId,
+        orgId: profileData.org_id,
+        entityType: "report",
+        entityId: report.id,
+        message: "Publication refusee hors proprietaire du workspace personnel.",
+      });
       return Response.json({ error: "Acces refuse." }, { status: 403 });
     }
   } else {
@@ -138,11 +180,31 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (!membership || membership.status !== "active") {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "report.publish.denied",
+        actorUserId: userId,
+        orgId: profileData.org_id,
+        entityType: "report",
+        entityId: report.id,
+        message: "Publication refusee: membre inactif ou absent.",
+      });
       return Response.json({ error: "Acces refuse." }, { status: 403 });
     }
 
     const planTier = await loadPersonalPlanTier(admin, userId);
     if (planTier === "free") {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "report.publish.denied",
+        actorUserId: userId,
+        orgId: profileData.org_id,
+        entityType: "report",
+        entityId: report.id,
+        message: "Publication refusee: plan Free en organisation.",
+      });
       return Response.json(
         { error: "Lecture seule: plan Free en organisation." },
         { status: 403 }
@@ -159,6 +221,16 @@ export async function POST(req: Request) {
     );
     const isAssigned = assignedIds.includes(userId);
     if (membership.role !== "admin" && !isAssigned) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "report.publish.denied",
+        actorUserId: userId,
+        orgId: profileData.org_id,
+        entityType: "report",
+        entityId: report.id,
+        message: "Publication refusee: coach non assigne a l eleve.",
+      });
       return Response.json({ error: "Acces refuse." }, { status: 403 });
     }
   }
@@ -170,6 +242,16 @@ export async function POST(req: Request) {
     .single();
 
   if (!studentData || String(studentData.org_id) !== String(profileData.org_id)) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "report.publish.denied",
+      actorUserId: userId,
+      orgId: profileData.org_id,
+      entityType: "report",
+      entityId: report.id,
+      message: "Publication refusee: eleve hors workspace actif.",
+    });
     return Response.json({ error: "Acces refuse." }, { status: 403 });
   }
 
@@ -180,6 +262,16 @@ export async function POST(req: Request) {
     .order("position", { ascending: true });
 
   if (sectionsError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "report.publish.sections_error",
+      actorUserId: userId,
+      orgId: profileData.org_id,
+      entityType: "report",
+      entityId: report.id,
+      message: sectionsError.message ?? "Erreur de lecture des sections.",
+    });
     return Response.json(
       { error: sectionsError.message ?? "Erreur de lecture des sections." },
       { status: 500 }
@@ -205,6 +297,16 @@ export async function POST(req: Request) {
     const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
     const systemPrompt = await loadSystemPrompt();
     if (!systemPrompt) {
+      await recordActivity({
+        admin,
+        level: "error",
+        action: "report.publish.format_prompt_missing",
+        actorUserId: userId,
+        orgId: profileData.org_id,
+        entityType: "report",
+        entityId: report.id,
+        message: "Prompt de reformatage introuvable.",
+      });
       return Response.json(
         { error: "Prompt de reformatage introuvable." },
         { status: 500 }
@@ -240,6 +342,20 @@ export async function POST(req: Request) {
 
       const formatted = extractOutputText(response);
       if (!formatted) {
+        await recordActivity({
+          admin,
+          level: "error",
+          action: "report.publish.format_failed",
+          actorUserId: userId,
+          orgId: profileData.org_id,
+          entityType: "report",
+          entityId: report.id,
+          message: "Echec de reformattage d une section.",
+          metadata: {
+            sectionId: section.id,
+            sectionTitle: section.title,
+          },
+        });
         return Response.json(
           { error: "Echec de reformattage du rapport." },
           { status: 502 }
@@ -264,6 +380,19 @@ export async function POST(req: Request) {
           .eq("id", update.id)
           .eq("org_id", profileData.org_id);
         if (updateError) {
+          await recordActivity({
+            admin,
+            level: "error",
+            action: "report.publish.section_update_failed",
+            actorUserId: userId,
+            orgId: profileData.org_id,
+            entityType: "report",
+            entityId: report.id,
+            message: updateError.message ?? "Erreur de sauvegarde section.",
+            metadata: {
+              sectionId: update.id,
+            },
+          });
           return Response.json(
             { error: updateError.message ?? "Erreur de sauvegarde." },
             { status: 500 }
@@ -281,6 +410,16 @@ export async function POST(req: Request) {
     .eq("id", report.id);
 
   if (publishError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "report.publish.failed",
+      actorUserId: userId,
+      orgId: profileData.org_id,
+      entityType: "report",
+      entityId: report.id,
+      message: publishError.message ?? "Erreur de publication.",
+    });
     return Response.json(
       { error: publishError.message ?? "Erreur de publication." },
       { status: 500 }
@@ -302,6 +441,20 @@ export async function POST(req: Request) {
     console.error("[report_kpis] generation failed:", error);
     kpiStatus = "error";
   }
+
+  await recordActivity({
+    admin,
+    action: "report.publish.success",
+    actorUserId: userId,
+    orgId: profileData.org_id,
+    entityType: "report",
+    entityId: report.id,
+    message: "Rapport publie.",
+    metadata: {
+      formattedSections: formattedCount,
+      kpiStatus,
+    },
+  });
 
   return Response.json({ sentAt, formattedSections: formattedCount, kpis: { status: kpiStatus } });
 }

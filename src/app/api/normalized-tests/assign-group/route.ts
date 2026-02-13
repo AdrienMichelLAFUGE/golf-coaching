@@ -12,6 +12,7 @@ import { WEDGING_DRAPEAU_COURT_SLUG } from "@/lib/normalized-tests/wedging-drape
 import { isAdminEmail } from "@/lib/admin";
 import { PLAN_ENTITLEMENTS } from "@/lib/plans";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
+import { recordActivity } from "@/lib/activity-log";
 
 export const runtime = "nodejs";
 
@@ -66,10 +67,25 @@ export async function POST(request: Request) {
     .single();
 
   if (!profile?.org_id) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "normalized_test.assign_group.denied",
+      actorUserId: userId,
+      message: "Assignation groupe refusee: organisation introuvable.",
+    });
     return NextResponse.json({ error: "Organisation introuvable." }, { status: 403 });
   }
 
   if (!["owner", "coach", "staff"].includes(profile.role)) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "normalized_test.assign_group.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: "Assignation groupe refusee: role non autorise.",
+    });
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
@@ -81,11 +97,27 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (!membership || membership.status !== "active") {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "normalized_test.assign_group.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: "Assignation groupe refusee: membre inactif ou absent.",
+    });
     return buildMembershipError();
   }
 
   const planTier = await loadPersonalPlanTier(admin, profile.id);
   if (membership.role !== "admin" && planTier === "free") {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "normalized_test.assign_group.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: "Assignation groupe refusee: plan insuffisant.",
+    });
     return NextResponse.json(
       { error: "Plan Pro requis pour gerer les groupes." },
       { status: 403 }
@@ -96,6 +128,15 @@ export async function POST(request: Request) {
   if (!isAdmin) {
     const testAccess = PLAN_ENTITLEMENTS[planTier].tests;
     if (testAccess.scope === "pelz" && !isPelzSlug(parsed.data.testSlug)) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "normalized_test.assign_group.denied",
+        actorUserId: profile.id,
+        orgId: profile.org_id,
+        message: "Assignation groupe refusee: entitlement test insuffisant.",
+        metadata: { testSlug: parsed.data.testSlug, groupId: parsed.data.groupId },
+      });
       return NextResponse.json({ error: "Plan Pro requis pour ce test." }, { status: 403 });
     }
   }
@@ -108,6 +149,15 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (!group) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "normalized_test.assign_group.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: "Assignation groupe refusee: groupe introuvable.",
+      metadata: { testSlug: parsed.data.testSlug, groupId: parsed.data.groupId },
+    });
     return NextResponse.json({ error: "Groupe introuvable." }, { status: 404 });
   }
 
@@ -118,6 +168,15 @@ export async function POST(request: Request) {
     .eq("group_id", parsed.data.groupId);
 
   if (groupError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "normalized_test.assign_group.failed",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: groupError.message ?? "Lecture des eleves du groupe impossible.",
+      metadata: { testSlug: parsed.data.testSlug, groupId: parsed.data.groupId },
+    });
     return NextResponse.json({ error: groupError.message }, { status: 400 });
   }
 
@@ -126,6 +185,14 @@ export async function POST(request: Request) {
   );
 
   if (studentIds.length === 0) {
+    await recordActivity({
+      admin,
+      action: "normalized_test.assign_group.success",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: "Assignation groupe: aucun eleve a traiter.",
+      metadata: { testSlug: parsed.data.testSlug, groupId: parsed.data.groupId, created: 0, skipped: 0 },
+    });
     return NextResponse.json({ ok: true, created: 0, skipped: 0 });
   }
 
@@ -138,6 +205,15 @@ export async function POST(request: Request) {
     .in("student_id", studentIds);
 
   if (existingError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "normalized_test.assign_group.failed",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: existingError.message ?? "Lecture des assignations existantes impossible.",
+      metadata: { testSlug: parsed.data.testSlug, groupId: parsed.data.groupId },
+    });
     return NextResponse.json({ error: existingError.message }, { status: 400 });
   }
 
@@ -148,6 +224,19 @@ export async function POST(request: Request) {
   const studentIdsToInsert = studentIds.filter((id) => !existingIds.has(id));
 
   if (studentIdsToInsert.length === 0) {
+    await recordActivity({
+      admin,
+      action: "normalized_test.assign_group.success",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: "Assignation groupe: aucune nouvelle assignation.",
+      metadata: {
+        testSlug: parsed.data.testSlug,
+        groupId: parsed.data.groupId,
+        created: 0,
+        skipped: studentIds.length,
+      },
+    });
     return NextResponse.json({ ok: true, created: 0, skipped: studentIds.length });
   }
 
@@ -170,10 +259,37 @@ export async function POST(request: Request) {
       .insert(chunk);
 
     if (insertError) {
+      await recordActivity({
+        admin,
+        level: "error",
+        action: "normalized_test.assign_group.failed",
+        actorUserId: profile.id,
+        orgId: profile.org_id,
+        message: insertError.message ?? "Assignation groupe impossible.",
+        metadata: {
+          testSlug: parsed.data.testSlug,
+          groupId: parsed.data.groupId,
+          attempted: rows.length,
+        },
+      });
       return NextResponse.json({ error: insertError.message }, { status: 500 });
     }
     created += chunk.length;
   }
+
+  await recordActivity({
+    admin,
+    action: "normalized_test.assign_group.success",
+    actorUserId: profile.id,
+    orgId: profile.org_id,
+    message: "Test assigne au groupe.",
+    metadata: {
+      testSlug: parsed.data.testSlug,
+      groupId: parsed.data.groupId,
+      created,
+      skipped: studentIds.length - created,
+    },
+  });
 
   return NextResponse.json({
     ok: true,

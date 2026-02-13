@@ -10,6 +10,7 @@ import { PLAN_ENTITLEMENTS } from "@/lib/plans";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
 import { PELZ_PUTTING_SLUG } from "@/lib/normalized-tests/pelz-putting";
 import { PELZ_APPROCHES_SLUG } from "@/lib/normalized-tests/pelz-approches";
+import { recordActivity } from "@/lib/activity-log";
 
 export const runtime = "nodejs";
 
@@ -65,14 +66,41 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (assignmentError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "normalized_test.unassign.failed",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: assignmentError.message ?? "Lecture assignation impossible.",
+      metadata: { assignmentId: parsed.data.assignmentId },
+    });
     return NextResponse.json({ error: assignmentError.message }, { status: 500 });
   }
 
   if (!assignment) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "normalized_test.unassign.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: "Unassign refuse: assignation introuvable.",
+      metadata: { assignmentId: parsed.data.assignmentId },
+    });
     return NextResponse.json({ error: "Assignation introuvable." }, { status: 404 });
   }
 
   if (assignment.org_id !== profile.org_id) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "normalized_test.unassign.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: "Unassign refuse: assignation hors organisation.",
+      metadata: { assignmentId: parsed.data.assignmentId },
+    });
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
@@ -80,6 +108,15 @@ export async function POST(request: Request) {
     const planTier = await loadPersonalPlanTier(admin, profile.id);
     const testAccess = PLAN_ENTITLEMENTS[planTier].tests;
     if (testAccess.scope === "pelz" && !isPelzSlug(assignment.test_slug)) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "normalized_test.unassign.denied",
+        actorUserId: profile.id,
+        orgId: profile.org_id,
+        message: "Unassign refuse: entitlement test insuffisant.",
+        metadata: { assignmentId: parsed.data.assignmentId, testSlug: assignment.test_slug },
+      });
       return NextResponse.json({ error: "Plan Pro requis pour ce test." }, { status: 403 });
     }
   }
@@ -87,6 +124,15 @@ export async function POST(request: Request) {
   if (assignment.status === "finalized") {
     const confirmText = parsed.data.confirmText?.toUpperCase() ?? "";
     if (confirmText !== "SUPPRIMER") {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "normalized_test.unassign.denied",
+        actorUserId: profile.id,
+        orgId: profile.org_id,
+        message: "Unassign refuse: confirmation requise.",
+        metadata: { assignmentId: parsed.data.assignmentId, status: assignment.status },
+      });
       return NextResponse.json(
         { error: "Assignation finalisee: confirmation requise." },
         { status: 409 }
@@ -100,8 +146,26 @@ export async function POST(request: Request) {
     .eq("id", parsed.data.assignmentId);
 
   if (deleteError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "normalized_test.unassign.failed",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: deleteError.message ?? "Suppression assignation impossible.",
+      metadata: { assignmentId: parsed.data.assignmentId, testSlug: assignment.test_slug },
+    });
     return NextResponse.json({ error: deleteError.message }, { status: 500 });
   }
+
+  await recordActivity({
+    admin,
+    action: "normalized_test.unassign.success",
+    actorUserId: profile.id,
+    orgId: profile.org_id,
+    message: "Assignation test retiree.",
+    metadata: { assignmentId: parsed.data.assignmentId, testSlug: assignment.test_slug },
+  });
 
   return NextResponse.json({ ok: true });
 }

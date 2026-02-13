@@ -12,6 +12,7 @@ import { WEDGING_DRAPEAU_COURT_SLUG } from "@/lib/normalized-tests/wedging-drape
 import { isAdminEmail } from "@/lib/admin";
 import { PLAN_ENTITLEMENTS } from "@/lib/plans";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
+import { recordActivity } from "@/lib/activity-log";
 
 export const runtime = "nodejs";
 
@@ -59,6 +60,14 @@ export async function POST(request: Request) {
   }
 
   if (!["owner", "coach", "staff"].includes(profile.role)) {
+    await recordActivity({
+      admin: createSupabaseAdminClient(),
+      level: "warn",
+      action: "normalized_test.assign.denied",
+      actorUserId: userId,
+      orgId: profile.org_id ?? null,
+      message: "Assignation test refusee: role non autorise.",
+    });
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
@@ -69,6 +78,17 @@ export async function POST(request: Request) {
     const planTier = await loadPersonalPlanTier(admin, profile.id);
     const testAccess = PLAN_ENTITLEMENTS[planTier].tests;
     if (testAccess.scope === "pelz" && !isPelzSlug(parsed.data.testSlug)) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "normalized_test.assign.denied",
+        actorUserId: profile.id,
+        orgId: profile.org_id,
+        message: "Assignation test refusee: entitlement plan insuffisant.",
+        metadata: {
+          testSlug: parsed.data.testSlug,
+        },
+      });
       return NextResponse.json({ error: "Plan Pro requis pour ce test." }, { status: 403 });
     }
   }
@@ -82,10 +102,32 @@ export async function POST(request: Request) {
     .eq("org_id", profile.org_id);
 
   if (studentError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "normalized_test.assign.failed",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: studentError.message ?? "Verification des eleves impossible.",
+      metadata: {
+        testSlug: parsed.data.testSlug,
+      },
+    });
     return NextResponse.json({ error: studentError.message }, { status: 500 });
   }
 
   if ((students ?? []).length !== studentIds.length) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "normalized_test.assign.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: "Assignation test refusee: selection eleves invalide.",
+      metadata: {
+        testSlug: parsed.data.testSlug,
+      },
+    });
     return NextResponse.json({ error: "Selection d eleves invalide." }, { status: 400 });
   }
 
@@ -106,8 +148,32 @@ export async function POST(request: Request) {
     .insert(rows);
 
   if (insertError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "normalized_test.assign.failed",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: insertError.message ?? "Assignation test impossible.",
+      metadata: {
+        testSlug: parsed.data.testSlug,
+        studentCount: rows.length,
+      },
+    });
     return NextResponse.json({ error: insertError.message }, { status: 500 });
   }
+
+  await recordActivity({
+    admin,
+    action: "normalized_test.assign.success",
+    actorUserId: profile.id,
+    orgId: profile.org_id,
+    message: "Test assigne aux eleves.",
+    metadata: {
+      testSlug: parsed.data.testSlug,
+      studentCount: rows.length,
+    },
+  });
 
   return NextResponse.json({ ok: true, count: rows.length });
 }

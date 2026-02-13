@@ -13,6 +13,7 @@ import { applyTemplate, loadPromptSection } from "@/lib/promptLoader";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { PLAN_ENTITLEMENTS } from "@/lib/plans";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
+import { recordActivity } from "@/lib/activity-log";
 
 export const runtime = "nodejs";
 
@@ -394,6 +395,12 @@ export async function POST(req: Request) {
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData.user) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "radar_ai.denied",
+      message: "IA radar refusee: session invalide.",
+    });
     return Response.json({ error: "Non autorise." }, { status: 401 });
   }
 
@@ -405,6 +412,13 @@ export async function POST(req: Request) {
     .single();
 
   if (profileError || !profileData?.org_id) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "radar_ai.denied",
+      actorUserId: userId,
+      message: "IA radar refusee: profil introuvable.",
+    });
     return Response.json({ error: "Profil introuvable." }, { status: 403 });
   }
 
@@ -417,12 +431,28 @@ export async function POST(req: Request) {
     .single();
 
   if (orgError || !orgData) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "radar_ai.denied",
+      actorUserId: userId,
+      orgId: profileData.org_id,
+      message: "IA radar refusee: organisation introuvable.",
+    });
     return Response.json({ error: "Organisation introuvable." }, { status: 403 });
   }
 
   const planTier = await loadPersonalPlanTier(admin, userId);
   const entitlements = PLAN_ENTITLEMENTS[planTier];
   if (!entitlements.aiEnabled) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "radar_ai.denied",
+      actorUserId: userId,
+      orgId: orgData.id,
+      message: "IA radar refusee: plan insuffisant.",
+    });
     return Response.json(
       { error: "Plan requis pour les fonctions IA." },
       { status: 403 }
@@ -548,9 +578,24 @@ export async function POST(req: Request) {
     const text = response.output_text?.trim() ?? "";
     try {
       const parsed = JSON.parse(text) as { questions: RadarQuestion[] };
+      await recordActivity({
+        admin,
+        action: "radar_ai.questions.success",
+        actorUserId: userId,
+        orgId: orgData.id,
+        message: "Questions IA radar generees.",
+      });
       await recordUsage("radar_questions", usage, Date.now() - callStartedAt, 200);
       return Response.json(parsed);
     } catch {
+      await recordActivity({
+        admin,
+        level: "error",
+        action: "radar_ai.questions.failed",
+        actorUserId: userId,
+        orgId: orgData.id,
+        message: "Questions IA radar invalides.",
+      });
       await recordUsage(
         "radar_questions",
         usage,
@@ -563,11 +608,27 @@ export async function POST(req: Request) {
   }
 
   if (payload.mode !== "auto") {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "radar_ai.denied",
+      actorUserId: userId,
+      orgId: orgData.id,
+      message: "IA radar refusee: mode invalide.",
+    });
     return Response.json({ error: "mode invalide." }, { status: 400 });
   }
 
   const radarSections = payload.radarSections ?? [];
   if (!radarSections.length) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "radar_ai.denied",
+      actorUserId: userId,
+      orgId: orgData.id,
+      message: "IA radar refusee: aucune section datas.",
+    });
     return Response.json({ error: "Aucune section datas." }, { status: 400 });
   }
 
@@ -578,6 +639,14 @@ export async function POST(req: Request) {
     .in("id", radarFileIds);
 
   if (radarError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "radar_ai.failed",
+      actorUserId: userId,
+      orgId: orgData.id,
+      message: radarError.message ?? "Chargement fichiers datas impossible.",
+    });
     return Response.json({ error: radarError.message }, { status: 500 });
   }
 
@@ -602,6 +671,14 @@ export async function POST(req: Request) {
   }>;
 
   if (!summaries.length) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "radar_ai.denied",
+      actorUserId: userId,
+      orgId: orgData.id,
+      message: "IA radar refusee: analyses indisponibles.",
+    });
     return Response.json({ error: "Analyses datas indisponibles." }, { status: 400 });
   }
 
@@ -759,6 +836,14 @@ export async function POST(req: Request) {
       action = "radar_auto_retry";
     }
     if (!isValidSelection(parsed)) {
+      await recordActivity({
+        admin,
+        level: "error",
+        action: "radar_ai.auto.failed",
+        actorUserId: userId,
+        orgId: orgData.id,
+        message: "Selection graphes IA invalide apres retry.",
+      });
       await recordUsage(
         "radar_auto_retry",
         usage,
@@ -774,9 +859,24 @@ export async function POST(req: Request) {
         { status: 500 }
       );
     }
+    await recordActivity({
+      admin,
+      action: "radar_ai.auto.success",
+      actorUserId: userId,
+      orgId: orgData.id,
+      message: "Selection graphes IA radar generee.",
+    });
     await recordUsage(action, usage, Date.now() - callStartedAt, 200);
     return Response.json(parsed);
   } catch {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "radar_ai.auto.failed",
+      actorUserId: userId,
+      orgId: orgData.id,
+      message: "Reponse IA radar invalide.",
+    });
     await recordUsage(action, usage, Date.now() - callStartedAt, 500, "exception");
     return Response.json({ error: "Reponse IA invalide.", raw: text }, { status: 500 });
   }

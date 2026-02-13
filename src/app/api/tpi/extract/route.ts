@@ -9,6 +9,7 @@ import { applyTemplate, loadPromptSection } from "@/lib/promptLoader";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { PLAN_ENTITLEMENTS } from "@/lib/plans";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
+import { recordActivity } from "@/lib/activity-log";
 
 type ExtractedTest = {
   test_name: string;
@@ -169,6 +170,15 @@ export async function POST(req: Request) {
     .single();
 
   if (reportError || !report) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "tpi.import.denied",
+      actorUserId: userId,
+      entityType: "tpi_report",
+      entityId: reportId,
+      message: "Import TPI refuse: rapport introuvable.",
+    });
     return Response.json({ error: "Rapport TPI introuvable." }, { status: 404 });
   }
 
@@ -179,6 +189,16 @@ export async function POST(req: Request) {
     .single();
 
   if (!profileData || String(profileData.org_id) !== String(report.org_id)) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "tpi.import.denied",
+      actorUserId: userId,
+      orgId: profileData?.org_id ?? null,
+      entityType: "tpi_report",
+      entityId: reportId,
+      message: "Import TPI refuse: acces interdit.",
+    });
     return Response.json({ error: "Acces refuse." }, { status: 403 });
   }
 
@@ -191,6 +211,16 @@ export async function POST(req: Request) {
   const planTier = await loadPersonalPlanTier(admin, userId);
   const entitlements = PLAN_ENTITLEMENTS[planTier];
   if (!isAdmin && !entitlements.tpiEnabled) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "tpi.import.denied",
+      actorUserId: userId,
+      orgId: report.org_id,
+      entityType: "tpi_report",
+      entityId: reportId,
+      message: "Import TPI refuse: plan insuffisant.",
+    });
     return Response.json(
       { error: "Plan requis pour utiliser le profil TPI." },
       { status: 403 }
@@ -202,12 +232,32 @@ export async function POST(req: Request) {
     .download(report.file_url);
 
   if (fileError || !fileData) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "tpi.import.failed",
+      actorUserId: userId,
+      orgId: report.org_id,
+      entityType: "tpi_report",
+      entityId: reportId,
+      message: "Import TPI impossible: fichier introuvable.",
+    });
     await admin.from("tpi_reports").update({ status: "error" }).eq("id", reportId);
     return Response.json({ error: "Fichier TPI introuvable." }, { status: 500 });
   }
 
   const buffer = Buffer.from(await fileData.arrayBuffer());
   if (report.file_type !== "pdf") {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "tpi.import.denied",
+      actorUserId: userId,
+      orgId: report.org_id,
+      entityType: "tpi_report",
+      entityId: reportId,
+      message: "Import TPI refuse: format non PDF.",
+    });
     await admin.from("tpi_reports").update({ status: "error" }).eq("id", reportId);
     return Response.json(
       { error: "Importe uniquement le PDF TPI Pro recu par email." },
@@ -362,20 +412,30 @@ export async function POST(req: Request) {
           { status: 400 }
         );
       }
-    } catch (error) {
-      await admin.from("tpi_reports").update({ status: "error" }).eq("id", reportId);
-      console.error("TPI PDF verify error:", error);
-      await cleanupOpenAiFile();
-      await recordUsage(
-        "tpi_verify",
-        verifyUsage,
-        Date.now() - verifyStartedAt,
-        500,
-        "exception"
-      );
-      return Response.json(
-        { error: "Verification TPI impossible. Reessaie avec le PDF TPI Pro." },
-        { status: 500 }
+  } catch (error) {
+    await admin.from("tpi_reports").update({ status: "error" }).eq("id", reportId);
+    console.error("TPI PDF verify error:", error);
+    await cleanupOpenAiFile();
+    await recordUsage(
+      "tpi_verify",
+      verifyUsage,
+      Date.now() - verifyStartedAt,
+      500,
+      "exception"
+    );
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "tpi.import.failed",
+      actorUserId: userId,
+      orgId: report.org_id,
+      entityType: "tpi_report",
+      entityId: reportId,
+      message: "Verification TPI impossible.",
+    });
+    return Response.json(
+      { error: "Verification TPI impossible. Reessaie avec le PDF TPI Pro." },
+      { status: 500 }
       );
     }
   }
@@ -507,6 +567,16 @@ export async function POST(req: Request) {
     await cleanupOpenAiFile();
     await admin.from("tpi_reports").update({ status: "error" }).eq("id", reportId);
     await recordUsage("tpi_extract", usage, Date.now() - startedAt, 500, "exception");
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "tpi.import.failed",
+      actorUserId: userId,
+      orgId: report.org_id,
+      entityType: "tpi_report",
+      entityId: reportId,
+      message: (error as Error).message ?? "Extraction TPI impossible.",
+    });
     return Response.json(
       { error: (error as Error).message ?? "Erreur TPI." },
       { status: 500 }
@@ -584,6 +654,17 @@ export async function POST(req: Request) {
         oldReports.map((old) => old.id)
       );
   }
+
+  await recordActivity({
+    admin,
+    action: "tpi.import.success",
+    actorUserId: userId,
+    orgId: report.org_id,
+    entityType: "tpi_report",
+    entityId: reportId,
+    message: "Profil TPI importe.",
+    metadata: { testsCount: extractedTests.length },
+  });
 
   return Response.json({
     status: "ready",

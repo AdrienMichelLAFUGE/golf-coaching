@@ -6,6 +6,7 @@ import {
 } from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { createOrgNotifications } from "@/lib/org-notifications";
+import { recordActivity } from "@/lib/activity-log";
 
 const commentSchema = z.object({
   proposalId: z.string().uuid(),
@@ -35,6 +36,13 @@ export async function POST(request: Request) {
     .single();
 
   if (!profile?.org_id) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "proposal.comment.denied",
+      actorUserId: userData.user.id,
+      message: "Commentaire proposition refuse: organisation introuvable.",
+    });
     return NextResponse.json({ error: "Organisation introuvable." }, { status: 403 });
   }
 
@@ -45,6 +53,16 @@ export async function POST(request: Request) {
     .single();
 
   if (!proposal || proposal.org_id !== profile.org_id) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "proposal.comment.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "org_proposal",
+      entityId: parsed.data.proposalId,
+      message: "Commentaire proposition refuse: proposition introuvable.",
+    });
     return NextResponse.json({ error: "Proposition introuvable." }, { status: 404 });
   }
 
@@ -57,6 +75,16 @@ export async function POST(request: Request) {
   ]);
 
   if (insertError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "proposal.comment.failed",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "org_proposal",
+      entityId: proposal.id,
+      message: insertError.message ?? "Ajout commentaire impossible.",
+    });
     return NextResponse.json({ error: insertError.message }, { status: 400 });
   }
 
@@ -65,6 +93,16 @@ export async function POST(request: Request) {
     userIds: [proposal.created_by],
     type: "proposal.comment",
     payload: { proposalId: proposal.id, studentId: proposal.student_id },
+  });
+
+  await recordActivity({
+    admin,
+    action: "proposal.comment.success",
+    actorUserId: profile.id,
+    orgId: profile.org_id,
+    entityType: "org_proposal",
+    entityId: proposal.id,
+    message: "Commentaire ajoute a la proposition.",
   });
 
   return NextResponse.json({ ok: true });

@@ -307,25 +307,38 @@ export default function StudentCreateModal({
         return;
       }
     } else {
-      const personalOrgId = organization?.id ?? profile.active_workspace_id ?? profile.org_id ?? null;
-      if (!personalOrgId) {
-        setError("Organisation introuvable.");
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        setError("Session invalide.");
         setCreating(false);
         return;
       }
 
-      const { error: insertError } = await supabase.from("students").insert([
-        {
-          org_id: personalOrgId,
+      const response = await fetch("/api/students/personal", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
           first_name: firstName,
           last_name: lastName || null,
           email: email || null,
-          playing_hand: playingHand,
-        },
-      ]);
+          playing_hand: playingHand || null,
+        }),
+      });
 
-      if (insertError) {
-        setError(insertError.message);
+      let json: unknown = null;
+      try {
+        json = await response.json();
+      } catch {
+        json = null;
+      }
+      const parsedPayload = CreateStudentResponseSchema.safeParse(json ?? {});
+      const payload = parsedPayload.success ? parsedPayload.data : { error: "Creation impossible." };
+      if (!response.ok) {
+        setError(payload.error ?? "Creation impossible.");
         setCreating(false);
         return;
       }

@@ -6,6 +6,7 @@ import {
 import { resolveEffectivePlanTier } from "@/lib/plans";
 import { stripe } from "@/lib/stripe";
 import { resolveSuccessUrl } from "@/lib/billing";
+import { recordActivity } from "@/lib/activity-log";
 
 export const runtime = "nodejs";
 
@@ -32,6 +33,13 @@ export async function POST(request: Request) {
   }
 
   if (!allowedRoles.has(profile.role)) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "payment.portal.denied",
+      actorUserId: profile.id,
+      message: "Portail facturation refuse: role non autorise.",
+    });
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
@@ -45,10 +53,25 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (orgError || !org) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "payment.portal.denied",
+      actorUserId: profile.id,
+      message: "Portail facturation refuse: organisation personnelle introuvable.",
+    });
     return NextResponse.json({ error: "Organisation personnelle introuvable." }, { status: 403 });
   }
 
   if (org.owner_profile_id !== profile.id) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "payment.portal.denied",
+      actorUserId: profile.id,
+      orgId: org.id,
+      message: "Portail facturation refuse: utilisateur non proprietaire.",
+    });
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
@@ -58,12 +81,28 @@ export async function POST(request: Request) {
     org.plan_tier_override_expires_at
   );
   if (planTier === "enterprise") {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "payment.portal.denied",
+      actorUserId: profile.id,
+      orgId: org.id,
+      message: "Portail facturation refuse: plan enterprise.",
+    });
     return NextResponse.json(
       { error: "Plan Entreprise : contacte le support." },
       { status: 409 }
     );
   }
   if (planTier === "pro" && isOverrideActive) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "payment.portal.denied",
+      actorUserId: profile.id,
+      orgId: org.id,
+      message: "Portail facturation refuse: plan Pro offert par admin.",
+    });
     return NextResponse.json(
       { error: "Plan Pro offert par un admin." },
       { status: 409 }
@@ -71,12 +110,28 @@ export async function POST(request: Request) {
   }
 
   if (!org.stripe_customer_id) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "payment.portal.denied",
+      actorUserId: profile.id,
+      orgId: org.id,
+      message: "Portail facturation refuse: customer Stripe absent.",
+    });
     return NextResponse.json({ error: "Aucun abonnement Stripe actif." }, { status: 400 });
   }
 
   const portal = await stripe.billingPortal.sessions.create({
     customer: org.stripe_customer_id,
     return_url: resolveSuccessUrl(),
+  });
+
+  await recordActivity({
+    admin,
+    action: "payment.portal.success",
+    actorUserId: profile.id,
+    orgId: org.id,
+    message: "Ouverture portail de facturation.",
   });
 
   return NextResponse.json({ url: portal.url });

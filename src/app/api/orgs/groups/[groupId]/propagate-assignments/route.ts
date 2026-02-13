@@ -4,6 +4,7 @@ import {
   createSupabaseServerClientFromRequest,
 } from "@/lib/supabase/server";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
+import { recordActivity } from "@/lib/activity-log";
 
 type Params = { params: { groupId: string } | Promise<{ groupId: string }> };
 
@@ -25,6 +26,13 @@ export async function POST(request: Request, { params }: Params) {
     .single();
 
   if (!profile?.org_id) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "group.propagate_assignments.denied",
+      actorUserId: userData.user.id,
+      message: "Propagation assignations refusee: organisation introuvable.",
+    });
     return NextResponse.json({ error: "Organisation introuvable." }, { status: 403 });
   }
 
@@ -36,12 +44,32 @@ export async function POST(request: Request, { params }: Params) {
     .maybeSingle();
 
   if (!membership || membership.status !== "active") {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "group.propagate_assignments.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "org_group",
+      entityId: groupId,
+      message: "Propagation assignations refusee: membre inactif ou absent.",
+    });
     return buildMembershipError();
   }
 
   if (membership.role !== "admin") {
     const planTier = await loadPersonalPlanTier(admin, profile.id);
     if (planTier === "free") {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "group.propagate_assignments.denied",
+        actorUserId: profile.id,
+        orgId: profile.org_id,
+        entityType: "org_group",
+        entityId: groupId,
+        message: "Propagation assignations refusee: plan Free.",
+      });
       return NextResponse.json(
         { error: "Plan Pro requis pour gerer les groupes." },
         { status: 403 }
@@ -57,6 +85,16 @@ export async function POST(request: Request, { params }: Params) {
     .maybeSingle();
 
   if (!group) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "group.propagate_assignments.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "org_group",
+      entityId: groupId,
+      message: "Propagation assignations refusee: groupe introuvable.",
+    });
     return NextResponse.json({ error: "Groupe introuvable." }, { status: 404 });
   }
 
@@ -95,8 +133,29 @@ export async function POST(request: Request, { params }: Params) {
     .upsert(assignments, { onConflict: "student_id,coach_id", ignoreDuplicates: true });
 
   if (upsertError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "group.propagate_assignments.failed",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "org_group",
+      entityId: groupId,
+      message: upsertError.message ?? "Propagation assignations impossible.",
+    });
     return NextResponse.json({ error: upsertError.message }, { status: 400 });
   }
+
+  await recordActivity({
+    admin,
+    action: "group.propagate_assignments.success",
+    actorUserId: profile.id,
+    orgId: profile.org_id,
+    entityType: "org_group",
+    entityId: groupId,
+    message: "Assignations du groupe propagees.",
+    metadata: { created: assignments.length },
+  });
 
   return NextResponse.json({ ok: true, created: assignments.length });
 }

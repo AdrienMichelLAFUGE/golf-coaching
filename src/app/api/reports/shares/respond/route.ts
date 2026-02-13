@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createSupabaseAdminClient, createSupabaseServerClientFromRequest } from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
+import { recordActivity } from "@/lib/activity-log";
 
 const respondSchema = z.object({
   shareId: z.string().uuid(),
@@ -72,8 +73,30 @@ export async function POST(request: Request) {
       })
       .eq("id", share.id);
     if (rejectError) {
+      await recordActivity({
+        admin,
+        level: "error",
+        action: "report.share.reject_failed",
+        actorUserId: profile.id,
+        orgId: profile.org_id,
+        entityType: "report_share",
+        entityId: share.id,
+        message: rejectError.message ?? "Rejet du partage impossible.",
+      });
       return NextResponse.json({ error: rejectError.message }, { status: 400 });
     }
+    await recordActivity({
+      admin,
+      action: "report.share.rejected",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "report_share",
+      entityId: share.id,
+      message: "Partage de rapport refuse.",
+      metadata: {
+        sourceReportId: share.source_report_id,
+      },
+    });
     return NextResponse.json({ ok: true });
   }
 
@@ -122,6 +145,19 @@ export async function POST(request: Request) {
     .single();
 
   if (copiedStudentError || !copiedStudent?.id) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "report.share.accept_student_copy_failed",
+      actorUserId: profile.id,
+      orgId: targetOrgId,
+      entityType: "report_share",
+      entityId: share.id,
+      message: copiedStudentError?.message ?? "Creation eleve de lecture impossible.",
+      metadata: {
+        sourceReportId: share.source_report_id,
+      },
+    });
     return NextResponse.json(
       { error: copiedStudentError?.message ?? "Creation eleve de lecture impossible." },
       { status: 400 }
@@ -149,6 +185,20 @@ export async function POST(request: Request) {
     .single();
 
   if (copiedReportError || !copiedReport?.id) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "report.share.accept_report_copy_failed",
+      actorUserId: profile.id,
+      orgId: targetOrgId,
+      entityType: "report_share",
+      entityId: share.id,
+      message: copiedReportError?.message ?? "Copie du rapport impossible.",
+      metadata: {
+        sourceReportId: share.source_report_id,
+        copiedStudentId: copiedStudent.id,
+      },
+    });
     return NextResponse.json(
       { error: copiedReportError?.message ?? "Copie du rapport impossible." },
       { status: 400 }
@@ -175,6 +225,20 @@ export async function POST(request: Request) {
       .from("report_sections")
       .insert(copiedSectionsPayload);
     if (copiedSectionsError) {
+      await recordActivity({
+        admin,
+        level: "error",
+        action: "report.share.accept_sections_copy_failed",
+        actorUserId: profile.id,
+        orgId: targetOrgId,
+        entityType: "report_share",
+        entityId: share.id,
+        message: copiedSectionsError.message ?? "Copie des sections impossible.",
+        metadata: {
+          sourceReportId: share.source_report_id,
+          copiedReportId: copiedReport.id,
+        },
+      });
       return NextResponse.json(
         { error: copiedSectionsError.message ?? "Copie des sections impossible." },
         { status: 400 }
@@ -193,8 +257,36 @@ export async function POST(request: Request) {
     .eq("id", share.id);
 
   if (acceptError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "report.share.accept_failed",
+      actorUserId: profile.id,
+      orgId: targetOrgId,
+      entityType: "report_share",
+      entityId: share.id,
+      message: acceptError.message ?? "Acceptation du partage impossible.",
+      metadata: {
+        sourceReportId: share.source_report_id,
+        copiedReportId: copiedReport.id,
+      },
+    });
     return NextResponse.json({ error: acceptError.message }, { status: 400 });
   }
+
+  await recordActivity({
+    admin,
+    action: "report.share.accepted",
+    actorUserId: profile.id,
+    orgId: targetOrgId,
+    entityType: "report_share",
+    entityId: share.id,
+    message: "Partage de rapport accepte.",
+    metadata: {
+      sourceReportId: share.source_report_id,
+      copiedReportId: copiedReport.id,
+    },
+  });
 
   return NextResponse.json({ ok: true, reportId: copiedReport.id });
 }

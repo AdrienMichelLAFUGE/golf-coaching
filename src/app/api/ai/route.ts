@@ -10,6 +10,7 @@ import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { PLAN_ENTITLEMENTS } from "@/lib/plans";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
 import { applyTemplate, loadPromptSection } from "@/lib/promptLoader";
+import { recordActivity } from "@/lib/activity-log";
 
 export const runtime = "nodejs";
 
@@ -512,8 +513,15 @@ export async function POST(request: Request) {
 
     const { data: userData, error: userError } = await supabase.auth.getUser();
     if (userError || !userData.user) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "ai.denied",
+        message: "Action IA refusee: session invalide.",
+      });
       return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
     }
+    const userId = userData.user.id;
 
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
@@ -522,10 +530,25 @@ export async function POST(request: Request) {
       .maybeSingle();
 
     if (profileError || !profile) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "ai.denied",
+        actorUserId: userId,
+        message: "Action IA refusee: profil introuvable.",
+      });
       return NextResponse.json({ error: "Profil introuvable." }, { status: 403 });
     }
 
     if (!["owner", "coach", "staff"].includes(profile.role)) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "ai.denied",
+        actorUserId: userId,
+        orgId: profile.org_id ?? null,
+        message: "Action IA refusee: role non autorise.",
+      });
       return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
     }
 
@@ -538,11 +561,27 @@ export async function POST(request: Request) {
       .maybeSingle();
 
     if (orgError || !org) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "ai.denied",
+        actorUserId: userId,
+        orgId: profile.org_id ?? null,
+        message: "Action IA refusee: organisation introuvable.",
+      });
       return NextResponse.json({ error: "Organisation introuvable." }, { status: 403 });
     }
 
     const parsedPayload = await parseRequestJson(request, aiPayloadSchema);
     if (!parsedPayload.success) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "ai.denied",
+        actorUserId: userId,
+        orgId: org.id,
+        message: "Action IA refusee: payload invalide.",
+      });
       return NextResponse.json(
         { error: "Payload invalide.", details: formatZodError(parsedPayload.error) },
         { status: 422 }
@@ -556,12 +595,28 @@ export async function POST(request: Request) {
     const canUseFullAi = entitlements.aiEnabled;
     if (payload.action === "improve") {
       if (!canUseProofread) {
+        await recordActivity({
+          admin,
+          level: "warn",
+          action: "ai.denied",
+          actorUserId: userId,
+          orgId: org.id,
+          message: "Action IA refusee: plan insuffisant pour relecture.",
+        });
         return NextResponse.json(
           { error: "Plan requis pour la relecture IA." },
           { status: 403 }
         );
       }
     } else if (!canUseFullAi) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "ai.denied",
+        actorUserId: userId,
+        orgId: org.id,
+        message: "Action IA refusee: plan insuffisant.",
+      });
       return NextResponse.json(
         { error: "Plan requis pour les fonctions IA avancees." },
         { status: 403 }
@@ -572,11 +627,27 @@ export async function POST(request: Request) {
       payload.action === "improve" &&
       (!payload.sectionTitle || !payload.sectionContent)
     ) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "ai.denied",
+        actorUserId: userId,
+        orgId: org.id,
+        message: "Action IA refusee: section manquante.",
+      });
       return NextResponse.json({ error: "Section manquante." }, { status: 400 });
     }
 
     if (payload.action === "write") {
       if (!payload.sectionTitle) {
+        await recordActivity({
+          admin,
+          level: "warn",
+          action: "ai.denied",
+          actorUserId: userId,
+          orgId: org.id,
+          message: "Action IA refusee: titre section manquant.",
+        });
         return NextResponse.json(
           { error: "Titre de section manquant." },
           { status: 400 }
@@ -587,6 +658,14 @@ export async function POST(request: Request) {
         section.content?.trim()
       );
       if (!hasNotes && !hasContext) {
+        await recordActivity({
+          admin,
+          level: "warn",
+          action: "ai.denied",
+          actorUserId: userId,
+          orgId: org.id,
+          message: "Action IA refusee: contexte insuffisant.",
+        });
         return NextResponse.json(
           { error: "Ajoute du contenu dans une autre section." },
           { status: 400 }
@@ -598,12 +677,19 @@ export async function POST(request: Request) {
       (payload.action === "summary" || payload.action === "plan") &&
       (!payload.allSections || payload.allSections.length === 0)
     ) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "ai.denied",
+        actorUserId: userId,
+        orgId: org.id,
+        message: "Action IA refusee: contenu manquant.",
+      });
       return NextResponse.json({ error: "Contenu manquant." }, { status: 400 });
     }
 
     const startedAt = Date.now();
     const endpoint = "ai";
-    const userId = userData.user.id;
     const orgId = profile.org_id;
     const recordUsage = async (
       usage?: {
@@ -641,18 +727,50 @@ export async function POST(request: Request) {
 
     if (payload.action === "propagate") {
       if (!payload.sectionTitle || !payload.sectionContent?.trim()) {
+        await recordActivity({
+          admin,
+          level: "warn",
+          action: "ai.denied",
+          actorUserId: userId,
+          orgId,
+          message: "Propagation IA refusee: section source manquante.",
+        });
         return NextResponse.json({ error: "Section source manquante." }, { status: 400 });
       }
       if (!payload.targetSections || payload.targetSections.length === 0) {
+        await recordActivity({
+          admin,
+          level: "warn",
+          action: "ai.denied",
+          actorUserId: userId,
+          orgId,
+          message: "Propagation IA refusee: sections cibles manquantes.",
+        });
         return NextResponse.json({ error: "Aucune section cible." }, { status: 400 });
       }
     }
 
     if (payload.action === "clarify") {
       if (!payload.sectionTitle || !payload.sectionContent?.trim()) {
+        await recordActivity({
+          admin,
+          level: "warn",
+          action: "ai.denied",
+          actorUserId: userId,
+          orgId,
+          message: "Clarification IA refusee: section source manquante.",
+        });
         return NextResponse.json({ error: "Section source manquante." }, { status: 400 });
       }
       if (!payload.targetSections || payload.targetSections.length === 0) {
+        await recordActivity({
+          admin,
+          level: "warn",
+          action: "ai.denied",
+          actorUserId: userId,
+          orgId,
+          message: "Clarification IA refusee: sections cibles manquantes.",
+        });
         return NextResponse.json({ error: "Aucune section cible." }, { status: 400 });
       }
     }
@@ -911,12 +1029,27 @@ export async function POST(request: Request) {
           ? Math.min(1, Math.max(0, clarified.confidence))
           : 0.5;
         await recordUsage(usage, 200);
+        await recordActivity({
+          admin,
+          action: "ai.clarify.success",
+          actorUserId: userId,
+          orgId,
+          message: "Clarification IA generee.",
+        });
         return NextResponse.json({
           confidence,
           questions: clarified.questions ?? [],
         });
       }
       await recordUsage(usage, 502, "exception");
+      await recordActivity({
+        admin,
+        level: "error",
+        action: "ai.clarify.failed",
+        actorUserId: userId,
+        orgId,
+        message: "Clarification IA invalide (JSON).",
+      });
       return NextResponse.json({ error: "JSON invalide." }, { status: 502 });
     }
 
@@ -924,6 +1057,13 @@ export async function POST(request: Request) {
       const axes = extractAxes(response);
       if (axes) {
         await recordUsage(usage, 200);
+        await recordActivity({
+          admin,
+          action: "ai.axes.success",
+          actorUserId: userId,
+          orgId,
+          message: "Axes IA generes.",
+        });
         return NextResponse.json({ axes: axes.axes ?? [] });
       }
 
@@ -955,6 +1095,13 @@ export async function POST(request: Request) {
       if (retryAxes) {
         usage = retry.usage ?? usage;
         await recordUsage(usage, 200);
+        await recordActivity({
+          admin,
+          action: "ai.axes.success",
+          actorUserId: userId,
+          orgId,
+          message: "Axes IA generes apres retry.",
+        });
         return NextResponse.json({ axes: retryAxes.axes ?? [] });
       }
 
@@ -969,6 +1116,14 @@ export async function POST(request: Request) {
       });
 
       await recordUsage(usage, 502, "exception");
+      await recordActivity({
+        admin,
+        level: "error",
+        action: "ai.axes.failed",
+        actorUserId: userId,
+        orgId,
+        message: "Axes IA invalides (JSON).",
+      });
       return NextResponse.json({ error: "JSON invalide." }, { status: 502 });
     }
 
@@ -976,6 +1131,13 @@ export async function POST(request: Request) {
       const suggestions = extractSuggestions(response);
       if (suggestions) {
         await recordUsage(usage, 200);
+        await recordActivity({
+          admin,
+          action: "ai.propagate.success",
+          actorUserId: userId,
+          orgId,
+          message: "Propagation IA generee.",
+        });
         return NextResponse.json({ suggestions });
       }
 
@@ -999,6 +1161,13 @@ export async function POST(request: Request) {
       if (retrySuggestions) {
         usage = retry.usage ?? usage;
         await recordUsage(usage, 200);
+        await recordActivity({
+          admin,
+          action: "ai.propagate.success",
+          actorUserId: userId,
+          orgId,
+          message: "Propagation IA generee apres retry.",
+        });
         return NextResponse.json({ suggestions: retrySuggestions });
       }
 
@@ -1014,6 +1183,14 @@ export async function POST(request: Request) {
       });
 
       await recordUsage(usage, 502, "exception");
+      await recordActivity({
+        admin,
+        level: "error",
+        action: "ai.propagate.failed",
+        actorUserId: userId,
+        orgId,
+        message: "Propagation IA invalide (JSON).",
+      });
       return NextResponse.json({ error: "JSON invalide." }, { status: 502 });
     }
 
@@ -1148,14 +1325,37 @@ export async function POST(request: Request) {
 
     if (!text) {
       await recordUsage(usage, 502, "exception");
+      await recordActivity({
+        admin,
+        level: "error",
+        action: "ai.failed",
+        actorUserId: userId,
+        orgId,
+        message: "Action IA echouee: reponse vide.",
+      });
       return NextResponse.json({ error: "Empty response." }, { status: 502 });
     }
 
     if (text.startsWith("Refus:")) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "ai.denied",
+        actorUserId: userId,
+        orgId,
+        message: "Action IA refusee par le modele.",
+      });
       return NextResponse.json({ error: text }, { status: 403 });
     }
 
     await recordUsage(usage, 200);
+    await recordActivity({
+      admin,
+      action: "ai.success",
+      actorUserId: userId,
+      orgId,
+      message: `Action IA executee: ${payload.action}.`,
+    });
     return NextResponse.json({
       text: stripLeadingTitle(text, payload.sectionTitle),
     });
@@ -1164,6 +1364,13 @@ export async function POST(request: Request) {
     if (recordFailure) {
       await recordFailure(500, resolveErrorType(error));
     }
+    const admin = createSupabaseAdminClient();
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "ai.failed",
+      message: "Action IA en erreur serveur.",
+    });
     return NextResponse.json({ error: "Erreur IA." }, { status: 500 });
   }
 }

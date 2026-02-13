@@ -7,6 +7,7 @@ import {
 } from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { planTierSchema } from "@/lib/plans";
+import { recordActivity } from "@/lib/activity-log";
 
 export const runtime = "nodejs";
 
@@ -216,6 +217,14 @@ export async function PATCH(request: Request) {
 
   const updates: Record<string, unknown> = {};
   if (typeof payload.plan_tier === "string") {
+    await recordActivity({
+      admin: auth.admin,
+      level: "warn",
+      action: "admin.coach.update.denied",
+      actorUserId: auth.userId ?? null,
+      orgId: orgId ?? null,
+      message: "Modification coach refusee: plan_tier direct interdit.",
+    });
     return NextResponse.json(
       { error: "Plan gere via Stripe. Modification interdite." },
       { status: 403 }
@@ -248,6 +257,14 @@ export async function PATCH(request: Request) {
   }
 
   if (Object.keys(updates).length === 0) {
+    await recordActivity({
+      admin: auth.admin,
+      level: "warn",
+      action: "admin.coach.update.denied",
+      actorUserId: auth.userId ?? null,
+      orgId: orgId ?? null,
+      message: "Modification coach refusee: aucune mise a jour.",
+    });
     return NextResponse.json({ error: "No updates." }, { status: 400 });
   }
 
@@ -258,6 +275,14 @@ export async function PATCH(request: Request) {
     .single();
 
   if (orgDataError || !orgData) {
+    await recordActivity({
+      admin: auth.admin,
+      level: "warn",
+      action: "admin.coach.update.denied",
+      actorUserId: auth.userId ?? null,
+      orgId: orgId ?? null,
+      message: "Modification coach refusee: organisation introuvable.",
+    });
     return NextResponse.json({ error: "Organisation introuvable." }, { status: 404 });
   }
 
@@ -267,6 +292,14 @@ export async function PATCH(request: Request) {
     .eq("id", orgId);
 
   if (updateError) {
+    await recordActivity({
+      admin: auth.admin,
+      level: "error",
+      action: "admin.coach.update.failed",
+      actorUserId: auth.userId ?? null,
+      orgId,
+      message: updateError.message ?? "Modification coach impossible.",
+    });
     return NextResponse.json({ error: updateError.message }, { status: 500 });
   }
 
@@ -278,10 +311,28 @@ export async function PATCH(request: Request) {
         .eq("id", orgData.owner_profile_id);
 
       if (premiumError) {
+        await recordActivity({
+          admin: auth.admin,
+          level: "error",
+          action: "admin.coach.update.failed",
+          actorUserId: auth.userId ?? null,
+          orgId,
+          message: premiumError.message ?? "Synchronisation premium profil impossible.",
+        });
         return NextResponse.json({ error: premiumError.message }, { status: 500 });
       }
     }
   }
+
+  await recordActivity({
+    admin: auth.admin,
+    action: "admin.coach.update.success",
+    actorUserId: auth.userId ?? null,
+    orgId,
+    entityType: "organization",
+    entityId: orgId,
+    message: "Parametres coach/orga modifies par admin.",
+  });
 
   return NextResponse.json({ ok: true });
 }
@@ -300,6 +351,15 @@ export async function DELETE(request: Request) {
 
   const coachId = parsed.data.coachId.trim();
   if (auth.userId && coachId === auth.userId) {
+    await recordActivity({
+      admin: auth.admin,
+      level: "warn",
+      action: "admin.coach.delete.denied",
+      actorUserId: auth.userId,
+      entityType: "profile",
+      entityId: coachId,
+      message: "Suppression coach refusee: auto suppression.",
+    });
     return NextResponse.json(
       { error: "Impossible de supprimer votre compte." },
       { status: 400 }
@@ -312,6 +372,15 @@ export async function DELETE(request: Request) {
     .eq("uploaded_by", coachId);
 
   if (tpiCleanupError) {
+    await recordActivity({
+      admin: auth.admin,
+      level: "error",
+      action: "admin.coach.delete.failed",
+      actorUserId: auth.userId ?? null,
+      entityType: "profile",
+      entityId: coachId,
+      message: tpiCleanupError.message ?? "Nettoyage TPI impossible.",
+    });
     return NextResponse.json({ error: tpiCleanupError.message }, { status: 500 });
   }
 
@@ -323,11 +392,29 @@ export async function DELETE(request: Request) {
       .eq("id", coachId);
 
     if (profileError) {
+      await recordActivity({
+        admin: auth.admin,
+        level: "error",
+        action: "admin.coach.delete.failed",
+        actorUserId: auth.userId ?? null,
+        entityType: "profile",
+        entityId: coachId,
+        message: profileError.message ?? "Suppression profil impossible.",
+      });
       return NextResponse.json({ error: profileError.message }, { status: 500 });
     }
 
     const { error: retryError } = await auth.admin.auth.admin.deleteUser(coachId);
     if (retryError) {
+      await recordActivity({
+        admin: auth.admin,
+        level: "error",
+        action: "admin.coach.delete.failed",
+        actorUserId: auth.userId ?? null,
+        entityType: "profile",
+        entityId: coachId,
+        message: retryError.message ?? "Suppression auth impossible.",
+      });
       return NextResponse.json({ error: retryError.message }, { status: 400 });
     }
   } else {
@@ -337,9 +424,27 @@ export async function DELETE(request: Request) {
       .eq("id", coachId);
 
     if (profileError) {
+      await recordActivity({
+        admin: auth.admin,
+        level: "error",
+        action: "admin.coach.delete.failed",
+        actorUserId: auth.userId ?? null,
+        entityType: "profile",
+        entityId: coachId,
+        message: profileError.message ?? "Suppression profil impossible.",
+      });
       return NextResponse.json({ error: profileError.message }, { status: 500 });
     }
   }
+
+  await recordActivity({
+    admin: auth.admin,
+    action: "admin.coach.delete.success",
+    actorUserId: auth.userId ?? null,
+    entityType: "profile",
+    entityId: coachId,
+    message: "Coach supprime par admin.",
+  });
 
   return NextResponse.json({ ok: true });
 }

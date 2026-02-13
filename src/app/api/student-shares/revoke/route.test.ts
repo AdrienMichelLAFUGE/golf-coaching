@@ -4,6 +4,7 @@ jest.mock("server-only", () => ({}));
 
 jest.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClientFromRequest: jest.fn(),
+  createSupabaseAdminClient: jest.fn(),
 }));
 
 type QueryResult = { data: unknown; error?: { message?: string } | null };
@@ -48,10 +49,13 @@ const buildSelectMaybeSingle = (result: QueryResult) => ({
 describe("POST /api/student-shares/revoke", () => {
   const serverMocks = jest.requireMock("@/lib/supabase/server") as {
     createSupabaseServerClientFromRequest: jest.Mock;
+    createSupabaseAdminClient: jest.Mock;
   };
 
   beforeEach(() => {
     serverMocks.createSupabaseServerClientFromRequest.mockReset();
+    serverMocks.createSupabaseAdminClient.mockReset();
+    serverMocks.createSupabaseAdminClient.mockReturnValue({});
   });
 
   it("blocks revoke when viewer has no permission", async () => {

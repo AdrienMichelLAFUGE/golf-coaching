@@ -7,12 +7,13 @@ import {
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
 import { createOrgNotifications } from "@/lib/org-notifications";
+import { recordActivity } from "@/lib/activity-log";
 
 const studentSchema = z.object({
   first_name: z.string().min(1),
-  last_name: z.string().optional(),
-  email: z.string().email().optional().or(z.literal("")),
-  playing_hand: z.enum(["right", "left"]).optional().or(z.literal("")),
+  last_name: z.string().optional().nullable(),
+  email: z.string().email().optional().nullable().or(z.literal("")),
+  playing_hand: z.enum(["right", "left"]).optional().nullable().or(z.literal("")),
   coach_ids: z.array(z.string().uuid()).optional(),
 });
 
@@ -39,6 +40,13 @@ export async function POST(request: Request) {
     .single();
 
   if (!profile?.org_id) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "student.create.denied",
+      actorUserId: userData.user.id,
+      message: "Creation eleve refusee: organisation active introuvable.",
+    });
     return NextResponse.json({ error: "Organisation introuvable." }, { status: 403 });
   }
 
@@ -50,11 +58,27 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (!membership || membership.status !== "active") {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "student.create.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: "Creation eleve refusee: membre inactif ou absent.",
+    });
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
   const planTier = await loadPersonalPlanTier(admin, profile.id);
   if (planTier === "free") {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "student.create.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: "Creation eleve refusee: plan Free en organisation.",
+    });
     return NextResponse.json(
       { error: "Lecture seule: plan Free en organisation." },
       { status: 403 }
@@ -91,6 +115,20 @@ export async function POST(request: Request) {
         .maybeSingle();
 
       if (!ownerAdmin?.user_id) {
+        await recordActivity({
+          admin,
+          level: "warn",
+          action: "student.create.pending_owner_missing_admin",
+          actorUserId: profile.id,
+          orgId: profile.org_id,
+          entityType: "student",
+          entityId: ownerStudent.id,
+          message: "Demande cross-org impossible: aucun admin actif proprietaire.",
+          metadata: {
+            email: normalizedEmail,
+            ownerOrgId: ownerStudent.org_id,
+          },
+        });
         return NextResponse.json(
           { error: "Aucun admin actif trouve pour l organisation proprietaire." },
           { status: 409 }
@@ -134,6 +172,20 @@ export async function POST(request: Request) {
         .single();
 
       if (proposalError || !proposal?.id) {
+        await recordActivity({
+          admin,
+          level: "error",
+          action: "student.create.pending_request_failed",
+          actorUserId: profile.id,
+          orgId: profile.org_id,
+          entityType: "student",
+          entityId: ownerStudent.id,
+          message: proposalError?.message ?? "Creation de demande cross-org impossible.",
+          metadata: {
+            email: normalizedEmail,
+            ownerOrgId: ownerStudent.org_id,
+          },
+        });
         return NextResponse.json(
           { error: proposalError?.message ?? "Creation de la demande impossible." },
           { status: 400 }
@@ -148,6 +200,21 @@ export async function POST(request: Request) {
           proposalId: proposal.id,
           studentId: ownerStudent.id,
           requesterOrgId: profile.org_id,
+        },
+      });
+
+      await recordActivity({
+        admin,
+        action: "student.create.pending_owner_approval",
+        actorUserId: profile.id,
+        orgId: profile.org_id,
+        entityType: "student",
+        entityId: ownerStudent.id,
+        message: "Demande envoyee a l admin proprietaire pour ajout cross-organisation.",
+        metadata: {
+          email: normalizedEmail,
+          ownerOrgId: ownerStudent.org_id,
+          proposalId: proposal.id,
         },
       });
 
@@ -175,6 +242,17 @@ export async function POST(request: Request) {
     .single();
 
   if (insertError || !student) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "student.create.failed",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: insertError?.message ?? "Creation eleve impossible.",
+      metadata: {
+        email: normalizedEmail || null,
+      },
+    });
     return NextResponse.json(
       { error: insertError?.message ?? "Creation impossible." },
       { status: 400 }
@@ -207,9 +285,33 @@ export async function POST(request: Request) {
       .from("student_assignments")
       .insert(assignmentsPayload);
     if (assignmentError) {
+      await recordActivity({
+        admin,
+        level: "error",
+        action: "student.create.assignment_failed",
+        actorUserId: profile.id,
+        orgId: profile.org_id,
+        entityType: "student",
+        entityId: student.id,
+        message: assignmentError.message ?? "Assignation des coachs impossible.",
+      });
       return NextResponse.json({ error: assignmentError.message }, { status: 400 });
     }
   }
+
+  await recordActivity({
+    admin,
+    action: "student.create.success",
+    actorUserId: profile.id,
+    orgId: profile.org_id,
+    entityType: "student",
+    entityId: student.id,
+    message: "Eleve cree dans l organisation.",
+    metadata: {
+      email: normalizedEmail || null,
+      assignedCoachCount: validCoachIds.length,
+    },
+  });
 
   return NextResponse.json({ ok: true, studentId: student.id });
 }

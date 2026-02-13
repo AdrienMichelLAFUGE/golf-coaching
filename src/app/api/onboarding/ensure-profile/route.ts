@@ -3,6 +3,7 @@ import {
   createSupabaseAdminClient,
   createSupabaseServerClientFromRequest,
 } from "@/lib/supabase/server";
+import { recordActivity } from "@/lib/activity-log";
 
 type StudentRow = {
   id: string;
@@ -208,12 +209,18 @@ export async function POST(request: Request) {
   }
 
   const user = userData.user;
+  const admin = createSupabaseAdminClient();
   const email = user.email?.trim();
   if (!email) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "auth.login.denied",
+      actorUserId: user.id,
+      message: "Connexion refusee: email introuvable.",
+    });
     return NextResponse.json({ error: "Email introuvable." }, { status: 400 });
   }
-
-  const admin = createSupabaseAdminClient();
 
   const { data: profile } = await admin
     .from("profiles")
@@ -284,6 +291,18 @@ export async function POST(request: Request) {
         .update({ active_workspace_id: profile.org_id })
         .eq("id", profile.id);
     }
+    await recordActivity({
+      admin,
+      action: "auth.login.success",
+      actorUserId: profile.id,
+      orgId: personalWorkspaceId ?? profile.active_workspace_id ?? profile.org_id ?? null,
+      entityType: "profile",
+      entityId: profile.id,
+      message: "Connexion reussie.",
+      metadata: {
+        role: profile.role,
+      },
+    });
     return NextResponse.json({ ok: true, role: profile.role });
   }
 
@@ -309,11 +328,30 @@ export async function POST(request: Request) {
 
     await linkStudentAccounts(admin, user.id, students);
     await ensurePersonalWorkspace(admin, user.id, fullName || null);
+    await recordActivity({
+      admin,
+      action: "auth.login.success",
+      actorUserId: user.id,
+      orgId: primaryStudent.org_id,
+      entityType: "profile",
+      entityId: user.id,
+      message: "Connexion reussie.",
+      metadata: {
+        role: "student",
+      },
+    });
     return NextResponse.json({ ok: true, role: "student" });
   }
 
   const roleHint = String(user.user_metadata?.role ?? "").toLowerCase();
   if (roleHint !== "coach" && roleHint !== "owner") {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "auth.login.denied",
+      actorUserId: user.id,
+      message: "Connexion refusee: role non autorise.",
+    });
     return NextResponse.json(
       { error: "Acces reserve aux comptes invites." },
       { status: 403 }
@@ -391,6 +429,19 @@ export async function POST(request: Request) {
     email,
     userId: user.id,
     targetOrgId: personalWorkspaceId,
+  });
+
+  await recordActivity({
+    admin,
+    action: "auth.login.success",
+    actorUserId: user.id,
+    orgId: personalWorkspaceId,
+    entityType: "profile",
+    entityId: user.id,
+    message: "Connexion reussie.",
+    metadata: {
+      role: roleHint === "owner" ? "owner" : "coach",
+    },
   });
 
   return NextResponse.json({

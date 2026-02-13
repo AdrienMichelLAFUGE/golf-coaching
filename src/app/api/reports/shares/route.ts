@@ -8,6 +8,7 @@ import {
 } from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { buildSharedReportPdf, findAuthUserByEmail } from "@/lib/report-share";
+import { recordActivity } from "@/lib/activity-log";
 
 const shareReportSchema = z.object({
   reportId: z.string().uuid(),
@@ -149,6 +150,19 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (existingPending?.id) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "report.share.duplicate_pending",
+      actorUserId: senderProfile.id,
+      orgId: sourceReport.org_id,
+      entityType: "report",
+      entityId: sourceReport.id,
+      message: "Partage deja en attente pour cet email.",
+      metadata: {
+        recipientEmail: normalizedRecipientEmail,
+      },
+    });
     return NextResponse.json(
       { error: "Une demande de partage est deja en attente pour cet email." },
       { status: 409 }
@@ -207,11 +221,38 @@ export async function POST(request: Request) {
     ]);
 
     if (shareInsertError) {
+      await recordActivity({
+        admin,
+        level: "error",
+        action: "report.share.in_app_failed",
+        actorUserId: senderProfile.id,
+        orgId: sourceReport.org_id,
+        entityType: "report",
+        entityId: sourceReport.id,
+        message: shareInsertError.message ?? "Creation de la demande impossible.",
+        metadata: {
+          recipientEmail: normalizedRecipientEmail,
+        },
+      });
       return NextResponse.json(
         { error: shareInsertError.message ?? "Creation de la demande impossible." },
         { status: 400 }
       );
     }
+
+    await recordActivity({
+      admin,
+      action: "report.share.in_app",
+      actorUserId: senderProfile.id,
+      orgId: sourceReport.org_id,
+      entityType: "report",
+      entityId: sourceReport.id,
+      message: "Demande de partage envoyee en in-app.",
+      metadata: {
+        recipientEmail: normalizedRecipientEmail,
+        recipientUserId: targetProfile.id,
+      },
+    });
 
     return NextResponse.json({
       ok: true,
@@ -261,6 +302,19 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("[report-share] email delivery failed:", error);
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "report.share.email_failed",
+      actorUserId: senderProfile.id,
+      orgId: sourceReport.org_id,
+      entityType: "report",
+      entityId: sourceReport.id,
+      message: "Envoi email impossible.",
+      metadata: {
+        recipientEmail: normalizedRecipientEmail,
+      },
+    });
     return NextResponse.json(
       { error: "Envoi email impossible pour ce destinataire." },
       { status: 502 }
@@ -285,11 +339,37 @@ export async function POST(request: Request) {
   ]);
 
   if (emailedShareError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "report.share.email_log_failed",
+      actorUserId: senderProfile.id,
+      orgId: sourceReport.org_id,
+      entityType: "report",
+      entityId: sourceReport.id,
+      message: emailedShareError.message ?? "Enregistrement du partage impossible.",
+      metadata: {
+        recipientEmail: normalizedRecipientEmail,
+      },
+    });
     return NextResponse.json(
       { error: emailedShareError.message ?? "Enregistrement du partage impossible." },
       { status: 400 }
     );
   }
+
+  await recordActivity({
+    admin,
+    action: "report.share.email",
+    actorUserId: senderProfile.id,
+    orgId: sourceReport.org_id,
+    entityType: "report",
+    entityId: sourceReport.id,
+    message: "Rapport partage par email externe.",
+    metadata: {
+      recipientEmail: normalizedRecipientEmail,
+    },
+  });
 
   return NextResponse.json({
     ok: true,

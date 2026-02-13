@@ -9,6 +9,7 @@ import {
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { PLAN_ENTITLEMENTS } from "@/lib/plans";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
+import { recordActivity } from "@/lib/activity-log";
 
 export const runtime = "nodejs";
 
@@ -238,10 +239,29 @@ export async function POST(req: Request) {
     .single();
 
   if (radarError || !radarFile) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "radar.import.confirm.denied",
+      actorUserId: userId,
+      entityType: "radar_file",
+      entityId: radarFileId,
+      message: "Validation import datas refusee: fichier introuvable.",
+    });
     return Response.json({ error: "Fichier datas introuvable." }, { status: 404 });
   }
 
   if (radarFile.status === "processing") {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "radar.import.confirm.denied",
+      actorUserId: userId,
+      orgId: radarFile.org_id,
+      entityType: "radar_file",
+      entityId: radarFile.id,
+      message: "Validation import datas refusee: extraction en cours.",
+    });
     return Response.json(
       { error: "Extraction en cours, reessayez plus tard." },
       { status: 409 }
@@ -255,12 +275,32 @@ export async function POST(req: Request) {
     .single();
 
   if (!profileData || String(profileData.org_id) !== String(radarFile.org_id)) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "radar.import.confirm.denied",
+      actorUserId: userId,
+      orgId: profileData?.org_id ?? null,
+      entityType: "radar_file",
+      entityId: radarFile.id,
+      message: "Validation import datas refusee: acces interdit.",
+    });
     return Response.json({ error: "Acces refuse." }, { status: 403 });
   }
 
   const planTier = await loadPersonalPlanTier(admin, userId);
   const entitlements = PLAN_ENTITLEMENTS[planTier];
   if (!isAdmin && !entitlements.dataExtractEnabled) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "radar.import.confirm.denied",
+      actorUserId: userId,
+      orgId: radarFile.org_id,
+      entityType: "radar_file",
+      entityId: radarFile.id,
+      message: "Validation import datas refusee: plan insuffisant.",
+    });
     return Response.json(
       { error: "Plan requis pour l extraction de datas." },
       { status: 403 }
@@ -338,8 +378,28 @@ export async function POST(req: Request) {
     .eq("id", radarFileId);
 
   if (updateError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "radar.import.confirm.failed",
+      actorUserId: userId,
+      orgId: radarFile.org_id,
+      entityType: "radar_file",
+      entityId: radarFile.id,
+      message: updateError.message ?? "Validation import datas impossible.",
+    });
     return Response.json({ error: updateError.message }, { status: 500 });
   }
+
+  await recordActivity({
+    admin,
+    action: "radar.import.confirm.success",
+    actorUserId: userId,
+    orgId: radarFile.org_id,
+    entityType: "radar_file",
+    entityId: radarFile.id,
+    message: "Import datas valide et pret.",
+  });
 
   return Response.json({ ok: true });
 }

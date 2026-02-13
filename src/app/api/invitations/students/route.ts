@@ -7,6 +7,7 @@ import {
 } from "@/lib/supabase/server";
 import { env } from "@/env";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
+import { recordActivity } from "@/lib/activity-log";
 
 const invitationSchema = z.object({
   studentId: z.string().min(1),
@@ -125,6 +126,20 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (existingProfile && existingProfile.role !== "student") {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "student.invite.blocked",
+      actorUserId: userData.user.id,
+      orgId: profile.org_id,
+      entityType: "student",
+      entityId: student.id,
+      message: "Invitation bloquee: email deja associe a un compte coach.",
+      metadata: {
+        studentEmail: student.email,
+        targetUserId: userId,
+      },
+    });
     return NextResponse.json(
       { error: "Cet email correspond deja a un compte coach." },
       { status: 409 }
@@ -195,6 +210,24 @@ export async function POST(request: Request) {
       .update({ activated_at: new Date().toISOString() })
       .eq("id", student.id);
   }
+
+  await recordActivity({
+    admin,
+    action: "student.invite.success",
+    actorUserId: userData.user.id,
+    orgId: profile.org_id,
+    entityType: "student",
+    entityId: student.id,
+    message: invited
+      ? "Invitation eleve envoyee."
+      : "Eleve existant relie a son compte.",
+    metadata: {
+      studentEmail: student.email,
+      invited,
+      emailSent,
+      targetUserId: userId,
+    },
+  });
 
   return NextResponse.json({
     ok: true,

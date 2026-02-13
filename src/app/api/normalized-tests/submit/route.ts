@@ -5,6 +5,7 @@ import {
   createSupabaseServerClientFromRequest,
 } from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
+import { recordActivity } from "@/lib/activity-log";
 import {
   PELZ_PUTTING_SLUG,
   type PelzResultValue,
@@ -114,10 +115,17 @@ export async function POST(request: Request) {
   }
 
   const supabase = createSupabaseServerClientFromRequest(request);
+  const admin = createSupabaseAdminClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();
   const userId = userData.user?.id;
 
   if (userError || !userId) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "normalized_test.submit.denied",
+      message: "Soumission test refusee: session invalide.",
+    });
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
@@ -128,10 +136,24 @@ export async function POST(request: Request) {
     .single();
 
   if (profileError || !profile) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "normalized_test.submit.denied",
+      actorUserId: userId,
+      message: "Soumission test refusee: profil introuvable.",
+    });
     return NextResponse.json({ error: "Profil introuvable." }, { status: 403 });
   }
 
   if (profile.role !== "student") {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "normalized_test.submit.denied",
+      actorUserId: userId,
+      message: "Soumission test refusee: role non eleve.",
+    });
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
@@ -141,6 +163,13 @@ export async function POST(request: Request) {
     .eq("user_id", userId);
 
   if (linkedError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "normalized_test.submit.failed",
+      actorUserId: userId,
+      message: linkedError.message ?? "Chargement eleves lies impossible.",
+    });
     return NextResponse.json({ error: linkedError.message }, { status: 403 });
   }
 
@@ -149,10 +178,15 @@ export async function POST(request: Request) {
   );
 
   if (linkedStudentIds.size === 0) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "normalized_test.submit.denied",
+      actorUserId: userId,
+      message: "Soumission test refusee: eleve introuvable.",
+    });
     return NextResponse.json({ error: "Eleve introuvable." }, { status: 403 });
   }
-
-  const admin = createSupabaseAdminClient();
   const { data: assignment, error: assignmentError } = await admin
     .from("normalized_test_assignments")
     .select("id, student_id, test_slug, status, started_at")
@@ -160,10 +194,28 @@ export async function POST(request: Request) {
     .single();
 
   if (assignmentError || !assignment) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "normalized_test.submit.denied",
+      actorUserId: userId,
+      entityType: "normalized_test_assignment",
+      entityId: parsed.data.assignmentId,
+      message: "Soumission test refusee: assignment introuvable.",
+    });
     return NextResponse.json({ error: "Test introuvable." }, { status: 404 });
   }
 
   if (!linkedStudentIds.has(assignment.student_id)) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "normalized_test.submit.denied",
+      actorUserId: userId,
+      entityType: "normalized_test_assignment",
+      entityId: assignment.id,
+      message: "Soumission test refusee: assignment non lie a l eleve.",
+    });
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
@@ -213,10 +265,28 @@ export async function POST(request: Request) {
     testConfigBySlug[assignment.test_slug as keyof typeof testConfigBySlug];
 
   if (!testConfig) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "normalized_test.submit.denied",
+      actorUserId: userId,
+      entityType: "normalized_test_assignment",
+      entityId: assignment.id,
+      message: "Soumission test refusee: test non supporte.",
+    });
     return NextResponse.json({ error: "Test non supporte." }, { status: 400 });
   }
 
   if (assignment.status === "finalized") {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "normalized_test.submit.denied",
+      actorUserId: userId,
+      entityType: "normalized_test_assignment",
+      entityId: assignment.id,
+      message: "Soumission test refusee: test deja finalise.",
+    });
     return NextResponse.json({ error: "Test deja finalise." }, { status: 409 });
   }
 
@@ -334,6 +404,15 @@ export async function POST(request: Request) {
     .eq("assignment_id", assignment.id);
 
   if (deleteError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "normalized_test.submit.failed",
+      actorUserId: userId,
+      entityType: "normalized_test_assignment",
+      entityId: assignment.id,
+      message: deleteError.message ?? "Suppression tentatives impossible.",
+    });
     return NextResponse.json({ error: deleteError.message }, { status: 500 });
   }
 
@@ -343,6 +422,15 @@ export async function POST(request: Request) {
       .insert(attemptRows);
 
     if (insertError) {
+      await recordActivity({
+        admin,
+        level: "error",
+        action: "normalized_test.submit.failed",
+        actorUserId: userId,
+        entityType: "normalized_test_assignment",
+        entityId: assignment.id,
+        message: insertError.message ?? "Insertion tentatives impossible.",
+      });
       return NextResponse.json({ error: insertError.message }, { status: 500 });
     }
   }
@@ -405,8 +493,32 @@ export async function POST(request: Request) {
     .eq("id", assignment.id);
 
   if (updateError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "normalized_test.submit.failed",
+      actorUserId: userId,
+      entityType: "normalized_test_assignment",
+      entityId: assignment.id,
+      message: updateError.message ?? "Mise a jour assignment impossible.",
+    });
     return NextResponse.json({ error: updateError.message }, { status: 500 });
   }
+
+  await recordActivity({
+    admin,
+    action: finalize
+      ? "normalized_test.submit.finalized"
+      : "normalized_test.submit.saved",
+    actorUserId: userId,
+    entityType: "normalized_test_assignment",
+    entityId: assignment.id,
+    message: finalize ? "Test finalise." : "Brouillon test enregistre.",
+    metadata: {
+      attemptsCount: attemptRows.length,
+      testSlug: assignment.test_slug,
+    },
+  });
 
   return NextResponse.json({
     ok: true,

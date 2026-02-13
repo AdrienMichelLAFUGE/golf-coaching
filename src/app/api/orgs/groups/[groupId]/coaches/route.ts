@@ -6,6 +6,7 @@ import {
 } from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
+import { recordActivity } from "@/lib/activity-log";
 
 const assignSchema = z.object({
   coachIds: z.array(z.string().uuid()),
@@ -39,6 +40,13 @@ export async function POST(request: Request, { params }: Params) {
     .single();
 
   if (!profile?.org_id) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "group.assign_coaches.denied",
+      actorUserId: userData.user.id,
+      message: "Assignation coachs groupe refusee: organisation introuvable.",
+    });
     return NextResponse.json({ error: "Organisation introuvable." }, { status: 403 });
   }
 
@@ -50,12 +58,32 @@ export async function POST(request: Request, { params }: Params) {
     .maybeSingle();
 
   if (!membership || membership.status !== "active") {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "group.assign_coaches.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "org_group",
+      entityId: groupId,
+      message: "Assignation coachs groupe refusee: membre inactif ou absent.",
+    });
     return buildMembershipError();
   }
 
   if (membership.role !== "admin") {
     const planTier = await loadPersonalPlanTier(admin, profile.id);
     if (planTier === "free") {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "group.assign_coaches.denied",
+        actorUserId: profile.id,
+        orgId: profile.org_id,
+        entityType: "org_group",
+        entityId: groupId,
+        message: "Assignation coachs groupe refusee: plan Free.",
+      });
       return NextResponse.json(
         { error: "Plan Pro requis pour gerer les groupes." },
         { status: 403 }
@@ -71,6 +99,16 @@ export async function POST(request: Request, { params }: Params) {
     .maybeSingle();
 
   if (!group) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "group.assign_coaches.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "org_group",
+      entityId: groupId,
+      message: "Assignation coachs groupe refusee: groupe introuvable.",
+    });
     return NextResponse.json({ error: "Groupe introuvable." }, { status: 404 });
   }
 
@@ -83,10 +121,30 @@ export async function POST(request: Request, { params }: Params) {
     .eq("group_id", groupId);
 
   if (deleteError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "group.assign_coaches.failed",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "org_group",
+      entityId: groupId,
+      message: deleteError.message ?? "Nettoyage coachs groupe impossible.",
+    });
     return NextResponse.json({ error: deleteError.message }, { status: 400 });
   }
 
   if (coachIds.length === 0) {
+    await recordActivity({
+      admin,
+      action: "group.assign_coaches.success",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "org_group",
+      entityId: groupId,
+      message: "Coachs du groupe mis a jour.",
+      metadata: { coachCount: 0 },
+    });
     return NextResponse.json({ ok: true });
   }
 
@@ -117,8 +175,29 @@ export async function POST(request: Request, { params }: Params) {
     .insert(assignments);
 
   if (insertError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "group.assign_coaches.failed",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "org_group",
+      entityId: groupId,
+      message: insertError.message ?? "Assignation coachs groupe impossible.",
+    });
     return NextResponse.json({ error: insertError.message }, { status: 400 });
   }
+
+  await recordActivity({
+    admin,
+    action: "group.assign_coaches.success",
+    actorUserId: profile.id,
+    orgId: profile.org_id,
+    entityType: "org_group",
+    entityId: groupId,
+    message: "Coachs du groupe mis a jour.",
+    metadata: { coachCount: validCoachIds.length },
+  });
 
   return NextResponse.json({ ok: true });
 }

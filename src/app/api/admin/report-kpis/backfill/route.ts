@@ -6,6 +6,7 @@ import {
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
 import { generateReportKpisForPublishedReport } from "@/lib/ai/report-kpis";
+import { recordActivity } from "@/lib/activity-log";
 
 export const runtime = "nodejs";
 
@@ -31,9 +32,16 @@ export async function POST(req: Request) {
   }
 
   const supabase = createSupabaseServerClientFromRequest(req);
+  const admin = createSupabaseAdminClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();
   const userId = userData.user?.id;
   if (userError || !userId) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "admin.report_kpis.backfill.denied",
+      message: "Backfill KPIs refuse: session invalide.",
+    });
     return Response.json({ error: "Session invalide." }, { status: 401 });
   }
 
@@ -44,10 +52,16 @@ export async function POST(req: Request) {
     .single();
 
   if (!profileData?.org_id) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "admin.report_kpis.backfill.denied",
+      actorUserId: userId,
+      message: "Backfill KPIs refuse: organisation introuvable.",
+    });
     return Response.json({ error: "Organisation introuvable." }, { status: 403 });
   }
 
-  const admin = createSupabaseAdminClient();
   const { data: workspace, error: workspaceError } = await admin
     .from("organizations")
     .select("id, workspace_type, owner_profile_id")
@@ -55,11 +69,27 @@ export async function POST(req: Request) {
     .single();
 
   if (workspaceError || !workspace) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "admin.report_kpis.backfill.denied",
+      actorUserId: userId,
+      orgId: profileData.org_id,
+      message: "Backfill KPIs refuse: workspace introuvable.",
+    });
     return Response.json({ error: "Workspace introuvable." }, { status: 404 });
   }
 
   if (workspace.workspace_type === "personal") {
     if (workspace.owner_profile_id !== userId) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "admin.report_kpis.backfill.denied",
+        actorUserId: userId,
+        orgId: profileData.org_id,
+        message: "Backfill KPIs refuse: non proprietaire workspace perso.",
+      });
       return Response.json({ error: "Acces refuse." }, { status: 403 });
     }
   } else {
@@ -71,11 +101,27 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (!membership || membership.status !== "active" || membership.role !== "admin") {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "admin.report_kpis.backfill.denied",
+        actorUserId: userId,
+        orgId: profileData.org_id,
+        message: "Backfill KPIs refuse: droits admin requis.",
+      });
       return Response.json({ error: "Acces refuse." }, { status: 403 });
     }
 
     const planTier = await loadPersonalPlanTier(admin, userId);
     if (planTier === "free") {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "admin.report_kpis.backfill.denied",
+        actorUserId: userId,
+        orgId: profileData.org_id,
+        message: "Backfill KPIs refuse: plan Free.",
+      });
       return Response.json(
         { error: "Lecture seule: plan Free en organisation." },
         { status: 403 }
@@ -101,11 +147,31 @@ export async function POST(req: Request) {
     : await studentsQuery;
 
   if (studentsError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "admin.report_kpis.backfill.failed",
+      actorUserId: userId,
+      orgId: profileData.org_id,
+      message: studentsError.message ?? "Chargement eleves impossible.",
+    });
     return Response.json({ error: studentsError.message }, { status: 500 });
   }
 
   const students = (studentsData ?? []) as Array<{ id: string; created_at: string }>;
   if (students.length === 0) {
+    await recordActivity({
+      admin,
+      action: "admin.report_kpis.backfill.success",
+      actorUserId: userId,
+      orgId: profileData.org_id,
+      message: "Backfill KPIs termine: aucun eleve.",
+      metadata: {
+        processed: 0,
+        skipped: 0,
+        errors: 0,
+      },
+    });
     return Response.json({ processed: 0, skipped: 0, errors: 0, done: true });
   }
 
@@ -119,6 +185,14 @@ export async function POST(req: Request) {
     .order("created_at", { ascending: false });
 
   if (reportsError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "admin.report_kpis.backfill.failed",
+      actorUserId: userId,
+      orgId: profileData.org_id,
+      message: reportsError.message ?? "Chargement rapports impossible.",
+    });
     return Response.json({ error: reportsError.message }, { status: 500 });
   }
 
@@ -156,6 +230,19 @@ export async function POST(req: Request) {
 
   const last = students[students.length - 1]!;
   const nextCursor: StudentCursor = { createdAt: last.created_at, id: last.id };
+  await recordActivity({
+    admin,
+    action: "admin.report_kpis.backfill.success",
+    actorUserId: userId,
+    orgId: profileData.org_id,
+    message: "Backfill KPIs execute.",
+    metadata: {
+      processed,
+      skipped,
+      errors,
+      done: false,
+    },
+  });
 
   return Response.json({
     processed,

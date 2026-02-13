@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseServerClientFromRequest } from "@/lib/supabase/server";
+import {
+  createSupabaseAdminClient,
+  createSupabaseServerClientFromRequest,
+} from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
+import { recordActivity } from "@/lib/activity-log";
 
 const respondSchema = z.object({
   shareId: z.string().min(1),
@@ -18,9 +22,16 @@ export async function POST(request: Request) {
   }
 
   const supabase = createSupabaseServerClientFromRequest(request);
+  const admin = createSupabaseAdminClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();
   const userId = userData.user?.id ?? null;
   if (userError || !userId) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "student_share.respond.denied",
+      message: "Reponse partage eleve refusee: session invalide.",
+    });
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
@@ -33,6 +44,15 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (shareError || !share) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "student_share.respond.denied",
+      actorUserId: userId,
+      entityType: "student_share",
+      entityId: shareId,
+      message: "Reponse partage eleve refusee: invitation introuvable.",
+    });
     return NextResponse.json({ error: "Invitation introuvable." }, { status: 404 });
   }
 
@@ -70,6 +90,15 @@ export async function POST(request: Request) {
   }
 
   if (!updatePayload) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "student_share.respond.denied",
+      actorUserId: userId,
+      entityType: "student_share",
+      entityId: shareId,
+      message: "Reponse partage eleve refusee: invitation deja traitee.",
+    });
     return NextResponse.json({ error: "Invitation deja traitee." }, { status: 400 });
   }
 
@@ -84,8 +113,26 @@ export async function POST(request: Request) {
   if (updateError) {
     const message = updateError.message?.toLowerCase() ?? "";
     if (message.includes("permission") || message.includes("rls")) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "student_share.respond.denied",
+        actorUserId: userId,
+        entityType: "student_share",
+        entityId: shareId,
+        message: "Reponse partage eleve refusee: acces interdit.",
+      });
       return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
     }
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "student_share.respond.failed",
+      actorUserId: userId,
+      entityType: "student_share",
+      entityId: shareId,
+      message: updateError.message ?? "Mise a jour partage eleve impossible.",
+    });
     return NextResponse.json(
       { error: updateError.message ?? "Erreur de mise a jour." },
       { status: 500 }
@@ -93,8 +140,33 @@ export async function POST(request: Request) {
   }
 
   if (!updated) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "student_share.respond.denied",
+      actorUserId: userId,
+      entityType: "student_share",
+      entityId: shareId,
+      message: "Reponse partage eleve refusee: invitation deja traitee.",
+    });
     return NextResponse.json({ error: "Invitation deja traitee." }, { status: 409 });
   }
+
+  await recordActivity({
+    admin,
+    action:
+      decision === "accept" ? "student_share.respond.accepted" : "student_share.respond.rejected",
+    actorUserId: userId,
+    entityType: "student_share",
+    entityId: shareId,
+    message:
+      decision === "accept"
+        ? "Invitation partage eleve acceptee."
+        : "Invitation partage eleve rejetee.",
+    metadata: {
+      status: updated.status,
+    },
+  });
 
   return NextResponse.json({ ok: true, status: updated.status });
 }

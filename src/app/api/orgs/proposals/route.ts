@@ -7,6 +7,7 @@ import {
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { createOrgNotifications } from "@/lib/org-notifications";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
+import { recordActivity } from "@/lib/activity-log";
 
 const proposalSchema = z.object({
   studentId: z.string().uuid(),
@@ -37,6 +38,13 @@ export async function GET(request: Request) {
     .single();
 
   if (!profile?.org_id) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "proposal.create.denied",
+      actorUserId: userData.user.id,
+      message: "Creation proposition refusee: organisation introuvable.",
+    });
     return NextResponse.json({ error: "Organisation introuvable." }, { status: 403 });
   }
 
@@ -48,6 +56,14 @@ export async function GET(request: Request) {
     .maybeSingle();
 
   if (!membership || membership.status !== "active") {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "proposal.create.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: "Creation proposition refusee: membre inactif ou absent.",
+    });
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
@@ -101,6 +117,14 @@ export async function POST(request: Request) {
 
   const planTier = await loadPersonalPlanTier(admin, profile.id);
   if (planTier === "free") {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "proposal.create.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: "Creation proposition refusee: plan Free.",
+    });
     return NextResponse.json(
       { error: "Lecture seule: plan Free en organisation." },
       { status: 403 }
@@ -114,6 +138,16 @@ export async function POST(request: Request) {
     .single();
 
   if (!student || student.org_id !== profile.org_id) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "proposal.create.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "student",
+      entityId: parsed.data.studentId,
+      message: "Creation proposition refusee: eleve introuvable.",
+    });
     return NextResponse.json({ error: "Eleve introuvable." }, { status: 404 });
   }
 
@@ -138,6 +172,16 @@ export async function POST(request: Request) {
     .single();
 
   if (proposalError || !proposal) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "proposal.create.failed",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "student",
+      entityId: parsed.data.studentId,
+      message: proposalError?.message ?? "Creation proposition impossible.",
+    });
     return NextResponse.json(
       { error: proposalError?.message ?? "Creation impossible." },
       { status: 400 }
@@ -157,6 +201,17 @@ export async function POST(request: Request) {
     userIds: assignedIds,
     type: "proposal.created",
     payload: { proposalId: proposal.id, studentId: parsed.data.studentId },
+  });
+
+  await recordActivity({
+    admin,
+    action: "proposal.create.success",
+    actorUserId: profile.id,
+    orgId: profile.org_id,
+    entityType: "org_proposal",
+    entityId: proposal.id,
+    message: "Proposition creee.",
+    metadata: { studentId: parsed.data.studentId },
   });
 
   return NextResponse.json({ ok: true, proposalId: proposal.id });

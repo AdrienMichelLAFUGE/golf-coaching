@@ -12,6 +12,7 @@ import {
   resolveProPriceId,
   resolveSuccessUrl,
 } from "@/lib/billing";
+import { recordActivity } from "@/lib/activity-log";
 
 export const runtime = "nodejs";
 
@@ -51,6 +52,13 @@ export async function POST(request: Request) {
   }
 
   if (!allowedRoles.has(profile.role)) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "payment.checkout.denied",
+      actorUserId: profile.id,
+      message: "Checkout refuse: role non autorise.",
+    });
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
@@ -64,10 +72,25 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (orgError || !org) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "payment.checkout.denied",
+      actorUserId: profile.id,
+      message: "Checkout refuse: organisation personnelle introuvable.",
+    });
     return NextResponse.json({ error: "Organisation personnelle introuvable." }, { status: 403 });
   }
 
   if (org.owner_profile_id !== profile.id) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "payment.checkout.denied",
+      actorUserId: profile.id,
+      orgId: org.id,
+      message: "Checkout refuse: utilisateur non proprietaire.",
+    });
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
@@ -77,6 +100,14 @@ export async function POST(request: Request) {
     org.plan_tier_override_expires_at
   );
   if (planTier === "enterprise") {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "payment.checkout.denied",
+      actorUserId: profile.id,
+      orgId: org.id,
+      message: "Checkout refuse: plan enterprise.",
+    });
     return NextResponse.json(
       { error: "Plan Entreprise : contacte le support." },
       { status: 409 }
@@ -85,12 +116,28 @@ export async function POST(request: Request) {
 
   if (planTier === "pro") {
     if (isOverrideActive) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "payment.checkout.denied",
+        actorUserId: profile.id,
+        orgId: org.id,
+        message: "Checkout refuse: plan Pro offert par admin.",
+      });
       return NextResponse.json(
         { error: "Plan Pro offert par un admin." },
         { status: 409 }
       );
     }
     if (!org.stripe_customer_id) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "payment.checkout.denied",
+        actorUserId: profile.id,
+        orgId: org.id,
+        message: "Checkout refuse: customer Stripe introuvable.",
+      });
       return NextResponse.json(
         { error: "Abonnement introuvable. Contacte le support." },
         { status: 409 }
@@ -100,15 +147,38 @@ export async function POST(request: Request) {
       customer: org.stripe_customer_id,
       return_url: resolveSuccessUrl(),
     });
+    await recordActivity({
+      admin,
+      action: "payment.portal.success",
+      actorUserId: profile.id,
+      orgId: org.id,
+      message: "Ouverture portail de facturation.",
+    });
     return NextResponse.json({ url: portal.url, type: "portal" });
   }
 
   const priceId = resolveProPriceId(parsed.data.interval);
   if (!priceId) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "payment.checkout.failed",
+      actorUserId: profile.id,
+      orgId: org.id,
+      message: "Checkout impossible: price Stripe indisponible.",
+    });
     return NextResponse.json({ error: "Plan Pro indisponible." }, { status: 500 });
   }
 
   if (!org.stripe_customer_id && !userEmail) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "payment.checkout.denied",
+      actorUserId: profile.id,
+      orgId: org.id,
+      message: "Checkout refuse: email utilisateur introuvable.",
+    });
     return NextResponse.json({ error: "Email utilisateur introuvable." }, { status: 400 });
   }
 
@@ -137,8 +207,29 @@ export async function POST(request: Request) {
   });
 
   if (!session.url) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "payment.checkout.failed",
+      actorUserId: profile.id,
+      orgId: org.id,
+      message: "Checkout impossible: URL session Stripe manquante.",
+    });
     return NextResponse.json({ error: "Session Stripe invalide." }, { status: 500 });
   }
+
+  await recordActivity({
+    admin,
+    action: "payment.checkout.success",
+    actorUserId: profile.id,
+    orgId: org.id,
+    entityType: "organization",
+    entityId: org.id,
+    message: "Session checkout Stripe creee.",
+    metadata: {
+      interval: parsed.data.interval,
+    },
+  });
 
   return NextResponse.json({ url: session.url });
 }

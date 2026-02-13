@@ -8,6 +8,7 @@ import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { createOrgNotifications } from "@/lib/org-notifications";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
 import { generateReportKpisForPublishedReport } from "@/lib/ai/report-kpis";
+import { recordActivity } from "@/lib/activity-log";
 
 const decideSchema = z.object({
   proposalId: z.string().uuid(),
@@ -50,6 +51,13 @@ export async function POST(request: Request) {
     .single();
 
   if (!profile?.org_id) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "proposal.decide.denied",
+      actorUserId: userData.user.id,
+      message: "Decision proposition refusee: organisation introuvable.",
+    });
     return NextResponse.json({ error: "Organisation introuvable." }, { status: 403 });
   }
 
@@ -61,11 +69,27 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (!membership || membership.status !== "active") {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "proposal.decide.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: "Decision proposition refusee: membre inactif ou absent.",
+    });
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
   const planTier = await loadPersonalPlanTier(admin, profile.id);
   if (planTier === "free") {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "proposal.decide.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      message: "Decision proposition refusee: plan Free.",
+    });
     return NextResponse.json(
       { error: "Lecture seule: plan Free en organisation." },
       { status: 403 }
@@ -79,10 +103,30 @@ export async function POST(request: Request) {
     .single();
 
   if (!proposal || proposal.org_id !== profile.org_id) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "proposal.decide.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "org_proposal",
+      entityId: parsed.data.proposalId,
+      message: "Decision proposition refusee: proposition introuvable.",
+    });
     return NextResponse.json({ error: "Proposition introuvable." }, { status: 404 });
   }
 
   if (proposal.status !== "pending") {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "proposal.decide.denied",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "org_proposal",
+      entityId: proposal.id,
+      message: "Decision proposition refusee: proposition deja traitee.",
+    });
     return NextResponse.json({ error: "Proposition deja traitee." }, { status: 400 });
   }
 
@@ -96,6 +140,16 @@ export async function POST(request: Request) {
 
   if (isStudentLinkRequest) {
     if (!isAdmin) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "student.link_request.decide.denied",
+        actorUserId: profile.id,
+        orgId: profile.org_id,
+        entityType: "org_proposal",
+        entityId: proposal.id,
+        message: "Decision demande eleve inter-orga refusee: admin requis.",
+      });
       return NextResponse.json(
         {
           error:
@@ -249,6 +303,16 @@ export async function POST(request: Request) {
       .eq("id", proposal.id);
 
     if (linkRequestUpdateError) {
+      await recordActivity({
+        admin,
+        level: "error",
+        action: "student.link_request.decide.failed",
+        actorUserId: profile.id,
+        orgId: profile.org_id,
+        entityType: "org_proposal",
+        entityId: proposal.id,
+        message: linkRequestUpdateError.message ?? "Decision demande eleve impossible.",
+      });
       return NextResponse.json({ error: linkRequestUpdateError.message }, { status: 400 });
     }
 
@@ -260,6 +324,23 @@ export async function POST(request: Request) {
           ? "student.link_request.accepted"
           : "student.link_request.rejected",
       payload: { proposalId: proposal.id, studentId: proposal.student_id },
+    });
+
+    await recordActivity({
+      admin,
+      action:
+        parsed.data.decision === "accept"
+          ? "student.link_request.accepted"
+          : "student.link_request.rejected",
+      actorUserId: profile.id,
+      orgId: profile.org_id,
+      entityType: "org_proposal",
+      entityId: proposal.id,
+      message:
+        parsed.data.decision === "accept"
+          ? "Demande ajout eleve inter-orga acceptee."
+          : "Demande ajout eleve inter-orga refusee.",
+      metadata: { studentId: proposal.student_id },
     });
 
     return NextResponse.json({ ok: true });
@@ -275,6 +356,16 @@ export async function POST(request: Request) {
   );
   const isAssigned = assignedIds.includes(profile.id);
   if (!isAssigned && !isAdmin) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "proposal.decide.denied",
+      actorUserId: profile.id,
+      orgId: proposal.org_id,
+      entityType: "org_proposal",
+      entityId: proposal.id,
+      message: "Decision proposition refusee: coach non assigne.",
+    });
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
@@ -303,6 +394,16 @@ export async function POST(request: Request) {
       .single();
 
     if (reportError || !report) {
+      await recordActivity({
+        admin,
+        level: "error",
+        action: "proposal.decide.failed",
+        actorUserId: profile.id,
+        orgId: proposal.org_id,
+        entityType: "org_proposal",
+        entityId: proposal.id,
+        message: reportError?.message ?? "Creation rapport depuis proposition impossible.",
+      });
       return NextResponse.json(
         { error: reportError?.message ?? "Creation du rapport impossible." },
         { status: 400 }
@@ -355,6 +456,16 @@ export async function POST(request: Request) {
     .eq("id", proposal.id);
 
   if (updateError) {
+    await recordActivity({
+      admin,
+      level: "error",
+      action: "proposal.decide.failed",
+      actorUserId: profile.id,
+      orgId: proposal.org_id,
+      entityType: "org_proposal",
+      entityId: proposal.id,
+      message: updateError.message ?? "Mise a jour decision proposition impossible.",
+    });
     return NextResponse.json({ error: updateError.message }, { status: 400 });
   }
 
@@ -363,6 +474,23 @@ export async function POST(request: Request) {
     userIds: [proposal.created_by],
     type: parsed.data.decision === "accept" ? "proposal.accepted" : "proposal.rejected",
     payload: { proposalId: proposal.id, studentId: proposal.student_id },
+  });
+
+  await recordActivity({
+    admin,
+    action:
+      parsed.data.decision === "accept"
+        ? "proposal.accepted"
+        : "proposal.rejected",
+    actorUserId: profile.id,
+    orgId: proposal.org_id,
+    entityType: "org_proposal",
+    entityId: proposal.id,
+    message:
+      parsed.data.decision === "accept"
+        ? "Proposition acceptee."
+        : "Proposition refusee.",
+    metadata: { studentId: proposal.student_id },
   });
 
   return NextResponse.json({ ok: true });
