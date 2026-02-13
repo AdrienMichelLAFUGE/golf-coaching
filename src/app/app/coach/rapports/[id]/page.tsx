@@ -19,6 +19,7 @@ import RadarCharts, {
   type RadarShot,
   type RadarStats,
 } from "../../../_components/radar-charts";
+import Smart2MoveFxPanel from "../../../_components/smart2move-fx-panel";
 import ShareReportModal from "../../../_components/share-report-modal";
 import type { RadarAnalytics } from "@/lib/radar/types";
 
@@ -58,6 +59,8 @@ type ReportSection = {
 type RadarFile = {
   id: string;
   original_name: string | null;
+  source: "flightscope" | "trackman" | "smart2move" | "unknown";
+  file_url: string;
   columns: RadarColumn[];
   shots: RadarShot[];
   stats: RadarStats | null;
@@ -283,6 +286,7 @@ export default function CoachReportDetailPage() {
   const [report, setReport] = useState<Report | null>(null);
   const [sections, setSections] = useState<ReportSection[]>([]);
   const [radarFiles, setRadarFiles] = useState<Record<string, RadarFile>>({});
+  const [radarImageUrls, setRadarImageUrls] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -334,6 +338,36 @@ export default function CoachReportDetailPage() {
     },
     [mediaRatios]
   );
+
+  const loadRadarImageUrls = useCallback(async (files: RadarFile[]) => {
+    const smart2MoveFiles = files.filter(
+      (file) => file.source === "smart2move" && typeof file.file_url === "string"
+    );
+    if (!smart2MoveFiles.length) {
+      setRadarImageUrls({});
+      return;
+    }
+
+    const signedEntries = await Promise.all(
+      smart2MoveFiles.map(async (file) => {
+        const { data, error } = await supabase.storage
+          .from("radar-files")
+          .createSignedUrl(file.file_url, 60 * 60);
+        return {
+          id: file.id,
+          url: error ? null : (data?.signedUrl ?? null),
+        };
+      })
+    );
+
+    const nextMap: Record<string, string> = {};
+    signedEntries.forEach((entry) => {
+      if (entry.url) {
+        nextMap[entry.id] = entry.url;
+      }
+    });
+    setRadarImageUrls(nextMap);
+  }, []);
 
   const renderSectionHeader = (section: ReportSection) => {
     const featureKey = getSectionFeatureKey(section);
@@ -432,14 +466,23 @@ export default function CoachReportDetailPage() {
       const radarFile = section.radar_file_id ? radarFiles[section.radar_file_id] : null;
       return radarFile ? (
         <div className="mt-3">
-          <RadarCharts
-            columns={radarFile.columns ?? []}
-            shots={radarFile.shots ?? []}
-            stats={radarFile.stats}
-            summary={radarFile.summary}
-            config={section.radar_config ?? radarFile.config}
-            analytics={radarFile.analytics}
-          />
+          {radarFile.source === "smart2move" ? (
+            <Smart2MoveFxPanel
+              analysis={radarFile.summary}
+              imageUrl={radarImageUrls[radarFile.id] ?? null}
+              fileName={radarFile.original_name}
+              aiContext={radarFile.config?.options?.aiContext ?? null}
+            />
+          ) : (
+            <RadarCharts
+              columns={radarFile.columns ?? []}
+              shots={radarFile.shots ?? []}
+              stats={radarFile.stats}
+              summary={radarFile.summary}
+              config={section.radar_config ?? radarFile.config}
+              analytics={radarFile.analytics}
+            />
+          )}
         </div>
       ) : (
         <p className="mt-3 text-sm text-[var(--muted)]">Donnees datas indisponibles.</p>
@@ -509,12 +552,13 @@ export default function CoachReportDetailPage() {
       if (radarIds.length > 0) {
         const { data: radarData } = await supabase
           .from("radar_files")
-          .select("id, original_name, columns, shots, stats, summary, config, analytics")
+          .select("id, original_name, source, file_url, columns, shots, stats, summary, config, analytics")
           .in("id", radarIds);
 
         const radarMap: Record<string, RadarFile> = {};
+        const radarList: RadarFile[] = [];
         (radarData ?? []).forEach((file) => {
-          radarMap[file.id] = {
+          const normalized = {
             ...file,
             columns: Array.isArray(file.columns) ? file.columns : [],
             shots: Array.isArray(file.shots) ? file.shots : [],
@@ -525,16 +569,20 @@ export default function CoachReportDetailPage() {
                 : null,
             config: file.config && typeof file.config === "object" ? file.config : null,
           } as RadarFile;
+          radarMap[file.id] = normalized;
+          radarList.push(normalized);
         });
         setRadarFiles(radarMap);
+        void loadRadarImageUrls(radarList);
       } else {
         setRadarFiles({});
+        setRadarImageUrls({});
       }
       setLoading(false);
     };
 
     loadReport();
-  }, [reportId]);
+  }, [reportId, loadRadarImageUrls]);
 
   const handleDelete = async () => {
     if (!report) return;

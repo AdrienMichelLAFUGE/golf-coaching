@@ -22,6 +22,8 @@ import RadarCharts, {
   type RadarShot,
   type RadarStats,
 } from "../../../_components/radar-charts";
+import Smart2MoveFxPanel from "../../../_components/smart2move-fx-panel";
+import Smart2MoveMarkersModal from "../../../_components/smart2move-markers-modal";
 import { RADAR_CHART_DEFINITIONS, RADAR_CHART_GROUPS } from "@/lib/radar/charts/registry";
 import {
   RADAR_TECH_OPTIONS,
@@ -31,6 +33,13 @@ import {
   getRadarTechMeta,
   isRadarTech,
 } from "@/lib/radar/file-naming";
+import {
+  SMART2MOVE_GRAPH_OPTIONS,
+  isSmart2MoveGraphCompatibleWithPlate,
+  type Smart2MovePlateType,
+  type Smart2MoveGraphType,
+} from "@/lib/radar/smart2move-graph-types";
+import { normalizeSmart2MoveImpactMarkerX } from "@/lib/radar/smart2move-annotations";
 import type { RadarAnalytics } from "@/lib/radar/types";
 import { getViewerShareAccess, type ShareStatus } from "@/lib/student-share";
 import { z } from "zod";
@@ -210,6 +219,10 @@ const formatRadarSourceFallback = (source: RadarFile["source"]) =>
   `Export ${getRadarTechLabel(source)}`;
 
 type RadarFilter = "all" | RadarTech;
+type Smart2MoveManualMarkers = {
+  impactMarkerX: number;
+  transitionStartX: number;
+};
 
 const isRadarFilter = (value: string): value is RadarFilter =>
   value === "all" || isRadarTech(value);
@@ -295,6 +308,20 @@ export default function CoachStudentDetailPage() {
   const [radarLoading, setRadarLoading] = useState(false);
   const [radarError, setRadarError] = useState("");
   const [radarTech, setRadarTech] = useState<RadarTech>("flightscope");
+  const [radarSmart2MovePlateType, setRadarSmart2MovePlateType] =
+    useState<Smart2MovePlateType>("1d");
+  const [radarSmart2MoveGraphType, setRadarSmart2MoveGraphType] =
+    useState<Smart2MoveGraphType | null>(null);
+  const [smart2MoveMarkersModalOpen, setSmart2MoveMarkersModalOpen] = useState(false);
+  const [smart2MoveMarkersPreviewUrl, setSmart2MoveMarkersPreviewUrl] = useState<string | null>(
+    null
+  );
+  const [smart2MoveMarkersFileName, setSmart2MoveMarkersFileName] = useState<string | null>(
+    null
+  );
+  const smart2MoveMarkersResolverRef = useRef<
+    ((markers: Smart2MoveManualMarkers | null) => void) | null
+  >(null);
   const [radarFilter, setRadarFilter] = useState<RadarFilter>("all");
   const [radarUploading, setRadarUploading] = useState(false);
   const [normalizedTestAssignments, setNormalizedTestAssignments] = useState<
@@ -314,6 +341,7 @@ export default function CoachStudentDetailPage() {
   const radarInputRef = useRef<HTMLInputElement | null>(null);
   const radarProgressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const [radarPreview, setRadarPreview] = useState<RadarFile | null>(null);
+  const [radarPreviewImageUrl, setRadarPreviewImageUrl] = useState<string | null>(null);
   const [radarReview, setRadarReview] = useState<RadarFile | null>(null);
   const [radarConfigOpen, setRadarConfigOpen] = useState(false);
   const [radarConfigDraft, setRadarConfigDraft] =
@@ -807,6 +835,31 @@ export default function CoachStudentDetailPage() {
     return normalized as RadarFile[];
   }, [studentId, resolveLinkedStudentIds]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPreviewImage = async () => {
+      if (!radarPreview || radarPreview.source !== "smart2move") {
+        setRadarPreviewImageUrl(null);
+        return;
+      }
+      const { data, error } = await supabase.storage
+        .from("radar-files")
+        .createSignedUrl(radarPreview.file_url, 60 * 60);
+      if (cancelled) return;
+      if (error || !data?.signedUrl) {
+        setRadarPreviewImageUrl(null);
+        return;
+      }
+      setRadarPreviewImageUrl(data.signedUrl);
+    };
+
+    void loadPreviewImage();
+    return () => {
+      cancelled = true;
+    };
+  }, [radarPreview]);
+
   const stopTpiProgress = () => {
     if (tpiProgressTimer.current) {
       clearInterval(tpiProgressTimer.current);
@@ -988,6 +1041,25 @@ export default function CoachStudentDetailPage() {
     setTpiUploading(false);
   };
 
+  const requestSmart2MoveMarkers = (file: File) =>
+    new Promise<Smart2MoveManualMarkers | null>((resolve) => {
+      const objectUrl = URL.createObjectURL(file);
+      smart2MoveMarkersResolverRef.current = (markers) => {
+        try {
+          resolve(markers);
+        } finally {
+          URL.revokeObjectURL(objectUrl);
+          setSmart2MoveMarkersModalOpen(false);
+          setSmart2MoveMarkersPreviewUrl(null);
+          setSmart2MoveMarkersFileName(null);
+          smart2MoveMarkersResolverRef.current = null;
+        }
+      };
+      setSmart2MoveMarkersFileName(file.name);
+      setSmart2MoveMarkersPreviewUrl(objectUrl);
+      setSmart2MoveMarkersModalOpen(true);
+    });
+
   const handleRadarFile = async (file: File) => {
     if (isReadOnly) {
       setRadarError("Lecture seule: modification des fichiers impossible.");
@@ -1003,6 +1075,21 @@ export default function CoachStudentDetailPage() {
       return;
     }
     const techMeta = getRadarTechMeta(radarTech);
+    if (radarTech === "smart2move" && !radarSmart2MoveGraphType) {
+      setRadarError("Choisis le type de graphe Smart2Move avant l import.");
+      return;
+    }
+    if (
+      radarTech === "smart2move" &&
+      radarSmart2MoveGraphType &&
+      !isSmart2MoveGraphCompatibleWithPlate(
+        radarSmart2MoveGraphType,
+        radarSmart2MovePlateType
+      )
+    ) {
+      setRadarError("Graphe non compatible avec le type de plaques selectionne.");
+      return;
+    }
     const isRadarImageFile = () => {
       if (file.type.startsWith("image/")) return true;
       const name = file.name.toLowerCase();
@@ -1013,6 +1100,19 @@ export default function CoachStudentDetailPage() {
     if (!isRadarImageFile()) {
       setRadarError(`Importe une image ${techMeta.label} (jpg, png, heic...).`);
       return;
+    }
+
+    let manualMarkers: Smart2MoveManualMarkers | null = null;
+    if (radarTech === "smart2move") {
+      manualMarkers = await requestSmart2MoveMarkers(file);
+      if (!manualMarkers) {
+        setRadarError("Placement des reperes Smart2Move annule.");
+        return;
+      }
+      if (normalizeSmart2MoveImpactMarkerX(manualMarkers.impactMarkerX) === null) {
+        setRadarError("Repere impact Smart2Move invalide.");
+        return;
+      }
     }
 
     setRadarUploading(true);
@@ -1099,7 +1199,15 @@ export default function CoachStudentDetailPage() {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ radarFileId: radarRow.id }),
+      body: JSON.stringify({
+        radarFileId: radarRow.id,
+        smart2MoveGraphType:
+          radarTech === "smart2move" ? radarSmart2MoveGraphType : undefined,
+        impactMarkerX: radarTech === "smart2move" ? manualMarkers?.impactMarkerX : undefined,
+        transitionStartX:
+          radarTech === "smart2move" ? manualMarkers?.transitionStartX : undefined,
+        origin: "student_profile",
+      }),
     });
 
     if (!response.ok) {
@@ -3185,6 +3293,10 @@ export default function CoachStudentDetailPage() {
                       }
                       setRadarError("");
                       setRadarTech(next);
+                      if (next !== "smart2move") {
+                        setRadarSmart2MovePlateType("1d");
+                        setRadarSmart2MoveGraphType(null);
+                      }
                     }}
                     disabled={radarLocked}
                     className="rounded-full border-white/10 bg-[var(--panel-strong)] px-3 py-1.5 text-xs text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-60"
@@ -3196,6 +3308,30 @@ export default function CoachStudentDetailPage() {
                       </option>
                     ))}
                   </select>
+                  {radarTech === "smart2move" ? (
+                    <select
+                      value={radarSmart2MovePlateType}
+                      onChange={(event) => {
+                        const next = event.target.value === "3d" ? "3d" : "1d";
+                        setRadarSmart2MovePlateType(next);
+                        if (
+                          radarSmart2MoveGraphType &&
+                          !isSmart2MoveGraphCompatibleWithPlate(
+                            radarSmart2MoveGraphType,
+                            next
+                          )
+                        ) {
+                          setRadarSmart2MoveGraphType(null);
+                        }
+                      }}
+                      disabled={radarLocked}
+                      className="rounded-full border-white/10 bg-[var(--panel-strong)] px-3 py-1.5 text-xs text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-60"
+                      aria-label="Type de plaques Smart2Move"
+                    >
+                      <option value="1d">Plaques 1D (Vertical only)</option>
+                      <option value="3d">Plaques 3D</option>
+                    </select>
+                  ) : null}
                   <button
                     type="button"
                     disabled={radarUploading || isReadOnly}
@@ -3205,6 +3341,25 @@ export default function CoachStudentDetailPage() {
                         return;
                       }
                       if (isReadOnly) return;
+                      if (radarTech === "smart2move" && !radarSmart2MoveGraphType) {
+                        setRadarError(
+                          "Choisis le type de graphe Smart2Move avant de continuer."
+                        );
+                        return;
+                      }
+                      if (
+                        radarTech === "smart2move" &&
+                        radarSmart2MoveGraphType &&
+                        !isSmart2MoveGraphCompatibleWithPlate(
+                          radarSmart2MoveGraphType,
+                          radarSmart2MovePlateType
+                        )
+                      ) {
+                        setRadarError(
+                          "Graphe non compatible avec le type de plaques selectionne."
+                        );
+                        return;
+                      }
                       radarInputRef.current?.click();
                     }}
                     className={`rounded-full border border-purple-400 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-purple-700 transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/70 ${
@@ -3229,6 +3384,55 @@ export default function CoachStudentDetailPage() {
                   />
                 </div>
               </div>
+              {radarTech === "smart2move" ? (
+                <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
+                  <p className="text-[0.62rem] uppercase tracking-wide text-[var(--muted)]">
+                    Quel graphe importez-vous ?
+                  </p>
+                  <p className="mt-1 text-[0.65rem] text-[var(--muted)]">
+                    Les graphes non compatibles avec les plaques {radarSmart2MovePlateType.toUpperCase()} sont desactives.
+                  </p>
+                  <div className="mt-2 grid gap-2">
+                    {SMART2MOVE_GRAPH_OPTIONS.map((option) => {
+                      const compatible = isSmart2MoveGraphCompatibleWithPlate(
+                        option.id,
+                        radarSmart2MovePlateType
+                      );
+                      const selected = radarSmart2MoveGraphType === option.id;
+                      return (
+                        <button
+                          key={`s2m-graph-${option.id}`}
+                          type="button"
+                          disabled={!compatible || radarLocked}
+                          onClick={() => {
+                            if (!compatible || radarLocked) return;
+                            setRadarError("");
+                            setRadarSmart2MoveGraphType(option.id);
+                          }}
+                          className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left transition ${
+                            selected
+                              ? "border-sky-300/60 bg-sky-400/15 text-sky-100"
+                              : compatible
+                                ? "border-white/10 bg-white/5 text-[var(--text)] hover:border-sky-300/40"
+                                : "cursor-not-allowed border-white/5 bg-white/5 text-[var(--muted)] opacity-50"
+                          }`}
+                        >
+                          <span className="text-xs">{option.label}</span>
+                          <span
+                            className={`ml-2 rounded-full px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide ${
+                              option.requiredPlateType === "3d"
+                                ? "bg-emerald-400/20 text-emerald-100"
+                                : "bg-sky-400/20 text-sky-100"
+                            }`}
+                          >
+                            {option.requiredPlateType === "3d" ? "3D" : "1D"}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
               {radarLocked ? (
                 <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-violet-300/30 bg-violet-400/10 px-3 py-2 text-xs text-violet-100">
                   <span>Plan Pro requis pour importer. Lecture seule.</span>
@@ -3561,14 +3765,23 @@ export default function CoachStudentDetailPage() {
                     </button>
                   </div>
                   <div className="mt-4">
-                    <RadarCharts
-                      columns={radarPreview.columns ?? []}
-                      shots={radarPreview.shots ?? []}
-                      stats={radarPreview.stats}
-                      summary={radarPreview.summary}
-                      config={radarPreview.config}
-                      analytics={radarPreview.analytics}
-                    />
+                    {radarPreview.source === "smart2move" ? (
+                      <Smart2MoveFxPanel
+                        analysis={radarPreview.summary}
+                        imageUrl={radarPreviewImageUrl}
+                        fileName={radarPreview.original_name}
+                        aiContext={radarPreview.config?.options?.aiContext ?? null}
+                      />
+                    ) : (
+                      <RadarCharts
+                        columns={radarPreview.columns ?? []}
+                        shots={radarPreview.shots ?? []}
+                        stats={radarPreview.stats}
+                        summary={radarPreview.summary}
+                        config={radarPreview.config}
+                        analytics={radarPreview.analytics}
+                      />
+                    )}
                   </div>
                 </div>
               </div>
@@ -3581,6 +3794,20 @@ export default function CoachStudentDetailPage() {
                 onConfirm={handleConfirmRadarReview}
               />
             ) : null}
+
+            <Smart2MoveMarkersModal
+              open={smart2MoveMarkersModalOpen}
+              imageUrl={smart2MoveMarkersPreviewUrl}
+              fileName={smart2MoveMarkersFileName}
+              onCancel={() => {
+                const resolver = smart2MoveMarkersResolverRef.current;
+                if (resolver) resolver(null);
+              }}
+              onConfirm={(markers) => {
+                const resolver = smart2MoveMarkersResolverRef.current;
+                if (resolver) resolver(markers);
+              }}
+            />
 
             {radarConfigOpen && radarConfigFile ? (
               <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4">

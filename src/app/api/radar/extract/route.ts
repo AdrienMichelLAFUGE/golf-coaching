@@ -13,6 +13,22 @@ import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { PLAN_ENTITLEMENTS } from "@/lib/plans";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
 import { recordActivity } from "@/lib/activity-log";
+import {
+  buildSmart2MoveAiContext,
+  normalizeSmart2MoveImpactMarkerX,
+  normalizeSmart2MoveTransitionStartX,
+  resolveSmart2MovePeakWindow,
+  resolveSmart2MoveTransitionStartX,
+  SMART2MOVE_BUBBLE_ORDER,
+  sanitizeSmart2MoveAnnotations,
+} from "@/lib/radar/smart2move-annotations";
+import {
+  SMART2MOVE_GRAPH_TYPE_VALUES,
+  SMART2MOVE_VERIFY_PROMPT_SECTION,
+  getSmart2MoveGraphMeta,
+  isSmart2MoveGraphType,
+  type Smart2MoveGraphType,
+} from "@/lib/radar/smart2move-graph-types";
 
 export const runtime = "nodejs";
 
@@ -43,8 +59,56 @@ type RadarVerification = {
   issues: string[];
 };
 
+type Smart2MoveGraphExtraction = {
+  graph_type: Smart2MoveGraphType;
+  annotations: Array<{
+    bubble_key: (typeof SMART2MOVE_BUBBLE_ORDER)[number];
+    id: string;
+    title: string;
+    detail: string;
+    reasoning: string | null;
+    solution: string | null;
+    anchor: {
+      x: number;
+      y: number;
+    };
+    evidence: string | null;
+  }>;
+  analysis: string;
+  summary?: string | null;
+};
+
+type Smart2MoveGraphVerification = {
+  is_valid: boolean;
+  confidence: number;
+  issues: string[];
+  matches_selected_graph_type: boolean;
+};
+
+type RadarPromptMode = "tabular" | "smart2move_graph";
+
+type RadarPromptConfig = {
+  mode: RadarPromptMode;
+  extractSystemSection: string;
+  verifySystemSection: string;
+  extractFallbackSection?: string;
+  verifyFallbackSection?: string;
+  sourceLabel: string;
+  extractSchemaDescription: string;
+  verifySchemaDescription: string;
+  smart2MoveGraphType?: Smart2MoveGraphType;
+  smart2MoveGraphLabel?: string;
+};
+
 const radarExtractSchema = z.object({
   radarFileId: z.string().min(1),
+  smart2MoveGraphType: z.enum(SMART2MOVE_GRAPH_TYPE_VALUES).optional(),
+  impactMarkerX: z.number().min(0).max(1).optional(),
+  transitionStartX: z.number().min(0).max(1).optional(),
+  origin: z
+    .enum(["report_builder", "student_profile", "unknown"])
+    .optional()
+    .default("unknown"),
 });
 
 const buildRadarSchema = () => ({
@@ -114,6 +178,82 @@ const buildRadarVerifySchema = () => ({
     },
   },
   required: ["is_valid", "confidence", "issues"],
+});
+
+const buildSmart2MoveGraphSchema = () => ({
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    graph_type: {
+      type: "string",
+      enum: [...SMART2MOVE_GRAPH_TYPE_VALUES],
+    },
+    annotations: {
+      type: "array",
+      minItems: 4,
+      maxItems: 4,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          bubble_key: { type: "string", enum: [...SMART2MOVE_BUBBLE_ORDER] },
+          id: { type: "string" },
+          title: { type: "string" },
+          detail: { type: "string" },
+          reasoning: { type: ["string", "null"] },
+          solution: { type: ["string", "null"] },
+          anchor: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              x: { type: "number", minimum: 0, maximum: 1 },
+              y: { type: "number", minimum: 0, maximum: 1 },
+            },
+            required: ["x", "y"],
+          },
+          evidence: { type: ["string", "null"] },
+        },
+        required: [
+          "bubble_key",
+          "id",
+          "title",
+          "detail",
+          "reasoning",
+          "solution",
+          "anchor",
+          "evidence",
+        ],
+      },
+    },
+    analysis: { type: "string" },
+    summary: { type: ["string", "null"] },
+  },
+  required: [
+    "graph_type",
+    "annotations",
+    "analysis",
+    "summary",
+  ],
+});
+
+const buildSmart2MoveVerifySchema = () => ({
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    is_valid: { type: "boolean" },
+    confidence: { type: "number", minimum: 0, maximum: 1 },
+    issues: {
+      type: "array",
+      items: { type: "string" },
+    },
+    matches_selected_graph_type: { type: "boolean" },
+  },
+  required: [
+    "is_valid",
+    "confidence",
+    "issues",
+    "matches_selected_graph_type",
+  ],
 });
 
 const buildVerificationSnapshot = (extracted: RadarExtraction) => {
@@ -404,6 +544,198 @@ const extractOutputText = (response: {
   return parts.join("\n").trim();
 };
 
+const ensureSmart2MoveTitle = (
+  analysis?: string | null,
+  graphLabel = "Smart2Move"
+) => {
+  const trimmed = analysis?.trim() ?? "";
+  if (!trimmed) return "";
+  const lines = trimmed.split("\n");
+  const startsWithTitle = /^analyse /i.test(lines[0]?.trim() ?? "");
+  const body = startsWithTitle
+    ? lines.slice(1).join("\n").trim()
+    : trimmed;
+  return body
+    ? `Analyse ${graphLabel} - Smart2Move\n\n${body}`
+    : `Analyse ${graphLabel} - Smart2Move`;
+};
+
+const tpiColorOrder: Record<string, number> = {
+  red: 0,
+  orange: 1,
+  green: 2,
+};
+
+const tpiKeywordScore = (value: string) => {
+  const normalized = normalizeToken(value);
+  if (!normalized) return 0;
+  const keywords = [
+    "mobilite",
+    "stabilite",
+    "asymetrie",
+    "compensation",
+    "cheville",
+    "hanche",
+    "thorax",
+    "rotation",
+    "epaule",
+    "genou",
+    "bassin",
+    "antecedent",
+    "limitation",
+  ];
+  return keywords.reduce((score, keyword) => {
+    if (normalized.includes(keyword)) return score + 1;
+    return score;
+  }, 0);
+};
+
+const buildSmart2MoveTpiContextBlock = (
+  tests: Array<{
+    test_name: string | null;
+    result_color: string | null;
+    mini_summary: string | null;
+    details: string | null;
+    details_translated: string | null;
+    position: number | null;
+  }>
+) => {
+  if (!tests.length) return "Aucun profil TPI associe.";
+
+  const ranked = [...tests]
+    .map((test) => {
+      const details =
+        test.details_translated?.trim() || test.details?.trim() || test.mini_summary?.trim() || "";
+      const testName = test.test_name?.trim() || "Test TPI";
+      const color = (test.result_color ?? "").trim().toLowerCase();
+      return {
+        ...test,
+        text: details,
+        testName,
+        color,
+        colorRank: tpiColorOrder[color] ?? 3,
+        keywordScore: tpiKeywordScore(`${testName} ${details}`),
+      };
+    })
+    .sort((a, b) => {
+      if (a.colorRank !== b.colorRank) return a.colorRank - b.colorRank;
+      if (a.keywordScore !== b.keywordScore) return b.keywordScore - a.keywordScore;
+      return (a.position ?? 999) - (b.position ?? 999);
+    });
+
+  const focused = ranked
+    .filter((item) => item.text.length > 0)
+    .slice(0, 8)
+    .map((item, index) => {
+      const clipped = item.text.length > 220 ? `${item.text.slice(0, 220)}...` : item.text;
+      const colorLabel =
+        item.color === "red" ? "rouge" : item.color === "orange" ? "orange" : "vert";
+      return `${index + 1}. ${item.testName} (${colorLabel}) - ${clipped}`;
+    });
+
+  if (!focused.length) return "Profil TPI associe, mais details insuffisants.";
+  return `Profil TPI associe (points cles):\n${focused.join("\n")}`;
+};
+
+const buildSmart2MoveConfig = (
+  annotations: ReturnType<typeof sanitizeSmart2MoveAnnotations>,
+  miniSummary?: string | null,
+  selectedGraphType?: Smart2MoveGraphType | null,
+  impactMarkerX?: number | null,
+  transitionStartX?: number | null
+) => {
+  const disabledCharts = Object.keys(DEFAULT_RADAR_CONFIG.charts).reduce<
+    Record<string, boolean>
+  >((acc, key) => {
+    acc[key] = false;
+    return acc;
+  }, {});
+  const normalizedImpactMarkerX = normalizeSmart2MoveImpactMarkerX(impactMarkerX);
+  const normalizedTransitionStartX = resolveSmart2MoveTransitionStartX(
+    normalizedImpactMarkerX,
+    normalizeSmart2MoveTransitionStartX(transitionStartX)
+  );
+  const peakWindow = resolveSmart2MovePeakWindow(normalizedImpactMarkerX);
+  const aiContext = buildSmart2MoveAiContext(
+    annotations,
+    miniSummary,
+    normalizedImpactMarkerX,
+    normalizedTransitionStartX
+  );
+  const selectedGraphMeta =
+    selectedGraphType && isSmart2MoveGraphType(selectedGraphType)
+      ? getSmart2MoveGraphMeta(selectedGraphType)
+      : null;
+  return {
+    ...DEFAULT_RADAR_CONFIG,
+    showTable: false,
+    charts: disabledCharts,
+    options: {
+      ...(DEFAULT_RADAR_CONFIG.options ?? {}),
+      aiContext,
+      smart2MoveGraphType: selectedGraphMeta?.id,
+      smart2MoveGraphLabel: selectedGraphMeta?.label,
+      smart2MoveImpactMarkerX: normalizedImpactMarkerX ?? undefined,
+      smart2MoveTransitionStartX: normalizedTransitionStartX ?? undefined,
+      smart2MovePeakWindowStartX: peakWindow?.start ?? undefined,
+      smart2MovePeakWindowEndX: peakWindow?.end ?? undefined,
+    },
+  };
+};
+
+const normalizeRadarSource = (value?: string | null) => {
+  const source = (value ?? "").trim().toLowerCase();
+  if (source === "trackman") return "trackman";
+  if (source === "smart2move") return "smart2move";
+  return "flightscope";
+};
+
+export const resolveRadarPromptConfig = (
+  source?: string | null,
+  smart2MoveGraphType?: Smart2MoveGraphType | null
+): RadarPromptConfig => {
+  const normalized = normalizeRadarSource(source);
+  if (normalized === "smart2move") {
+    const resolvedGraphType =
+      smart2MoveGraphType && isSmart2MoveGraphType(smart2MoveGraphType)
+        ? smart2MoveGraphType
+        : "fx";
+    const graphMeta = getSmart2MoveGraphMeta(resolvedGraphType);
+    return {
+      mode: "smart2move_graph",
+      extractSystemSection: graphMeta.extractPromptSection,
+      verifySystemSection: SMART2MOVE_VERIFY_PROMPT_SECTION,
+      sourceLabel: "Smart2Move",
+      extractSchemaDescription: `Extraction Smart2Move ${graphMeta.shortLabel}.`,
+      verifySchemaDescription: "Verification extraction Smart2Move (graphe impose).",
+      smart2MoveGraphType: graphMeta.id,
+      smart2MoveGraphLabel: graphMeta.label,
+    };
+  }
+
+  if (normalized === "trackman") {
+    return {
+      mode: "tabular",
+      extractSystemSection: "radar_extract_trackman_system",
+      verifySystemSection: "radar_extract_trackman_verify_system",
+      extractFallbackSection: "radar_extract_system",
+      verifyFallbackSection: "radar_extract_verify_system",
+      sourceLabel: "Trackman",
+      extractSchemaDescription: "Extraction d un tableau Trackman.",
+      verifySchemaDescription: "Verification extraction Trackman.",
+    };
+  }
+
+  return {
+    mode: "tabular",
+    extractSystemSection: "radar_extract_system",
+    verifySystemSection: "radar_extract_verify_system",
+    sourceLabel: "Flightscope",
+    extractSchemaDescription: "Extraction d un tableau Flightscope.",
+    verifySchemaDescription: "Verification extraction Flightscope.",
+  };
+};
+
 export async function POST(req: Request) {
   const parsed = await parseRequestJson(req, radarExtractSchema);
   if (!parsed.success) {
@@ -413,7 +745,8 @@ export async function POST(req: Request) {
     );
   }
 
-  const { radarFileId } = parsed.data;
+  const { radarFileId, origin, smart2MoveGraphType, impactMarkerX, transitionStartX } =
+    parsed.data;
   const supabase = createSupabaseServerClientFromRequest(req);
   const admin = createSupabaseAdminClient();
   const openaiKey = env.OPENAI_API_KEY;
@@ -444,6 +777,55 @@ export async function POST(req: Request) {
     });
     return Response.json({ error: "Fichier datas introuvable." }, { status: 404 });
   }
+
+  const normalizedSource = normalizeRadarSource(radarFile.source);
+  if (normalizedSource === "smart2move" && !smart2MoveGraphType) {
+    return Response.json(
+      {
+        error:
+          "Type de graphe Smart2Move requis. Choisis un graphe avant de lancer l extraction.",
+      },
+      { status: 422 }
+    );
+  }
+
+  const normalizedImpactMarkerX =
+    normalizedSource === "smart2move"
+      ? normalizeSmart2MoveImpactMarkerX(impactMarkerX)
+      : null;
+  if (normalizedSource === "smart2move" && normalizedImpactMarkerX === null) {
+    return Response.json(
+      {
+        error:
+          "Position d impact requise pour Smart2Move. Place la barre d impact avant de lancer l extraction.",
+      },
+      { status: 422 }
+    );
+  }
+  const normalizedTransitionStartX =
+    normalizedSource === "smart2move"
+      ? resolveSmart2MoveTransitionStartX(
+          normalizedImpactMarkerX,
+          normalizeSmart2MoveTransitionStartX(transitionStartX)
+        )
+      : null;
+  if (
+    normalizedSource === "smart2move" &&
+    normalizedTransitionStartX !== null &&
+    normalizedImpactMarkerX !== null &&
+    normalizedTransitionStartX >= normalizedImpactMarkerX
+  ) {
+    return Response.json(
+      { error: "Debut de transition invalide: il doit etre strictement avant l impact." },
+      { status: 422 }
+    );
+  }
+  const smart2MovePeakWindow =
+    normalizedSource === "smart2move"
+      ? resolveSmart2MovePeakWindow(normalizedImpactMarkerX)
+      : null;
+
+  const promptConfig = resolveRadarPromptConfig(radarFile.source, smart2MoveGraphType ?? null);
 
   const { data: profileData } = await supabase
     .from("profiles")
@@ -555,9 +937,41 @@ export async function POST(req: Request) {
   const openai = new OpenAI({ apiKey: openaiKey });
   const locale = orgData?.locale ?? "fr-FR";
   const language = locale.toLowerCase().startsWith("fr") ? "francais" : "anglais";
+  const isSmart2MoveGraph = promptConfig.mode === "smart2move_graph";
+
+  let smart2MoveTpiContextBlock = "Aucun profil TPI associe.";
+  if (isSmart2MoveGraph) {
+    const { data: studentData } = await admin
+      .from("students")
+      .select("tpi_report_id")
+      .eq("id", radarFile.student_id)
+      .single();
+
+    const tpiReportId = studentData?.tpi_report_id ?? null;
+    if (tpiReportId) {
+      const { data: tpiTests } = await admin
+        .from("tpi_tests")
+        .select(
+          "test_name, result_color, mini_summary, details, details_translated, position"
+        )
+        .eq("report_id", tpiReportId)
+        .order("position", { ascending: true });
+
+      smart2MoveTpiContextBlock = buildSmart2MoveTpiContextBlock(
+        (tpiTests ?? []) as Array<{
+          test_name: string | null;
+          result_color: string | null;
+          mini_summary: string | null;
+          details: string | null;
+          details_translated: string | null;
+          position: number | null;
+        }>
+      );
+    }
+  }
 
   const startedAt = Date.now();
-  const endpoint = "radar_extract";
+  const endpoint = `radar_extract:${normalizeRadarSource(radarFile.source)}:${origin}`;
   let usage: {
     input_tokens?: number;
     output_tokens?: number;
@@ -598,29 +1012,65 @@ export async function POST(req: Request) {
     ]);
   };
 
-  let extracted: RadarExtraction;
+  let extracted: RadarExtraction | null = null;
+  let smart2MoveExtracted: Smart2MoveGraphExtraction | null = null;
   let verificationWarning: string | null = null;
   const verifyStartedAt = Date.now();
   try {
-    const promptTemplate = await loadPromptSection("radar_extract_system");
-    const systemPrompt = applyTemplate(promptTemplate, { language });
+    const promptTemplate = await loadPromptSection(promptConfig.extractSystemSection);
+    const fallbackPromptTemplate =
+      promptConfig.extractFallbackSection
+        ? await loadPromptSection(promptConfig.extractFallbackSection)
+        : "";
+    const resolvedPromptTemplate = promptTemplate || fallbackPromptTemplate;
+    const userInstruction = isSmart2MoveGraph
+      ? `Voici un graphe Smart2Move a analyser pour coaching golf.
+Type selectionne par le coach: ${promptConfig.smart2MoveGraphLabel ?? "Smart2Move"} (${promptConfig.smart2MoveGraphType ?? "unknown"}).
+Repere impact impose par le coach (ratio X): ${normalizedImpactMarkerX?.toFixed(4) ?? "unknown"}.
+Repere debut transition impose par le coach (ratio X): ${normalizedTransitionStartX?.toFixed(4) ?? "auto"}.
+Fenetre section 3 (pics/chronologie) imposee autour de l impact: ${smart2MovePeakWindow ? `[${smart2MovePeakWindow.start.toFixed(4)}, ${smart2MovePeakWindow.end.toFixed(4)}]` : "unknown"}.
+Appliquer exclusivement ce template. Ne pas deviner ou requalifier un autre type de graphe.
+Retourner strictement le JSON attendu avec:
+- graph_type
+- annotations (EXACTEMENT 4 avec bubble_key parmi address_backswing, transition_impact, peak_intensity_timing, summary)
+- analysis
+- summary
+Contraintes overlay/analysis:
+- Section 2 (Transition -> Impact): analyser STRICTEMENT la portion [transitionStartX, impactX]
+- Section 3 (Intensite des pics et chronologie): analyser en priorite la fenetre autour d impact [peakWindowStart, peakWindowEnd]
+- Ne pas modifier les reperes fournis par le coach
+Regles de contenu:
+- Le champ evidence de chaque annotation doit etre une explication biomecanique (causalite corporelle/mecanique), pas une simple description du graphe.
+Le champ analysis doit suivre EXACTEMENT 4 sections numerotees:
+1. Adresse -> Backswing
+2. Transition -> Impact
+3. Intensite des pics et chronologie
+4. Resume global mecanique`
+      : `Voici un export ${promptConfig.sourceLabel} en image. ` +
+        "Retourne: columns (group,label,unit), rows (shot, values[]), avg, dev, summary. " +
+        "Utilise null pour les cellules vides ou '-'.";
 
     const response = await openai.responses.create({
       model: "gpt-5.2",
       input: [
         {
           role: "system",
-          content: [{ type: "input_text", text: systemPrompt }],
+          content: [
+            {
+              type: "input_text",
+              text: applyTemplate(resolvedPromptTemplate, {
+                language,
+                tpiContextBlock: smart2MoveTpiContextBlock,
+              }),
+            },
+          ],
         },
         {
           role: "user",
           content: [
             {
               type: "input_text",
-              text:
-                "Voici un export Flightscope en image. " +
-                "Retourne: columns (group,label,unit), rows (shot, values[]), avg, dev, summary. " +
-                "Utilise null pour les cellules vides ou '-'.",
+              text: userInstruction,
             },
             {
               type: "input_image",
@@ -632,13 +1082,13 @@ export async function POST(req: Request) {
           ],
         },
       ],
-      max_output_tokens: 6500,
+      max_output_tokens: isSmart2MoveGraph ? 4200 : 6500,
       text: {
         format: {
           type: "json_schema",
-          name: "radar_extract",
-          description: "Extraction d un tableau Flightscope.",
-          schema: buildRadarSchema(),
+          name: isSmart2MoveGraph ? "radar_extract_smart2move_graph" : "radar_extract",
+          description: promptConfig.extractSchemaDescription,
+          schema: isSmart2MoveGraph ? buildSmart2MoveGraphSchema() : buildRadarSchema(),
           strict: true,
         },
       },
@@ -649,7 +1099,18 @@ export async function POST(req: Request) {
     if (!outputText) {
       throw new Error("Reponse OCR vide.");
     }
-    extracted = JSON.parse(outputText) as RadarExtraction;
+    if (isSmart2MoveGraph) {
+      smart2MoveExtracted = JSON.parse(outputText) as Smart2MoveGraphExtraction;
+      smart2MoveExtracted.analysis = ensureSmart2MoveTitle(
+        smart2MoveExtracted.analysis,
+        promptConfig.smart2MoveGraphLabel ?? "Smart2Move"
+      );
+      if (!smart2MoveExtracted.analysis.trim()) {
+        throw new Error("Analyse Smart2Move vide.");
+      }
+    } else {
+      extracted = JSON.parse(outputText) as RadarExtraction;
+    }
   } catch (error) {
     await recordActivity({
       admin,
@@ -675,14 +1136,29 @@ export async function POST(req: Request) {
   await recordUsage("radar_extract", usage, Date.now() - startedAt, 200);
 
   try {
-    const verifyPrompt = await loadPromptSection("radar_extract_verify_system");
-    const verificationSnapshot = buildVerificationSnapshot(extracted);
-    const baseVerifyText =
-      "Voici l extraction a verifier. Compare a l image source et signale toute incoherence.\n" +
-      JSON.stringify(verificationSnapshot, null, 2);
-
-    const callVerify = async (extraHint?: string) =>
-      openai.responses.create({
+    const verifyPromptTemplate = await loadPromptSection(promptConfig.verifySystemSection);
+    const fallbackVerifyPromptTemplate =
+      promptConfig.verifyFallbackSection
+        ? await loadPromptSection(promptConfig.verifyFallbackSection)
+        : "";
+    const verifyPrompt = verifyPromptTemplate || fallbackVerifyPromptTemplate;
+    if (isSmart2MoveGraph) {
+      const smart2MoveSnapshot = {
+        graph_type: smart2MoveExtracted?.graph_type ?? null,
+        impact_marker_x: normalizedImpactMarkerX ?? null,
+        transition_start_x: normalizedTransitionStartX ?? null,
+        peak_window_x: smart2MovePeakWindow
+          ? { start: smart2MovePeakWindow.start, end: smart2MovePeakWindow.end }
+          : null,
+        annotations: smart2MoveExtracted?.annotations ?? [],
+        analysis: smart2MoveExtracted?.analysis ?? null,
+        summary: smart2MoveExtracted?.summary ?? null,
+      };
+      const baseVerifyText =
+        "Voici l extraction Smart2Move a verifier. Compare a l image source.\n" +
+        `Type selectionne par le coach: ${promptConfig.smart2MoveGraphLabel ?? "Smart2Move"} (${promptConfig.smart2MoveGraphType ?? "unknown"}).\n` +
+        JSON.stringify(smart2MoveSnapshot, null, 2);
+      const verifyResponse = await openai.responses.create({
         model: "gpt-5.2",
         input: [
           {
@@ -694,7 +1170,7 @@ export async function POST(req: Request) {
             content: [
               {
                 type: "input_text",
-                text: extraHint ? `${baseVerifyText}\n\n${extraHint}` : baseVerifyText,
+                text: baseVerifyText,
               },
               {
                 type: "input_image",
@@ -710,39 +1186,101 @@ export async function POST(req: Request) {
         text: {
           format: {
             type: "json_schema",
-            name: "radar_extract_verify",
-            description: "Verification extraction Flightscope.",
-            schema: buildRadarVerifySchema(),
+            name: "radar_extract_smart2move_verify",
+            description: promptConfig.verifySchemaDescription,
+            schema: buildSmart2MoveVerifySchema(),
             strict: true,
           },
         },
       });
 
-    let verifyResponse = await callVerify();
-    verifyUsage = verifyResponse.usage ?? verifyUsage;
-    let verifyText = extractOutputText(verifyResponse);
-    if (!verifyText) {
-      throw new Error("Verification vide.");
-    }
-
-    let verification = JSON.parse(verifyText) as RadarVerification;
-    if (!verification.is_valid && (verification.confidence ?? 0) < 0.6) {
-      verifyResponse = await callVerify(
-        "Si tu as un doute, retourne is_valid=true avec une confidence basse et liste les points a verifier."
-      );
       verifyUsage = verifyResponse.usage ?? verifyUsage;
-      verifyText = extractOutputText(verifyResponse);
-      if (verifyText) {
-        verification = JSON.parse(verifyText) as RadarVerification;
+      const verifyText = extractOutputText(verifyResponse);
+      if (!verifyText) {
+        throw new Error("Verification vide.");
       }
-    }
+      const verification = JSON.parse(verifyText) as Smart2MoveGraphVerification;
+      if (!verification.is_valid) {
+        const issueText = verification.issues?.slice(0, 3).join(" | ");
+        verificationWarning = issueText
+          ? `Verification extraction Smart2Move echouee: ${issueText}`
+          : "Verification extraction Smart2Move echouee.";
+      }
+      if (!verification.matches_selected_graph_type) {
+        verificationWarning = verificationWarning
+          ? `${verificationWarning} | Le graphe extrait ne correspond pas au type selectionne par le coach.`
+          : "Le graphe extrait ne correspond pas au type selectionne par le coach.";
+      }
+    } else {
+      const verificationSnapshot = buildVerificationSnapshot(extracted ?? { columns: [], rows: [] });
+      const baseVerifyText =
+        `Voici l extraction ${promptConfig.sourceLabel} a verifier. ` +
+        "Compare a l image source et signale toute incoherence.\n" +
+        JSON.stringify(verificationSnapshot, null, 2);
 
-    if (!verification.is_valid) {
-      const issueText = verification.issues?.slice(0, 3).join(" | ");
-      const message = issueText
-        ? `Verification extraction echouee: ${issueText}`
-        : "Verification extraction echouee.";
-      verificationWarning = message;
+      const callVerify = async (extraHint?: string) =>
+        openai.responses.create({
+          model: "gpt-5.2",
+          input: [
+            {
+              role: "system",
+              content: [{ type: "input_text", text: verifyPrompt }],
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: extraHint ? `${baseVerifyText}\n\n${extraHint}` : baseVerifyText,
+                },
+                {
+                  type: "input_image",
+                  image_url: `data:${radarFile.file_mime || "image/png"};base64,${buffer.toString(
+                    "base64"
+                  )}`,
+                  detail: "high",
+                },
+              ],
+            },
+          ],
+          max_output_tokens: 900,
+          text: {
+            format: {
+              type: "json_schema",
+              name: "radar_extract_verify",
+              description: promptConfig.verifySchemaDescription,
+              schema: buildRadarVerifySchema(),
+              strict: true,
+            },
+          },
+        });
+
+      let verifyResponse = await callVerify();
+      verifyUsage = verifyResponse.usage ?? verifyUsage;
+      let verifyText = extractOutputText(verifyResponse);
+      if (!verifyText) {
+        throw new Error("Verification vide.");
+      }
+
+      let verification = JSON.parse(verifyText) as RadarVerification;
+      if (!verification.is_valid && (verification.confidence ?? 0) < 0.6) {
+        verifyResponse = await callVerify(
+          "Si tu as un doute, retourne is_valid=true avec une confidence basse et liste les points a verifier."
+        );
+        verifyUsage = verifyResponse.usage ?? verifyUsage;
+        verifyText = extractOutputText(verifyResponse);
+        if (verifyText) {
+          verification = JSON.parse(verifyText) as RadarVerification;
+        }
+      }
+
+      if (!verification.is_valid) {
+        const issueText = verification.issues?.slice(0, 3).join(" | ");
+        const message = issueText
+          ? `Verification extraction echouee: ${issueText}`
+          : "Verification extraction echouee.";
+        verificationWarning = message;
+      }
     }
 
     await recordUsage(
@@ -760,6 +1298,84 @@ export async function POST(req: Request) {
       Date.now() - verifyStartedAt,
       200
     );
+  }
+
+  if (isSmart2MoveGraph) {
+    const smart2MoveAnnotations = sanitizeSmart2MoveAnnotations(
+      smart2MoveExtracted?.annotations ?? []
+    );
+    const smart2MoveMiniSummary = smart2MoveExtracted?.summary?.trim() ?? null;
+    const selectedSmart2MoveGraphType = promptConfig.smart2MoveGraphType ?? null;
+    const smart2MoveConfig = buildSmart2MoveConfig(
+      smart2MoveAnnotations,
+      smart2MoveMiniSummary,
+      selectedSmart2MoveGraphType,
+      normalizedImpactMarkerX,
+      normalizedTransitionStartX
+    );
+    const smart2MoveSummary = smart2MoveExtracted?.analysis?.trim() ?? "";
+    if (!smart2MoveSummary) {
+      await admin
+        .from("radar_files")
+        .update({ status: "error", error: "Analyse Smart2Move vide." })
+        .eq("id", radarFileId);
+      return Response.json(
+        { error: "Analyse Smart2Move vide." },
+        { status: 500 }
+      );
+    }
+
+    const { error: updateError } = await admin
+      .from("radar_files")
+      .update({
+        status: "ready",
+        columns: [],
+        shots: [],
+        stats: { avg: {}, dev: {} },
+        summary: smart2MoveSummary,
+        config: smart2MoveConfig,
+        analytics: null,
+        extracted_at: new Date().toISOString(),
+        error: verificationWarning,
+      })
+      .eq("id", radarFileId);
+
+    if (updateError) {
+      await recordActivity({
+        admin,
+        level: "error",
+        action: "radar.import.failed",
+        actorUserId: userId,
+        orgId: radarFile.org_id,
+        entityType: "radar_file",
+        entityId: radarFile.id,
+        message: updateError.message ?? "Sauvegarde extraction Smart2Move impossible.",
+      });
+      return Response.json({ error: updateError.message }, { status: 500 });
+    }
+
+    await recordActivity({
+      admin,
+      action: "radar.import.success",
+      actorUserId: userId,
+      orgId: radarFile.org_id,
+      entityType: "radar_file",
+      entityId: radarFile.id,
+      message: verificationWarning
+        ? "Import Smart2Move termine avec avertissement."
+        : "Import Smart2Move termine.",
+      metadata: {
+        hasWarning: Boolean(verificationWarning),
+        source: "smart2move",
+        graphType: selectedSmart2MoveGraphType,
+      },
+    });
+
+    return Response.json({ status: "ok" });
+  }
+
+  if (!extracted) {
+    return Response.json({ error: "Extraction datas vide." }, { status: 500 });
   }
 
   const rawColumns = (extracted.columns ?? []).map((column) => ({

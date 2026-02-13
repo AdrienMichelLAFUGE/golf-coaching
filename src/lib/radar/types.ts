@@ -1,3 +1,5 @@
+import type { Smart2MoveGraphType } from "./smart2move-graph-types";
+
 export type RadarConfig = {
   mode: "default" | "custom" | "ai";
   showSummary: boolean;
@@ -25,6 +27,12 @@ export type RadarConfig = {
     aiSyntax?: "exp-tech" | "exp-comp" | "exp-tech-solution" | "exp-solution" | "global";
     aiAnswers?: Record<string, string | string[]>;
     aiContext?: string;
+    smart2MoveGraphType?: Smart2MoveGraphType;
+    smart2MoveGraphLabel?: string;
+    smart2MoveImpactMarkerX?: number;
+    smart2MoveTransitionStartX?: number;
+    smart2MovePeakWindowStartX?: number;
+    smart2MovePeakWindowEndX?: number;
   };
 };
 

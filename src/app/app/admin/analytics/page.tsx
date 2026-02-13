@@ -16,11 +16,27 @@ type CostSeriesPoint = {
 type CostRow = {
   key: string;
   label: string;
+  endpointBase?: string;
+  technology?: string | null;
+  featureKey?: string;
+  featureLabel?: string;
   requests: number;
   inputTokens: number;
   outputTokens: number;
   costUsd: number;
   costPerRequestUsd: number;
+};
+
+type FeatureCostRow = {
+  key: string;
+  label: string;
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  costPerRequestUsd: number;
+  estimatedReports: number | null;
+  costPerReportUsd: number | null;
 };
 
 type CoachCostRow = CostRow & {
@@ -36,6 +52,29 @@ type PerformanceRow = {
   errorRatePct: number;
 };
 
+type ApiCallRow = {
+  createdAt: string;
+  featureKey: string;
+  featureLabel: string;
+  endpoint: string;
+  endpointBase: string;
+  technology: string | null;
+  action: string | null;
+  model: string;
+  coachId: string;
+  coachName: string;
+  orgId: string;
+  orgName: string;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  costUsd: number;
+  durationMs: number | null;
+  statusCode: number | null;
+  errorType: string | null;
+  isError: boolean;
+};
+
 type AnalyticsPayload = {
   period: Period;
   windowDays: number;
@@ -45,12 +84,23 @@ type AnalyticsPayload = {
     requests: number;
     p95DurationMs: number;
     errorRatePct: number;
+    reportsEdited: number;
+    reportBuilderCostUsd: number;
+    estimatedReportCostUsd: number | null;
   };
   costSeries: CostSeriesPoint[];
   costBreakdown: {
     endpoints: CostRow[];
+    actions: CostRow[];
+    features: FeatureCostRow[];
     coaches: CoachCostRow[];
     orgs: CostRow[];
+  };
+  apiCalls: {
+    rows: ApiCallRow[];
+    fetchedRows: number;
+    fetchLimit: number;
+    maybeTruncated: boolean;
   };
   performance: {
     endpoints: PerformanceRow[];
@@ -73,6 +123,7 @@ const endpointLabels: Record<string, string> = {
   radar_questions: "Radar Questions",
   radar_auto: "Radar Auto",
   radar_auto_retry: "Radar Auto (retry)",
+  report_kpis_ai: "KPIs Rapport",
 };
 
 const formatUsd = (value: number | string | null | undefined) => {
@@ -107,7 +158,35 @@ const formatDuration = (value: number | null | undefined) => {
   return `${formatNumber(numeric, 0)} ms`;
 };
 
+const formatDateTime = (value: string | null | undefined) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("fr-FR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const techLabels: Record<string, string> = {
+  flightscope: "Flightscope",
+  trackman: "Trackman",
+  smart2move: "Smart2Move",
+  unknown: "Unknown",
+};
+
 const resolveEndpointLabel = (value: string) => endpointLabels[value] ?? value;
+const resolveTechLabel = (value?: string | null) =>
+  value ? (techLabels[value] ?? value) : "General";
+const resolveEndpointDisplay = (value: string) => {
+  const [base, tech] = value.split(":");
+  const endpoint = resolveEndpointLabel(base);
+  if (!tech) return endpoint;
+  return `${endpoint} (${resolveTechLabel(tech)})`;
+};
 
 const sortByCost = <T extends { costUsd: number }>(
   rows: T[],
@@ -123,6 +202,8 @@ export default function AdminAnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [endpointSort, setEndpointSort] = useState<"asc" | "desc">("desc");
+  const [actionSort, setActionSort] = useState<"asc" | "desc">("desc");
+  const [featureSort, setFeatureSort] = useState<"asc" | "desc">("desc");
   const [coachSort, setCoachSort] = useState<"asc" | "desc">("desc");
   const [orgSort, setOrgSort] = useState<"asc" | "desc">("desc");
 
@@ -158,11 +239,12 @@ export default function AdminAnalyticsPage() {
     loadAnalytics();
   }, [period]);
 
-  const costSeries = analytics?.costSeries ?? [];
+  const costSeries = useMemo(() => analytics?.costSeries ?? [], [analytics]);
   const performanceRows = useMemo(
     () => analytics?.performance.endpoints ?? [],
     [analytics]
   );
+  const apiCallRows = useMemo(() => analytics?.apiCalls.rows ?? [], [analytics]);
 
   const maxCost = costSeries.length
     ? Math.max(...costSeries.map((entry) => entry.costUsd))
@@ -177,6 +259,14 @@ export default function AdminAnalyticsPage() {
   const sortedEndpoints = useMemo(
     () => sortByCost(analytics?.costBreakdown.endpoints ?? [], endpointSort),
     [analytics, endpointSort]
+  );
+  const sortedActions = useMemo(
+    () => sortByCost(analytics?.costBreakdown.actions ?? [], actionSort),
+    [analytics, actionSort]
+  );
+  const sortedFeatures = useMemo(
+    () => sortByCost(analytics?.costBreakdown.features ?? [], featureSort),
+    [analytics, featureSort]
   );
   const sortedCoaches = useMemo(
     () => sortByCost(analytics?.costBreakdown.coaches ?? [], coachSort),
@@ -238,7 +328,7 @@ export default function AdminAnalyticsPage() {
           </section>
         ) : analytics ? (
           <>
-            <section className="grid gap-4 md:grid-cols-4">
+            <section className="grid gap-4 md:grid-cols-5">
               {(() => {
                 const delta = analytics.totals.costDeltaPct;
                 const deltaLabel =
@@ -262,6 +352,17 @@ export default function AdminAnalyticsPage() {
                     label: "Appels IA",
                     value: formatNumber(analytics.totals.requests),
                     helper: `Periode ${periodLabels[analytics.period]}`,
+                    helperTone: "text-[var(--muted)]",
+                  },
+                  {
+                    label: "Cout moyen rapport",
+                    value:
+                      analytics.totals.estimatedReportCostUsd === null
+                        ? "-"
+                        : formatUsd(analytics.totals.estimatedReportCostUsd),
+                    helper: `${formatNumber(analytics.totals.reportsEdited)} rapports edites · pool ${formatUsd(
+                      analytics.totals.reportBuilderCostUsd
+                    )}`,
                     helperTone: "text-[var(--muted)]",
                   },
                   {
@@ -289,6 +390,97 @@ export default function AdminAnalyticsPage() {
                   </div>
                 ));
               })()}
+            </section>
+
+            <section className="panel rounded-2xl p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-[var(--text)]">
+                    Journal des appels API
+                  </h3>
+                  <p className="mt-1 text-sm text-[var(--muted)]">
+                    Une ligne par call sur la periode selectionnee.
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    {formatNumber(apiCallRows.length)} appels affiches
+                  </p>
+                  {analytics.apiCalls.maybeTruncated ? (
+                    <p className="mt-1 text-xs text-amber-300">
+                      Limite atteinte ({formatNumber(analytics.apiCalls.fetchLimit)}).
+                      Les appels plus anciens ne sont pas affiches.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full text-left text-xs text-[var(--muted)]">
+                  <thead>
+                    <tr className="border-b border-white/5">
+                      <th className="py-2">Date</th>
+                      <th className="py-2">Feature</th>
+                      <th className="py-2">Endpoint</th>
+                      <th className="py-2">Tech</th>
+                      <th className="py-2">Action</th>
+                      <th className="py-2">Coach</th>
+                      <th className="py-2">Organisation</th>
+                      <th className="py-2">Tokens</th>
+                      <th className="py-2">Cout</th>
+                      <th className="py-2">Duree</th>
+                      <th className="py-2">Statut</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {apiCallRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={11} className="py-3 text-sm text-[var(--muted)]">
+                          Aucun appel API.
+                        </td>
+                      </tr>
+                    ) : (
+                      apiCallRows.map((row) => {
+                        const statusLabel = row.statusCode
+                          ? String(row.statusCode)
+                          : row.isError
+                            ? "error"
+                            : "-";
+                        const statusTone = row.isError
+                          ? "text-rose-300"
+                          : row.statusCode && row.statusCode >= 400
+                            ? "text-amber-300"
+                            : "text-emerald-200";
+                        const errorText =
+                          row.errorType && row.errorType.trim()
+                            ? ` (${row.errorType.trim()})`
+                            : "";
+                        return (
+                          <tr
+                            key={`${row.createdAt}-${row.coachId}-${row.endpoint}-${row.totalTokens}`}
+                            className="border-b border-white/5"
+                          >
+                            <td className="py-2">{formatDateTime(row.createdAt)}</td>
+                            <td className="py-2 text-[var(--text)]">{row.featureLabel}</td>
+                            <td className="py-2">{resolveEndpointLabel(row.endpointBase)}</td>
+                            <td className="py-2">{resolveTechLabel(row.technology)}</td>
+                            <td className="py-2">{row.action ?? "-"}</td>
+                            <td className="py-2 text-[var(--text)]">{row.coachName}</td>
+                            <td className="py-2">{row.orgName}</td>
+                            <td className="py-2">{formatNumber(row.totalTokens)}</td>
+                            <td className="py-2">{formatUsd(row.costUsd)}</td>
+                            <td className="py-2">{formatDuration(row.durationMs)}</td>
+                            <td className={`py-2 ${statusTone}`}>
+                              {statusLabel}
+                              {errorText}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </section>
 
             <section className="space-y-6">
@@ -328,6 +520,60 @@ export default function AdminAnalyticsPage() {
               </div>
 
               <div className="panel rounded-2xl p-6">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-lg font-semibold text-[var(--text)]">
+                    Couts par action
+                  </h3>
+                  <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                    {periodLabels[analytics.period]}
+                  </p>
+                </div>
+                <div className="mt-3 flex items-center justify-end text-xs uppercase tracking-wide text-[var(--muted)]">
+                  <button
+                    type="button"
+                    onClick={() => setActionSort(actionSort === "asc" ? "desc" : "asc")}
+                    className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-[var(--muted)] transition hover:border-white/40"
+                  >
+                    Tri {actionSort === "asc" ? "asc" : "desc"}
+                  </button>
+                </div>
+                <div className="mt-3 overflow-x-auto">
+                  <table className="w-full text-left text-xs text-[var(--muted)]">
+                    <thead>
+                      <tr className="border-b border-white/5">
+                        <th className="py-2">Action</th>
+                        <th className="py-2">Cout total</th>
+                        <th className="py-2">Cout / appel</th>
+                        <th className="py-2">Tokens in</th>
+                        <th className="py-2">Tokens out</th>
+                        <th className="py-2 text-right">Appels</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedActions.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="py-3 text-sm text-[var(--muted)]">
+                            Aucune action.
+                          </td>
+                        </tr>
+                      ) : (
+                        sortedActions.map((row) => (
+                          <tr key={row.key} className="border-b border-white/5">
+                            <td className="py-2 text-[var(--text)]">{row.label}</td>
+                            <td className="py-2">{formatUsd(row.costUsd)}</td>
+                            <td className="py-2">{formatUsd(row.costPerRequestUsd)}</td>
+                            <td className="py-2">{formatNumber(row.inputTokens)}</td>
+                            <td className="py-2">{formatNumber(row.outputTokens)}</td>
+                            <td className="py-2 text-right">{formatNumber(row.requests)}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="panel rounded-2xl p-6">
                 <h3 className="text-lg font-semibold text-[var(--text)]">
                   Detail des couts
                 </h3>
@@ -336,6 +582,64 @@ export default function AdminAnalyticsPage() {
                 </p>
 
                 <div className="mt-6 space-y-6">
+                  <div>
+                    <div className="flex items-center justify-between text-xs uppercase tracking-wide text-[var(--muted)]">
+                      <span>Features</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setFeatureSort(featureSort === "asc" ? "desc" : "asc")
+                        }
+                        className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-[var(--muted)] transition hover:border-white/40"
+                      >
+                        Tri {featureSort === "asc" ? "asc" : "desc"}
+                      </button>
+                    </div>
+                    <div className="mt-3 overflow-x-auto">
+                      <table className="w-full text-left text-xs text-[var(--muted)]">
+                        <thead>
+                          <tr className="border-b border-white/5">
+                            <th className="py-2">Feature</th>
+                            <th className="py-2">Cout total</th>
+                            <th className="py-2">Cout / appel</th>
+                            <th className="py-2">Cout / rapport</th>
+                            <th className="py-2 text-right">Appels</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sortedFeatures.length === 0 ? (
+                            <tr>
+                              <td
+                                colSpan={5}
+                                className="py-3 text-sm text-[var(--muted)]"
+                              >
+                                Aucune feature.
+                              </td>
+                            </tr>
+                          ) : (
+                            sortedFeatures.map((row) => (
+                              <tr key={row.key} className="border-b border-white/5">
+                                <td className="py-2 text-[var(--text)]">{row.label}</td>
+                                <td className="py-2">{formatUsd(row.costUsd)}</td>
+                                <td className="py-2">
+                                  {formatUsd(row.costPerRequestUsd)}
+                                </td>
+                                <td className="py-2">
+                                  {row.costPerReportUsd === null
+                                    ? "-"
+                                    : formatUsd(row.costPerReportUsd)}
+                                </td>
+                                <td className="py-2 text-right">
+                                  {formatNumber(row.requests)}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
                   <div>
                     <div className="flex items-center justify-between text-xs uppercase tracking-wide text-[var(--muted)]">
                       <span>Endpoints</span>
@@ -354,6 +658,8 @@ export default function AdminAnalyticsPage() {
                         <thead>
                           <tr className="border-b border-white/5">
                             <th className="py-2">Endpoint</th>
+                            <th className="py-2">Feature</th>
+                            <th className="py-2">Technologie</th>
                             <th className="py-2">Cout total</th>
                             <th className="py-2">Cout / appel</th>
                             <th className="py-2">Tokens in</th>
@@ -365,7 +671,7 @@ export default function AdminAnalyticsPage() {
                           {sortedEndpoints.length === 0 ? (
                             <tr>
                               <td
-                                colSpan={6}
+                                colSpan={8}
                                 className="py-3 text-sm text-[var(--muted)]"
                               >
                                 Aucun endpoint.
@@ -375,7 +681,11 @@ export default function AdminAnalyticsPage() {
                             sortedEndpoints.map((row) => (
                               <tr key={row.key} className="border-b border-white/5">
                                 <td className="py-2 text-[var(--text)]">
-                                  {resolveEndpointLabel(row.label)}
+                                  {resolveEndpointLabel(row.endpointBase ?? row.label)}
+                                </td>
+                                <td className="py-2">{row.featureLabel ?? "-"}</td>
+                                <td className="py-2">
+                                  {resolveTechLabel(row.technology)}
                                 </td>
                                 <td className="py-2">{formatUsd(row.costUsd)}</td>
                                 <td className="py-2">
@@ -525,7 +835,7 @@ export default function AdminAnalyticsPage() {
                           <div key={row.endpoint} className="space-y-2">
                             <div className="flex items-center justify-between">
                               <span className="text-[var(--text)]">
-                                {resolveEndpointLabel(row.endpoint)}
+                                {resolveEndpointDisplay(row.endpoint)}
                               </span>
                               <span>
                                 {formatDuration(row.p50DurationMs)} /{" "}
@@ -564,7 +874,7 @@ export default function AdminAnalyticsPage() {
                           <div key={`${row.endpoint}-errors`} className="space-y-2">
                             <div className="flex items-center justify-between">
                               <span className="text-[var(--text)]">
-                                {resolveEndpointLabel(row.endpoint)}
+                                {resolveEndpointDisplay(row.endpoint)}
                               </span>
                               <span>{formatPercent(row.errorRatePct, 2)}</span>
                             </div>
@@ -618,7 +928,7 @@ export default function AdminAnalyticsPage() {
                             className="border-b border-white/5"
                           >
                             <td className="py-2 text-[var(--text)]">
-                              {resolveEndpointLabel(row.endpoint)}
+                              {resolveEndpointDisplay(row.endpoint)}
                             </td>
                             <td className="py-2">{formatDuration(row.p50DurationMs)}</td>
                             <td className="py-2">{formatDuration(row.p95DurationMs)}</td>
@@ -662,7 +972,7 @@ export default function AdminAnalyticsPage() {
                             className="border-b border-white/5"
                           >
                             <td className="py-2 text-[var(--text)]">
-                              {resolveEndpointLabel(row.endpoint)}
+                              {resolveEndpointDisplay(row.endpoint)}
                             </td>
                             <td className="py-2">{formatPercent(row.errorRatePct, 2)}</td>
                             <td className="py-2">{formatDuration(row.p95DurationMs)}</td>

@@ -62,6 +62,96 @@ describe("POST /api/radar/extract", () => {
     expect(serverMocks.createSupabaseServerClientFromRequest).not.toHaveBeenCalled();
   });
 
+  it("returns 422 when smart2move graph type is missing", async () => {
+    const supabase = {
+      auth: {
+        getUser: async () => ({
+          data: { user: { id: "user-1", email: "coach@example.com" } },
+          error: null,
+        }),
+      },
+      from: (table: string) => {
+        if (table === "radar_files") {
+          return buildSelectSingle({
+            data: {
+              id: "radar-1",
+              org_id: "org-1",
+              student_id: "student-1",
+              file_url: "org-1/path.png",
+              file_mime: "image/png",
+              original_name: "file.png",
+              source: "smart2move",
+            },
+            error: null,
+          });
+        }
+        return buildSelectSingle({ data: null, error: null });
+      },
+    } as SupabaseClient;
+
+    const admin = {
+      from: jest.fn(),
+      storage: {
+        from: jest.fn(),
+      },
+    };
+
+    serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
+    serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
+
+    const response = await POST(buildRequest({ radarFileId: "radar-1" }));
+
+    expect(response.status).toBe(422);
+    const body = await response.json();
+    expect(body.error).toContain("Type de graphe Smart2Move requis");
+  });
+
+  it("returns 422 when smart2move impact marker is missing", async () => {
+    const supabase = {
+      auth: {
+        getUser: async () => ({
+          data: { user: { id: "user-1", email: "coach@example.com" } },
+          error: null,
+        }),
+      },
+      from: (table: string) => {
+        if (table === "radar_files") {
+          return buildSelectSingle({
+            data: {
+              id: "radar-1",
+              org_id: "org-1",
+              student_id: "student-1",
+              file_url: "org-1/path.png",
+              file_mime: "image/png",
+              original_name: "file.png",
+              source: "smart2move",
+            },
+            error: null,
+          });
+        }
+        return buildSelectSingle({ data: null, error: null });
+      },
+    } as SupabaseClient;
+
+    const admin = {
+      from: jest.fn(),
+      storage: {
+        from: jest.fn(),
+      },
+    };
+
+    serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
+    serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
+
+    const response = await POST(
+      buildRequest({ radarFileId: "radar-1", smart2MoveGraphType: "fx" })
+    );
+
+    expect(response.status).toBe(422);
+    const body = await response.json();
+    expect(body.error).toContain("Position d impact requise");
+  });
+
   it("returns 403 when radar file org does not match profile", async () => {
     const supabase = {
       auth: {

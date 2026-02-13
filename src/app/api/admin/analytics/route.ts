@@ -23,6 +23,27 @@ type UsageRow = {
   created_at: string;
 };
 
+type ParsedEndpoint = {
+  raw: string;
+  base: string;
+  technology: string | null;
+};
+
+type FeatureKey = "report" | "radar" | "tpi" | "other";
+const USAGE_FETCH_LIMIT = 20000;
+const REPORT_BUILDER_AI_ACTIONS = new Set([
+  "improve",
+  "write",
+  "summary",
+  "propagate",
+  "plan",
+  "clarify",
+  "axes",
+  "radar_questions",
+  "radar_auto",
+  "radar_auto_retry",
+]);
+
 const PRICING_PER_M_TOKENS_USD = {
   "gpt-5.2": { input: 1.75, output: 14 },
 };
@@ -86,6 +107,43 @@ const isErrorRow = (row: UsageRow) => {
 
 const roundUsd = (value: number) => Number(value.toFixed(6));
 
+const parseEndpoint = (value: string | null, action: string | null): ParsedEndpoint => {
+  const raw = value ?? action ?? "unknown";
+  const [basePart, techPart] = raw.split(":");
+  const base = (basePart ?? "unknown").trim() || "unknown";
+  const technology = techPart?.trim() ? techPart.trim() : null;
+  return { raw, base, technology };
+};
+
+const resolveFeatureKey = (endpointBase: string): FeatureKey => {
+  if (
+    [
+      "ai",
+      "radar_ai",
+      "radar_questions",
+      "radar_auto",
+      "radar_auto_retry",
+      "report_kpis_ai",
+      "radar_extract",
+      "radar_extract_verify",
+      "tpi_extract",
+      "tpi_verify",
+    ].includes(endpointBase)
+  ) {
+    return "report";
+  }
+  if (endpointBase.startsWith("radar")) return "radar";
+  if (endpointBase.startsWith("tpi")) return "tpi";
+  return "other";
+};
+
+const FEATURE_LABELS: Record<FeatureKey, string> = {
+  report: "Rapport",
+  radar: "Radar",
+  tpi: "TPI",
+  other: "Autres",
+};
+
 const formatBucketLabel = (date: Date, period: Period) => {
   if (period === "day") {
     const day = date.toISOString().slice(0, 10);
@@ -122,6 +180,7 @@ export async function GET(request: Request) {
   const windowDays = PERIOD_WINDOWS[period];
   const now = Date.now();
   const currentStartMs = now - windowDays * 24 * 60 * 60 * 1000;
+  const currentSince = new Date(currentStartMs).toISOString();
   const previousStartMs = now - windowDays * 2 * 24 * 60 * 60 * 1000;
   const previousSince = new Date(previousStartMs).toISOString();
 
@@ -132,7 +191,7 @@ export async function GET(request: Request) {
     )
     .gte("created_at", previousSince)
     .order("created_at", { ascending: false })
-    .limit(5000);
+    .limit(USAGE_FETCH_LIMIT);
 
   if (usageError) {
     return NextResponse.json({ error: usageError.message }, { status: 500 });
@@ -144,6 +203,8 @@ export async function GET(request: Request) {
     string,
     {
       endpoint: string;
+      endpointBase: string;
+      technology: string | null;
       requests: number;
       inputTokens: number;
       outputTokens: number;
@@ -177,10 +238,51 @@ export async function GET(request: Request) {
     string,
     { label: string; costUsd: number; requests: number }
   >();
+  const featureMap = new Map<
+    FeatureKey,
+    {
+      key: FeatureKey;
+      label: string;
+      requests: number;
+      inputTokens: number;
+      outputTokens: number;
+      costUsd: number;
+    }
+  >();
+  const actionMap = new Map<
+    string,
+    {
+      action: string;
+      requests: number;
+      inputTokens: number;
+      outputTokens: number;
+      costUsd: number;
+    }
+  >();
+  const apiCallRawRows: Array<{
+    createdAt: string;
+    userId: string;
+    orgId: string;
+    featureKey: FeatureKey;
+    endpointRaw: string;
+    endpointBase: string;
+    technology: string | null;
+    action: string | null;
+    model: string;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    costUsd: number;
+    durationMs: number | null;
+    statusCode: number | null;
+    errorType: string | null;
+    isError: boolean;
+  }> = [];
   const durations: number[] = [];
   let totalRequests = 0;
   let totalCostCurrent = 0;
   let totalCostPrevious = 0;
+  let totalReportBuilderCostCurrent = 0;
   let errorCount = 0;
 
   rows.forEach((row) => {
@@ -202,14 +304,28 @@ export async function GET(request: Request) {
     totalRequests += 1;
     totalCostCurrent += rowCostUsd;
 
+    const endpointRaw = (row.endpoint ?? "").toLowerCase();
+    const actionRaw = (row.action ?? "").toLowerCase();
+    const isReportBuilderRadarExtract =
+      (actionRaw === "radar_extract" || actionRaw === "radar_extract_verify") &&
+      endpointRaw.includes(":report_builder");
+    if (REPORT_BUILDER_AI_ACTIONS.has(actionRaw) || isReportBuilderRadarExtract) {
+      totalReportBuilderCostCurrent += rowCostUsd;
+    }
+
     if (isErrorRow(row)) errorCount += 1;
     if (typeof row.duration_ms === "number" && row.duration_ms > 0) {
       durations.push(row.duration_ms);
     }
 
-    const endpointKey = row.endpoint ?? row.action ?? "unknown";
+    const endpointParsed = parseEndpoint(row.endpoint, row.action);
+    const endpointKey = endpointParsed.raw;
+    const featureKey = resolveFeatureKey(endpointParsed.base);
+    const rowIsError = isErrorRow(row);
     const endpointEntry = endpointMap.get(endpointKey) ?? {
       endpoint: endpointKey,
+      endpointBase: endpointParsed.base,
+      technology: endpointParsed.technology,
       requests: 0,
       inputTokens: 0,
       outputTokens: 0,
@@ -224,8 +340,56 @@ export async function GET(request: Request) {
     if (typeof row.duration_ms === "number" && row.duration_ms > 0) {
       endpointEntry.durations.push(row.duration_ms);
     }
-    if (isErrorRow(row)) endpointEntry.errorCount += 1;
+    if (rowIsError) endpointEntry.errorCount += 1;
     endpointMap.set(endpointKey, endpointEntry);
+
+    const featureEntry = featureMap.get(featureKey) ?? {
+      key: featureKey,
+      label: FEATURE_LABELS[featureKey],
+      requests: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      costUsd: 0,
+    };
+    featureEntry.requests += 1;
+    featureEntry.inputTokens += inputTokens;
+    featureEntry.outputTokens += outputTokens;
+    featureEntry.costUsd += rowCostUsd;
+    featureMap.set(featureKey, featureEntry);
+
+    const actionKey = (row.action ?? endpointParsed.base ?? "unknown").trim() || "unknown";
+    const actionEntry = actionMap.get(actionKey) ?? {
+      action: actionKey,
+      requests: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      costUsd: 0,
+    };
+    actionEntry.requests += 1;
+    actionEntry.inputTokens += inputTokens;
+    actionEntry.outputTokens += outputTokens;
+    actionEntry.costUsd += rowCostUsd;
+    actionMap.set(actionKey, actionEntry);
+
+    apiCallRawRows.push({
+      createdAt: row.created_at,
+      userId: row.user_id,
+      orgId: row.org_id,
+      featureKey,
+      endpointRaw: endpointParsed.raw,
+      endpointBase: endpointParsed.base,
+      technology: endpointParsed.technology,
+      action: row.action,
+      model: modelKey,
+      inputTokens,
+      outputTokens,
+      totalTokens: inputTokens + outputTokens,
+      costUsd: roundUsd(rowCostUsd),
+      durationMs: row.duration_ms ?? null,
+      statusCode: row.status_code ?? null,
+      errorType: row.error_type ?? null,
+      isError: rowIsError,
+    });
 
     const coachEntry = coachMap.get(row.user_id) ?? {
       user_id: row.user_id,
@@ -283,25 +447,34 @@ export async function GET(request: Request) {
         }),
   ]);
 
-  if (profilesResult.error || orgsResult.error) {
-    return NextResponse.json(
-      {
-        error:
-          profilesResult.error?.message ||
-          orgsResult.error?.message ||
-          "Erreur inconnue.",
-      },
-      { status: 500 }
-    );
+  const safeProfiles =
+    profilesResult.error || !profilesResult.data ? [] : profilesResult.data;
+  const safeOrgs = orgsResult.error || !orgsResult.data ? [] : orgsResult.data;
+
+  let reportsEditedCount = 0;
+  const updatedCountResult = await auth.admin
+    .from("reports")
+    .select("id", { count: "exact", head: true })
+    .gte("updated_at", currentSince);
+  if (updatedCountResult.error) {
+    const createdCountResult = await auth.admin
+      .from("reports")
+      .select("id", { count: "exact", head: true })
+      .gte("created_at", currentSince);
+    if (!createdCountResult.error) {
+      reportsEditedCount = createdCountResult.count ?? 0;
+    }
+  } else {
+    reportsEditedCount = updatedCountResult.count ?? 0;
   }
 
   const profileById = new Map(
-    (profilesResult.data ?? []).map((profile) => [
+    safeProfiles.map((profile) => [
       profile.id,
       { full_name: profile.full_name ?? null, org_id: profile.org_id },
     ])
   );
-  const orgById = new Map((orgsResult.data ?? []).map((org) => [org.id, org.name ?? ""]));
+  const orgById = new Map(safeOrgs.map((org) => [org.id, org.name ?? ""]));
 
   const costSeries = Array.from(costSeriesMap.values()).sort((a, b) =>
     a.label.localeCompare(b.label)
@@ -311,6 +484,10 @@ export async function GET(request: Request) {
     .map((entry) => ({
       key: entry.endpoint,
       label: entry.endpoint,
+      endpointBase: entry.endpointBase,
+      technology: entry.technology,
+      featureKey: resolveFeatureKey(entry.endpointBase),
+      featureLabel: FEATURE_LABELS[resolveFeatureKey(entry.endpointBase)],
       requests: entry.requests,
       inputTokens: entry.inputTokens,
       outputTokens: entry.outputTokens,
@@ -319,10 +496,74 @@ export async function GET(request: Request) {
     }))
     .sort((a, b) => b.costUsd - a.costUsd);
 
+  const reportsEdited = reportsEditedCount;
+  const estimatedReportCostUsd =
+    reportsEdited > 0
+      ? roundUsd(totalReportBuilderCostCurrent / reportsEdited)
+      : null;
+
+  const featureBreakdown = Array.from(featureMap.values())
+    .map((entry) => ({
+      key: entry.key,
+      label: entry.label,
+      requests: entry.requests,
+      inputTokens: entry.inputTokens,
+      outputTokens: entry.outputTokens,
+      costUsd: roundUsd(entry.costUsd),
+      costPerRequestUsd: roundUsd(entry.requests ? entry.costUsd / entry.requests : 0),
+      estimatedReports: entry.key === "report" ? reportsEdited : null,
+      costPerReportUsd:
+        entry.key === "report" && reportsEdited > 0
+          ? roundUsd(totalReportBuilderCostCurrent / reportsEdited)
+          : null,
+    }))
+    .sort((a, b) => b.costUsd - a.costUsd);
+
+  const actionBreakdown = Array.from(actionMap.values())
+    .map((entry) => ({
+      key: entry.action,
+      label: entry.action,
+      requests: entry.requests,
+      inputTokens: entry.inputTokens,
+      outputTokens: entry.outputTokens,
+      costUsd: roundUsd(entry.costUsd),
+      costPerRequestUsd: roundUsd(entry.requests ? entry.costUsd / entry.requests : 0),
+    }))
+    .sort((a, b) => b.costUsd - a.costUsd);
+
+  const apiCalls = apiCallRawRows
+    .map((row) => {
+      const profile = profileById.get(row.userId);
+      const orgName = orgById.get(row.orgId) ?? "";
+      return {
+        createdAt: row.createdAt,
+        featureKey: row.featureKey,
+        featureLabel: FEATURE_LABELS[row.featureKey],
+        endpoint: row.endpointRaw,
+        endpointBase: row.endpointBase,
+        technology: row.technology,
+        action: row.action,
+        model: row.model,
+        coachId: row.userId,
+        coachName: profile?.full_name ?? "Coach",
+        orgId: row.orgId,
+        orgName: orgName || "Organisation",
+        inputTokens: row.inputTokens,
+        outputTokens: row.outputTokens,
+        totalTokens: row.totalTokens,
+        costUsd: row.costUsd,
+        durationMs: row.durationMs,
+        statusCode: row.statusCode,
+        errorType: row.errorType,
+        isError: row.isError,
+      };
+    })
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+
   const costBreakdownCoaches = Array.from(coachMap.values())
     .map((entry) => {
       const profile = profileById.get(entry.user_id);
-      const orgName = orgById.get(profile?.org_id ?? entry.org_id) ?? "";
+      const orgName = orgById.get(entry.org_id) ?? "";
       return {
         key: entry.user_id,
         label: profile?.full_name ?? "Coach",
@@ -378,12 +619,23 @@ export async function GET(request: Request) {
       requests: totalRequests,
       p95DurationMs: Math.round(percentile(durations, 0.95)),
       errorRatePct: Number(totalErrorRate.toFixed(2)),
+      reportsEdited,
+      reportBuilderCostUsd: roundUsd(totalReportBuilderCostCurrent),
+      estimatedReportCostUsd,
     },
     costSeries,
     costBreakdown: {
       endpoints: costBreakdownEndpoints,
+      actions: actionBreakdown,
+      features: featureBreakdown,
       coaches: costBreakdownCoaches,
       orgs: costBreakdownOrgs,
+    },
+    apiCalls: {
+      rows: apiCalls,
+      fetchedRows: apiCalls.length,
+      fetchLimit: USAGE_FETCH_LIMIT,
+      maybeTruncated: rows.length >= USAGE_FETCH_LIMIT,
     },
     performance: {
       endpoints: performanceEndpoints,

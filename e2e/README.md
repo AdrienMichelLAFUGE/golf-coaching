@@ -31,3 +31,9 @@ Mode UI (debug)
 ```
 npm run e2e:ui
 ```
+
+## Test visuel Smart2Move: overlay impact
+
+Le test `e2e/smart2move-impact-overlay.spec.ts` valide que la fin de la zone
+`Transition -> Impact` est alignee sur la ligne d'impact detectee, et attache une
+capture preview dans les artefacts Playwright.

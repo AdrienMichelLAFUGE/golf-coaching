@@ -31,6 +31,8 @@ import RadarCharts, {
   type RadarShot,
   type RadarStats,
 } from "../../../_components/radar-charts";
+import Smart2MoveFxPanel from "../../../_components/smart2move-fx-panel";
+import Smart2MoveMarkersModal from "../../../_components/smart2move-markers-modal";
 import { RADAR_CHART_DEFINITIONS, RADAR_CHART_GROUPS } from "@/lib/radar/charts/registry";
 import {
   RADAR_TECH_OPTIONS,
@@ -39,6 +41,14 @@ import {
   getRadarTechMeta,
   isRadarTech,
 } from "@/lib/radar/file-naming";
+import {
+  SMART2MOVE_GRAPH_OPTIONS,
+  isSmart2MoveGraphCompatibleWithPlate,
+  isSmart2MoveGraphType,
+  type Smart2MovePlateType,
+  type Smart2MoveGraphType,
+} from "@/lib/radar/smart2move-graph-types";
+import { normalizeSmart2MoveImpactMarkerX } from "@/lib/radar/smart2move-annotations";
 import type { RadarAnalytics } from "@/lib/radar/types";
 import {
   validateVideoSections,
@@ -49,6 +59,10 @@ import {
 
 type SectionType = "text" | "image" | "video" | "radar";
 type SectionLibraryFilterValue = "all" | SectionType;
+type Smart2MoveManualMarkers = {
+  impactMarkerX: number;
+  transitionStartX: number;
+};
 
 const SECTION_LIBRARY_FILTERS: ReadonlyArray<{
   value: SectionLibraryFilterValue;
@@ -97,7 +111,9 @@ type ReportSection = {
 type RadarFile = {
   id: string;
   status: "processing" | "ready" | "error" | "review";
+  source: "flightscope" | "trackman" | "smart2move" | "unknown";
   original_name: string | null;
+  file_url: string;
   columns: RadarColumn[];
   shots: RadarShot[];
   stats: RadarStats | null;
@@ -589,6 +605,7 @@ export default function CoachReportBuilderPage() {
   const [studentPickerOpen, setStudentPickerOpen] = useState(false);
   const [studentPickerQuery, setStudentPickerQuery] = useState("");
   const [radarFiles, setRadarFiles] = useState<RadarFile[]>([]);
+  const [radarImageUrls, setRadarImageUrls] = useState<Record<string, string>>({});
   const [radarLoading, setRadarLoading] = useState(false);
   const [radarError, setRadarError] = useState("");
   const [radarTech, setRadarTech] = useState<RadarTech>("flightscope");
@@ -602,6 +619,21 @@ export default function CoachReportBuilderPage() {
     null
   );
   const [radarImportTech, setRadarImportTech] = useState<RadarTech>("flightscope");
+  const [radarImportSmart2MovePlateType, setRadarImportSmart2MovePlateType] =
+    useState<Smart2MovePlateType>("1d");
+  const [radarImportSmart2MoveGraphType, setRadarImportSmart2MoveGraphType] =
+    useState<Smart2MoveGraphType | null>(null);
+  const radarSmart2MoveGraphTypeRef = useRef<Smart2MoveGraphType | null>(null);
+  const [smart2MoveMarkersModalOpen, setSmart2MoveMarkersModalOpen] = useState(false);
+  const [smart2MoveMarkersPreviewUrl, setSmart2MoveMarkersPreviewUrl] = useState<string | null>(
+    null
+  );
+  const [smart2MoveMarkersFileName, setSmart2MoveMarkersFileName] = useState<string | null>(
+    null
+  );
+  const smart2MoveMarkersResolverRef = useRef<
+    ((markers: Smart2MoveManualMarkers | null) => void) | null
+  >(null);
   const [radarImportError, setRadarImportError] = useState("");
   const [radarUploading, setRadarUploading] = useState(false);
   const [radarUploadProgress, setRadarUploadProgress] = useState(0);
@@ -1953,11 +1985,42 @@ export default function CoachReportBuilderPage() {
     setStudents(data ?? []);
   };
 
+  const loadRadarImageUrls = useCallback(async (files: RadarFile[]) => {
+    const smart2MoveFiles = files.filter(
+      (file) => file.source === "smart2move" && typeof file.file_url === "string"
+    );
+    if (!smart2MoveFiles.length) {
+      setRadarImageUrls({});
+      return;
+    }
+
+    const signedEntries = await Promise.all(
+      smart2MoveFiles.map(async (file) => {
+        const { data, error } = await supabase.storage
+          .from("radar-files")
+          .createSignedUrl(file.file_url, 60 * 60);
+        return {
+          id: file.id,
+          url: error ? null : (data?.signedUrl ?? null),
+        };
+      })
+    );
+
+    const nextMap: Record<string, string> = {};
+    signedEntries.forEach((entry) => {
+      if (entry.url) {
+        nextMap[entry.id] = entry.url;
+      }
+    });
+    setRadarImageUrls(nextMap);
+  }, []);
+
   const loadRadarFiles = useCallback(
     async (student?: string) => {
       const targetStudentId = student ?? studentId;
       if (!targetStudentId) {
         setRadarFiles([]);
+        setRadarImageUrls({});
         return [];
       }
       setRadarLoading(true);
@@ -1966,6 +2029,7 @@ export default function CoachReportBuilderPage() {
       const linkedIds = await resolveLinkedStudentIds(targetStudentId);
       if (linkedIds.length === 0) {
         setRadarFiles([]);
+        setRadarImageUrls({});
         setRadarLoading(false);
         return [];
       }
@@ -1973,7 +2037,7 @@ export default function CoachReportBuilderPage() {
       const { data, error } = await supabase
         .from("radar_files")
         .select(
-          "id, status, original_name, columns, shots, stats, summary, config, analytics, created_at, error, org_id, organizations(name)"
+          "id, status, source, original_name, file_url, columns, shots, stats, summary, config, analytics, created_at, error, org_id, organizations(name)"
         )
         .in("student_id", linkedIds)
         .order("created_at", { ascending: false });
@@ -1981,6 +2045,7 @@ export default function CoachReportBuilderPage() {
       if (error) {
         setRadarError(error.message);
         setRadarFiles([]);
+        setRadarImageUrls({});
         setRadarLoading(false);
         return [];
       }
@@ -1997,10 +2062,11 @@ export default function CoachReportBuilderPage() {
         })) ?? [];
 
       setRadarFiles(normalized as RadarFile[]);
+      void loadRadarImageUrls(normalized as RadarFile[]);
       setRadarLoading(false);
       return normalized as RadarFile[];
     },
-    [studentId, resolveLinkedStudentIds]
+    [studentId, resolveLinkedStudentIds, loadRadarImageUrls]
   );
 
   const stopRadarUploadProgress = () => {
@@ -2064,7 +2130,29 @@ export default function CoachReportBuilderPage() {
     }, delay);
   };
 
-  const processRadarFile = async (file: File) => {
+  const requestSmart2MoveMarkers = (file: File) =>
+    new Promise<Smart2MoveManualMarkers | null>((resolve) => {
+      const objectUrl = URL.createObjectURL(file);
+      smart2MoveMarkersResolverRef.current = (markers) => {
+        try {
+          resolve(markers);
+        } finally {
+          URL.revokeObjectURL(objectUrl);
+          setSmart2MoveMarkersModalOpen(false);
+          setSmart2MoveMarkersPreviewUrl(null);
+          setSmart2MoveMarkersFileName(null);
+          smart2MoveMarkersResolverRef.current = null;
+        }
+      };
+      setSmart2MoveMarkersFileName(file.name);
+      setSmart2MoveMarkersPreviewUrl(objectUrl);
+      setSmart2MoveMarkersModalOpen(true);
+    });
+
+  const processRadarFile = async (
+    file: File,
+    manualMarkers: Smart2MoveManualMarkers | null = null
+  ) => {
     if (!radarAddonEnabled) {
       setRadarError("Plan Pro requis pour importer un fichier datas.");
       openRadarAddonModal();
@@ -2076,6 +2164,33 @@ export default function CoachReportBuilderPage() {
     }
     const tech = radarTechRef.current;
     const techMeta = getRadarTechMeta(tech);
+    const smart2MoveGraphType = radarSmart2MoveGraphTypeRef.current;
+    if (tech === "smart2move" && !smart2MoveGraphType) {
+      setRadarError("Choisis le type de graphe Smart2Move avant l import.");
+      return false;
+    }
+    if (tech === "smart2move" && !manualMarkers) {
+      setRadarError("Placement des reperes Smart2Move requis avant extraction.");
+      return false;
+    }
+    if (
+      tech === "smart2move" &&
+      normalizeSmart2MoveImpactMarkerX(manualMarkers?.impactMarkerX) === null
+    ) {
+      setRadarError("Repere impact Smart2Move invalide.");
+      return false;
+    }
+    if (
+      tech === "smart2move" &&
+      smart2MoveGraphType &&
+      !isSmart2MoveGraphCompatibleWithPlate(
+        smart2MoveGraphType,
+        radarImportSmart2MovePlateType
+      )
+    ) {
+      setRadarError("Graphe non compatible avec le type de plaques selectionne.");
+      return false;
+    }
     if (!isRadarImageFile(file)) {
       setRadarError(`Importe une image ${techMeta.label} (jpg, png, heic...).`);
       return false;
@@ -2158,7 +2273,13 @@ export default function CoachReportBuilderPage() {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ radarFileId: radarRow.id }),
+      body: JSON.stringify({
+        radarFileId: radarRow.id,
+        smart2MoveGraphType: tech === "smart2move" ? smart2MoveGraphType : undefined,
+        impactMarkerX: tech === "smart2move" ? manualMarkers?.impactMarkerX : undefined,
+        transitionStartX: tech === "smart2move" ? manualMarkers?.transitionStartX : undefined,
+        origin: "report_builder",
+      }),
     });
 
     if (!response.ok) {
@@ -2183,6 +2304,9 @@ export default function CoachReportBuilderPage() {
   const openRadarImportModal = (sectionId: string) => {
     setRadarImportSectionId(sectionId);
     setRadarImportTech(radarTechRef.current);
+    setRadarImportSmart2MovePlateType("1d");
+    setRadarImportSmart2MoveGraphType(null);
+    radarSmart2MoveGraphTypeRef.current = null;
     setRadarImportError("");
     setRadarImportOpen(true);
   };
@@ -2190,6 +2314,8 @@ export default function CoachReportBuilderPage() {
   const closeRadarImportModal = () => {
     setRadarImportOpen(false);
     setRadarImportSectionId(null);
+    setRadarImportSmart2MovePlateType("1d");
+    setRadarImportSmart2MoveGraphType(null);
     setRadarImportError("");
   };
 
@@ -2227,13 +2353,24 @@ export default function CoachReportBuilderPage() {
 
   const handleRadarUploadBatch = async (files: File[]) => {
     if (!files.length) return;
-    setRadarUploading(true);
+    setRadarUploading(radarTechRef.current !== "smart2move");
     setRadarUploadBatch({ current: 0, total: files.length });
     for (const file of files) {
       setRadarUploadBatch((prev) =>
         prev ? { ...prev, current: prev.current + 1 } : prev
       );
-      const ok = await processRadarFile(file);
+      let markers: Smart2MoveManualMarkers | null = null;
+      if (radarTechRef.current === "smart2move") {
+        setRadarUploading(false);
+        stopRadarUploadProgress();
+        markers = await requestSmart2MoveMarkers(file);
+        if (!markers) {
+          setRadarError("Placement des reperes Smart2Move annule.");
+          break;
+        }
+      }
+      setRadarUploading(true);
+      const ok = await processRadarFile(file, markers);
       if (!ok) break;
     }
     setRadarUploading(false);
@@ -4974,7 +5111,8 @@ export default function CoachReportBuilderPage() {
   const hasSaveInProgress = saving;
   const hasAiRequestInProgress = Boolean(aiBusyId) || radarAiAutoBusy;
   const hasMediaUploadInProgress =
-    radarUploading || Object.values(uploadingSections).some(Boolean);
+    (radarUploading && !smart2MoveMarkersModalOpen) ||
+    Object.values(uploadingSections).some(Boolean);
   const hasGlobalProcessingOverlay =
     hasSaveInProgress || hasAiRequestInProgress || hasMediaUploadInProgress;
   const globalProcessingLabel = hasSaveInProgress
@@ -4987,7 +5125,13 @@ export default function CoachReportBuilderPage() {
       ? hasMediaUploadInProgress
         ? "Traitement IA et upload en cours"
         : "Traitement IA en cours"
-      : "Upload en cours";
+      : radarUploading
+        ? "Extraction datas en cours"
+        : "Upload en cours";
+  const shouldShowRadarOverlayProgress = radarUploading && !smart2MoveMarkersModalOpen;
+  const radarProgressPercent = Math.round(Math.max(0, Math.min(100, radarUploadProgress)));
+  const radarProgressCircumference = 2 * Math.PI * 46;
+  const radarProgressDash = (radarProgressPercent / 100) * radarProgressCircumference;
   const hasBlockingModalOpen =
     layoutEditorOpen ||
     aiLayoutOpen ||
@@ -5000,6 +5144,7 @@ export default function CoachReportBuilderPage() {
     sectionCreateModalOpen ||
     studentPickerOpen ||
     radarImportOpen ||
+    smart2MoveMarkersModalOpen ||
     clarifyOpen ||
     axesOpen ||
     radarReview !== null;
@@ -5131,6 +5276,30 @@ export default function CoachReportBuilderPage() {
             box-shadow:
               0 0 0 4px rgba(148, 163, 184, 0.24),
               0 0 14px rgba(56, 189, 248, 0.35);
+          }
+          .global-loader-progress {
+            position: absolute;
+            inset: -0.46rem;
+            pointer-events: none;
+          }
+          .global-loader-progress-svg {
+            display: block;
+            width: 100%;
+            height: 100%;
+            transform: rotate(-90deg);
+          }
+          .global-loader-progress-track {
+            fill: none;
+            stroke: rgba(148, 163, 184, 0.3);
+            stroke-width: 5;
+          }
+          .global-loader-progress-value {
+            fill: none;
+            stroke: var(--accent);
+            stroke-width: 5;
+            stroke-linecap: round;
+            transition: stroke-dasharray 220ms ease-out;
+            filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.35));
           }
           @keyframes globalLoaderSpin {
             from {
@@ -8172,43 +8341,6 @@ export default function CoachReportBuilderPage() {
                                       : "Uniquement les fichiers lies au rapport."}
                                   </span>
                                 </div>
-                                {radarUploading ? (
-                                  <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-                                    <div className="flex items-center justify-between text-xs text-[var(--muted)]">
-                                      <span>
-                                        Extraction datas
-                                        <span className="tpi-dots" aria-hidden="true">
-                                          <span />
-                                          <span />
-                                          <span />
-                                        </span>
-                                      </span>
-                                      <span className="min-w-[3ch] text-right text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                                        {Math.round(radarUploadProgress)}%
-                                      </span>
-                                    </div>
-                                    {radarUploadBatch ? (
-                                      <div className="mt-1 text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                                        Fichier {radarUploadBatch.current}/
-                                        {radarUploadBatch.total}
-                                      </div>
-                                    ) : null}
-                                    <div className="mt-2 h-2 w-full rounded-full bg-white/10">
-                                      <div
-                                        className="h-2 rounded-full bg-violet-300 transition-all duration-700 ease-out"
-                                        style={{ width: `${radarUploadProgress}%` }}
-                                      />
-                                    </div>
-                                    {radarLoadingPhrase ? (
-                                      <p
-                                        className="mt-2 text-[0.65rem] text-[var(--muted)]"
-                                        aria-live="polite"
-                                      >
-                                        {radarLoadingPhrase}
-                                      </p>
-                                    ) : null}
-                                  </div>
-                                ) : null}
                                 {radarError ? (
                                   <p className="text-xs text-red-400">{radarError}</p>
                                 ) : null}
@@ -8247,6 +8379,17 @@ export default function CoachReportBuilderPage() {
                                         <div className="rounded-xl border border-rose-300/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
                                           Erreur d extraction.
                                         </div>
+                                      );
+                                    }
+                                    if (radarFile.source === "smart2move") {
+                                      return (
+                                        <Smart2MoveFxPanel
+                                          analysis={radarFile.summary}
+                                          imageUrl={radarImageUrls[radarFile.id] ?? null}
+                                          fileName={radarFile.original_name}
+                                          aiContext={radarFile.config?.options?.aiContext ?? null}
+                                          compact
+                                        />
                                       );
                                     }
                                     const baseConfig =
@@ -9913,6 +10056,19 @@ export default function CoachReportBuilderPage() {
             onConfirm={handleConfirmRadarReview}
           />
         ) : null}
+        <Smart2MoveMarkersModal
+          open={smart2MoveMarkersModalOpen}
+          imageUrl={smart2MoveMarkersPreviewUrl}
+          fileName={smart2MoveMarkersFileName}
+          onCancel={() => {
+            const resolver = smart2MoveMarkersResolverRef.current;
+            if (resolver) resolver(null);
+          }}
+          onConfirm={(markers) => {
+            const resolver = smart2MoveMarkersResolverRef.current;
+            if (resolver) resolver(markers);
+          }}
+        />
         <PremiumOfferModal
           open={premiumModalOpen}
           onClose={closePremiumModal}
@@ -10881,6 +11037,10 @@ export default function CoachReportBuilderPage() {
                     }
                     setRadarImportError("");
                     setRadarImportTech(next);
+                    if (next !== "smart2move") {
+                      setRadarImportSmart2MoveGraphType(null);
+                      radarSmart2MoveGraphTypeRef.current = null;
+                    }
                   }}
                   className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)]"
                 >
@@ -10890,6 +11050,137 @@ export default function CoachReportBuilderPage() {
                     </option>
                   ))}
                 </select>
+
+                {radarImportTech === "smart2move" ? (
+                  <>
+                    <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-3">
+                      <p className="text-[0.68rem] font-semibold uppercase tracking-wide text-[var(--muted)]">
+                        Type de plaques
+                      </p>
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRadarImportSmart2MovePlateType("1d");
+                            if (
+                              radarImportSmart2MoveGraphType &&
+                              !isSmart2MoveGraphCompatibleWithPlate(
+                                radarImportSmart2MoveGraphType,
+                                "1d"
+                              )
+                            ) {
+                              setRadarImportSmart2MoveGraphType(null);
+                              radarSmart2MoveGraphTypeRef.current = null;
+                            }
+                          }}
+                          className={`rounded-xl border px-3 py-2 text-left transition ${
+                            radarImportSmart2MovePlateType === "1d"
+                              ? "border-sky-300/60 bg-sky-400/15 text-sky-100"
+                              : "border-white/10 bg-white/5 text-[var(--muted)] hover:text-[var(--text)]"
+                          }`}
+                        >
+                          <p className="text-xs font-semibold">1D</p>
+                          <p className="mt-0.5 text-[0.65rem]">Vertical only</p>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRadarImportSmart2MovePlateType("3d")}
+                          className={`rounded-xl border px-3 py-2 text-left transition ${
+                            radarImportSmart2MovePlateType === "3d"
+                              ? "border-emerald-300/60 bg-emerald-400/15 text-emerald-100"
+                              : "border-white/10 bg-white/5 text-[var(--muted)] hover:text-[var(--text)]"
+                          }`}
+                        >
+                          <p className="text-xs font-semibold">3D</p>
+                          <p className="mt-0.5 text-[0.65rem]">Full forces</p>
+                        </button>
+                      </div>
+                    </div>
+
+                    <label className="mt-4 block text-xs font-medium text-[var(--text)]">
+                      Quel graphe importez-vous ?
+                    </label>
+                    <div className="mt-2 grid max-h-56 gap-2 overflow-y-auto pr-1">
+                      {SMART2MOVE_GRAPH_OPTIONS.map((option) => {
+                        const compatible = isSmart2MoveGraphCompatibleWithPlate(
+                          option.id,
+                          radarImportSmart2MovePlateType
+                        );
+                        const isSelected = radarImportSmart2MoveGraphType === option.id;
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            disabled={!compatible}
+                            onClick={() => {
+                              if (!compatible) return;
+                              setRadarImportError("");
+                              setRadarImportSmart2MoveGraphType(option.id);
+                              radarSmart2MoveGraphTypeRef.current = option.id;
+                            }}
+                            className={`flex items-center justify-between rounded-xl border px-3 py-2 text-left transition ${
+                              isSelected
+                                ? "border-sky-300/60 bg-sky-400/15 text-sky-100"
+                                : compatible
+                                  ? "border-white/10 bg-white/5 text-[var(--text)] hover:border-sky-300/40"
+                                  : "cursor-not-allowed border-white/5 bg-white/5 text-[var(--muted)] opacity-50"
+                            }`}
+                          >
+                            <span className="text-xs">{option.label}</span>
+                            <span
+                              className={`ml-2 rounded-full px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide ${
+                                option.requiredPlateType === "3d"
+                                  ? "bg-emerald-400/20 text-emerald-100"
+                                  : "bg-sky-400/20 text-sky-100"
+                              }`}
+                            >
+                              {option.requiredPlateType === "3d" ? "3D" : "1D"}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <select
+                      value={radarImportSmart2MoveGraphType ?? ""}
+                      onChange={(event) => {
+                        const next = event.target.value;
+                        if (!next) {
+                          setRadarImportSmart2MoveGraphType(null);
+                          radarSmart2MoveGraphTypeRef.current = null;
+                          return;
+                        }
+                        if (!isSmart2MoveGraphType(next)) {
+                          setRadarImportError("Type de graphe Smart2Move invalide.");
+                          return;
+                        }
+                        if (
+                          !isSmart2MoveGraphCompatibleWithPlate(
+                            next,
+                            radarImportSmart2MovePlateType
+                          )
+                        ) {
+                          setRadarImportError(
+                            "Graphe non compatible avec le type de plaques selectionne."
+                          );
+                          return;
+                        }
+                        setRadarImportError("");
+                        setRadarImportSmart2MoveGraphType(next);
+                        radarSmart2MoveGraphTypeRef.current = next;
+                      }}
+                      className="sr-only"
+                      aria-label="Type de graphe Smart2Move"
+                    >
+                      <option value="">Choisir un graphe</option>
+                      {SMART2MOVE_GRAPH_OPTIONS.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                ) : null}
                 {radarImportError ? (
                   <p className="mt-2 text-xs text-red-400">{radarImportError}</p>
                 ) : null}
@@ -10913,6 +11204,32 @@ export default function CoachReportBuilderPage() {
                         setRadarImportError("Technologie datas invalide.");
                         return;
                       }
+                      if (
+                        radarImportTech === "smart2move" &&
+                        !radarImportSmart2MoveGraphType
+                      ) {
+                        setRadarImportError(
+                          "Choisis le type de graphe Smart2Move avant de continuer."
+                        );
+                        return;
+                      }
+                      if (
+                        radarImportTech === "smart2move" &&
+                        radarImportSmart2MoveGraphType &&
+                        !isSmart2MoveGraphCompatibleWithPlate(
+                          radarImportSmart2MoveGraphType,
+                          radarImportSmart2MovePlateType
+                        )
+                      ) {
+                        setRadarImportError(
+                          "Graphe non compatible avec le type de plaques selectionne."
+                        );
+                        return;
+                      }
+                      radarSmart2MoveGraphTypeRef.current =
+                        radarImportTech === "smart2move"
+                          ? radarImportSmart2MoveGraphType
+                          : null;
                       radarTechRef.current = radarImportTech;
                       setRadarTech(radarImportTech);
                       const input = document.getElementById(
@@ -11206,6 +11523,26 @@ export default function CoachReportBuilderPage() {
               className="flex min-w-[17rem] flex-col items-center gap-4 rounded-3xl border border-[var(--border)] bg-[var(--bg-elevated)] px-6 py-5 text-[var(--text)] shadow-[var(--shadow-strong)]"
             >
               <span className="global-loader-spinner" aria-hidden="true">
+                {shouldShowRadarOverlayProgress ? (
+                  <span className="global-loader-progress">
+                    <svg
+                      viewBox="0 0 100 100"
+                      className="global-loader-progress-svg"
+                      aria-hidden="true"
+                    >
+                      <circle cx="50" cy="50" r="46" className="global-loader-progress-track" />
+                      <circle
+                        cx="50"
+                        cy="50"
+                        r="46"
+                        className="global-loader-progress-value"
+                        style={{
+                          strokeDasharray: `${radarProgressDash} ${radarProgressCircumference}`,
+                        }}
+                      />
+                    </svg>
+                  </span>
+                ) : null}
                 <span className="global-loader-ring-base" />
                 <span className="global-loader-ring-outer" />
                 <span className="global-loader-ring-inner" />
@@ -11219,9 +11556,27 @@ export default function CoachReportBuilderPage() {
                   <span />
                 </span>
               </p>
-              <span className="text-[0.62rem] uppercase tracking-[0.2em] text-[var(--muted)]">
-                Merci de patienter
-              </span>
+              {shouldShowRadarOverlayProgress ? (
+                <div className="flex flex-col items-center gap-1 text-center">
+                  <span className="text-[0.62rem] uppercase tracking-[0.2em] text-[var(--muted)]">
+                    {`Extraction datas ${radarProgressPercent}%`}
+                  </span>
+                  {radarUploadBatch ? (
+                    <span className="text-[0.58rem] uppercase tracking-[0.16em] text-[var(--muted)]">
+                      Fichier {radarUploadBatch.current}/{radarUploadBatch.total}
+                    </span>
+                  ) : null}
+                  {radarLoadingPhrase ? (
+                    <p className="max-w-[20rem] text-[0.72rem] text-[var(--muted)]">
+                      {radarLoadingPhrase}
+                    </p>
+                  ) : null}
+                </div>
+              ) : (
+                <span className="text-[0.62rem] uppercase tracking-[0.2em] text-[var(--muted)]">
+                  Merci de patienter
+                </span>
+              )}
             </div>
           </div>
         ) : null}
