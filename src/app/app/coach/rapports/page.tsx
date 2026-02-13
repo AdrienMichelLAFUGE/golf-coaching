@@ -18,6 +18,7 @@ type ReportRow = {
   org_id: string;
   origin_share_id: string | null;
   organizations?: OrganizationRef;
+  author_profile?: AuthorProfileRef;
   students:
     | { id: string; first_name: string; last_name: string | null }
     | { id: string; first_name: string; last_name: string | null }[]
@@ -30,6 +31,13 @@ type OrganizationRef =
       workspace_type?: "personal" | "org" | null;
     }
   | { name: string | null; workspace_type?: "personal" | "org" | null }[]
+  | null;
+
+type AuthorProfileRef =
+  | {
+      full_name: string | null;
+    }
+  | { full_name: string | null }[]
   | null;
 
 const formatDate = (
@@ -52,6 +60,12 @@ const getOrgWorkspaceType = (value?: OrganizationRef) => {
   if (!value) return null;
   if (Array.isArray(value)) return value[0]?.workspace_type ?? null;
   return value.workspace_type ?? null;
+};
+
+const getAuthorName = (value?: AuthorProfileRef) => {
+  if (!value) return null;
+  if (Array.isArray(value)) return value[0]?.full_name?.trim() || null;
+  return value.full_name?.trim() || null;
 };
 
 export default function CoachReportsPage() {
@@ -98,7 +112,7 @@ export default function CoachReportsPage() {
     const { data, error: fetchError } = await supabase
       .from("reports")
       .select(
-        "id, title, report_date, created_at, sent_at, org_id, origin_share_id, organizations(name, workspace_type), students(id, first_name, last_name)"
+        "id, title, report_date, created_at, sent_at, org_id, origin_share_id, organizations(name, workspace_type), author_profile:profiles!reports_author_id_fkey(full_name), students(id, first_name, last_name)"
       )
       .order("created_at", { ascending: false });
 
@@ -117,14 +131,14 @@ export default function CoachReportsPage() {
   };
 
   const formatSourceLabel = (report: ReportRow) => {
-    if (report.org_id === organization?.id) return "Source: Workspace actuel";
     const orgName = getOrgName(report.organizations);
     const workspaceType = getOrgWorkspaceType(report.organizations);
     if (workspaceType === "personal") {
-      return orgName ? `Source: Perso - ${orgName}` : "Source: Workspace perso";
+      return orgName ? `Perso - ${orgName}` : "Workspace perso";
     }
-    if (orgName) return `Source: Orga - ${orgName}`;
-    return "Source: Autre workspace";
+    if (orgName) return `Orga - ${orgName}`;
+    if (report.org_id === organization?.id) return "Workspace actuel";
+    return "Autre workspace";
   };
 
   const studentOptions = useMemo(() => {
@@ -564,6 +578,8 @@ export default function CoachReportsPage() {
                     const canMutateReport =
                       !report.origin_share_id &&
                       (!organization?.id || report.org_id === organization.id);
+                    const authorName = getAuthorName(report.author_profile);
+                    const sourceLabel = formatSourceLabel(report);
                     return (
                     <div
                       key={report.id}
@@ -582,11 +598,6 @@ export default function CoachReportsPage() {
                               Lecture seule
                             </Badge>
                            ) : null}
-                           {report.org_id !== organization?.id ? (
-                            <Badge tone="muted" size="sm">
-                              {formatSourceLabel(report)}
-                            </Badge>
-                           ) : null}
                          </div>
                          <p className="mt-1 text-xs text-[var(--muted)]">
                            {formatDate(
@@ -595,6 +606,12 @@ export default function CoachReportsPage() {
                             timezone
                           )}
                         </p>
+                        {authorName || sourceLabel ? (
+                          <div className="mt-1 space-y-0.5 text-xs text-[var(--muted)]">
+                            {authorName ? <p>Par : {authorName}</p> : null}
+                            {sourceLabel ? <p>dans : {sourceLabel}</p> : null}
+                          </div>
+                        ) : null}
                       </div>
                       <div>
                         <p className="text-sm text-[var(--muted)]">

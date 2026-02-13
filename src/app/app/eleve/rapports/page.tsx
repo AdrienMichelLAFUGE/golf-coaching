@@ -13,7 +13,10 @@ type Report = {
   report_date: string | null;
   created_at: string;
   org_id: string;
-  organizations?: { name: string | null }[] | null;
+  organizations?:
+    | { name: string | null; workspace_type?: "personal" | "org" | null }[]
+    | null;
+  author_profile?: { full_name: string | null }[] | null;
 };
 
 const formatDate = (
@@ -34,6 +37,17 @@ export default function StudentReportsPage() {
   const [noStudent, setNoStudent] = useState(false);
   const locale = organization?.locale ?? "fr-FR";
   const timezone = organization?.timezone ?? "Europe/Paris";
+  const formatSourceLabel = (report: Report) => {
+    const org = report.organizations?.[0];
+    const orgName = org?.name ?? null;
+    const workspaceType = org?.workspace_type ?? null;
+    if (workspaceType === "personal") {
+      return orgName ? `Perso - ${orgName}` : "Workspace perso";
+    }
+    if (orgName) return `Orga - ${orgName}`;
+    if (report.org_id === organization?.id) return "Workspace actuel";
+    return "Autre workspace";
+  };
 
   useEffect(() => {
     const loadReports = async () => {
@@ -69,7 +83,9 @@ export default function StudentReportsPage() {
 
       const { data: reportsData, error: reportsError } = await supabase
         .from("reports")
-        .select("id, title, report_date, created_at, org_id, organizations(name)")
+        .select(
+          "id, title, report_date, created_at, org_id, organizations(name, workspace_type), author_profile:profiles!reports_author_id_fkey(full_name)"
+        )
         .in("student_id", studentIds)
         .not("sent_at", "is", null)
         .order("report_date", { ascending: false, nullsFirst: false })
@@ -128,7 +144,8 @@ export default function StudentReportsPage() {
           ) : (
             <div className="space-y-3">
               {reports.map((report) => {
-                const orgLabel = report.organizations?.[0]?.name ?? "Organisation";
+                const authorName = report.author_profile?.[0]?.full_name?.trim() ?? null;
+                const sourceLabel = formatSourceLabel(report);
                 return (
                   <Link
                     key={report.id}
@@ -143,9 +160,13 @@ export default function StudentReportsPage() {
                           locale,
                           timezone
                         )}
-                        {" - "}
-                        {orgLabel}
                       </p>
+                      {authorName || sourceLabel ? (
+                        <div className="mt-1 space-y-0.5 text-xs text-[var(--muted)]">
+                          {authorName ? <p>Par : {authorName}</p> : null}
+                          {sourceLabel ? <p>dans : {sourceLabel}</p> : null}
+                        </div>
+                      ) : null}
                     </div>
                     <span className="text-xs text-[var(--muted)]">Lire -&gt;</span>
                   </Link>

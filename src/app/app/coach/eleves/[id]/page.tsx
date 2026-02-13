@@ -2642,11 +2642,9 @@ export default function CoachStudentDetailPage() {
                         </div>
 
                         {contributorLabel ? (
-                          <div className="flex items-center gap-2 text-xs text-[var(--muted)] md:col-span-2">
-                            <span>Par :</span>
-                            <Badge tone="muted" size="sm" className="app-badge--nowrap">
-                              {contributorLabel}
-                            </Badge>
+                          <div className="space-y-1 text-xs text-[var(--muted)] md:col-span-2">
+                            {authorName ? <p>Par : {authorName}</p> : null}
+                            {sourceLabel ? <p>dans : {sourceLabel}</p> : null}
                           </div>
                         ) : null}
                       </div>
