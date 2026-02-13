@@ -630,6 +630,7 @@ export default function CoachReportBuilderPage() {
   const [statusMessage, setStatusMessage] = useState("");
   const [statusType, setStatusType] = useState<"idle" | "error" | "success">("idle");
   const [saving, setSaving] = useState(false);
+  const [saveIntent, setSaveIntent] = useState<"publish" | "save" | null>(null);
   const [aiTone, setAiTone] = useState("bienveillant");
   const [aiTechLevel, setAiTechLevel] = useState("intermediaire");
   const [aiStyle, setAiStyle] = useState("redactionnel");
@@ -3647,9 +3648,14 @@ export default function CoachReportBuilderPage() {
       return;
     }
 
+    setSaveIntent(send ? "publish" : "save");
     setSaving(true);
     setStatusMessage("");
     setStatusType("idle");
+    const stopSaving = () => {
+      setSaving(false);
+      setSaveIntent(null);
+    };
 
     let reportId = editingReportId;
 
@@ -3680,7 +3686,7 @@ export default function CoachReportBuilderPage() {
       if (updateError) {
         setStatusMessage(updateError.message);
         setStatusType("error");
-        setSaving(false);
+        stopSaving();
         return;
       }
 
@@ -3692,7 +3698,7 @@ export default function CoachReportBuilderPage() {
       if (deleteError) {
         setStatusMessage(deleteError.message);
         setStatusType("error");
-        setSaving(false);
+        stopSaving();
         return;
       }
 
@@ -3723,7 +3729,7 @@ export default function CoachReportBuilderPage() {
             : (reportError?.message ?? "Erreur de creation.");
         setStatusMessage(message);
         setStatusType("error");
-        setSaving(false);
+        stopSaving();
         return;
       }
 
@@ -3738,7 +3744,7 @@ export default function CoachReportBuilderPage() {
     if (!reportId) {
       setStatusMessage("Rapport introuvable.");
       setStatusType("error");
-      setSaving(false);
+      stopSaving();
       return;
     }
 
@@ -3776,7 +3782,7 @@ export default function CoachReportBuilderPage() {
           : sectionsError.message;
       setStatusMessage(message);
       setStatusType("error");
-      setSaving(false);
+      stopSaving();
       return;
     }
 
@@ -3787,7 +3793,7 @@ export default function CoachReportBuilderPage() {
       if (publishResult.error) {
         setStatusMessage(publishResult.error);
         setStatusType("error");
-        setSaving(false);
+        stopSaving();
         return;
       }
       const publishedAt = publishResult.sentAt ?? new Date().toISOString();
@@ -3804,7 +3810,7 @@ export default function CoachReportBuilderPage() {
           : "Brouillon sauvegarde."
     );
     setStatusType("success");
-    setSaving(false);
+    stopSaving();
     if (send) {
       clearReportContent(false);
     }
@@ -4965,15 +4971,23 @@ export default function CoachReportBuilderPage() {
     if (!studentPickerOpen) return;
     if (studentId) setStudentPickerOpen(false);
   }, [studentId, studentPickerOpen]);
+  const hasSaveInProgress = saving;
   const hasAiRequestInProgress = Boolean(aiBusyId) || radarAiAutoBusy;
   const hasMediaUploadInProgress =
     radarUploading || Object.values(uploadingSections).some(Boolean);
-  const hasGlobalProcessingOverlay = hasAiRequestInProgress || hasMediaUploadInProgress;
-  const globalProcessingLabel = hasAiRequestInProgress
-    ? hasMediaUploadInProgress
-      ? "Traitement IA et upload en cours"
-      : "Traitement IA en cours"
-    : "Upload en cours";
+  const hasGlobalProcessingOverlay =
+    hasSaveInProgress || hasAiRequestInProgress || hasMediaUploadInProgress;
+  const globalProcessingLabel = hasSaveInProgress
+    ? saveIntent === "publish"
+      ? "Publication du rapport en cours"
+      : isDraft
+        ? "Enregistrement du brouillon en cours"
+        : "Enregistrement du rapport en cours"
+    : hasAiRequestInProgress
+      ? hasMediaUploadInProgress
+        ? "Traitement IA et upload en cours"
+        : "Traitement IA en cours"
+      : "Upload en cours";
   const hasBlockingModalOpen =
     layoutEditorOpen ||
     aiLayoutOpen ||
@@ -5167,15 +5181,83 @@ export default function CoachReportBuilderPage() {
                     : "Remplis le contenu et ajuste les sections au fil du rapport."
             }
             actions={
-              !isEditing && activeBuilderStep !== "report" ? (
-                <button
-                  type="button"
-                  onClick={handleSkipSetup}
-                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
-                >
-                  Passer
-                </button>
-              ) : null
+              <>
+                {!isEditing && activeBuilderStep !== "report" ? (
+                  <button
+                    type="button"
+                    onClick={handleSkipSetup}
+                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                  >
+                    Passer
+                  </button>
+                ) : null}
+                {activeBuilderStep === "report" ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!studentId) return;
+                      router.push(`/app/coach/eleves/${studentId}`);
+                    }}
+                    disabled={!studentId}
+                    className={`inline-flex h-10 w-10 items-center justify-center rounded-full border transition ${
+                      studentId
+                        ? "border-white/10 bg-white/5 text-[var(--muted)] hover:text-[var(--text)]"
+                        : "cursor-not-allowed border-white/5 bg-white/5 text-[var(--muted)] opacity-60"
+                    }`}
+                    aria-label="Dashboard eleve"
+                    title="Dashboard eleve"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                      <rect x="14" y="3" width="7" height="4" rx="1.5" />
+                      <rect x="14" y="10" width="7" height="11" rx="1.5" />
+                      <rect x="3" y="13" width="7" height="8" rx="1.5" />
+                    </svg>
+                  </button>
+                ) : null}
+                {activeBuilderStep === "report" ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!editingReportId || !sentAt) return;
+                      router.push(`/app/coach/rapports/${editingReportId}`);
+                    }}
+                    disabled={!editingReportId || !sentAt}
+                    className={`inline-flex h-10 w-10 items-center justify-center rounded-full border transition ${
+                      editingReportId && sentAt
+                        ? "border-white/10 bg-white/5 text-[var(--muted)] hover:text-[var(--text)]"
+                        : "cursor-not-allowed border-white/5 bg-white/5 text-[var(--muted)] opacity-60"
+                    }`}
+                    aria-label="Visualiser le rapport fini"
+                    title={
+                      editingReportId && sentAt
+                        ? "Visualiser le rapport fini"
+                        : "Publie d'abord le rapport pour le visualiser"
+                    }
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  </button>
+                ) : null}
+              </>
             }
             meta={
               <>
@@ -5464,21 +5546,6 @@ export default function CoachReportBuilderPage() {
                       </option>
                     ))}
                   </select>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!studentId) return;
-                      router.push(`/app/coach/eleves/${studentId}`);
-                    }}
-                    disabled={!studentId}
-                    className={`mt-2 rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
-                      studentId
-                        ? "border-white/10 bg-white/5 text-[var(--text)] hover:bg-white/10"
-                        : "cursor-not-allowed border-white/5 bg-white/5 text-[var(--muted)] opacity-60"
-                    }`}
-                  >
-                    Dashboard eleve
-                  </button>
                 </div>
                 <div>
                   <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
@@ -8246,7 +8313,7 @@ export default function CoachReportBuilderPage() {
                                           src={url}
                                           controls
                                           playsInline
-                                          className="h-40 w-full object-cover"
+                                          className="max-h-40 w-full bg-black/40 object-contain"
                                         />
                                         <button
                                           type="button"
@@ -8331,7 +8398,7 @@ export default function CoachReportBuilderPage() {
                                         <img
                                           src={url}
                                           alt={section.title}
-                                          className="h-40 w-full object-cover"
+                                          className="max-h-40 w-full bg-black/40 object-contain"
                                           loading="lazy"
                                         />
                                         <button

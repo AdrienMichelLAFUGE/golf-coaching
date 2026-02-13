@@ -78,6 +78,7 @@ export default function CoachStudentsPage() {
   const [inviteError, setInviteError] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [pendingDeleteStudent, setPendingDeleteStudent] = useState<Student | null>(null);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [editForm, setEditForm] = useState({
     first_name: "",
@@ -402,10 +403,6 @@ export default function CoachStudentsPage() {
       setInviteError("Lecture seule: plan Free en organisation.");
       return;
     }
-    const confirmed = window.confirm(
-      `Supprimer ${student.first_name} ${student.last_name ?? ""} ?`
-    );
-    if (!confirmed) return;
 
     setInviteMessage("");
     setInviteError("");
@@ -428,16 +425,24 @@ export default function CoachStudentsPage() {
 
   const handleMenuInvite = async (student: Student) => {
     if (student.activated_at) return;
+    setPendingDeleteStudent(null);
     setMenuOpenId(null);
     await handleInviteStudent(student);
   };
 
   const handleMenuDelete = async (student: Student) => {
+    setPendingDeleteStudent(null);
     setMenuOpenId(null);
     await handleDeleteStudent(student);
   };
 
+  const handleMenuAskDelete = (student: Student) => {
+    setMenuOpenId(null);
+    setPendingDeleteStudent(student);
+  };
+
   const handleMenuEdit = (student: Student) => {
+    setPendingDeleteStudent(null);
     setMenuOpenId(null);
     setEditError("");
     setEditingStudent(student);
@@ -838,7 +843,10 @@ export default function CoachStudentsPage() {
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
-                              setMenuOpenId((prev) => (prev === student.id ? null : student.id));
+                              setMenuOpenId((prev) => {
+                                const next = prev === student.id ? null : student.id;
+                                return next;
+                              });
                             }}
                             className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
                             aria-label="Actions eleve"
@@ -887,7 +895,9 @@ export default function CoachStudentsPage() {
                               </button>
                               <Link
                                 href={`/app/coach/eleves/${student.id}`}
-                                onClick={() => setMenuOpenId(null)}
+                                onClick={() => {
+                                  setMenuOpenId(null);
+                                }}
                                 className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10"
                               >
                                 Profil TPI
@@ -910,11 +920,11 @@ export default function CoachStudentsPage() {
                               <button
                                 type="button"
                                 role="menuitem"
-                                onClick={() => handleMenuDelete(student)}
+                                onClick={() => handleMenuAskDelete(student)}
                                 disabled={isReadOnlyAction || deletingId === student.id}
                                 className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:bg-white/10 hover:text-red-200 disabled:opacity-60"
                               >
-                                {deletingId === student.id ? "Suppression..." : "Supprimer"}
+                                Supprimer
                               </button>
                             </div>
                           ) : null}
@@ -932,6 +942,67 @@ export default function CoachStudentsPage() {
             onClose={() => setCreateOpen(false)}
             afterCreate={loadStudents}
           />
+        ) : null}
+        {pendingDeleteStudent ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6">
+            <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[var(--bg-elevated)] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)]">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                    Confirmation
+                  </p>
+                  <h3 className="mt-2 text-lg font-semibold text-[var(--text)]">
+                    Supprimer cet eleve ?
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPendingDeleteStudent(null)}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                  aria-label="Fermer"
+                  disabled={deletingId === pendingDeleteStudent.id}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M18 6L6 18" />
+                    <path d="M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <p className="mt-4 text-sm text-[var(--muted)]">
+                Cette action est irreversible.{" "}
+                <span className="text-[var(--text)]">
+                  {pendingDeleteStudent.first_name} {pendingDeleteStudent.last_name ?? ""}
+                </span>{" "}
+                sera retire de la liste des eleves.
+              </p>
+              <div className="mt-6 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPendingDeleteStudent(null)}
+                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                  disabled={deletingId === pendingDeleteStudent.id}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleMenuDelete(pendingDeleteStudent)}
+                  disabled={deletingId === pendingDeleteStudent.id}
+                  className="rounded-full border border-red-500/60 bg-red-300/60 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-red-950 transition hover:bg-red-300/80 disabled:opacity-60"
+                >
+                  {deletingId === pendingDeleteStudent.id ? "Suppression..." : "Supprimer"}
+                </button>
+              </div>
+            </div>
+          </div>
         ) : null}
         {editingStudent ? (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6">

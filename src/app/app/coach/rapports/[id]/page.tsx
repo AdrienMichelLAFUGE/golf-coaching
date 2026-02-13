@@ -3,8 +3,8 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useState } from "react";
+import type { ReactNode, SyntheticEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../../_components/role-guard";
@@ -12,6 +12,7 @@ import { useProfile } from "../../../_components/profile-context";
 import PageBack from "../../../_components/page-back";
 import PageHeader from "../../../_components/page-header";
 import Badge from "../../../_components/badge";
+import MediaLightbox from "../../../_components/media-lightbox";
 import RadarCharts, {
   type RadarConfig,
   type RadarColumn,
@@ -289,8 +290,50 @@ export default function CoachReportDetailPage() {
   const [shareOpen, setShareOpen] = useState(false);
   const [shareMessage, setShareMessage] = useState("");
   const [shareError, setShareError] = useState("");
+  const [activeImage, setActiveImage] = useState<{
+    url: string;
+    alt?: string | null;
+    caption?: string | null;
+  } | null>(null);
+  const [mediaRatios, setMediaRatios] = useState<Record<string, number>>({});
   const locale = organization?.locale ?? "fr-FR";
   const timezone = organization?.timezone ?? "Europe/Paris";
+
+  const registerMediaRatio = useCallback((url: string, width: number, height: number) => {
+    if (!width || !height) return;
+    const ratio = width / height;
+    setMediaRatios((prev) => {
+      const current = prev[url];
+      if (typeof current === "number" && Math.abs(current - ratio) < 0.01) return prev;
+      return { ...prev, [url]: ratio };
+    });
+  }, []);
+
+  const handleImageLoad = useCallback(
+    (url: string, event: SyntheticEvent<HTMLImageElement>) => {
+      registerMediaRatio(url, event.currentTarget.naturalWidth, event.currentTarget.naturalHeight);
+    },
+    [registerMediaRatio]
+  );
+
+  const handleVideoLoadedMetadata = useCallback(
+    (url: string, event: SyntheticEvent<HTMLVideoElement>) => {
+      registerMediaRatio(url, event.currentTarget.videoWidth, event.currentTarget.videoHeight);
+    },
+    [registerMediaRatio]
+  );
+
+  const getMediaCardClass = useCallback(
+    (url: string, fallbackWide: boolean) => {
+      const ratio = mediaRatios[url];
+      if (typeof ratio !== "number") {
+        return fallbackWide ? "" : "sm:col-span-2";
+      }
+      if (ratio < 1.15) return "";
+      return ratio <= 2.3 ? "" : "sm:col-span-2";
+    },
+    [mediaRatios]
+  );
 
   const renderSectionHeader = (section: ReportSection) => {
     const featureKey = getSectionFeatureKey(section);
@@ -306,25 +349,39 @@ export default function CoachReportDetailPage() {
     if (section.type === "image") {
       if (section.media_urls && section.media_urls.length > 0) {
         return (
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             {section.media_urls.map((url, index) => (
               <div
                 key={url}
-                className="overflow-hidden rounded-xl border border-white/10 bg-black/30"
+                className={`justify-self-start ${getMediaCardClass(url, false)}`}
               >
-                <div className="relative w-full" style={{ aspectRatio: "3 / 4" }}>
-                  <img
-                    src={url}
-                    alt={section.title}
-                    className="absolute inset-0 h-full w-full object-cover"
-                    loading="lazy"
-                  />
+                <div className="w-fit max-w-full overflow-hidden rounded-xl border border-white/10 bg-black/20">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setActiveImage({
+                        url,
+                        alt: section.title,
+                        caption: section.media_captions?.[index] ?? null,
+                      })
+                    }
+                    className="block max-w-full cursor-zoom-in"
+                    aria-label="Ouvrir l'image en grand"
+                  >
+                    <img
+                      src={url}
+                      alt={section.title}
+                      className="block h-auto w-auto max-h-[75vh] max-w-full"
+                      loading="lazy"
+                      onLoad={(event) => handleImageLoad(url, event)}
+                    />
+                  </button>
+                  {section.media_captions?.[index] ? (
+                    <div className="border-t border-white/10 bg-black/60 px-3 py-2 text-xs text-white/80">
+                      {section.media_captions[index]}
+                    </div>
+                  ) : null}
                 </div>
-                {section.media_captions?.[index] ? (
-                  <div className="border-t border-white/10 bg-black/60 px-3 py-2 text-xs text-white/80">
-                    {section.media_captions[index]}
-                  </div>
-                ) : null}
               </div>
             ))}
           </div>
@@ -340,21 +397,20 @@ export default function CoachReportDetailPage() {
     if (section.type === "video") {
       if (section.media_urls && section.media_urls.length > 0) {
         return (
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             {section.media_urls.map((url, index) => (
               <div
                 key={url}
-                className="overflow-hidden rounded-xl border border-white/10 bg-black/30"
+                className={`overflow-hidden rounded-xl border border-white/10 bg-black/30 ${getMediaCardClass(url, true)}`}
               >
-                <div className="relative w-full" style={{ aspectRatio: "16 / 9" }}>
-                  <video
-                    src={url}
-                    controls
-                    playsInline
-                    preload="metadata"
-                    className="absolute inset-0 h-full w-full object-cover"
-                  />
-                </div>
+                <video
+                  src={url}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  className="block max-h-[75vh] w-full bg-black/40"
+                  onLoadedMetadata={(event) => handleVideoLoadedMetadata(url, event)}
+                />
                 {section.media_captions?.[index] ? (
                   <div className="border-t border-white/10 bg-black/60 px-3 py-2 text-xs text-white/80">
                     {section.media_captions[index]}
@@ -781,6 +837,11 @@ export default function CoachReportDetailPage() {
       {shareOpen ? (
         <ShareReportModal onClose={() => setShareOpen(false)} onShare={handleShare} />
       ) : null}
+      <MediaLightbox
+        key={activeImage?.url ?? "media-lightbox-empty"}
+        image={activeImage}
+        onClose={() => setActiveImage(null)}
+      />
     </RoleGuard>
   );
 }
