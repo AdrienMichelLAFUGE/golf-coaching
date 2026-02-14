@@ -39,8 +39,14 @@ type ProfileRow = {
 
 type StudentRow = {
   id: string;
+  org_id: string;
   first_name: string;
   last_name: string | null;
+};
+
+type StudentAccountRow = {
+  user_id: string;
+  student_id: string;
 };
 
 type ThreadRow = {
@@ -139,7 +145,7 @@ const loadStudentsMap = async (
 
   const { data } = await admin
     .from("students")
-    .select("id, first_name, last_name")
+    .select("id, org_id, first_name, last_name")
     .in("id", uniqueIds);
 
   const map = new Map<string, StudentRow>();
@@ -149,6 +155,53 @@ const loadStudentsMap = async (
   });
 
   return map;
+};
+
+const loadStudentDisplayNamesByUserIds = async (
+  admin: AdminClient,
+  userIds: string[],
+  orgId: string
+): Promise<Map<string, string>> => {
+  const uniqueUserIds = Array.from(new Set(userIds));
+  if (uniqueUserIds.length === 0) return new Map<string, string>();
+
+  const { data: accountData } = await admin
+    .from("student_accounts")
+    .select("user_id, student_id")
+    .in("user_id", uniqueUserIds);
+
+  const accountRows = (accountData ?? []) as StudentAccountRow[];
+  const studentIds = Array.from(
+    new Set(
+      accountRows
+        .map((row) => row.student_id)
+        .filter((value) => value.length > 0)
+    )
+  );
+  if (studentIds.length === 0) return new Map<string, string>();
+
+  const studentMap = await loadStudentsMap(admin, studentIds);
+  const userNameMap = new Map<string, string>();
+
+  // First pass: prefer a student linked to the current org.
+  accountRows.forEach((row) => {
+    const student = studentMap.get(row.student_id);
+    if (!student || student.org_id !== orgId) return;
+    const displayName = buildStudentDisplayName(student);
+    if (!displayName || userNameMap.has(row.user_id)) return;
+    userNameMap.set(row.user_id, displayName);
+  });
+
+  // Fallback pass: keep any linked student name if no org-scoped match.
+  accountRows.forEach((row) => {
+    if (userNameMap.has(row.user_id)) return;
+    const student = studentMap.get(row.student_id);
+    const displayName = buildStudentDisplayName(student);
+    if (!displayName) return;
+    userNameMap.set(row.user_id, displayName);
+  });
+
+  return userNameMap;
 };
 
 const loadGroupsMap = async (
@@ -761,16 +814,20 @@ export const loadThreadMembersForThread = async (
     memberUserIds = [thread.participant_a_id, thread.participant_b_id];
   }
 
-  const profileMap = await loadProfilesMap(admin, memberUserIds);
+  const [profileMap, studentNameByUserId] = await Promise.all([
+    loadProfilesMap(admin, memberUserIds),
+    loadStudentDisplayNamesByUserIds(admin, memberUserIds, thread.workspace_org_id),
+  ]);
 
   return Array.from(new Set(memberUserIds))
     .map((userId) => {
       const profile = profileMap.get(userId) ?? null;
+      const studentFallbackName = studentNameByUserId.get(userId) ?? null;
       return {
         userId,
-        fullName: profile?.full_name ?? null,
+        fullName: profile?.full_name ?? studentFallbackName,
         avatarUrl: profile?.avatar_url ?? null,
-        role: profile?.role ?? null,
+        role: profile?.role ?? (studentFallbackName ? "student" : null),
       } satisfies MessageThreadMember;
     })
     .sort((first, second) => {
