@@ -11,6 +11,10 @@ import MessagesThreadView from "@/app/app/_components/messages-thread-view";
 import { useProfile } from "@/app/app/_components/profile-context";
 import { dispatchMessagesNotificationsSync } from "@/lib/messages/client-events";
 import {
+  appendRealtimeMessage,
+  mergeServerMessageWithOptimistic,
+} from "@/lib/messages/thread-updates";
+import {
   CreateMessageThreadSchema,
   MessagingCharterStatusSchema,
   MessageContactsResponseSchema,
@@ -547,10 +551,11 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
           if (!current || current.threadId !== selectedThreadId) return current;
           return {
             ...current,
-            messages: current.messages
-              .filter((message) => message.id !== optimisticId)
-              .concat(parsedMessage.data)
-              .sort((first, second) => first.id - second.id),
+            messages: mergeServerMessageWithOptimistic(
+              current.messages,
+              optimisticId,
+              parsedMessage.data
+            ),
           };
         });
 
@@ -893,10 +898,55 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
     const channel = supabase
       .channel(`messages-${profile.id}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "message_messages" }, (payload) => {
-        const row = payload.new as { thread_id?: string };
+        const row = payload.new as {
+          id?: number | string;
+          thread_id?: string;
+          sender_user_id?: string;
+          body?: string;
+          created_at?: string;
+        };
+        const realtimeMessageIdRaw = row.id;
+        const realtimeMessageId =
+          typeof realtimeMessageIdRaw === "number"
+            ? realtimeMessageIdRaw
+            : Number(realtimeMessageIdRaw);
         void loadInbox({ silent: true });
-        if (selectedThreadId && row.thread_id === selectedThreadId) {
-          void loadThread(selectedThreadId, { silent: true });
+        if (selectedThreadId && row.thread_id === selectedThreadId && Number.isFinite(realtimeMessageId) && realtimeMessageId > 0) {
+          setThreadData((current) => {
+            if (!current || current.threadId !== selectedThreadId) return current;
+            if (current.messages.some((message) => message.id === realtimeMessageId)) {
+              return current;
+            }
+
+            const senderMember = current.threadMembers.find(
+              (member) => member.userId === row.sender_user_id
+            );
+
+            const realtimeMessage: MessageDto = {
+              id: realtimeMessageId,
+              threadId: selectedThreadId,
+              senderUserId: row.sender_user_id ?? "",
+              senderName: senderMember?.fullName ?? null,
+              senderAvatarUrl: senderMember?.avatarUrl ?? null,
+              senderRole: senderMember?.role ?? null,
+              body: row.body ?? "",
+              createdAt: row.created_at ?? new Date().toISOString(),
+            };
+
+            if (!realtimeMessage.senderUserId || !realtimeMessage.body.trim()) {
+              void loadThread(selectedThreadId, { silent: true });
+              return current;
+            }
+
+            return {
+              ...current,
+              messages: appendRealtimeMessage(current.messages, realtimeMessage),
+            };
+          });
+
+          if (row.sender_user_id && row.sender_user_id !== profile.id) {
+            void markThreadRead(selectedThreadId, realtimeMessageId);
+          }
         }
       })
       .on(
@@ -915,7 +965,14 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [charterMustAccept, loadInbox, loadThread, profile?.id, selectedThreadId]);
+  }, [
+    charterMustAccept,
+    loadInbox,
+    loadThread,
+    markThreadRead,
+    profile?.id,
+    selectedThreadId,
+  ]);
 
   useEffect(() => {
     if (charterMustAccept) return;

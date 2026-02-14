@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../_components/role-guard";
@@ -58,7 +59,9 @@ type StatusFilter =
 type TpiFilter = "all" | "active" | "inactive";
 
 export default function CoachStudentsPage() {
+  const router = useRouter();
   const {
+    profile,
     userEmail,
     organization,
     isWorkspacePremium,
@@ -76,6 +79,8 @@ export default function CoachStudentsPage() {
   const [invitingId, setInvitingId] = useState<string | null>(null);
   const [inviteMessage, setInviteMessage] = useState("");
   const [inviteError, setInviteError] = useState("");
+  const [messageError, setMessageError] = useState("");
+  const [messageOpeningId, setMessageOpeningId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [pendingDeleteStudent, setPendingDeleteStudent] = useState<Student | null>(null);
@@ -454,6 +459,53 @@ export default function CoachStudentsPage() {
     });
   };
 
+  const handleOpenStudentMessages = async (student: Student) => {
+    if (!profile?.id) {
+      setMessageError("Profil indisponible.");
+      return;
+    }
+    setMessageError("");
+    setInviteError("");
+    setInviteMessage("");
+    setMenuOpenId(null);
+    setMessageOpeningId(student.id);
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+
+    if (!token) {
+      setMessageError("Session invalide. Reconnecte toi.");
+      setMessageOpeningId(null);
+      return;
+    }
+
+    const response = await fetch("/api/messages/threads", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        kind: "student_coach",
+        studentId: student.id,
+        coachId: profile.id,
+      }),
+    });
+    const payload = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      threadId?: string;
+    };
+
+    if (!response.ok || !payload.threadId) {
+      setMessageError(payload.error ?? "Ouverture de la conversation impossible.");
+      setMessageOpeningId(null);
+      return;
+    }
+
+    setMessageOpeningId(null);
+    router.push(`/app/coach/messages?threadId=${payload.threadId}`);
+  };
+
   const handleCloseEdit = () => {
     if (editSaving) return;
     setEditingStudent(null);
@@ -667,6 +719,9 @@ export default function CoachStudentsPage() {
             {inviteError ? (
               <p className="text-sm text-red-400">{inviteError}</p>
             ) : null}
+            {messageError ? (
+              <p className="text-sm text-red-400">{messageError}</p>
+            ) : null}
             {inviteMessage ? (
               <p className="text-sm text-[var(--muted)]">{inviteMessage}</p>
             ) : null}
@@ -725,6 +780,11 @@ export default function CoachStudentsPage() {
                 const isReadOnlyAction = isPendingApproval || isShared || isOrgReadOnly;
                 const tpiActive =
                   student.kind === "student" ? getStudentTpiActive(student) : false;
+                const canMessageStudent =
+                  student.kind === "student" &&
+                  Boolean(student.activated_at) &&
+                  !isReadOnlyAction;
+                const isMessageOpening = messageOpeningId === student.id;
                 const access = getStudentAccessBadge(student);
                 const inviteLabel = inviteDisabled
                   ? "Inviter"
@@ -838,96 +898,140 @@ export default function CoachStudentsPage() {
                           En attente
                         </Badge>
                       ) : (
-                        <div className="relative" data-student-menu>
+                        <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setMenuOpenId((prev) => {
-                                const next = prev === student.id ? null : student.id;
-                                return next;
-                              });
-                            }}
-                            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
-                            aria-label="Actions eleve"
-                            aria-expanded={menuOpenId === student.id}
-                            aria-haspopup="menu"
+                            onClick={() => void handleOpenStudentMessages(student)}
+                            disabled={!canMessageStudent || isMessageOpening}
+                            className={`flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 transition ${
+                              !canMessageStudent
+                                ? "cursor-not-allowed text-[var(--muted)] opacity-50"
+                                : "text-[var(--muted)] hover:text-[var(--text)]"
+                            }`}
+                            title={
+                              !canMessageStudent
+                                ? "Messagerie indisponible pour cet eleve"
+                                : "Ouvrir la conversation"
+                            }
+                            aria-label={`Ouvrir la conversation avec ${student.first_name}`}
                           >
-                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
-                              <circle cx="12" cy="5" r="2" />
-                              <circle cx="12" cy="12" r="2" />
-                              <circle cx="12" cy="19" r="2" />
+                            <svg
+                              viewBox="0 0 24 24"
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
                             </svg>
                           </button>
-                          {menuOpenId === student.id ? (
-                            <div
-                              role="menu"
-                              onClick={(event) => event.stopPropagation()}
-                              className="absolute bottom-full right-0 z-50 mb-2 w-40 rounded-xl border border-white/10 bg-[var(--bg-elevated)] p-1 text-xs shadow-[0_12px_30px_rgba(0,0,0,0.35)]"
+                          <div className="relative" data-student-menu>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setMenuOpenId((prev) => {
+                                  const next = prev === student.id ? null : student.id;
+                                  return next;
+                                });
+                              }}
+                              className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                              aria-label="Actions eleve"
+                              aria-expanded={menuOpenId === student.id}
+                              aria-haspopup="menu"
                             >
-                              <Link
-                                href={`/app/coach/rapports/nouveau?studentId=${student.id}`}
-                                onClick={(event) => {
-                                  if (isReadOnlyAction) event.preventDefault();
-                                  setMenuOpenId(null);
-                                }}
-                                aria-disabled={isReadOnlyAction}
-                                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide transition ${
-                                  isReadOnlyAction
-                                    ? "cursor-not-allowed text-[var(--muted)]"
-                                    : "text-[var(--text)] hover:bg-white/10"
-                                }`}
+                              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                                <circle cx="12" cy="5" r="2" />
+                                <circle cx="12" cy="12" r="2" />
+                                <circle cx="12" cy="19" r="2" />
+                              </svg>
+                            </button>
+                            {menuOpenId === student.id ? (
+                              <div
+                                role="menu"
+                                onClick={(event) => event.stopPropagation()}
+                                className="absolute bottom-full right-0 z-50 mb-2 w-40 rounded-xl border border-white/10 bg-[var(--bg-elevated)] p-1 text-xs shadow-[0_12px_30px_rgba(0,0,0,0.35)]"
                               >
-                                Nouveau rapport
-                              </Link>
-                              <button
-                                type="button"
-                                role="menuitem"
-                                onClick={() => handleMenuEdit(student)}
-                                disabled={isReadOnlyAction}
-                                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide transition ${
-                                  isReadOnlyAction
-                                    ? "cursor-not-allowed text-[var(--muted)]"
-                                    : "text-[var(--text)] hover:bg-white/10"
-                                }`}
-                              >
-                                Editer
-                              </button>
-                              <Link
-                                href={`/app/coach/eleves/${student.id}`}
-                                onClick={() => {
-                                  setMenuOpenId(null);
-                                }}
-                                className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10"
-                              >
-                                Profil TPI
-                              </Link>
-                              <button
-                                type="button"
-                                role="menuitem"
-                                onClick={() => handleMenuInvite(student)}
-                                disabled={
-                                  isReadOnlyAction || inviteDisabled || invitingId === student.id
-                                }
-                                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide transition ${
-                                  inviteDisabled || isReadOnlyAction
-                                    ? "cursor-not-allowed text-[var(--muted)]"
-                                    : "text-[var(--text)] hover:bg-white/10"
-                                }`}
-                              >
-                                {inviteLabel}
-                              </button>
-                              <button
-                                type="button"
-                                role="menuitem"
-                                onClick={() => handleMenuAskDelete(student)}
-                                disabled={isReadOnlyAction || deletingId === student.id}
-                                className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:bg-white/10 hover:text-red-200 disabled:opacity-60"
-                              >
-                                Supprimer
-                              </button>
-                            </div>
-                          ) : null}
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => void handleOpenStudentMessages(student)}
+                                  disabled={!canMessageStudent || isMessageOpening}
+                                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide transition ${
+                                    !canMessageStudent
+                                      ? "cursor-not-allowed text-[var(--muted)]"
+                                      : "text-[var(--text)] hover:bg-white/10"
+                                  }`}
+                                >
+                                  {isMessageOpening ? "Ouverture..." : "Message"}
+                                </button>
+                                <Link
+                                  href={`/app/coach/rapports/nouveau?studentId=${student.id}`}
+                                  onClick={(event) => {
+                                    if (isReadOnlyAction) event.preventDefault();
+                                    setMenuOpenId(null);
+                                  }}
+                                  aria-disabled={isReadOnlyAction}
+                                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide transition ${
+                                    isReadOnlyAction
+                                      ? "cursor-not-allowed text-[var(--muted)]"
+                                      : "text-[var(--text)] hover:bg-white/10"
+                                  }`}
+                                >
+                                  Nouveau rapport
+                                </Link>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => handleMenuEdit(student)}
+                                  disabled={isReadOnlyAction}
+                                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide transition ${
+                                    isReadOnlyAction
+                                      ? "cursor-not-allowed text-[var(--muted)]"
+                                      : "text-[var(--text)] hover:bg-white/10"
+                                  }`}
+                                >
+                                  Editer
+                                </button>
+                                <Link
+                                  href={`/app/coach/eleves/${student.id}`}
+                                  onClick={() => {
+                                    setMenuOpenId(null);
+                                  }}
+                                  className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10"
+                                >
+                                  Profil TPI
+                                </Link>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => handleMenuInvite(student)}
+                                  disabled={
+                                    isReadOnlyAction || inviteDisabled || invitingId === student.id
+                                  }
+                                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide transition ${
+                                    inviteDisabled || isReadOnlyAction
+                                      ? "cursor-not-allowed text-[var(--muted)]"
+                                      : "text-[var(--text)] hover:bg-white/10"
+                                  }`}
+                                >
+                                  {inviteLabel}
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => handleMenuAskDelete(student)}
+                                  disabled={isReadOnlyAction || deletingId === student.id}
+                                  className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:bg-white/10 hover:text-red-200 disabled:opacity-60"
+                                >
+                                  Supprimer
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
                       )}
                     </div>

@@ -369,6 +369,8 @@ export default function CoachStudentDetailPage() {
   const [assignmentsError, setAssignmentsError] = useState("");
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [shareMessage, setShareMessage] = useState("");
+  const [messageActionError, setMessageActionError] = useState("");
+  const [messageActionLoading, setMessageActionLoading] = useState(false);
   const [shareStatus, setShareStatus] = useState<ShareStatus | null>(null);
   const [ownerShares, setOwnerShares] = useState<ShareEntry[]>([]);
   const [ownerShareError, setOwnerShareError] = useState("");
@@ -2050,6 +2052,51 @@ export default function CoachStudentDetailPage() {
     setRadarConfigFile(null);
   };
 
+  const handleOpenMessageThread = async () => {
+    if (!student?.id) return;
+    if (!profile?.id) {
+      setMessageActionError("Profil indisponible.");
+      return;
+    }
+
+    setMessageActionError("");
+    setMessageActionLoading(true);
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setMessageActionError("Session invalide. Reconnecte toi.");
+      setMessageActionLoading(false);
+      return;
+    }
+
+    const response = await fetch("/api/messages/threads", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        kind: "student_coach",
+        studentId: student.id,
+        coachId: profile.id,
+      }),
+    });
+    const payload = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      threadId?: string;
+    };
+
+    if (!response.ok || !payload.threadId) {
+      setMessageActionError(payload.error ?? "Ouverture de la conversation impossible.");
+      setMessageActionLoading(false);
+      return;
+    }
+
+    setMessageActionLoading(false);
+    router.push(`/app/coach/messages?threadId=${payload.threadId}`);
+  };
+
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       {loading ? (
@@ -2138,6 +2185,35 @@ export default function CoachStudentDetailPage() {
             subtitle={student.email || "-"}
             actions={
               <>
+                <button
+                  type="button"
+                  onClick={() => void handleOpenMessageThread()}
+                  disabled={isReadOnly || !student.activated_at || messageActionLoading}
+                  className={`flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 transition ${
+                    isReadOnly || !student.activated_at
+                      ? "cursor-not-allowed text-[var(--muted)] opacity-50"
+                      : "text-[var(--muted)] hover:text-[var(--text)]"
+                  }`}
+                  title={
+                    !student.activated_at
+                      ? "Active le compte eleve pour demarrer la messagerie"
+                      : "Ouvrir la conversation"
+                  }
+                  aria-label="Ouvrir la conversation"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
+                  </svg>
+                </button>
                 {isOwner ? (
                   <button
                     type="button"
@@ -2214,6 +2290,9 @@ export default function CoachStudentDetailPage() {
             </p>
             {shareMessage ? (
               <p className="mt-3 text-xs text-emerald-200">{shareMessage}</p>
+            ) : null}
+            {messageActionError ? (
+              <p className="mt-3 text-xs text-red-300">{messageActionError}</p>
             ) : null}
             {isReadOnly ? (
               <div className="mt-4 rounded-xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-xs uppercase tracking-wide text-amber-100">
