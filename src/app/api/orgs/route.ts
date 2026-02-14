@@ -71,7 +71,7 @@ export async function POST(request: Request) {
       {
         name: parsed.data.name.trim(),
         workspace_type: "org",
-        plan_tier: "free",
+        plan_tier: planTier,
       },
     ])
     .select("id")

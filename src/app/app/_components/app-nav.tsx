@@ -4,11 +4,17 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useProfile } from "./profile-context";
 import { isAdminEmail } from "@/lib/admin";
 import { supabase } from "@/lib/supabase/client";
 import { useThemePreference } from "./use-theme-preference";
+import { resolveEffectivePlanTier } from "@/lib/plans";
+import {
+  MESSAGES_NOTIFICATIONS_SYNC_EVENT,
+  type MessageNotificationsSyncDetail,
+} from "@/lib/messages/client-events";
+import { MessageNotificationsResponseSchema } from "@/lib/messages/types";
 
 type NavItem = {
   label: string;
@@ -30,9 +36,21 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
   const pathname = usePathname();
   const router = useRouter();
   const { theme, toggleTheme } = useThemePreference();
-  const { profile, loading, userEmail, organization, isWorkspaceAdmin } = useProfile();
+  const { profile, loading, userEmail, organization, isWorkspaceAdmin, planTier } =
+    useProfile();
   const isAdmin = isAdminEmail(userEmail);
   const workspaceType = organization?.workspace_type ?? "personal";
+  const orgPlanTier = resolveEffectivePlanTier(
+    organization?.plan_tier,
+    organization?.plan_tier_override,
+    organization?.plan_tier_override_expires_at
+  ).tier;
+  const effectiveOrgMessagingTier =
+    orgPlanTier === "free" && planTier !== "free" ? planTier : orgPlanTier;
+  const showMessagingEntry =
+    profile?.role === "student" ||
+    !(workspaceType === "org" && effectiveOrgMessagingTier === "free");
+  const [messageUnreadCount, setMessageUnreadCount] = useState(0);
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem("gc.navCollapsed") === "true";
@@ -44,6 +62,83 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
     window.localStorage.setItem("gc.navCollapsed", String(collapsed));
   }, [collapsed]);
 
+  const loadMessageUnreadCount = useCallback(async () => {
+    if (!profile || !showMessagingEntry) {
+      setMessageUnreadCount(0);
+      return;
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setMessageUnreadCount(0);
+      return;
+    }
+
+    const response = await fetch("/api/messages/notifications", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!response.ok) {
+      setMessageUnreadCount(0);
+      return;
+    }
+
+    const payload = await response.json().catch(() => null);
+    const parsed = MessageNotificationsResponseSchema.safeParse(payload);
+    if (!parsed.success) {
+      setMessageUnreadCount(0);
+      return;
+    }
+
+    setMessageUnreadCount(parsed.data.unreadMessagesCount);
+  }, [profile, showMessagingEntry]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void loadMessageUnreadCount();
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [loadMessageUnreadCount]);
+
+  useEffect(() => {
+    const handleFocus = () => {
+      void loadMessageUnreadCount();
+    };
+
+    const interval = window.setInterval(() => {
+      void loadMessageUnreadCount();
+    }, 30_000);
+
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [loadMessageUnreadCount]);
+
+  useEffect(() => {
+    const handleSync = (event: Event) => {
+      const customEvent = event as CustomEvent<MessageNotificationsSyncDetail>;
+      const unreadMessagesCount = customEvent.detail?.unreadMessagesCount;
+      if (typeof unreadMessagesCount === "number") {
+        setMessageUnreadCount(Math.max(0, unreadMessagesCount));
+      }
+
+      if (customEvent.detail?.refetch ?? false) {
+        void loadMessageUnreadCount();
+      }
+    };
+
+    window.addEventListener(MESSAGES_NOTIFICATIONS_SYNC_EVENT, handleSync as EventListener);
+    return () => {
+      window.removeEventListener(
+        MESSAGES_NOTIFICATIONS_SYNC_EVENT,
+        handleSync as EventListener
+      );
+    };
+  }, [loadMessageUnreadCount]);
+
   const sections: NavSection[] = [];
 
   if (!loading) {
@@ -54,6 +149,9 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
           { label: "Dashboard eleve", href: "/app/eleve" },
           { label: "Tests", href: "/app/eleve/tests" },
           { label: "Rapports", href: "/app/eleve/rapports" },
+          ...(showMessagingEntry
+            ? [{ label: "Messages", href: "/app/eleve/messages" }]
+            : []),
         ],
       });
     } else if (workspaceType === "org") {
@@ -63,6 +161,9 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
           { label: "Dashboard", href: "/app/coach" },
           { label: "Elèves", href: "/app/coach/eleves" },
           { label: "Tests", href: "/app/coach/tests" },
+          ...(showMessagingEntry
+            ? [{ label: "Messages", href: "/app/coach/messages" }]
+            : []),
           { label: "Propositions", href: "/app/org/proposals" },
           { label: "Groupes / ecole", href: "/app/org" },
           ...(isWorkspaceAdmin
@@ -79,6 +180,9 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
           { label: "Dashboard", href: "/app/coach" },
           { label: "Elèves", href: "/app/coach/eleves" },
           { label: "Tests", href: "/app/coach/tests" },
+          ...(showMessagingEntry
+            ? [{ label: "Messages", href: "/app/coach/messages" }]
+            : []),
           { label: "Rapports", href: "/app/coach/rapports" },
         ],
       });
@@ -205,6 +309,13 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
           <path d="M9 7h6" />
           <path d="M9 11h6" />
           <path d="M9 15h4" />
+        </svg>
+      );
+    }
+    if (href === "/app/coach/messages" || href === "/app/eleve/messages") {
+      return (
+        <svg viewBox="0 0 24 24" {...sharedProps}>
+          <path d="M4 6h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-5 4V8a2 2 0 0 1 2-2z" />
         </svg>
       );
     }
@@ -427,6 +538,8 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
             >
               {section.items.map((item) => {
                 const active = isActive(item.href);
+                const isMessagingItem =
+                  item.href === "/app/coach/messages" || item.href === "/app/eleve/messages";
                 return (
                   <Link
                     key={item.href}
@@ -453,7 +566,7 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
                     ) : null}
                     <span className="flex min-w-0 flex-1 items-center gap-3">
                       <span
-                        className={`flex h-8 w-8 items-center justify-center transition ${
+                        className={`relative flex h-8 w-8 items-center justify-center transition ${
                           isCollapsed
                             ? active
                               ? "text-[var(--accent)]"
@@ -464,6 +577,11 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
                         }`}
                       >
                         {iconForHref(item.href)}
+                        {isMessagingItem && messageUnreadCount > 0 ? (
+                          <span className="absolute -right-1 -top-1 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-rose-500 px-1 text-[0.6rem] font-semibold text-white">
+                            {messageUnreadCount > 99 ? "99+" : messageUnreadCount}
+                          </span>
+                        ) : null}
                       </span>
                       {!isCollapsed ? (
                         <span className={`whitespace-nowrap ${active ? "font-medium" : ""}`}>

@@ -9,6 +9,14 @@ import { supabase } from "@/lib/supabase/client";
 import { useProfile } from "./profile-context";
 import WorkspaceSwitcher from "./workspace-switcher";
 import { useThemePreference } from "./use-theme-preference";
+import {
+  MESSAGES_NOTIFICATIONS_SYNC_EVENT,
+  type MessageNotificationsSyncDetail,
+} from "@/lib/messages/client-events";
+import {
+  MessageNotificationsResponseSchema,
+  type MessageNotificationsResponse,
+} from "@/lib/messages/types";
 
 type AppHeaderProps = {
   onToggleNav?: () => void;
@@ -46,6 +54,17 @@ type ReportShareInviteRow = {
 const isStudentLinkRequest = (proposal: ProposalRow) =>
   proposal.payload?.kind === "student_link_request";
 
+const emptyMessageNotifications: MessageNotificationsResponse = {
+  unreadMessagesCount: 0,
+  unreadPreviews: [],
+  pendingCoachContactRequestsCount: 0,
+};
+
+const readApiError = async (response: Response, fallback: string) => {
+  const payload = (await response.json().catch(() => ({}))) as { error?: string };
+  return payload.error ?? fallback;
+};
+
 export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
   const router = useRouter();
   const [email, setEmail] = useState<string | null>(null);
@@ -57,7 +76,12 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
   const [reportShareLoading, setReportShareLoading] = useState(false);
   const [reportShareError, setReportShareError] = useState("");
   const [reportShareActionId, setReportShareActionId] = useState<string | null>(null);
+  const [messageNotifications, setMessageNotifications] =
+    useState<MessageNotificationsResponse>(emptyMessageNotifications);
+  const [messageLoading, setMessageLoading] = useState(false);
+  const [messageError, setMessageError] = useState("");
   const [requestsOpen, setRequestsOpen] = useState(false);
+
   useThemePreference();
   const { profile, isWorkspaceAdmin } = useProfile();
 
@@ -69,11 +93,17 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
   const brandWordmarkUrl = "/branding/wordmark.png";
   const displayName = (profile?.full_name ?? "").trim() || (email ?? "Compte");
   const isStudent = profile?.role === "student";
+
   const pendingLinkRequests = useMemo(
     () => requests.filter((request) => request.status === "pending"),
     [requests]
   );
-  const pendingCount = pendingLinkRequests.length + reportShareInvites.length;
+
+  const pendingCount =
+    pendingLinkRequests.length +
+    reportShareInvites.length +
+    messageNotifications.unreadMessagesCount +
+    messageNotifications.pendingCoachContactRequestsCount;
 
   const loadLinkRequests = useCallback(async () => {
     if (!profile || isStudent || !isWorkspaceAdmin) {
@@ -81,8 +111,10 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
       setRequestsError("");
       return;
     }
+
     setRequestsLoading(true);
     setRequestsError("");
+
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
     if (!token) {
@@ -99,6 +131,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
       proposals?: ProposalRow[];
       error?: string;
     };
+
     if (!response.ok) {
       setRequestsError(payload.error ?? "Chargement des demandes impossible.");
       setRequests([]);
@@ -120,6 +153,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
 
     setReportShareLoading(true);
     setReportShareError("");
+
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
     if (!token) {
@@ -131,10 +165,12 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
     const response = await fetch("/api/reports/shares/inbox", {
       headers: { Authorization: `Bearer ${token}` },
     });
+
     const payload = (await response.json().catch(() => ({}))) as {
       shares?: ReportShareInviteRow[];
       error?: string;
     };
+
     if (!response.ok) {
       setReportShareError(payload.error ?? "Chargement des partages impossible.");
       setReportShareInvites([]);
@@ -146,10 +182,62 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
     setReportShareLoading(false);
   }, [isStudent, profile]);
 
+  const loadMessageNotifications = useCallback(async () => {
+    if (!profile) {
+      setMessageNotifications(emptyMessageNotifications);
+      setMessageError("");
+      return;
+    }
+
+    setMessageLoading(true);
+    setMessageError("");
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        setMessageNotifications(emptyMessageNotifications);
+        return;
+      }
+
+      const response = await fetch("/api/messages/notifications", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          setMessageNotifications(emptyMessageNotifications);
+          setMessageError("");
+          return;
+        }
+
+        throw new Error(
+          await readApiError(response, "Chargement des notifications messages impossible.")
+        );
+      }
+
+      const payload = await response.json();
+      const parsed = MessageNotificationsResponseSchema.safeParse(payload);
+      if (!parsed.success) {
+        throw new Error("Reponse notifications messages invalide.");
+      }
+
+      setMessageNotifications(parsed.data);
+    } catch (error) {
+      setMessageError(
+        error instanceof Error ? error.message : "Notifications messages indisponibles."
+      );
+      setMessageNotifications(emptyMessageNotifications);
+    } finally {
+      setMessageLoading(false);
+    }
+  }, [profile]);
+
   const handleRequestDecision = useCallback(
     async (proposalId: string, decision: "accept" | "reject") => {
       setRequestActionId(proposalId);
       setRequestsError("");
+
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
       if (!token) {
@@ -157,6 +245,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
         setRequestActionId(null);
         return;
       }
+
       const response = await fetch("/api/orgs/proposals/decide", {
         method: "POST",
         headers: {
@@ -165,12 +254,14 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
         },
         body: JSON.stringify({ proposalId, decision }),
       });
+
       const payload = (await response.json().catch(() => ({}))) as { error?: string };
       if (!response.ok) {
         setRequestsError(payload.error ?? "Action impossible.");
         setRequestActionId(null);
         return;
       }
+
       await loadLinkRequests();
       setRequestActionId(null);
     },
@@ -181,6 +272,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
     async (shareId: string, decision: "accept" | "reject") => {
       setReportShareActionId(shareId);
       setReportShareError("");
+
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
       if (!token) {
@@ -188,6 +280,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
         setReportShareActionId(null);
         return;
       }
+
       const response = await fetch("/api/reports/shares/respond", {
         method: "POST",
         headers: {
@@ -196,15 +289,18 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
         },
         body: JSON.stringify({ shareId, decision }),
       });
+
       const payload = (await response.json().catch(() => ({}))) as {
         error?: string;
         reportId?: string;
       };
+
       if (!response.ok) {
         setReportShareError(payload.error ?? "Action impossible.");
         setReportShareActionId(null);
         return;
       }
+
       await loadReportShareInvites();
       if (decision === "accept" && payload.reportId) {
         router.push(`/app/coach/rapports/${payload.reportId}`);
@@ -223,7 +319,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
       setEmail(data.user?.email ?? null);
     };
 
-    loadUser();
+    void loadUser();
 
     return () => {
       active = false;
@@ -236,19 +332,23 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
       if (cancelled) return;
       void loadLinkRequests();
       void loadReportShareInvites();
+      void loadMessageNotifications();
     });
+
     return () => {
       cancelled = true;
     };
-  }, [loadLinkRequests, loadReportShareInvites]);
+  }, [loadLinkRequests, loadReportShareInvites, loadMessageNotifications]);
 
   useEffect(() => {
     if (!requestsOpen) return;
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       if (requestActionId || reportShareActionId) return;
       setRequestsOpen(false);
     };
+
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [requestsOpen, requestActionId, reportShareActionId]);
@@ -257,10 +357,41 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
     const handleFocus = () => {
       void loadLinkRequests();
       void loadReportShareInvites();
+      void loadMessageNotifications();
     };
+
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);
-  }, [loadLinkRequests, loadReportShareInvites]);
+  }, [loadLinkRequests, loadReportShareInvites, loadMessageNotifications]);
+
+  useEffect(() => {
+    const handleMessageSync = (event: Event) => {
+      const customEvent = event as CustomEvent<MessageNotificationsSyncDetail>;
+      const unreadMessagesCount = customEvent.detail?.unreadMessagesCount;
+
+      if (typeof unreadMessagesCount === "number") {
+        setMessageNotifications((current) => ({
+          ...current,
+          unreadMessagesCount: Math.max(0, unreadMessagesCount),
+        }));
+      }
+
+      if (customEvent.detail?.refetch ?? false) {
+        void loadMessageNotifications();
+      }
+    };
+
+    window.addEventListener(
+      MESSAGES_NOTIFICATIONS_SYNC_EVENT,
+      handleMessageSync as EventListener
+    );
+    return () => {
+      window.removeEventListener(
+        MESSAGES_NOTIFICATIONS_SYNC_EVENT,
+        handleMessageSync as EventListener
+      );
+    };
+  }, [loadMessageNotifications]);
 
   return (
     <header className="app-header sticky top-[var(--app-sticky-top)] z-40">
@@ -270,11 +401,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
         </div>
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <Link href="/app" className="flex min-w-0 items-center gap-2 min-[880px]:hidden">
-            <img
-              src={brandIconUrl}
-              alt="Logo SwingFlow"
-              className="h-10 w-10 shrink-0 object-contain"
-            />
+            <img src={brandIconUrl} alt="Logo SwingFlow" className="h-10 w-10 shrink-0 object-contain" />
             <img
               src={brandWordmarkUrl}
               alt="SwingFlow"
@@ -310,109 +437,110 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
         </div>
 
         <div className="flex items-center gap-2">
-          {!isStudent ? (
-            <button
-              type="button"
-              aria-label="Notifications"
-              onClick={() => {
-                setRequestsOpen(true);
-                void loadLinkRequests();
-                void loadReportShareInvites();
-              }}
-              className="relative flex h-12 w-12 items-center justify-center rounded-full bg-[var(--panel)] text-[var(--muted)] transition hover:bg-white hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                className="h-5 w-5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
-                <path d="M13.7 21a2 2 0 01-3.4 0" />
-              </svg>
-              {pendingCount > 0 ? (
-                <span className="absolute -right-1 -top-1 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-rose-400 px-1 text-[0.65rem] font-semibold text-zinc-900">
-                  {pendingCount > 9 ? "9+" : pendingCount}
-                </span>
-              ) : null}
-            </button>
-          ) : null}
-
-        
-
-        {needsProfileName ? (
           <button
             type="button"
-            onClick={() => router.push("/app/coach/parametres")}
-            className="hidden rounded-full border border-amber-300/40 bg-amber-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-amber-100 transition hover:border-amber-300/70 min-[880px]:block"
-          >
-            Profil incomplet
-          </button>
-        ) : null}
-
-        <div className="hidden min-[880px]:flex items-center gap-3">
-          {profile?.avatar_url ? (
-            <img
-              src={profile.avatar_url}
-              alt="Photo de profil"
-              className="h-12 w-12 rounded-full border border-white/10 object-cover"
-            />
-          ) : (
-            <div className="flex h-12 w-12 items-center justify-center rounded-full border-white/10 bg-white/90 text-xs text-[var(--muted)]">
-              {avatarFallback}
-            </div>
-          )}
-          <div className="min-w-0 leading-tight">
-            <p className="max-w-[200px] truncate text-m py-1 font-semibold text-[var(--text)]">
-              {displayName}
-            </p>
-            <p className="max-w-[220px] truncate text-xs text-[var(--muted)]">
-              <span className="hidden min-[1050px]:inline">{email ?? roleLabel}</span>
-              <span className="min-[1050px]:hidden">{roleLabel}</span>
-            </p>
-          </div>
-        </div>
-        <div className="min-[880px]:hidden">
-          <WorkspaceSwitcher />
-        </div>
-        {onToggleNav ? (
-          <button
-            type="button"
-            onClick={onToggleNav}
-            aria-label={isNavOpen ? "Fermer la navigation" : "Ouvrir la navigation"}
-            aria-expanded={isNavOpen ?? false}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--bg-elevated)] text-[var(--muted)] transition hover:bg-white hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50 min-[880px]:hidden"
+            aria-label="Notifications"
+            onClick={() => {
+              setMessageNotifications((current) => ({
+                ...current,
+                unreadMessagesCount: 0,
+              }));
+              setRequestsOpen(true);
+              void loadLinkRequests();
+              void loadReportShareInvites();
+            }}
+            className="relative flex h-12 w-12 items-center justify-center rounded-full bg-[var(--panel)] text-[var(--muted)] transition hover:bg-white hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
           >
             <svg
               viewBox="0 0 24 24"
-              className="h-4 w-4"
+              className="h-5 w-5"
               fill="none"
               stroke="currentColor"
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
+              aria-hidden="true"
             >
-              {isNavOpen ? (
-                <>
-                  <path d="M18 6L6 18" />
-                  <path d="M6 6l12 12" />
-                </>
-              ) : (
-                <>
-                  <path d="M3 6h18" />
-                  <path d="M3 12h18" />
-                  <path d="M3 18h18" />
-                </>
-              )}
+              <path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
+              <path d="M13.7 21a2 2 0 01-3.4 0" />
             </svg>
+            {pendingCount > 0 ? (
+              <span className="absolute -right-1 -top-1 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-rose-400 px-1 text-[0.65rem] font-semibold text-zinc-900">
+                {pendingCount > 9 ? "9+" : pendingCount}
+              </span>
+            ) : null}
           </button>
-        ) : null}
+
+          {needsProfileName ? (
+            <button
+              type="button"
+              onClick={() => router.push("/app/coach/parametres")}
+              className="hidden rounded-full border border-amber-300/40 bg-amber-400/10 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-amber-100 transition hover:border-amber-300/70 min-[880px]:block"
+            >
+              Profil incomplet
+            </button>
+          ) : null}
+
+          <div className="hidden min-[880px]:flex items-center gap-3">
+            {profile?.avatar_url ? (
+              <img
+                src={profile.avatar_url}
+                alt="Photo de profil"
+                className="h-12 w-12 rounded-full border border-white/10 object-cover"
+              />
+            ) : (
+              <div className="flex h-12 w-12 items-center justify-center rounded-full border-white/10 bg-white/90 text-xs text-[var(--muted)]">
+                {avatarFallback}
+              </div>
+            )}
+            <div className="min-w-0 leading-tight">
+              <p className="max-w-[200px] truncate text-m py-1 font-semibold text-[var(--text)]">
+                {displayName}
+              </p>
+              <p className="max-w-[220px] truncate text-xs text-[var(--muted)]">
+                <span className="hidden min-[1050px]:inline">{email ?? roleLabel}</span>
+                <span className="min-[1050px]:hidden">{roleLabel}</span>
+              </p>
+            </div>
+          </div>
+          <div className="min-[880px]:hidden">
+            <WorkspaceSwitcher />
+          </div>
+          {onToggleNav ? (
+            <button
+              type="button"
+              onClick={onToggleNav}
+              aria-label={isNavOpen ? "Fermer la navigation" : "Ouvrir la navigation"}
+              aria-expanded={isNavOpen ?? false}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--bg-elevated)] text-[var(--muted)] transition hover:bg-white hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50 min-[880px]:hidden"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                {isNavOpen ? (
+                  <>
+                    <path d="M18 6L6 18" />
+                    <path d="M6 6l12 12" />
+                  </>
+                ) : (
+                  <>
+                    <path d="M3 6h18" />
+                    <path d="M3 12h18" />
+                    <path d="M3 18h18" />
+                  </>
+                )}
+              </svg>
+            </button>
+          ) : null}
         </div>
       </div>
+
       {requestsOpen ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -458,34 +586,73 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
                 </svg>
               </button>
             </div>
+
             <div className="max-h-[70vh] space-y-3 overflow-auto px-6 py-5">
-              {requestsError ? (
-                <p className="text-sm text-red-400">{requestsError}</p>
-              ) : null}
-              {reportShareError ? (
-                <p className="text-sm text-red-400">{reportShareError}</p>
-              ) : null}
-              {requestsLoading || reportShareLoading ? (
+              {requestsError ? <p className="text-sm text-red-400">{requestsError}</p> : null}
+              {reportShareError ? <p className="text-sm text-red-400">{reportShareError}</p> : null}
+              {messageError ? <p className="text-sm text-red-400">{messageError}</p> : null}
+
+              {requestsLoading || reportShareLoading || messageLoading ? (
                 <p className="text-sm text-[var(--muted)]">Chargement...</p>
-              ) : pendingLinkRequests.length === 0 && reportShareInvites.length === 0 ? (
-                <p className="text-sm text-[var(--muted)]">Aucune demande en attente.</p>
+              ) : pendingLinkRequests.length === 0 &&
+                reportShareInvites.length === 0 &&
+                messageNotifications.unreadPreviews.length === 0 &&
+                messageNotifications.pendingCoachContactRequestsCount === 0 ? (
+                <p className="text-sm text-[var(--muted)]">Aucune notification en attente.</p>
               ) : (
                 <>
+                  {messageNotifications.unreadPreviews.length > 0 ? (
+                    <div className="space-y-2">
+                      <p className="text-[0.65rem] uppercase tracking-[0.25em] text-[var(--muted)]">
+                        Messages non lus
+                      </p>
+                      {messageNotifications.unreadPreviews.map((preview) => {
+                        const href = isStudent
+                          ? `/app/eleve/messages?threadId=${preview.threadId}`
+                          : `/app/coach/messages?threadId=${preview.threadId}`;
+
+                        return (
+                          <Link
+                            key={`${preview.threadId}-${preview.createdAt}`}
+                            href={href}
+                            onClick={() => setRequestsOpen(false)}
+                            className="block rounded-2xl border border-violet-300/25 bg-violet-400/10 p-4 transition hover:border-violet-300/40"
+                          >
+                            <p className="text-sm font-semibold text-[var(--text)]">
+                              {preview.fromName ?? "Nouveau message"}
+                            </p>
+                            <p className="mt-1 text-xs text-[var(--muted)] line-clamp-2">
+                              {preview.bodyPreview}
+                            </p>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+
+                  {messageNotifications.pendingCoachContactRequestsCount > 0 && !isStudent ? (
+                    <div className="rounded-2xl border border-violet-300/25 bg-violet-400/10 p-4">
+                      <p className="text-sm text-[var(--text)]">
+                        {messageNotifications.pendingCoachContactRequestsCount} demande(s) de contact coach en attente.
+                      </p>
+                      <Link
+                        href="/app/coach/messages"
+                        onClick={() => setRequestsOpen(false)}
+                        className="mt-3 inline-flex rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)]"
+                      >
+                        Ouvrir la messagerie
+                      </Link>
+                    </div>
+                  ) : null}
+
                   {reportShareInvites.map((share) => (
-                    <div
-                      key={share.id}
-                      className="rounded-2xl border border-sky-300/25 bg-sky-400/10 p-4"
-                    >
+                    <div key={share.id} className="rounded-2xl border border-sky-300/25 bg-sky-400/10 p-4">
                       <p className="text-sm font-semibold text-[var(--text)]">Rapport partage</p>
                       <p className="mt-2 text-[0.65rem] uppercase tracking-[0.25em] text-sky-100">
                         Envoye par
                       </p>
-                      <p className="mt-1 text-sm font-semibold text-sky-200">
-                        {share.sender_name}
-                      </p>
-                      <p className="mt-2 text-xs text-[var(--muted)]">
-                        Rapport: {share.report_title}
-                      </p>
+                      <p className="mt-1 text-sm font-semibold text-sky-200">{share.sender_name}</p>
+                      <p className="mt-2 text-xs text-[var(--muted)]">Rapport: {share.report_title}</p>
                       {share.source_student_name ? (
                         <p className="mt-1 text-xs text-[var(--muted)]">
                           Eleve source: {share.source_student_name}
@@ -511,16 +678,13 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
                       </div>
                     </div>
                   ))}
+
                   {pendingLinkRequests.map((request) => {
                     const requesterOrgName =
-                      request.payload?.requester_org_name?.trim() ||
-                      "Organisation externe";
+                      request.payload?.requester_org_name?.trim() || "Organisation externe";
                     const studentEmail = request.payload?.requested_student?.email ?? null;
                     return (
-                      <div
-                        key={request.id}
-                        className="rounded-2xl border border-white/10 bg-white/5 p-4"
-                      >
+                      <div key={request.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
                         <p className="text-sm font-semibold text-[var(--text)]">
                           Demande d ajout cross-org
                         </p>
@@ -531,9 +695,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
                           {requesterOrgName}
                         </p>
                         {studentEmail ? (
-                          <p className="mt-2 text-xs text-[var(--muted)]">
-                            Eleve: {studentEmail}
-                          </p>
+                          <p className="mt-2 text-xs text-[var(--muted)]">Eleve: {studentEmail}</p>
                         ) : null}
                         <div className="mt-3 flex items-center gap-2">
                           <button

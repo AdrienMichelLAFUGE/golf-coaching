@@ -133,7 +133,12 @@ describe("POST /api/orgs", () => {
     const response = await POST(buildRequest({ name: "Nouvelle orga" }));
 
     expect(response.status).toBe(200);
-    expect(orgInsert).toHaveBeenCalled();
+    expect(orgInsert).toHaveBeenCalledWith([
+      expect.objectContaining({
+        workspace_type: "org",
+        plan_tier: "pro",
+      }),
+    ]);
     expect(membershipInsert).toHaveBeenCalledWith([
       {
         org_id: "org-2",
