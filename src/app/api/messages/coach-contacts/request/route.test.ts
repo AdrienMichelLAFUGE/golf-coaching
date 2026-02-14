@@ -14,6 +14,10 @@ jest.mock("@/lib/messages/service", () => ({
   buildCoachContactRequestDtos: jest.fn(async () => []),
 }));
 
+jest.mock("@/lib/messages/rate-limit", () => ({
+  enforceMessageRateLimit: jest.fn(async () => ({ allowed: true, retryAfterSeconds: 0 })),
+}));
+
 const buildRequest = (payload: unknown) =>
   ({
     json: async () => payload,
@@ -25,12 +29,15 @@ describe("POST /api/messages/coach-contacts/request", () => {
     isCoachLikeActiveOrgMember: jest.Mock;
     loadMessageActorContext: jest.Mock;
   };
+  const rateLimitMocks = jest.requireMock("@/lib/messages/rate-limit") as {
+    enforceMessageRateLimit: jest.Mock;
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it("returns 409 when requesting contact with self", async () => {
+  it("returns neutral success when requesting contact with self", async () => {
     accessMocks.loadMessageActorContext.mockResolvedValue({
       context: {
         userId: "user-1",
@@ -48,12 +55,12 @@ describe("POST /api/messages/coach-contacts/request", () => {
 
     const response = await POST(buildRequest({ targetEmail: "coach@example.com" }));
 
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body.error).toContain("propre compte");
+    expect(body.ok).toBe(true);
   });
 
-  it("returns 409 when target coach is already in the same organization", async () => {
+  it("returns neutral success when target coach is already in the same organization", async () => {
     const admin = {
       from: jest.fn(() => ({
         select: () => ({
@@ -84,8 +91,29 @@ describe("POST /api/messages/coach-contacts/request", () => {
 
     const response = await POST(buildRequest({ targetEmail: "coach2@example.com" }));
 
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body.error).toContain("deja disponible");
+    expect(body.ok).toBe(true);
+  });
+
+  it("returns 429 when coach contact request rate limit is exceeded", async () => {
+    accessMocks.loadMessageActorContext.mockResolvedValue({
+      context: {
+        userId: "user-1",
+        profile: { role: "coach" },
+        activeWorkspace: { id: "org-1", workspace_type: "org" },
+        admin: {},
+      },
+      response: null,
+    });
+    rateLimitMocks.enforceMessageRateLimit.mockResolvedValueOnce({
+      allowed: false,
+      retryAfterSeconds: 45,
+    });
+
+    const response = await POST(buildRequest({ targetEmail: "coach2@example.com" }));
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("retry-after")).toBe("45");
   });
 });

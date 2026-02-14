@@ -1,12 +1,16 @@
 import "server-only";
 
 import { NextResponse } from "next/server";
+import { messagesJson } from "@/lib/messages/http";
+import { loadMessagingCharterStatus } from "@/lib/messages/charter";
+import { loadActiveMessagingSuspension } from "@/lib/messages/suspensions";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
 import { resolveEffectivePlanTier } from "@/lib/plans";
 import {
   createSupabaseAdminClient,
   createSupabaseServerClientFromRequest,
 } from "@/lib/supabase/server";
+import { recordActivity } from "@/lib/activity-log";
 
 export type AppProfileRole = "owner" | "coach" | "staff" | "student";
 
@@ -27,6 +31,7 @@ type OrganizationRow = {
   plan_tier: string | null;
   plan_tier_override: string | null;
   plan_tier_override_expires_at: string | null;
+  messaging_charter_version: number | null;
 };
 
 type MembershipRow = {
@@ -76,14 +81,15 @@ export const coerceMessageId = (value: unknown): number | null => {
 export const isCoachLikeRole = (role: AppProfileRole) => role !== "student";
 
 export const loadMessageActorContext = async (
-  request: Request
+  request: Request,
+  options?: { skipCharterCheck?: boolean; skipSuspensionCheck?: boolean }
 ): Promise<{ context: MessageActorContext; response: null } | { context: null; response: NextResponse }> => {
   const supabase = createSupabaseServerClientFromRequest(request);
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData.user) {
     return {
       context: null,
-      response: NextResponse.json({ error: "Unauthorized." }, { status: 401 }),
+      response: messagesJson({ error: "Unauthorized." }, { status: 401 }),
     };
   }
 
@@ -97,7 +103,7 @@ export const loadMessageActorContext = async (
   if (profileError || !profileData) {
     return {
       context: null,
-      response: NextResponse.json({ error: "Profil introuvable." }, { status: 403 }),
+      response: messagesJson({ error: "Profil introuvable." }, { status: 403 }),
     };
   }
 
@@ -107,7 +113,7 @@ export const loadMessageActorContext = async (
   const { data: workspaceData, error: workspaceError } = await admin
     .from("organizations")
     .select(
-      "id, name, workspace_type, owner_profile_id, plan_tier, plan_tier_override, plan_tier_override_expires_at"
+      "id, name, workspace_type, owner_profile_id, plan_tier, plan_tier_override, plan_tier_override_expires_at, messaging_charter_version"
     )
     .eq("id", activeWorkspaceId)
     .maybeSingle();
@@ -115,7 +121,7 @@ export const loadMessageActorContext = async (
   if (workspaceError || !workspaceData) {
     return {
       context: null,
-      response: NextResponse.json({ error: "Workspace introuvable." }, { status: 403 }),
+      response: messagesJson({ error: "Workspace introuvable." }, { status: 403 }),
     };
   }
 
@@ -136,9 +142,66 @@ export const loadMessageActorContext = async (
     if (personalPlanTier === "free") {
       return {
         context: null,
-        response: NextResponse.json(
+        response: messagesJson(
           { error: "Lecture seule: plan Free en organisation." },
           { status: 403 }
+        ),
+      };
+    }
+  }
+
+  if (!options?.skipSuspensionCheck && activeWorkspace.workspace_type === "org") {
+    const suspension = await loadActiveMessagingSuspension(
+      admin,
+      activeWorkspace.id,
+      profile.id
+    );
+
+    if (suspension) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "messages.suspension.access_blocked",
+        actorUserId: profile.id,
+        orgId: activeWorkspace.id,
+        entityType: "message_user_suspension",
+        entityId: suspension.id,
+        message: "Acces messagerie bloque: utilisateur suspendu.",
+        metadata: {
+          suspendedUntil: suspension.suspendedUntil,
+        },
+      });
+
+      return {
+        context: null,
+        response: messagesJson(
+          {
+            error: "Acces messagerie suspendu par votre structure.",
+            code: "MESSAGING_SUSPENDED",
+            suspendedUntil: suspension.suspendedUntil,
+          },
+          { status: 403 }
+        ),
+      };
+    }
+  }
+
+  if (!options?.skipCharterCheck) {
+    const charterStatus = await loadMessagingCharterStatus(
+      admin,
+      profile.id,
+      activeWorkspace.id
+    );
+    if (charterStatus.mustAccept) {
+      return {
+        context: null,
+        response: messagesJson(
+          {
+            error: "Acceptation de la charte messagerie requise.",
+            code: "MESSAGING_CHARTER_REQUIRED",
+            charterVersion: charterStatus.charterVersion,
+          },
+          { status: 428 }
         ),
       };
     }
@@ -157,7 +220,7 @@ export const loadMessageActorContext = async (
     if (!membership || membership.status !== "active") {
       return {
         context: null,
-        response: NextResponse.json({ error: "Acces refuse." }, { status: 403 }),
+        response: messagesJson({ error: "Acces refuse." }, { status: 403 }),
       };
     }
 
@@ -174,7 +237,7 @@ export const loadMessageActorContext = async (
     if (accountsError) {
       return {
         context: null,
-        response: NextResponse.json({ error: accountsError.message }, { status: 400 }),
+        response: messagesJson({ error: accountsError.message }, { status: 400 }),
       };
     }
 

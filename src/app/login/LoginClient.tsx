@@ -31,6 +31,7 @@ export default function LoginClient({
     if (typeof window === "undefined") return true;
     return window.sessionStorage.getItem(rememberStorageKey) !== "false";
   });
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const [accountType, setAccountType] = useState<AccountType>("coach");
   const [coachFlow, setCoachFlow] = useState<CoachFlow>(initialCoachFlow ?? "signin");
   const [status, setStatus] = useState<Status>(() => (resetSuccess ? "sent" : "idle"));
@@ -97,6 +98,7 @@ export default function LoginClient({
     setAccountType(nextType);
     if (nextType === "student") {
       setCoachFlow("signin");
+      setAcceptTerms(false);
     }
   };
 
@@ -143,11 +145,19 @@ export default function LoginClient({
     trimmedPassword: string,
     trimmedFullName: string
   ) => {
+    const acceptedAt = new Date().toISOString();
     const { data, error } = await supabase.auth.signUp({
       email: trimmedEmail,
       password: trimmedPassword,
       options: {
-        data: { role: "coach", full_name: trimmedFullName },
+        data: {
+          role: "coach",
+          full_name: trimmedFullName,
+          terms_accepted: true,
+          terms_accepted_at: acceptedAt,
+          cgu_accepted: true,
+          cgv_accepted: true,
+        },
       },
     });
 
@@ -202,6 +212,11 @@ export default function LoginClient({
         setMessage("Ajoute un mot de passe.");
         return;
       }
+      if (!acceptTerms) {
+        setStatus("error");
+        setMessage("Tu dois accepter les CGU et CGV pour creer un compte.");
+        return;
+      }
       await signUpCoach(trimmedEmail, trimmedPassword, trimmedFullName);
       return;
     }
@@ -211,8 +226,8 @@ export default function LoginClient({
       setStatus("error");
       setMessage("Ajoute un mot de passe.");
       return;
-      }
-      await signInWithPassword(trimmedEmail, trimmedPassword);
+    }
+    await signInWithPassword(trimmedEmail, trimmedPassword);
   };
 
   const openResetModal = () => {
@@ -307,7 +322,10 @@ export default function LoginClient({
             <div className="mt-4 grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/5 p-1 text-xs uppercase tracking-wide text-[var(--muted)]">
               <button
                 type="button"
-                onClick={() => setCoachFlow("signin")}
+                onClick={() => {
+                  setCoachFlow("signin");
+                  setAcceptTerms(false);
+                }}
                 className={`rounded-xl px-3 py-2 transition ${
                   coachFlow === "signin"
                     ? "bg-white/15 text-[var(--text)]"
@@ -393,6 +411,40 @@ export default function LoginClient({
               />
               Se souvenir de moi
             </label>
+            {accountType === "coach" && coachFlow === "signup" ? (
+              <label className="block text-xs text-[var(--muted)]">
+                <span className="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    checked={acceptTerms}
+                    onChange={(event) => setAcceptTerms(event.target.checked)}
+                    required
+                    className="mt-0.5 h-4 w-4 rounded border-white/10 bg-[var(--bg-elevated)]"
+                  />
+                  <span>
+                    J accepte les{" "}
+                    <a
+                      href="/cgu"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-semibold text-[var(--text)] underline decoration-white/30 underline-offset-2 hover:decoration-white/70"
+                    >
+                      CGU
+                    </a>{" "}
+                    et les{" "}
+                    <a
+                      href="/cgv"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-semibold text-[var(--text)] underline decoration-white/30 underline-offset-2 hover:decoration-white/70"
+                    >
+                      CGV
+                    </a>
+                    .
+                  </span>
+                </span>
+              </label>
+            ) : null}
             <button
               type="submit"
               disabled={status === "sending"}

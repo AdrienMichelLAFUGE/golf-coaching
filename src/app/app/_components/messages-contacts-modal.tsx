@@ -67,6 +67,14 @@ export default function MessagesContactsModal({
     [data]
   );
 
+  const hasCoachRequests = useMemo(() => {
+    if (!data) return false;
+    return (
+      data.pendingIncomingCoachContactRequests.length > 0 ||
+      data.pendingOutgoingCoachContactRequests.length > 0
+    );
+  }, [data]);
+
   if (!open) return null;
 
   const handleRequestCoachContact = async (event: FormEvent<HTMLFormElement>) => {
@@ -361,13 +369,15 @@ export default function MessagesContactsModal({
                   </div>
                 </form>
 
-                <MessagesContactRequests
-                  incoming={data.pendingIncomingCoachContactRequests}
-                  outgoing={data.pendingOutgoingCoachContactRequests}
-                  highlightRequestId={highlightRequestId}
-                  actionRequestId={actionRequestId}
-                  onRespond={onRespondCoachRequest}
-                />
+                {hasCoachRequests ? (
+                  <MessagesContactRequests
+                    incoming={data.pendingIncomingCoachContactRequests}
+                    outgoing={data.pendingOutgoingCoachContactRequests}
+                    highlightRequestId={highlightRequestId}
+                    actionRequestId={actionRequestId}
+                    onRespond={onRespondCoachRequest}
+                  />
+                ) : null}
               </section>
             ) : null}
           </div>

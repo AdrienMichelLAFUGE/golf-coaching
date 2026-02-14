@@ -18,6 +18,10 @@ jest.mock("@/lib/messages/access", () => ({
   normalizeUserPair: jest.fn(),
 }));
 
+jest.mock("@/lib/messages/rate-limit", () => ({
+  enforceMessageRateLimit: jest.fn(async () => ({ allowed: true, retryAfterSeconds: 0 })),
+}));
+
 type QueryResult = { data: unknown; error?: { message?: string } | null };
 
 const buildRequest = (payload: unknown) =>
@@ -53,6 +57,9 @@ describe("POST /api/messages/threads", () => {
     loadStudentRow: jest.Mock;
     loadStudentUserId: jest.Mock;
     normalizeUserPair: jest.Mock;
+  };
+  const rateLimitMocks = jest.requireMock("@/lib/messages/rate-limit") as {
+    enforceMessageRateLimit: jest.Mock;
   };
 
   beforeEach(() => {
@@ -109,6 +116,32 @@ describe("POST /api/messages/threads", () => {
     expect(response.status).toBe(403);
     const body = await response.json();
     expect(body.error).toContain("coach non assigne");
+  });
+
+  it("returns 429 when thread creation rate limit is exceeded", async () => {
+    accessMocks.loadMessageActorContext.mockResolvedValue({
+      context: {
+        userId: "coach-1",
+        profile: { role: "coach", full_name: "Coach" },
+        activeWorkspace: { id: "org-1", workspace_type: "org" },
+        admin: {},
+      },
+      response: null,
+    });
+    rateLimitMocks.enforceMessageRateLimit.mockResolvedValueOnce({
+      allowed: false,
+      retryAfterSeconds: 15,
+    });
+
+    const response = await POST(
+      buildRequest({
+        kind: "coach_coach",
+        coachUserId: "22222222-2222-2222-2222-222222222222",
+      })
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("retry-after")).toBe("15");
   });
 
   it("returns existing coach_coach thread idempotently", async () => {

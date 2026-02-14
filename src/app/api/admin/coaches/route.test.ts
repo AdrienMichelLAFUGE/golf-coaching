@@ -19,7 +19,8 @@ type SupabaseClient = {
 type AdminClient = {
   auth: {
     admin: {
-      deleteUser: jest.Mock;
+      deleteUser?: jest.Mock;
+      updateUserById?: jest.Mock;
       getUserById?: jest.Mock;
     };
   };
@@ -79,7 +80,7 @@ describe("DELETE /api/admin/coaches", () => {
 
     serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
     serverMocks.createSupabaseAdminClient.mockReturnValue({
-      auth: { admin: { deleteUser: jest.fn() } },
+      auth: { admin: { updateUserById: jest.fn() } },
       from: jest.fn(),
     } as AdminClient);
 
@@ -105,7 +106,7 @@ describe("DELETE /api/admin/coaches", () => {
 
     serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
     serverMocks.createSupabaseAdminClient.mockReturnValue({
-      auth: { admin: { deleteUser: jest.fn() } },
+      auth: { admin: { updateUserById: jest.fn() } },
       from: jest.fn(),
     } as AdminClient);
 
@@ -119,7 +120,7 @@ describe("DELETE /api/admin/coaches", () => {
     expect(body.error).toBe("Impossible de supprimer votre compte.");
   });
 
-  it("retries delete after profile cleanup on database error", async () => {
+  it("anonymizes auth/profile and disables memberships", async () => {
     const supabase = {
       auth: {
         getUser: async () => ({
@@ -131,28 +132,29 @@ describe("DELETE /api/admin/coaches", () => {
       },
     } as SupabaseClient;
 
-    const deleteUser = jest
-      .fn()
-      .mockResolvedValueOnce({
-        error: { message: "Database error deleting user" },
-      })
-      .mockResolvedValueOnce({ error: null });
-    const eq = jest.fn().mockResolvedValue({ error: null });
-    const deleteProfile = jest.fn().mockReturnValue({ eq });
+    const updateUserById = jest.fn().mockResolvedValue({ error: null });
+    const profileEq = jest.fn().mockResolvedValue({ error: null });
+    const updateProfile = jest.fn().mockReturnValue({ eq: profileEq });
+    const membershipEqStatus = jest.fn().mockResolvedValue({ error: null });
+    const membershipEqUser = jest.fn().mockReturnValue({ eq: membershipEqStatus });
+    const updateMembership = jest.fn().mockReturnValue({ eq: membershipEqUser });
     const tpiEq = jest.fn().mockResolvedValue({ error: null });
     const updateTpi = jest.fn().mockReturnValue({ eq: tpiEq });
 
     serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
     serverMocks.createSupabaseAdminClient.mockReturnValue({
-      auth: { admin: { deleteUser } },
+      auth: { admin: { updateUserById } },
       from: jest.fn((table: string) => {
         if (table === "tpi_reports") {
           return { update: updateTpi };
         }
         if (table === "profiles") {
-          return { delete: deleteProfile };
+          return { update: updateProfile };
         }
-        return { delete: jest.fn() };
+        if (table === "org_memberships") {
+          return { update: updateMembership };
+        }
+        return { update: jest.fn() };
       }),
     } as AdminClient);
 
@@ -162,11 +164,16 @@ describe("DELETE /api/admin/coaches", () => {
       throw new Error("Missing response");
     }
     expect(response.status).toBe(200);
-    expect(deleteUser).toHaveBeenCalledTimes(2);
+    expect(updateUserById).toHaveBeenCalledTimes(1);
     expect(updateTpi).toHaveBeenCalledWith({ uploaded_by: null });
     expect(tpiEq).toHaveBeenCalledWith("uploaded_by", "coach-1");
-    expect(deleteProfile).toHaveBeenCalledTimes(1);
-    expect(eq).toHaveBeenCalledWith("id", "coach-1");
+    expect(updateProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ full_name: "Compte supprime", avatar_url: null })
+    );
+    expect(profileEq).toHaveBeenCalledWith("id", "coach-1");
+    expect(updateMembership).toHaveBeenCalledWith({ status: "disabled" });
+    expect(membershipEqUser).toHaveBeenCalledWith("user_id", "coach-1");
+    expect(membershipEqStatus).toHaveBeenCalledWith("status", "active");
   });
 });
 
@@ -194,7 +201,7 @@ describe("GET /api/admin/coaches", () => {
     const admin = {
       auth: {
         admin: {
-          deleteUser: jest.fn(),
+          updateUserById: jest.fn(),
           getUserById: jest.fn(async (id: string) => ({
             data: { user: { id, email: "coach@example.com" } },
             error: null,
@@ -328,7 +335,7 @@ describe("PATCH /api/admin/coaches", () => {
     } as SupabaseClient;
 
     const admin = {
-      auth: { admin: { deleteUser: jest.fn() } },
+      auth: { admin: { updateUserById: jest.fn() } },
       from: jest.fn(() => {
         return {};
       }),
@@ -363,7 +370,7 @@ describe("PATCH /api/admin/coaches", () => {
     const update = jest.fn().mockReturnValue({ eq: updateEq });
 
     const admin = {
-      auth: { admin: { deleteUser: jest.fn() } },
+      auth: { admin: { updateUserById: jest.fn() } },
       from: jest.fn((table: string) => {
         if (table === "organizations") {
           return {

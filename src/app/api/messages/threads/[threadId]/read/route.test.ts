@@ -1,4 +1,4 @@
-﻿import { POST } from "./route";
+import { POST } from "./route";
 
 jest.mock("server-only", () => ({}));
 
@@ -8,7 +8,7 @@ jest.mock("@/lib/messages/access", () => ({
 }));
 
 jest.mock("@/lib/messages/service", () => ({
-  loadThreadParticipantContext: jest.fn(),
+  validateThreadAccess: jest.fn(),
 }));
 
 type Params = { params: { threadId: string } };
@@ -23,7 +23,7 @@ describe("POST /api/messages/threads/[threadId]/read", () => {
     loadMessageActorContext: jest.Mock;
   };
   const serviceMocks = jest.requireMock("@/lib/messages/service") as {
-    loadThreadParticipantContext: jest.Mock;
+    validateThreadAccess: jest.Mock;
   };
 
   beforeEach(() => {
@@ -62,15 +62,20 @@ describe("POST /api/messages/threads/[threadId]/read", () => {
     accessMocks.loadMessageActorContext.mockResolvedValue({
       context: {
         userId: "user-1",
+        profile: { role: "coach" },
         admin,
       },
       response: null,
     });
 
-    serviceMocks.loadThreadParticipantContext.mockResolvedValue({
-      thread: { id: "thread-1" },
-      ownMember: { last_read_message_id: 3, last_read_at: "2026-02-13T00:00:00.000Z" },
-      counterpartMember: null,
+    serviceMocks.validateThreadAccess.mockResolvedValue({
+      ok: true,
+      participantContext: {
+        thread: { id: "thread-1" },
+        ownMember: { last_read_message_id: 3, last_read_at: "2026-02-13T00:00:00.000Z" },
+        counterpartMember: null,
+      },
+      threadMemberUserIds: null,
     });
 
     const response = await POST(

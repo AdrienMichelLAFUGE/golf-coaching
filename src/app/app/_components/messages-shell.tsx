@@ -1,22 +1,29 @@
 ﻿"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import MessagesCompose from "@/app/app/_components/messages-compose";
 import MessagesContactsModal from "@/app/app/_components/messages-contacts-modal";
+import MessagesModerationModal from "@/app/app/_components/messages-moderation-modal";
 import MessagesThreadList from "@/app/app/_components/messages-thread-list";
 import MessagesThreadView from "@/app/app/_components/messages-thread-view";
 import { useProfile } from "@/app/app/_components/profile-context";
 import { dispatchMessagesNotificationsSync } from "@/lib/messages/client-events";
 import {
   CreateMessageThreadSchema,
+  MessagingCharterStatusSchema,
   MessageContactsResponseSchema,
   MessageDtoSchema,
   MessageInboxResponseSchema,
+  MessageReportThreadMessagesResponseSchema,
+  MessageReportsResponseSchema,
   MessageThreadMessagesResponseSchema,
   type MessageContactsResponse,
   type MessageDto,
   type MessageInboxResponse,
+  type MessageReportDto,
+  type MessageReportThreadMessagesResponse,
   type MessageThreadMessagesResponse,
 } from "@/lib/messages/types";
 import { supabase } from "@/lib/supabase/client";
@@ -35,7 +42,12 @@ const readApiError = async (response: Response, fallback: string) => {
 export default function MessagesShell({ roleScope }: MessagesShellProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { profile, organization, loading: profileLoading } = useProfile();
+  const {
+    profile,
+    organization,
+    isWorkspaceAdmin,
+    loading: profileLoading,
+  } = useProfile();
 
   const [inbox, setInbox] = useState<MessageInboxResponse>({
     threads: [],
@@ -52,6 +64,8 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
 
   const [sending, setSending] = useState(false);
   const [composeError, setComposeError] = useState("");
+  const [reportError, setReportError] = useState("");
+  const [reportingMessageId, setReportingMessageId] = useState<number | null>(null);
 
   const [contactsOpen, setContactsOpen] = useState(false);
   const [contactsLoading, setContactsLoading] = useState(false);
@@ -60,10 +74,37 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
   const [submittingKey, setSubmittingKey] = useState<string | null>(null);
   const [actionRequestId, setActionRequestId] = useState<string | null>(null);
   const handledAutoOpenKeyRef = useRef<string | null>(null);
+  const handledModerationAutoOpenKeyRef = useRef<string | null>(null);
+
+  const [charterMustAccept, setCharterMustAccept] = useState<boolean | null>(null);
+  const [charterVersion, setCharterVersion] = useState<number | null>(null);
+  const [charterText, setCharterText] = useState<{
+    title: string;
+    body: string;
+    orgNamePlaceholder: string;
+    supportEmailPlaceholder: string;
+  } | null>(null);
+  const [charterLoading, setCharterLoading] = useState(false);
+  const [charterError, setCharterError] = useState("");
+  const [acceptingCharter, setAcceptingCharter] = useState(false);
+
+  const [moderationOpen, setModerationOpen] = useState(false);
+  const [moderationLoading, setModerationLoading] = useState(false);
+  const [moderationError, setModerationError] = useState("");
+  const [moderationReports, setModerationReports] = useState<MessageReportDto[]>([]);
+  const [moderationActionReportId, setModerationActionReportId] = useState<string | null>(null);
+  const [moderationSelectedReportId, setModerationSelectedReportId] = useState<string | null>(
+    null
+  );
+  const [moderationContextLoading, setModerationContextLoading] = useState(false);
+  const [moderationContextError, setModerationContextError] = useState("");
+  const [moderationContextData, setModerationContextData] =
+    useState<MessageReportThreadMessagesResponse | null>(null);
 
   const preferredThreadId = searchParams.get("threadId");
   const openContactsParam = searchParams.get("contacts");
   const highlightedRequestId = searchParams.get("requestId");
+  const moderationParam = searchParams.get("moderation");
 
   const fetchWithAuth = useCallback(async (input: string, init?: RequestInit) => {
     const { data: sessionData } = await supabase.auth.getSession();
@@ -82,6 +123,50 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
     });
   }, []);
 
+  const handleCharterBlockedResponse = useCallback(async (response: Response) => {
+    if (response.status !== 428) return false;
+
+    const payload = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      charterVersion?: number;
+    };
+
+    if (typeof payload.charterVersion === "number") {
+      setCharterVersion(payload.charterVersion);
+    }
+    setCharterMustAccept(true);
+    setCharterError(payload.error ?? "Acceptation de la charte messagerie requise.");
+    return true;
+  }, []);
+
+  const loadCharterStatus = useCallback(async () => {
+    if (!profile) return;
+
+    setCharterLoading(true);
+    setCharterError("");
+    try {
+      const response = await fetchWithAuth("/api/messages/charter", { method: "GET" });
+      if (!response.ok) {
+        throw new Error(await readApiError(response, "Chargement charte messagerie impossible."));
+      }
+
+      const payload = await response.json();
+      const parsed = MessagingCharterStatusSchema.safeParse(payload);
+      if (!parsed.success) {
+        throw new Error("Reponse charte messagerie invalide.");
+      }
+
+      setCharterMustAccept(parsed.data.mustAccept);
+      setCharterVersion(parsed.data.charterVersion);
+      setCharterText(parsed.data.content);
+    } catch (error) {
+      setCharterMustAccept(false);
+      setCharterError(error instanceof Error ? error.message : "Erreur charte messagerie.");
+    } finally {
+      setCharterLoading(false);
+    }
+  }, [fetchWithAuth, profile]);
+
   const loadInbox = useCallback(
     async ({ silent = false }: { silent?: boolean } = {}) => {
       if (!silent) {
@@ -92,6 +177,9 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
       try {
         const response = await fetchWithAuth("/api/messages/inbox", { method: "GET" });
         if (!response.ok) {
+          if (await handleCharterBlockedResponse(response)) {
+            return;
+          }
           throw new Error(await readApiError(response, "Chargement des conversations impossible."));
         }
 
@@ -122,7 +210,7 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
         setInboxLoading(false);
       }
     },
-    [fetchWithAuth, preferredThreadId]
+    [fetchWithAuth, handleCharterBlockedResponse, preferredThreadId]
   );
 
   const markThreadRead = useCallback(
@@ -132,6 +220,9 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
         body: JSON.stringify({ lastReadMessageId }),
       });
 
+      if (await handleCharterBlockedResponse(response)) {
+        return;
+      }
       if (!response.ok) {
         return;
       }
@@ -169,7 +260,7 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
 
       void loadInbox({ silent: true });
     },
-    [fetchWithAuth, loadInbox]
+    [fetchWithAuth, handleCharterBlockedResponse, loadInbox]
   );
 
   const loadThread = useCallback(
@@ -203,6 +294,9 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
         );
 
         if (!response.ok) {
+          if (await handleCharterBlockedResponse(response)) {
+            return;
+          }
           throw new Error(await readApiError(response, "Chargement des messages impossible."));
         }
 
@@ -248,7 +342,7 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
         setThreadLoading(false);
       }
     },
-    [fetchWithAuth, markThreadRead, profile?.id]
+    [fetchWithAuth, handleCharterBlockedResponse, markThreadRead, profile?.id]
   );
 
   const loadContacts = useCallback(async () => {
@@ -258,6 +352,9 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
     try {
       const response = await fetchWithAuth("/api/messages/contacts", { method: "GET" });
       if (!response.ok) {
+        if (await handleCharterBlockedResponse(response)) {
+          return;
+        }
         throw new Error(await readApiError(response, "Chargement des contacts impossible."));
       }
 
@@ -273,7 +370,7 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
     } finally {
       setContactsLoading(false);
     }
-  }, [fetchWithAuth]);
+  }, [fetchWithAuth, handleCharterBlockedResponse]);
 
   const openContacts = async () => {
     setContactsOpen(true);
@@ -296,6 +393,9 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
         });
 
         if (!response.ok) {
+          if (await handleCharterBlockedResponse(response)) {
+            return;
+          }
           throw new Error(await readApiError(response, "Creation conversation impossible."));
         }
 
@@ -322,7 +422,14 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
         setSubmittingKey(null);
       }
     },
-    [fetchWithAuth, loadInbox, loadThread, router, searchParams]
+    [
+      fetchWithAuth,
+      handleCharterBlockedResponse,
+      loadInbox,
+      loadThread,
+      router,
+      searchParams,
+    ]
   );
 
   const handleStartStudentThread = async (studentId: string, coachId: string) => {
@@ -356,6 +463,9 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
     });
 
     if (!response.ok) {
+      if (await handleCharterBlockedResponse(response)) {
+        return;
+      }
       throw new Error(await readApiError(response, "Demande contact impossible."));
     }
 
@@ -375,6 +485,9 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
       });
 
       if (!response.ok) {
+        if (await handleCharterBlockedResponse(response)) {
+          return;
+        }
         setContactsError(await readApiError(response, "Decision impossible."));
         return;
       }
@@ -418,6 +531,9 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
         });
 
         if (!response.ok) {
+          if (await handleCharterBlockedResponse(response)) {
+            throw new Error("Acceptation de la charte messagerie requise.");
+          }
           throw new Error(await readApiError(response, "Envoi impossible."));
         }
 
@@ -456,6 +572,7 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
     },
     [
       fetchWithAuth,
+      handleCharterBlockedResponse,
       loadInbox,
       profile?.avatar_url,
       profile?.full_name,
@@ -482,6 +599,9 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
         });
 
         if (!response.ok) {
+          if (await handleCharterBlockedResponse(response)) {
+            return;
+          }
           throw new Error(
             await readApiError(response, "Suppression conversation impossible.")
           );
@@ -507,24 +627,231 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
         setDeletingThreadId(null);
       }
     },
-    [fetchWithAuth, loadInbox, router, searchParams]
+    [fetchWithAuth, handleCharterBlockedResponse, loadInbox, router, searchParams]
+  );
+
+  const handleAcceptCharter = useCallback(async () => {
+    if (charterVersion === null) return;
+
+    setAcceptingCharter(true);
+    setCharterError("");
+    try {
+      const response = await fetchWithAuth("/api/messages/charter", {
+        method: "POST",
+        body: JSON.stringify({ charterVersion }),
+      });
+      if (!response.ok) {
+        throw new Error(await readApiError(response, "Acceptation charte impossible."));
+      }
+
+      setCharterMustAccept(false);
+      await loadInbox();
+    } catch (error) {
+      setCharterError(
+        error instanceof Error ? error.message : "Acceptation charte impossible."
+      );
+    } finally {
+      setAcceptingCharter(false);
+    }
+  }, [charterVersion, fetchWithAuth, loadInbox]);
+
+  const submitReport = useCallback(
+    async (messageId: number | null) => {
+      if (!selectedThreadId) return;
+
+      const reasonRaw = window.prompt(
+        "Motif du signalement (ex: propos inappropries, pression, harcelement):"
+      );
+      const reason = reasonRaw?.trim() ?? "";
+      if (!reason) return;
+
+      const detailsRaw = window.prompt("Details (optionnel):");
+      const details = detailsRaw?.trim() ?? "";
+
+      setReportError("");
+      setReportingMessageId(messageId);
+
+      try {
+        const response = await fetchWithAuth("/api/messages/reports", {
+          method: "POST",
+          body: JSON.stringify({
+            threadId: selectedThreadId,
+            ...(messageId ? { messageId } : {}),
+            reason,
+            ...(details ? { details } : {}),
+          }),
+        });
+
+        if (!response.ok) {
+          if (await handleCharterBlockedResponse(response)) {
+            return;
+          }
+          throw new Error(await readApiError(response, "Signalement impossible."));
+        }
+
+        window.alert("Signalement envoye a la structure.");
+
+        if (moderationOpen) {
+          const reportsResponse = await fetchWithAuth("/api/messages/reports", {
+            method: "GET",
+          });
+          if (reportsResponse.ok) {
+            const payload = await reportsResponse.json();
+            const parsed = MessageReportsResponseSchema.safeParse(payload);
+            if (parsed.success) {
+              setModerationReports(parsed.data.reports);
+            }
+          }
+        }
+      } catch (error) {
+        setReportError(error instanceof Error ? error.message : "Signalement impossible.");
+      } finally {
+        setReportingMessageId(null);
+      }
+    },
+    [
+      fetchWithAuth,
+      handleCharterBlockedResponse,
+      moderationOpen,
+      selectedThreadId,
+    ]
+  );
+
+  const loadModerationReports = useCallback(async () => {
+    setModerationLoading(true);
+    setModerationError("");
+
+    try {
+      const response = await fetchWithAuth("/api/messages/reports", { method: "GET" });
+      if (!response.ok) {
+        if (await handleCharterBlockedResponse(response)) {
+          return;
+        }
+        throw new Error(await readApiError(response, "Chargement signalements impossible."));
+      }
+
+      const payload = await response.json();
+      const parsed = MessageReportsResponseSchema.safeParse(payload);
+      if (!parsed.success) {
+        throw new Error("Reponse signalements invalide.");
+      }
+
+      setModerationReports(parsed.data.reports);
+    } catch (error) {
+      setModerationError(
+        error instanceof Error ? error.message : "Chargement signalements impossible."
+      );
+    } finally {
+      setModerationLoading(false);
+    }
+  }, [fetchWithAuth, handleCharterBlockedResponse]);
+
+  const loadModerationReportContext = useCallback(
+    async (reportId: string) => {
+      setModerationSelectedReportId(reportId);
+      setModerationContextLoading(true);
+      setModerationContextError("");
+      setModerationContextData(null);
+
+      try {
+        const response = await fetchWithAuth(`/api/messages/reports/${reportId}/messages?limit=120`, {
+          method: "GET",
+        });
+        if (!response.ok) {
+          if (await handleCharterBlockedResponse(response)) {
+            return;
+          }
+          throw new Error(await readApiError(response, "Chargement contexte impossible."));
+        }
+
+        const payload = await response.json();
+        const parsed = MessageReportThreadMessagesResponseSchema.safeParse(payload);
+        if (!parsed.success) {
+          throw new Error("Reponse contexte signalement invalide.");
+        }
+        setModerationContextData(parsed.data);
+      } catch (error) {
+        setModerationContextError(
+          error instanceof Error ? error.message : "Chargement contexte impossible."
+        );
+      } finally {
+        setModerationContextLoading(false);
+      }
+    },
+    [fetchWithAuth, handleCharterBlockedResponse]
+  );
+
+  const updateModerationReportStatus = useCallback(
+    async (
+      reportId: string,
+      status: "open" | "in_review" | "resolved",
+      freezeThread: boolean
+    ) => {
+      setModerationActionReportId(reportId);
+      setModerationError("");
+
+      try {
+        const response = await fetchWithAuth(`/api/messages/reports/${reportId}/status`, {
+          method: "POST",
+          body: JSON.stringify({ status, freezeThread }),
+        });
+
+        if (!response.ok) {
+          if (await handleCharterBlockedResponse(response)) {
+            return;
+          }
+          throw new Error(await readApiError(response, "Mise a jour signalement impossible."));
+        }
+
+        await loadModerationReports();
+        if (moderationSelectedReportId === reportId) {
+          await loadModerationReportContext(reportId);
+        }
+      } catch (error) {
+        setModerationError(
+          error instanceof Error ? error.message : "Mise a jour signalement impossible."
+        );
+      } finally {
+        setModerationActionReportId(null);
+      }
+    },
+    [
+      fetchWithAuth,
+      handleCharterBlockedResponse,
+      loadModerationReportContext,
+      loadModerationReports,
+      moderationSelectedReportId,
+    ]
   );
 
   useEffect(() => {
     if (profileLoading) return;
     if (!profile) return;
 
-    void loadInbox();
-  }, [loadInbox, profile, profileLoading]);
+    void loadCharterStatus();
+  }, [loadCharterStatus, profile, profileLoading]);
 
   useEffect(() => {
+    if (profileLoading) return;
+    if (!profile) return;
+    if (charterMustAccept === null) return;
+    if (charterMustAccept) {
+      setInboxLoading(false);
+      return;
+    }
+
+    void loadInbox();
+  }, [charterMustAccept, loadInbox, profile, profileLoading]);
+
+  useEffect(() => {
+    if (charterMustAccept) return;
     if (!selectedThreadId) {
       setThreadData(null);
       return;
     }
 
     void loadThread(selectedThreadId);
-  }, [loadThread, selectedThreadId]);
+  }, [charterMustAccept, loadThread, selectedThreadId]);
 
   useEffect(() => {
     if (roleScope !== "coach") return;
@@ -547,6 +874,20 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
   ]);
 
   useEffect(() => {
+    if (moderationParam !== "open") {
+      handledModerationAutoOpenKeyRef.current = null;
+      return;
+    }
+    if (!isWorkspaceAdmin || profile?.role === "student") return;
+    if (handledModerationAutoOpenKeyRef.current === moderationParam) return;
+    handledModerationAutoOpenKeyRef.current = moderationParam;
+
+    setModerationOpen(true);
+    void loadModerationReports();
+  }, [isWorkspaceAdmin, loadModerationReports, moderationParam, profile?.role]);
+
+  useEffect(() => {
+    if (charterMustAccept) return;
     if (!profile?.id) return;
 
     const channel = supabase
@@ -574,9 +915,10 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [loadInbox, loadThread, profile?.id, selectedThreadId]);
+  }, [charterMustAccept, loadInbox, loadThread, profile?.id, selectedThreadId]);
 
   useEffect(() => {
+    if (charterMustAccept) return;
     if (!profile?.id) return;
 
     const interval = window.setInterval(() => {
@@ -599,7 +941,7 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
       window.clearInterval(interval);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [loadInbox, loadThread, profile?.id, selectedThreadId]);
+  }, [charterMustAccept, loadInbox, loadThread, profile?.id, selectedThreadId]);
 
   const selectedThread = useMemo(
     () => inbox.threads.find((thread) => thread.threadId === selectedThreadId) ?? null,
@@ -611,6 +953,12 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
     profile !== null &&
     profile.role === "student" &&
     (selectedThread.kind === "group_info" || selectedThread.kind === "org_info");
+  const isFrozenThread = Boolean(selectedThread?.frozenAt);
+  const charterOrgName =
+    organization?.workspace_type === "org"
+      ? (organization.name ?? "votre organisation")
+      : "SwingFlow";
+  const charterSupportEmail = "contact@adrienlafuge.com";
 
   const messages = threadData?.messages ?? [];
   const nextCursor = threadData?.nextCursor ?? null;
@@ -654,13 +1002,28 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
           <p className="text-xs uppercase tracking-[0.25em] text-[var(--muted)]">Messagerie interne</p>
           <h1 className="mt-1 text-2xl font-semibold text-[var(--text)]">Messages</h1>
         </div>
-        <button
-          type="button"
-          onClick={() => void openContacts()}
-          className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90"
-        >
-          Nouvelle conversation
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {isWorkspaceAdmin && organization?.workspace_type === "org" ? (
+            <button
+              type="button"
+              onClick={() => {
+                setModerationOpen(true);
+                void loadModerationReports();
+              }}
+              className="rounded-full border border-amber-300/30 bg-amber-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-amber-200 transition hover:border-amber-300/50"
+            >
+              Signalements
+            </button>
+          ) : null}
+          <button
+            type="button"
+            disabled={charterMustAccept === true}
+            onClick={() => void openContacts()}
+            className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            Nouvelle conversation
+          </button>
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
@@ -685,6 +1048,7 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
           <MessagesThreadView
             thread={selectedThread}
             messages={messages}
+            threadMembers={threadData?.threadMembers ?? []}
             currentUserId={profile.id}
             loading={threadLoading}
             error={threadError}
@@ -703,16 +1067,30 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
             counterpartLastReadAt={
               threadData?.counterpartLastReadAt ?? selectedThread?.counterpartLastReadAt ?? null
             }
+            canReport={Boolean(selectedThread)}
+            reportingMessageId={reportingMessageId}
+            onReportMessage={async (messageId) => {
+              await submitReport(messageId);
+            }}
+            onReportThread={async () => {
+              await submitReport(null);
+            }}
           />
           {composeError ? <p className="text-sm text-red-400">{composeError}</p> : null}
+          {reportError ? <p className="text-sm text-red-400">{reportError}</p> : null}
           <MessagesCompose
-            disabled={!selectedThread || isReadOnlyThreadForCurrentUser}
+            disabled={!selectedThread || isReadOnlyThreadForCurrentUser || isFrozenThread}
             sending={sending}
             onSend={handleSendMessage}
           />
           {isReadOnlyThreadForCurrentUser ? (
             <p className="text-xs text-[var(--muted)]">
               Canal informationnel: lecture seule pour les eleves.
+            </p>
+          ) : null}
+          {isFrozenThread ? (
+            <p className="text-xs text-[var(--muted)]">
+              Conversation gelee par la structure: envoi temporairement desactive.
             </p>
           ) : null}
         </div>
@@ -742,6 +1120,69 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
         onRequestCoachContact={handleRequestCoachContact}
         onRespondCoachRequest={handleRespondCoachRequest}
       />
+
+      <MessagesModerationModal
+        open={moderationOpen}
+        loading={moderationLoading}
+        error={moderationError}
+        reports={moderationReports}
+        actionReportId={moderationActionReportId}
+        selectedReportId={moderationSelectedReportId}
+        contextLoading={moderationContextLoading}
+        contextError={moderationContextError}
+        contextData={moderationContextData}
+        onClose={() => setModerationOpen(false)}
+        onReload={loadModerationReports}
+        onViewReport={loadModerationReportContext}
+        onUpdateReportStatus={updateModerationReportStatus}
+      />
+
+      {charterMustAccept ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/45 backdrop-blur-[1px]" />
+          <section className="relative z-10 w-full max-w-2xl rounded-2xl border border-white/10 bg-[var(--bg-elevated)] p-5">
+            <p className="text-xs uppercase tracking-[0.25em] text-[var(--muted)]">
+              Conformite messagerie
+            </p>
+            <h2 className="mt-2 text-lg font-semibold text-[var(--text)]">
+              {charterText?.title ?? "Charte messagerie"}
+            </h2>
+            <p className="mt-3 whitespace-pre-line text-sm text-[var(--muted)]">
+              {(charterText?.body ?? "")
+                .replace(
+                  charterText?.orgNamePlaceholder ?? "{ORG_NAME}",
+                  charterOrgName
+                )
+                .replace(
+                  charterText?.supportEmailPlaceholder ?? "{DPO_OR_SUPPORT_EMAIL}",
+                  charterSupportEmail
+                )}
+            </p>
+            <p className="mt-2 text-xs text-[var(--muted)]">
+              Voir les textes juridiques:{" "}
+              <Link
+                href="/conformite-messagerie"
+                target="_blank"
+                className="underline underline-offset-4"
+              >
+                notice RGPD / charte / addendum CGU
+              </Link>
+              .
+            </p>
+            {charterError ? <p className="mt-3 text-sm text-red-400">{charterError}</p> : null}
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={acceptingCharter || charterLoading}
+                onClick={() => void handleAcceptCharter()}
+                className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 disabled:opacity-70"
+              >
+                {acceptingCharter ? "Validation..." : "J accepte la charte"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

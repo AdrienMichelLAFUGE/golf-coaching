@@ -20,6 +20,7 @@ const serverSchema = z.object({
   STRIPE_PRO_PRICE_YEAR_ID: z.string().min(1),
   STRIPE_SUCCESS_URL: z.string().min(1),
   STRIPE_CANCEL_URL: z.string().min(1),
+  MESSAGES_PURGE_CRON_SECRET: z.string().min(1).optional(),
   NEXT_PUBLIC_ADMIN_EMAILS: z.string().optional(),
 });
 
@@ -43,6 +44,7 @@ const buildTestEnv = () => ({
   STRIPE_PRO_PRICE_YEAR_ID: "price_year_test",
   STRIPE_SUCCESS_URL: "http://localhost:3000/app/coach/parametres?billing=success",
   STRIPE_CANCEL_URL: "http://localhost:3000/app/coach/parametres?billing=cancel",
+  MESSAGES_PURGE_CRON_SECRET: process.env.MESSAGES_PURGE_CRON_SECRET ?? "test-messages-purge-secret",
   NEXT_PUBLIC_ADMIN_EMAILS: process.env.NEXT_PUBLIC_ADMIN_EMAILS,
 });
 

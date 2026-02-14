@@ -11,6 +11,7 @@ import { useProfile } from "../../_components/profile-context";
 import PageBack from "../../_components/page-back";
 import PremiumOfferModal from "../../_components/premium-offer-modal";
 import PageHeader from "../../_components/page-header";
+import MessagesPrivacyExportCard from "../../_components/messages-privacy-export-card";
 import { z } from "zod";
 
 type ProfileSettings = {
@@ -991,6 +992,8 @@ export default function CoachSettingsPage() {
               </p>
             ) : null}
           </section>
+
+          <MessagesPrivacyExportCard />
 
           <section className="">
             <div className="flex flex-wrap items-center gap-3">

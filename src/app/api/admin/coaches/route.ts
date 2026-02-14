@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { z } from "zod";
 import { isAdminEmail } from "@/lib/admin";
 import {
@@ -384,57 +385,74 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: tpiCleanupError.message }, { status: 500 });
   }
 
-  const { error: deleteError } = await auth.admin.auth.admin.deleteUser(coachId);
-  if (deleteError) {
-    const { error: profileError } = await auth.admin
-      .from("profiles")
-      .delete()
-      .eq("id", coachId);
+  const now = new Date().toISOString();
+  const anonymizedAuthEmail = `deleted+${coachId}@example.invalid`;
+  const replacementPassword = `${randomUUID()}${randomUUID()}`;
 
-    if (profileError) {
-      await recordActivity({
-        admin: auth.admin,
-        level: "error",
-        action: "admin.coach.delete.failed",
-        actorUserId: auth.userId ?? null,
-        entityType: "profile",
-        entityId: coachId,
-        message: profileError.message ?? "Suppression profil impossible.",
-      });
-      return NextResponse.json({ error: profileError.message }, { status: 500 });
+  const { error: authUpdateError } = await auth.admin.auth.admin.updateUserById(
+    coachId,
+    {
+      email: anonymizedAuthEmail,
+      password: replacementPassword,
+      user_metadata: {
+        deleted_at: now,
+        deleted_by_admin: true,
+      },
     }
+  );
 
-    const { error: retryError } = await auth.admin.auth.admin.deleteUser(coachId);
-    if (retryError) {
-      await recordActivity({
-        admin: auth.admin,
-        level: "error",
-        action: "admin.coach.delete.failed",
-        actorUserId: auth.userId ?? null,
-        entityType: "profile",
-        entityId: coachId,
-        message: retryError.message ?? "Suppression auth impossible.",
-      });
-      return NextResponse.json({ error: retryError.message }, { status: 400 });
-    }
-  } else {
-    const { error: profileError } = await auth.admin
-      .from("profiles")
-      .delete()
-      .eq("id", coachId);
+  if (authUpdateError) {
+    await recordActivity({
+      admin: auth.admin,
+      level: "error",
+      action: "admin.coach.delete.failed",
+      actorUserId: auth.userId ?? null,
+      entityType: "profile",
+      entityId: coachId,
+      message: authUpdateError.message ?? "Anonymisation auth impossible.",
+    });
+    return NextResponse.json({ error: authUpdateError.message }, { status: 400 });
+  }
 
-    if (profileError) {
-      await recordActivity({
-        admin: auth.admin,
-        level: "error",
-        action: "admin.coach.delete.failed",
-        actorUserId: auth.userId ?? null,
-        entityType: "profile",
-        entityId: coachId,
-        message: profileError.message ?? "Suppression profil impossible.",
-      });
-      return NextResponse.json({ error: profileError.message }, { status: 500 });
-    }
+  const { error: profileError } = await auth.admin
+    .from("profiles")
+    .update({
+      full_name: "Compte supprime",
+      avatar_url: null,
+      deleted_at: now,
+    })
+    .eq("id", coachId);
+
+  if (profileError) {
+    await recordActivity({
+      admin: auth.admin,
+      level: "error",
+      action: "admin.coach.delete.failed",
+      actorUserId: auth.userId ?? null,
+      entityType: "profile",
+      entityId: coachId,
+      message: profileError.message ?? "Anonymisation profil impossible.",
+    });
+    return NextResponse.json({ error: profileError.message }, { status: 500 });
+  }
+
+  const { error: membershipError } = await auth.admin
+    .from("org_memberships")
+    .update({ status: "disabled" })
+    .eq("user_id", coachId)
+    .eq("status", "active");
+
+  if (membershipError) {
+    await recordActivity({
+      admin: auth.admin,
+      level: "error",
+      action: "admin.coach.delete.failed",
+      actorUserId: auth.userId ?? null,
+      entityType: "profile",
+      entityId: coachId,
+      message: membershipError.message ?? "Desactivation memberships impossible.",
+    });
+    return NextResponse.json({ error: membershipError.message }, { status: 500 });
   }
 
   await recordActivity({

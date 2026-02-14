@@ -3,9 +3,17 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import {
   coerceMessageId,
+  hasCoachContactOptIn,
+  isCoachAllowedForStudent,
   isCoachLikeActiveOrgMember,
+  isCoachLikeRole,
+  loadOrgAudienceUserIds,
+  loadOrgCoachUserIds,
+  loadOrgGroupMemberUserIds,
+  isStudentLinkedToStudentId,
   isStudentLinkedToOrganization,
   isUserInOrgGroup,
+  loadStudentUserId,
   loadUserEmailsByIds,
   type AppProfileRole,
 } from "@/lib/messages/access";
@@ -14,6 +22,7 @@ import type {
   MessageDto,
   MessageInboxResponse,
   MessageNotificationPreview,
+  MessageThreadMember,
   MessageThreadKind,
   MessageThreadMessagesResponse,
   MessageThreadSummary,
@@ -44,6 +53,9 @@ type ThreadRow = {
   participant_b_id: string;
   last_message_id: number | string | null;
   last_message_at: string | null;
+  frozen_at: string | null;
+  frozen_by: string | null;
+  frozen_reason: string | null;
 };
 
 type ThreadMemberRow = {
@@ -73,6 +85,24 @@ type GroupRow = {
   id: string;
   name: string;
 };
+
+export type ThreadAccessIntent = "read" | "write" | "hide";
+
+type ThreadParticipantContext = NonNullable<
+  Awaited<ReturnType<typeof loadThreadParticipantContext>>
+>;
+
+export type ThreadAccessCheckResult =
+  | {
+      ok: true;
+      participantContext: ThreadParticipantContext;
+      threadMemberUserIds: string[] | null;
+    }
+  | {
+      ok: false;
+      status: number;
+      error: string;
+    };
 
 const buildStudentDisplayName = (student: StudentRow | undefined) => {
   if (!student) return null;
@@ -140,53 +170,6 @@ const loadGroupsMap = async (
   });
 
   return map;
-};
-
-const loadGroupIdsForUser = async (
-  admin: AdminClient,
-  userId: string,
-  groupIds: string[]
-): Promise<Set<string>> => {
-  const uniqueGroupIds = Array.from(new Set(groupIds));
-  if (uniqueGroupIds.length === 0) return new Set<string>();
-
-  const [{ data: coachRows }, { data: studentAccountRows }] = await Promise.all([
-    admin
-      .from("org_group_coaches")
-      .select("group_id")
-      .eq("coach_id", userId)
-      .in("group_id", uniqueGroupIds),
-    admin
-      .from("student_accounts")
-      .select("student_id")
-      .eq("user_id", userId),
-  ]);
-
-  const allowed = new Set<string>(
-    ((coachRows ?? []) as Array<{ group_id: string }>).map((row) => row.group_id)
-  );
-
-  const studentIds = Array.from(
-    new Set(
-      ((studentAccountRows ?? []) as Array<{ student_id: string }>).map(
-        (row) => row.student_id
-      )
-    )
-  );
-
-  if (studentIds.length > 0) {
-    const { data: studentGroupRows } = await admin
-      .from("org_group_students")
-      .select("group_id")
-      .in("group_id", uniqueGroupIds)
-      .in("student_id", studentIds);
-
-    ((studentGroupRows ?? []) as Array<{ group_id: string }>).forEach((row) => {
-      allowed.add(row.group_id);
-    });
-  }
-
-  return allowed;
 };
 
 const loadMessagesMap = async (
@@ -264,7 +247,7 @@ export const loadThreadParticipantContext = async (
   const { data: threadData } = await admin
     .from("message_threads")
     .select(
-      "id, kind, workspace_org_id, student_id, group_id, participant_a_id, participant_b_id, last_message_id, last_message_at"
+      "id, kind, workspace_org_id, student_id, group_id, participant_a_id, participant_b_id, last_message_id, last_message_at, frozen_at, frozen_by, frozen_reason"
     )
     .eq("id", threadId)
     .maybeSingle();
@@ -320,9 +303,174 @@ export const loadThreadParticipantContext = async (
   return { thread, ownMember, counterpartMember };
 };
 
+const denyThreadAccess = (status: number, error: string): ThreadAccessCheckResult => ({
+  ok: false,
+  status,
+  error,
+});
+
+export const validateThreadAccess = async (
+  admin: AdminClient,
+  userId: string,
+  profileRole: AppProfileRole,
+  threadId: string,
+  intent: ThreadAccessIntent
+): Promise<ThreadAccessCheckResult> => {
+  const participantContext = await loadThreadParticipantContext(admin, threadId, userId);
+  if (!participantContext) {
+    return denyThreadAccess(403, "Acces refuse.");
+  }
+
+  const thread = participantContext.thread;
+
+  if (thread.kind === "group" || thread.kind === "group_info") {
+    if (!thread.group_id) {
+      return denyThreadAccess(409, "Thread invalide.");
+    }
+
+    const groupMembers = await loadOrgGroupMemberUserIds(admin, thread.group_id);
+    if (!groupMembers.memberUserIds.includes(userId)) {
+      return denyThreadAccess(403, "Acces refuse.");
+    }
+
+    if (intent === "write" && thread.kind === "group_info") {
+      if (!groupMembers.coachUserIds.includes(userId)) {
+        return denyThreadAccess(
+          403,
+          "Acces refuse: seuls les coachs assignes peuvent publier."
+        );
+      }
+    }
+
+    return {
+      ok: true,
+      participantContext,
+      threadMemberUserIds: groupMembers.memberUserIds,
+    };
+  }
+
+  if (thread.kind === "student_coach") {
+    if (!thread.student_id) {
+      return denyThreadAccess(409, "Thread invalide.");
+    }
+
+    const studentUserId = await loadStudentUserId(admin, thread.student_id);
+    if (!studentUserId) {
+      return denyThreadAccess(409, "Eleve non active: compte eleve introuvable.");
+    }
+
+    const coachUserId =
+      thread.participant_a_id === studentUserId
+        ? thread.participant_b_id
+        : thread.participant_a_id;
+
+    if (userId === studentUserId) {
+      const isLinked = await isStudentLinkedToStudentId(admin, userId, thread.student_id);
+      if (!isLinked) {
+        return denyThreadAccess(403, "Acces refuse.");
+      }
+
+      const isAssignedCoach = await isCoachAllowedForStudent(
+        admin,
+        coachUserId,
+        thread.student_id
+      );
+      if (!isAssignedCoach) {
+        return denyThreadAccess(403, "Acces refuse: coach non assigne.");
+      }
+    } else if (userId === coachUserId) {
+      const isAssignedCoach = await isCoachAllowedForStudent(
+        admin,
+        userId,
+        thread.student_id
+      );
+      if (!isAssignedCoach) {
+        return denyThreadAccess(403, "Acces refuse: coach non assigne.");
+      }
+    } else {
+      return denyThreadAccess(403, "Acces refuse.");
+    }
+
+    return {
+      ok: true,
+      participantContext,
+      threadMemberUserIds: [studentUserId, coachUserId],
+    };
+  }
+
+  if (thread.kind === "coach_coach") {
+    if (!isCoachLikeRole(profileRole)) {
+      return denyThreadAccess(403, "Acces refuse.");
+    }
+
+    const counterpartUserId =
+      thread.participant_a_id === userId ? thread.participant_b_id : thread.participant_a_id;
+
+    const isSameOrgCoach = await isCoachLikeActiveOrgMember(
+      admin,
+      thread.workspace_org_id,
+      counterpartUserId
+    );
+
+    if (!isSameOrgCoach) {
+      const hasContact = await hasCoachContactOptIn(
+        admin,
+        thread.participant_a_id,
+        thread.participant_b_id
+      );
+      if (!hasContact) {
+        return denyThreadAccess(403, "Acces refuse: contact coach non autorise.");
+      }
+    }
+
+    return {
+      ok: true,
+      participantContext,
+      threadMemberUserIds: [thread.participant_a_id, thread.participant_b_id],
+    };
+  }
+
+  if (thread.kind === "org_info") {
+    const audience = await loadOrgAudienceUserIds(admin, thread.workspace_org_id);
+    if (!audience.memberUserIds.includes(userId)) {
+      return denyThreadAccess(403, "Acces refuse.");
+    }
+
+    if (intent === "write" && !audience.coachUserIds.includes(userId)) {
+      return denyThreadAccess(403, "Acces refuse: seuls les coachs/admin peuvent publier.");
+    }
+
+    return {
+      ok: true,
+      participantContext,
+      threadMemberUserIds: audience.memberUserIds,
+    };
+  }
+
+  if (thread.kind === "org_coaches") {
+    const coachUserIds = await loadOrgCoachUserIds(admin, thread.workspace_org_id);
+    if (!coachUserIds.includes(userId)) {
+      return denyThreadAccess(403, "Acces refuse.");
+    }
+
+    if (intent === "write" && !isCoachLikeRole(profileRole)) {
+      return denyThreadAccess(403, "Acces refuse: conversation reservee aux coachs/admin.");
+    }
+
+    return {
+      ok: true,
+      participantContext,
+      threadMemberUserIds: coachUserIds,
+    };
+  }
+
+  return denyThreadAccess(403, "Acces refuse.");
+};
+
 export const loadInbox = async (
   admin: AdminClient,
-  userId: string
+  userId: string,
+  profileRole: AppProfileRole
 ): Promise<MessageInboxResponse> => {
   const { data: ownVisibleMemberData } = await admin
     .from("message_thread_members")
@@ -342,28 +490,33 @@ export const loadInbox = async (
   const { data: threadData } = await admin
     .from("message_threads")
     .select(
-      "id, kind, workspace_org_id, student_id, group_id, participant_a_id, participant_b_id, last_message_id, last_message_at"
+      "id, kind, workspace_org_id, student_id, group_id, participant_a_id, participant_b_id, last_message_id, last_message_at, frozen_at, frozen_by, frozen_reason"
     )
     .in("id", visibleThreadIds)
     .order("last_message_at", { ascending: false, nullsFirst: false });
 
   let threads = (threadData ?? []) as ThreadRow[];
 
-  const groupIds = threads
-    .filter(
-      (thread) =>
-        (thread.kind === "group" || thread.kind === "group_info") && thread.group_id
-    )
-    .map((thread) => thread.group_id as string);
-  if (groupIds.length > 0) {
-    const allowedGroupIds = await loadGroupIdsForUser(admin, userId, groupIds);
-    threads = threads.filter(
-      (thread) => {
-        const isGroupKind =
-          thread.kind === "group" || thread.kind === "group_info";
-        return !isGroupKind || (thread.group_id !== null && allowedGroupIds.has(thread.group_id));
-      }
+  if (threads.length > 0) {
+    const accessChecks = await Promise.all(
+      threads.map(async (thread) => {
+        const accessResult = await validateThreadAccess(
+          admin,
+          userId,
+          profileRole,
+          thread.id,
+          "read"
+        );
+        return {
+          threadId: thread.id,
+          allowed: accessResult.ok,
+        };
+      })
     );
+    const allowedThreadIds = new Set(
+      accessChecks.filter((check) => check.allowed).map((check) => check.threadId)
+    );
+    threads = threads.filter((thread) => allowedThreadIds.has(thread.id));
   }
 
   if (threads.length === 0) {
@@ -505,6 +658,9 @@ export const loadInbox = async (
         thread.kind === "group" || thread.kind === "group_info"
           ? null
           : counterpartMember?.last_read_at ?? null,
+      frozenAt: thread.frozen_at,
+      frozenByUserId: thread.frozen_by,
+      frozenReason: thread.frozen_reason,
     };
   });
 
@@ -564,6 +720,7 @@ export const loadThreadMessages = async (
 export const buildThreadMessagesResponse = (
   threadId: string,
   messages: MessageDto[],
+  threadMembers: MessageThreadMember[],
   nextCursor: number | null,
   ownMember: ThreadMemberRow,
   counterpartMember: ThreadMemberRow | null
@@ -571,6 +728,7 @@ export const buildThreadMessagesResponse = (
   return {
     threadId,
     messages,
+    threadMembers,
     nextCursor,
     ownLastReadMessageId: coerceMessageId(ownMember.last_read_message_id),
     ownLastReadAt: ownMember.last_read_at ?? null,
@@ -579,6 +737,47 @@ export const buildThreadMessagesResponse = (
     ),
     counterpartLastReadAt: counterpartMember?.last_read_at ?? null,
   };
+};
+
+export const loadThreadMembersForThread = async (
+  admin: AdminClient,
+  thread: Pick<
+    ThreadRow,
+    "kind" | "group_id" | "workspace_org_id" | "participant_a_id" | "participant_b_id"
+  >
+): Promise<MessageThreadMember[]> => {
+  let memberUserIds: string[] = [];
+
+  if (thread.kind === "group" || thread.kind === "group_info") {
+    if (!thread.group_id) return [];
+    const groupMembers = await loadOrgGroupMemberUserIds(admin, thread.group_id);
+    memberUserIds = groupMembers.memberUserIds;
+  } else if (thread.kind === "org_info") {
+    const audience = await loadOrgAudienceUserIds(admin, thread.workspace_org_id);
+    memberUserIds = audience.memberUserIds;
+  } else if (thread.kind === "org_coaches") {
+    memberUserIds = await loadOrgCoachUserIds(admin, thread.workspace_org_id);
+  } else {
+    memberUserIds = [thread.participant_a_id, thread.participant_b_id];
+  }
+
+  const profileMap = await loadProfilesMap(admin, memberUserIds);
+
+  return Array.from(new Set(memberUserIds))
+    .map((userId) => {
+      const profile = profileMap.get(userId) ?? null;
+      return {
+        userId,
+        fullName: profile?.full_name ?? null,
+        avatarUrl: profile?.avatar_url ?? null,
+        role: profile?.role ?? null,
+      } satisfies MessageThreadMember;
+    })
+    .sort((first, second) => {
+      const firstLabel = first.fullName ?? "";
+      const secondLabel = second.fullName ?? "";
+      return firstLabel.localeCompare(secondLabel);
+    });
 };
 
 export const buildUnreadPreviews = (

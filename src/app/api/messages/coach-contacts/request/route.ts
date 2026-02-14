@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { messagesJson } from "@/lib/messages/http";
 import {
   findAuthUserByEmail,
   isCoachLikeActiveOrgMember,
@@ -6,14 +6,21 @@ import {
   loadMessageActorContext,
   normalizeUserPair,
 } from "@/lib/messages/access";
-import { buildCoachContactRequestDtos } from "@/lib/messages/service";
+import { enforceMessageRateLimit } from "@/lib/messages/rate-limit";
 import { CoachContactRequestCreateSchema } from "@/lib/messages/types";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
+import { recordActivity } from "@/lib/activity-log";
+
+const neutralContactRequestResponse = () =>
+  messagesJson({
+    ok: true,
+    message: "Si le compte est eligible, la demande a ete prise en compte.",
+  });
 
 export async function POST(request: Request) {
   const parsedBody = await parseRequestJson(request, CoachContactRequestCreateSchema);
   if (!parsedBody.success) {
-    return NextResponse.json(
+    return messagesJson(
       { error: "Payload invalide.", details: formatZodError(parsedBody.error) },
       { status: 422 }
     );
@@ -23,19 +30,40 @@ export async function POST(request: Request) {
   if (response || !context) return response;
 
   if (!isCoachLikeRole(context.profile.role)) {
-    return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
+    return messagesJson({ error: "Acces refuse." }, { status: 403 });
+  }
+
+  const rateLimit = await enforceMessageRateLimit(
+    context.admin,
+    context.userId,
+    "coach_contact_request"
+  );
+  if (!rateLimit.allowed) {
+    await recordActivity({
+      admin: context.admin,
+      level: "warn",
+      action: "messages.rate_limited",
+      actorUserId: context.userId,
+      orgId: context.activeWorkspace.id,
+      entityType: "message_contact_request",
+      message: "Rate limit demande contact coach atteint.",
+      metadata: {
+        action: "coach_contact_request",
+        retryAfterSeconds: rateLimit.retryAfterSeconds,
+      },
+    });
+    return messagesJson(
+      { error: "Trop de requetes. Reessaie dans quelques secondes." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rateLimit.retryAfterSeconds || 1) },
+      }
+    );
   }
 
   const targetAuthUser = await findAuthUserByEmail(context.admin, parsedBody.data.targetEmail);
-  if (!targetAuthUser) {
-    return NextResponse.json({ error: "Contact introuvable." }, { status: 404 });
-  }
-
-  if (targetAuthUser.id === context.userId) {
-    return NextResponse.json(
-      { error: "Demande impossible vers votre propre compte." },
-      { status: 409 }
-    );
+  if (!targetAuthUser || targetAuthUser.id === context.userId) {
+    return neutralContactRequestResponse();
   }
 
   const { data: targetProfile } = await context.admin
@@ -44,8 +72,11 @@ export async function POST(request: Request) {
     .eq("id", targetAuthUser.id)
     .maybeSingle();
 
-  if (!targetProfile || !isCoachLikeRole((targetProfile as { role: "owner" | "coach" | "staff" | "student" }).role)) {
-    return NextResponse.json({ error: "Contact introuvable." }, { status: 404 });
+  if (
+    !targetProfile ||
+    !isCoachLikeRole((targetProfile as { role: "owner" | "coach" | "staff" | "student" }).role)
+  ) {
+    return neutralContactRequestResponse();
   }
 
   if (context.activeWorkspace.workspace_type === "org") {
@@ -55,13 +86,7 @@ export async function POST(request: Request) {
       targetAuthUser.id
     );
     if (isSameOrgCoach) {
-      return NextResponse.json(
-        {
-          error:
-            "Contact deja disponible dans votre structure. Ouvrez une conversation directement.",
-        },
-        { status: 409 }
-      );
+      return neutralContactRequestResponse();
     }
   }
 
@@ -75,7 +100,7 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (existingContact) {
-    return NextResponse.json({ error: "Contact deja actif." }, { status: 409 });
+    return neutralContactRequestResponse();
   }
 
   const { data: existingRequest } = await context.admin
@@ -86,10 +111,10 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (existingRequest) {
-    return NextResponse.json({ error: "Une demande est deja en attente." }, { status: 409 });
+    return neutralContactRequestResponse();
   }
 
-  const { data: insertData, error: insertError } = await context.admin
+  const { error: insertError } = await context.admin
     .from("message_coach_contact_requests")
     .insert([
       {
@@ -98,25 +123,18 @@ export async function POST(request: Request) {
         pair_user_a_id: pair.participantAId,
         pair_user_b_id: pair.participantBId,
       },
-    ])
-    .select("id, requester_user_id, target_user_id, created_at")
-    .single();
+    ]);
 
-  if (insertError || !insertData) {
-    return NextResponse.json(
-      { error: insertError?.message ?? "Creation demande impossible." },
+  if (insertError) {
+    if (insertError.code === "23505") {
+      return neutralContactRequestResponse();
+    }
+
+    return messagesJson(
+      { error: insertError.message ?? "Creation demande impossible." },
       { status: 400 }
     );
   }
 
-  const [requestDto] = await buildCoachContactRequestDtos(context.admin, [
-    insertData as {
-      id: string;
-      requester_user_id: string;
-      target_user_id: string;
-      created_at: string;
-    },
-  ]);
-
-  return NextResponse.json({ ok: true, request: requestDto });
+  return neutralContactRequestResponse();
 }

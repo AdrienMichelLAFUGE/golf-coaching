@@ -7,6 +7,10 @@ jest.mock("@/lib/messages/access", () => ({
   loadMessageActorContext: jest.fn(),
 }));
 
+jest.mock("@/lib/messages/rate-limit", () => ({
+  enforceMessageRateLimit: jest.fn(async () => ({ allowed: true, retryAfterSeconds: 0 })),
+}));
+
 const buildRequest = (payload: unknown) =>
   ({
     json: async () => payload,
@@ -15,6 +19,9 @@ const buildRequest = (payload: unknown) =>
 describe("POST /api/messages/coach-contacts/respond", () => {
   const accessMocks = jest.requireMock("@/lib/messages/access") as {
     loadMessageActorContext: jest.Mock;
+  };
+  const rateLimitMocks = jest.requireMock("@/lib/messages/rate-limit") as {
+    enforceMessageRateLimit: jest.Mock;
   };
 
   beforeEach(() => {
@@ -60,5 +67,30 @@ describe("POST /api/messages/coach-contacts/respond", () => {
     expect(response.status).toBe(403);
     const body = await response.json();
     expect(body.error).toBe("Acces refuse.");
+  });
+
+  it("returns 429 when coach contact response rate limit is exceeded", async () => {
+    accessMocks.loadMessageActorContext.mockResolvedValue({
+      context: {
+        userId: "coach-3",
+        profile: { role: "coach" },
+        admin: {},
+      },
+      response: null,
+    });
+    rateLimitMocks.enforceMessageRateLimit.mockResolvedValueOnce({
+      allowed: false,
+      retryAfterSeconds: 22,
+    });
+
+    const response = await POST(
+      buildRequest({
+        requestId: "11111111-1111-1111-1111-111111111111",
+        decision: "accept",
+      })
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("retry-after")).toBe("22");
   });
 });

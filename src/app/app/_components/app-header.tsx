@@ -59,6 +59,7 @@ const emptyMessageNotifications: MessageNotificationsResponse = {
   unreadPreviews: [],
   pendingCoachContactRequestsCount: 0,
   pendingCoachContactRequests: [],
+  pendingModerationReportsCount: 0,
 };
 
 const readApiError = async (response: Response, fallback: string) => {
@@ -104,7 +105,8 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
     pendingLinkRequests.length +
     reportShareInvites.length +
     messageNotifications.unreadMessagesCount +
-    messageNotifications.pendingCoachContactRequestsCount;
+    messageNotifications.pendingCoachContactRequestsCount +
+    messageNotifications.pendingModerationReportsCount;
 
   const loadLinkRequests = useCallback(async () => {
     if (!profile || isStudent || !isWorkspaceAdmin) {
@@ -599,7 +601,8 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
               ) : pendingLinkRequests.length === 0 &&
                 reportShareInvites.length === 0 &&
                 messageNotifications.unreadPreviews.length === 0 &&
-                messageNotifications.pendingCoachContactRequestsCount === 0 ? (
+                messageNotifications.pendingCoachContactRequestsCount === 0 &&
+                messageNotifications.pendingModerationReportsCount === 0 ? (
                 <p className="text-sm text-[var(--muted)]">Aucune notification en attente.</p>
               ) : (
                 <>
@@ -682,6 +685,28 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
                           ) : null}
                         </>
                       )}
+                    </div>
+                  ) : null}
+
+                  {messageNotifications.pendingModerationReportsCount > 0 &&
+                  !isStudent &&
+                  isWorkspaceAdmin ? (
+                    <div className="space-y-2">
+                      <p className="text-[0.65rem] uppercase tracking-[0.25em] text-[var(--muted)]">
+                        Signalements messagerie
+                      </p>
+                      <Link
+                        href="/app/coach/messages?moderation=open"
+                        onClick={() => setRequestsOpen(false)}
+                        className="block rounded-2xl border border-amber-300/25 bg-amber-400/10 p-4 transition hover:border-amber-300/40"
+                      >
+                        <p className="text-sm font-semibold text-[var(--text)]">
+                          {messageNotifications.pendingModerationReportsCount} signalement(s) a traiter
+                        </p>
+                        <p className="mt-2 text-xs text-[var(--muted)]">
+                          Ouvrir la console de moderation messagerie.
+                        </p>
+                      </Link>
                     </div>
                   ) : null}
 

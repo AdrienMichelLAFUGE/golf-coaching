@@ -1,10 +1,16 @@
-﻿"use client";
+"use client";
 
-import type { MessageDto, MessageThreadSummary } from "@/lib/messages/types";
+import { useState } from "react";
+import type {
+  MessageDto,
+  MessageThreadMember,
+  MessageThreadSummary,
+} from "@/lib/messages/types";
 
 type MessagesThreadViewProps = {
   thread: MessageThreadSummary | null;
   messages: MessageDto[];
+  threadMembers: MessageThreadMember[];
   currentUserId: string;
   loading: boolean;
   error: string;
@@ -12,6 +18,10 @@ type MessagesThreadViewProps = {
   onLoadOlder: () => Promise<void>;
   counterpartLastReadMessageId: number | null;
   counterpartLastReadAt: string | null;
+  canReport: boolean;
+  reportingMessageId: number | null;
+  onReportMessage: (messageId: number) => Promise<void>;
+  onReportThread: () => Promise<void>;
 };
 
 const formatMessageTime = (value: string) => {
@@ -86,6 +96,7 @@ const DEFAULT_AVATAR_FALLBACK_BACKGROUND = "var(--panel-strong)";
 export default function MessagesThreadView({
   thread,
   messages,
+  threadMembers,
   currentUserId,
   loading,
   error,
@@ -93,7 +104,13 @@ export default function MessagesThreadView({
   onLoadOlder,
   counterpartLastReadMessageId,
   counterpartLastReadAt,
+  canReport,
+  reportingMessageId,
+  onReportMessage,
+  onReportThread,
 }: MessagesThreadViewProps) {
+  const [membersOpen, setMembersOpen] = useState(false);
+
   if (!thread) {
     return (
       <section className="flex min-h-[360px] items-center justify-center rounded-2xl bg-[var(--panel)] p-6">
@@ -106,21 +123,97 @@ export default function MessagesThreadView({
     .reverse()
     .find((message) => message.senderUserId === currentUserId)?.id;
 
+  const isGroupConversation = thread.kind === "group" || thread.kind === "group_info";
+
   return (
     <section className="flex min-h-[360px] flex-col rounded-2xl bg-[var(--panel)] p-4">
       <header className="border-b border-white/10 pb-3">
-        <p className="text-sm font-semibold text-[var(--text)]">
-          {thread.kind === "group"
-            ? (thread.groupName ?? "Groupe")
-            : (thread.counterpartName ?? "Conversation")}
-        </p>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold text-[var(--text)]">
+              {thread.kind === "group"
+                ? (thread.groupName ?? "Groupe")
+                : thread.kind === "group_info"
+                  ? `Infos groupe - ${thread.groupName ?? "Groupe"}`
+                  : (thread.counterpartName ?? "Conversation")}
+            </p>
+            {isGroupConversation ? (
+              <button
+                type="button"
+                onClick={() => setMembersOpen((open) => !open)}
+                className="rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+              >
+                Membres ({threadMembers.length})
+              </button>
+            ) : null}
+          </div>
+          {canReport ? (
+            <button
+              type="button"
+              onClick={() => void onReportThread()}
+              className="rounded-full border border-amber-300/30 bg-amber-400/10 px-2.5 py-1 text-[0.65rem] uppercase tracking-wide text-amber-200"
+            >
+              Signaler
+            </button>
+          ) : null}
+        </div>
+
         <p className="mt-1 text-xs text-[var(--muted)]">
           {thread.kind === "student_coach"
-            ? "Eleve ↔ Coach"
+            ? "Eleve ? Coach"
             : thread.kind === "coach_coach"
-              ? "Coach ↔ Coach"
-              : "Discussion de groupe"}
+              ? "Coach ? Coach"
+              : thread.kind === "group_info"
+                ? "Canal informationnel de groupe"
+                : "Discussion de groupe"}
         </p>
+
+        {isGroupConversation && membersOpen ? (
+          <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
+            {threadMembers.length === 0 ? (
+              <p className="text-xs text-[var(--muted)]">Membres indisponibles.</p>
+            ) : (
+              <div className="space-y-2">
+                {threadMembers.map((member) => {
+                  const memberLabel = member.fullName?.trim() || "Utilisateur";
+                  return (
+                    <div key={member.userId} className="flex items-center gap-2">
+                      {member.avatarUrl ? (
+                        <span
+                          role="img"
+                          aria-label={memberLabel}
+                          className="h-6 w-6 shrink-0 rounded-full border border-white/20 bg-cover bg-center"
+                          style={{ backgroundImage: `url("${member.avatarUrl}")` }}
+                        />
+                      ) : (
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/10 text-[0.6rem] font-semibold text-[var(--text)]">
+                          {toInitials(memberLabel)}
+                        </span>
+                      )}
+                      <p className="text-xs text-[var(--text)]">{memberLabel}</p>
+                      {member.role ? (
+                        <span className="rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-[0.55rem] uppercase tracking-wide text-[var(--muted)]">
+                          {member.role}
+                        </span>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        {thread.frozenAt ? (
+          <div className="mt-3 rounded-xl border border-amber-300/25 bg-amber-400/10 p-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.15em] text-amber-200">
+              Conversation gelee
+            </p>
+            <p className="mt-1 text-xs text-[var(--muted)]">
+              {thread.frozenReason ?? "Cette conversation est en lecture seule pendant moderation."}
+            </p>
+          </div>
+        ) : null}
       </header>
 
       <div className="mt-4 flex-1 space-y-3 overflow-auto pr-1">
@@ -147,7 +240,7 @@ export default function MessagesThreadView({
             const isOwn = message.senderUserId === currentUserId;
             const senderLabel = formatSenderName(message, currentUserId);
             const groupPalette =
-              thread.kind === "group"
+              isGroupConversation
                 ? resolveGroupSenderPalette(
                     message.senderUserId,
                     message.senderRole ?? null,
@@ -163,7 +256,7 @@ export default function MessagesThreadView({
               counterpartLastReadMessageId !== null &&
               counterpartLastReadMessageId >= message.id;
             const showSeenTag =
-              thread.kind !== "group" &&
+              !isGroupConversation &&
               isSeen &&
               latestOutgoingMessageId !== undefined &&
               message.id === latestOutgoingMessageId;
@@ -202,7 +295,7 @@ export default function MessagesThreadView({
                   )}
                   <div
                     className={`max-w-[82%] rounded-2xl px-3 py-2 text-sm ${
-                      thread.kind === "group"
+                      isGroupConversation
                         ? "border text-[var(--text)]"
                         : isOwn
                           ? "bg-emerald-400/20 text-[var(--text)]"
@@ -231,6 +324,18 @@ export default function MessagesThreadView({
                     <p className="mt-1 text-[0.65rem] uppercase tracking-[0.2em] text-[var(--muted)]">
                       {formatMessageTime(message.createdAt)}
                     </p>
+                    {canReport && !isOwn ? (
+                      <div className="mt-1">
+                        <button
+                          type="button"
+                          disabled={reportingMessageId === message.id}
+                          onClick={() => void onReportMessage(message.id)}
+                          className="rounded-full border border-amber-300/30 bg-amber-400/10 px-2 py-0.5 text-[0.6rem] uppercase tracking-wide text-amber-200 disabled:opacity-60"
+                        >
+                          {reportingMessageId === message.id ? "Signalement..." : "Signaler"}
+                        </button>
+                      </div>
+                    ) : null}
                     {showSeenTag ? (
                       <p className="mt-1 text-[0.65rem] uppercase tracking-[0.2em] text-emerald-200">
                         Vu a {formatSeenTime(counterpartLastReadAt)}

@@ -10,6 +10,7 @@ import RoleGuard from "../../_components/role-guard";
 import { useProfile } from "../../_components/profile-context";
 import PageBack from "../../_components/page-back";
 import PageHeader from "../../_components/page-header";
+import MessagesPrivacyExportCard from "../../_components/messages-privacy-export-card";
 
 type StudentProfile = {
   id: string;
@@ -435,6 +436,8 @@ export default function StudentSettingsPage() {
               ) : null}
             </div>
           </section>
+
+          <MessagesPrivacyExportCard />
 
           <section className="panel rounded-2xl border border-rose-300/30 bg-rose-400/10 p-6">
             <h3 className="text-lg font-semibold text-[var(--text)]">

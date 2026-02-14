@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { messagesJson } from "@/lib/messages/http";
 import {
   type AppProfileRole,
   hasCoachContactOptIn,
@@ -16,13 +16,15 @@ import {
   normalizeUserPair,
 } from "@/lib/messages/access";
 import { CreateMessageThreadSchema } from "@/lib/messages/types";
+import { enforceMessageRateLimit } from "@/lib/messages/rate-limit";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
+import { recordActivity } from "@/lib/activity-log";
 
 type AdminClient = ReturnType<typeof createSupabaseAdminClient>;
 
 const createThreadResponse = (threadId: string, created: boolean) =>
-  NextResponse.json({ threadId, created });
+  messagesJson({ threadId, created });
 
 const createThreadMembers = async (
   admin: AdminClient,
@@ -109,7 +111,7 @@ const getExistingThreadId = async (
 export async function POST(request: Request) {
   const parsed = await parseRequestJson(request, CreateMessageThreadSchema);
   if (!parsed.success) {
-    return NextResponse.json(
+    return messagesJson(
       { error: "Payload invalide.", details: formatZodError(parsed.error) },
       { status: 422 }
     );
@@ -118,10 +120,38 @@ export async function POST(request: Request) {
   const { context, response } = await loadMessageActorContext(request);
   if (response || !context) return response;
 
+  const rateLimit = await enforceMessageRateLimit(
+    context.admin,
+    context.userId,
+    "thread_create"
+  );
+  if (!rateLimit.allowed) {
+    await recordActivity({
+      admin: context.admin,
+      level: "warn",
+      action: "messages.rate_limited",
+      actorUserId: context.userId,
+      orgId: context.activeWorkspace.id,
+      entityType: "message_thread",
+      message: "Rate limit creation conversation atteint.",
+      metadata: {
+        action: "thread_create",
+        retryAfterSeconds: rateLimit.retryAfterSeconds,
+      },
+    });
+    return messagesJson(
+      { error: "Trop de requetes. Reessaie dans quelques secondes." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rateLimit.retryAfterSeconds || 1) },
+      }
+    );
+  }
+
   const admin = context.admin;
   if (parsed.data.kind === "group" || parsed.data.kind === "group_info") {
     if (context.activeWorkspace.workspace_type !== "org") {
-      return NextResponse.json(
+      return messagesJson(
         { error: "Messagerie de groupe reservee aux structures." },
         { status: 403 }
       );
@@ -129,12 +159,12 @@ export async function POST(request: Request) {
 
     const group = await loadOrgGroupRow(admin, parsed.data.groupId);
     if (!group || group.org_id !== context.activeWorkspace.id) {
-      return NextResponse.json({ error: "Groupe introuvable." }, { status: 404 });
+      return messagesJson({ error: "Groupe introuvable." }, { status: 404 });
     }
 
     const groupMembers = await loadOrgGroupMemberUserIds(admin, group.id);
     if (!groupMembers.memberUserIds.includes(context.userId)) {
-      return NextResponse.json(
+      return messagesJson(
         { error: "Acces refuse: vous n appartenez pas a ce groupe." },
         { status: 403 }
       );
@@ -144,14 +174,14 @@ export async function POST(request: Request) {
       parsed.data.kind === "group_info" &&
       !groupMembers.coachUserIds.includes(context.userId)
     ) {
-      return NextResponse.json(
+      return messagesJson(
         { error: "Acces refuse: seuls les coachs assignes peuvent publier." },
         { status: 403 }
       );
     }
 
     if (groupMembers.memberUserIds.length < 2) {
-      return NextResponse.json(
+      return messagesJson(
         { error: "Conversation de groupe impossible: membres insuffisants." },
         { status: 409 }
       );
@@ -210,7 +240,7 @@ export async function POST(request: Request) {
         return createThreadResponse(existingAfterConflict, false);
       }
 
-      return NextResponse.json(
+      return messagesJson(
         { error: insertError?.message ?? "Creation thread impossible." },
         { status: 400 }
       );
@@ -225,7 +255,7 @@ export async function POST(request: Request) {
   if (parsed.data.kind === "student_coach") {
     const student = await loadStudentRow(admin, parsed.data.studentId);
     if (!student) {
-      return NextResponse.json({ error: "Eleve introuvable." }, { status: 404 });
+      return messagesJson({ error: "Eleve introuvable." }, { status: 404 });
     }
 
     const { data: coachProfile } = await admin
@@ -238,12 +268,12 @@ export async function POST(request: Request) {
       !coachProfile ||
       !isCoachLikeRole((coachProfile as { role: AppProfileRole }).role)
     ) {
-      return NextResponse.json({ error: "Coach introuvable." }, { status: 404 });
+      return messagesJson({ error: "Coach introuvable." }, { status: 404 });
     }
 
     const studentUserId = await loadStudentUserId(admin, student.id);
     if (!studentUserId) {
-      return NextResponse.json(
+      return messagesJson(
         { error: "Eleve non active: compte eleve introuvable." },
         { status: 409 }
       );
@@ -252,13 +282,13 @@ export async function POST(request: Request) {
     const pair = normalizeUserPair(studentUserId, parsed.data.coachId);
 
     if (context.userId !== studentUserId && context.userId !== parsed.data.coachId) {
-      return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
+      return messagesJson({ error: "Acces refuse." }, { status: 403 });
     }
 
     if (context.userId === studentUserId) {
       const isLinked = await isStudentLinkedToStudentId(admin, context.userId, student.id);
       if (!isLinked) {
-        return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
+        return messagesJson({ error: "Acces refuse." }, { status: 403 });
       }
 
       const isAssignedCoach = await isCoachAllowedForStudent(
@@ -267,14 +297,14 @@ export async function POST(request: Request) {
         student.id
       );
       if (!isAssignedCoach) {
-        return NextResponse.json(
+        return messagesJson(
           { error: "Acces refuse: coach non assigne." },
           { status: 403 }
         );
       }
     } else {
       if (context.userId !== parsed.data.coachId) {
-        return NextResponse.json(
+        return messagesJson(
           { error: "Creation reservee au coach participant." },
           { status: 403 }
         );
@@ -286,7 +316,7 @@ export async function POST(request: Request) {
         student.id
       );
       if (!isAssignedCoach) {
-        return NextResponse.json(
+        return messagesJson(
           { error: "Acces refuse: coach non assigne." },
           { status: 403 }
         );
@@ -343,7 +373,7 @@ export async function POST(request: Request) {
         return createThreadResponse(existingAfterConflict, false);
       }
 
-      return NextResponse.json(
+      return messagesJson(
         { error: insertError?.message ?? "Creation thread impossible." },
         { status: 400 }
       );
@@ -357,14 +387,14 @@ export async function POST(request: Request) {
 
   if (parsed.data.kind === "org_info" || parsed.data.kind === "org_coaches") {
     if (context.activeWorkspace.workspace_type !== "org") {
-      return NextResponse.json(
+      return messagesJson(
         { error: "Conversation organisation reservee aux structures." },
         { status: 403 }
       );
     }
 
     if (!isCoachLikeRole(context.profile.role)) {
-      return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
+      return messagesJson({ error: "Acces refuse." }, { status: 403 });
     }
 
     const audience =
@@ -381,14 +411,14 @@ export async function POST(request: Request) {
 
     const resolvedAudience = await audience;
     if (!resolvedAudience.coachUserIds.includes(context.userId)) {
-      return NextResponse.json(
+      return messagesJson(
         { error: "Acces refuse: vous ne pouvez pas publier ce canal." },
         { status: 403 }
       );
     }
 
     if (resolvedAudience.memberUserIds.length < 2) {
-      return NextResponse.json(
+      return messagesJson(
         { error: "Conversation impossible: membres insuffisants." },
         { status: 409 }
       );
@@ -447,7 +477,7 @@ export async function POST(request: Request) {
         return createThreadResponse(existingAfterConflict, false);
       }
 
-      return NextResponse.json(
+      return messagesJson(
         { error: insertError?.message ?? "Creation thread impossible." },
         { status: 400 }
       );
@@ -459,11 +489,11 @@ export async function POST(request: Request) {
   }
 
   if (!isCoachLikeRole(context.profile.role)) {
-    return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
+    return messagesJson({ error: "Acces refuse." }, { status: 403 });
   }
 
   if (parsed.data.coachUserId === context.userId) {
-    return NextResponse.json(
+    return messagesJson(
       { error: "Conversation avec soi-meme impossible." },
       { status: 409 }
     );
@@ -479,7 +509,7 @@ export async function POST(request: Request) {
     !targetProfile ||
     !isCoachLikeRole((targetProfile as { role: AppProfileRole }).role)
   ) {
-    return NextResponse.json({ error: "Contact introuvable." }, { status: 404 });
+    return messagesJson({ error: "Contact introuvable." }, { status: 404 });
   }
 
   let isSameOrgCoach = false;
@@ -498,7 +528,7 @@ export async function POST(request: Request) {
       parsed.data.coachUserId
     );
     if (!hasContact) {
-      return NextResponse.json(
+      return messagesJson(
         { error: "Acces refuse: contact coach non autorise." },
         { status: 403 }
       );
@@ -558,7 +588,7 @@ export async function POST(request: Request) {
       return createThreadResponse(existingAfterConflict, false);
     }
 
-    return NextResponse.json(
+    return messagesJson(
       { error: insertError?.message ?? "Creation thread impossible." },
       { status: 400 }
     );

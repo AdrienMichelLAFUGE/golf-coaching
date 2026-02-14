@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { messagesJson } from "@/lib/messages/http";
 import {
   isCoachLikeRole,
   loadMessageActorContext,
@@ -70,7 +70,7 @@ export async function GET(request: Request) {
         pendingIncomingCoachContactRequests: [],
         pendingOutgoingCoachContactRequests: [],
       };
-      return NextResponse.json(empty);
+      return messagesJson(empty);
     }
 
     const [{ data: assignmentsData }, { data: studentsData }] = await Promise.all([
@@ -169,7 +169,7 @@ export async function GET(request: Request) {
       pendingOutgoingCoachContactRequests: [],
     };
 
-    return NextResponse.json(payload);
+    return messagesJson(payload);
   }
 
   const [contactsData, incomingRequestsData, outgoingRequestsData] = await Promise.all([
@@ -428,5 +428,5 @@ export async function GET(request: Request) {
     pendingOutgoingCoachContactRequests,
   };
 
-  return NextResponse.json(payload);
+  return messagesJson(payload);
 }

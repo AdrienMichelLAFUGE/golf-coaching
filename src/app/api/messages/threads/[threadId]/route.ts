@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+import { messagesJson } from "@/lib/messages/http";
 import { z } from "zod";
 import { loadMessageActorContext } from "@/lib/messages/access";
+import { validateThreadAccess } from "@/lib/messages/service";
 
 type Params = { params: { threadId: string } | Promise<{ threadId: string }> };
 
@@ -18,21 +19,22 @@ const resolveThreadId = async (params: Params["params"]) => {
 export async function DELETE(request: Request, { params }: Params) {
   const threadId = await resolveThreadId(params);
   if (!threadId) {
-    return NextResponse.json({ error: "Payload invalide." }, { status: 422 });
+    return messagesJson({ error: "Payload invalide." }, { status: 422 });
   }
 
   const { context, response } = await loadMessageActorContext(request);
   if (response || !context) return response;
 
-  const { data: memberData } = await context.admin
-    .from("message_thread_members")
-    .select("thread_id, user_id")
-    .eq("thread_id", threadId)
-    .eq("user_id", context.userId)
-    .maybeSingle();
+  const accessCheck = await validateThreadAccess(
+    context.admin,
+    context.userId,
+    context.profile.role,
+    threadId,
+    "hide"
+  );
 
-  if (!memberData) {
-    return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
+  if (!accessCheck.ok) {
+    return messagesJson({ error: accessCheck.error }, { status: accessCheck.status });
   }
 
   const { error: updateError } = await context.admin
@@ -44,13 +46,13 @@ export async function DELETE(request: Request, { params }: Params) {
     .eq("user_id", context.userId);
 
   if (updateError) {
-    return NextResponse.json(
+    return messagesJson(
       { error: updateError.message ?? "Suppression impossible." },
       { status: 400 }
     );
   }
 
-  return NextResponse.json({
+  return messagesJson({
     ok: true,
     threadId,
   });

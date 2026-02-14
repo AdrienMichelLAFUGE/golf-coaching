@@ -6,11 +6,18 @@ jest.mock("@/lib/messages/access", () => ({
   loadMessageActorContext: jest.fn(),
 }));
 
+jest.mock("@/lib/messages/service", () => ({
+  validateThreadAccess: jest.fn(),
+}));
+
 type Params = { params: { threadId: string } };
 
 describe("DELETE /api/messages/threads/[threadId]", () => {
   const accessMocks = jest.requireMock("@/lib/messages/access") as {
     loadMessageActorContext: jest.Mock;
+  };
+  const serviceMocks = jest.requireMock("@/lib/messages/service") as {
+    validateThreadAccess: jest.Mock;
   };
 
   beforeEach(() => {
@@ -25,25 +32,20 @@ describe("DELETE /api/messages/threads/[threadId]", () => {
     expect(response.status).toBe(422);
   });
 
-  it("returns 403 when user is not a member", async () => {
-    const admin = {
-      from: jest.fn(() => ({
-        select: () => ({
-          eq: () => ({
-            eq: () => ({
-              maybeSingle: async () => ({ data: null, error: null }),
-            }),
-          }),
-        }),
-      })),
-    };
-
+  it("returns 403 when user cannot access thread", async () => {
     accessMocks.loadMessageActorContext.mockResolvedValue({
       context: {
         userId: "user-1",
-        admin,
+        profile: { role: "coach" },
+        admin: {},
       },
       response: null,
+    });
+
+    serviceMocks.validateThreadAccess.mockResolvedValue({
+      ok: false,
+      status: 403,
+      error: "Acces refuse.",
     });
 
     const response = await DELETE({} as Request, {
@@ -63,37 +65,30 @@ describe("DELETE /api/messages/threads/[threadId]", () => {
       from: jest.fn((table: string) => {
         if (table === "message_thread_members") {
           return {
-            select: () => ({
-              eq: () => ({
-                eq: () => ({
-                  maybeSingle: async () => ({
-                    data: { thread_id: "thread-1", user_id: "user-1" },
-                    error: null,
-                  }),
-                }),
-              }),
-            }),
             update: updateFn,
           };
         }
-        return {
-          select: () => ({
-            eq: () => ({
-              eq: () => ({
-                maybeSingle: async () => ({ data: null, error: null }),
-              }),
-            }),
-          }),
-        };
+        return {};
       }),
     };
 
     accessMocks.loadMessageActorContext.mockResolvedValue({
       context: {
         userId: "user-1",
+        profile: { role: "coach" },
         admin,
       },
       response: null,
+    });
+
+    serviceMocks.validateThreadAccess.mockResolvedValue({
+      ok: true,
+      participantContext: {
+        thread: { id: "thread-1" },
+        ownMember: { thread_id: "thread-1", user_id: "user-1" },
+        counterpartMember: null,
+      },
+      threadMemberUserIds: null,
     });
 
     const response = await DELETE({} as Request, {

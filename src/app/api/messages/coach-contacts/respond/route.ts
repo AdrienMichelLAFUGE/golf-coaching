@@ -1,12 +1,14 @@
-﻿import { NextResponse } from "next/server";
+import { messagesJson } from "@/lib/messages/http";
 import { isCoachLikeRole, loadMessageActorContext } from "@/lib/messages/access";
+import { enforceMessageRateLimit } from "@/lib/messages/rate-limit";
 import { CoachContactRequestRespondSchema } from "@/lib/messages/types";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
+import { recordActivity } from "@/lib/activity-log";
 
 export async function POST(request: Request) {
   const parsedBody = await parseRequestJson(request, CoachContactRequestRespondSchema);
   if (!parsedBody.success) {
-    return NextResponse.json(
+    return messagesJson(
       { error: "Payload invalide.", details: formatZodError(parsedBody.error) },
       { status: 422 }
     );
@@ -16,7 +18,35 @@ export async function POST(request: Request) {
   if (response || !context) return response;
 
   if (!isCoachLikeRole(context.profile.role)) {
-    return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
+    return messagesJson({ error: "Acces refuse." }, { status: 403 });
+  }
+
+  const rateLimit = await enforceMessageRateLimit(
+    context.admin,
+    context.userId,
+    "coach_contact_respond"
+  );
+  if (!rateLimit.allowed) {
+    await recordActivity({
+      admin: context.admin,
+      level: "warn",
+      action: "messages.rate_limited",
+      actorUserId: context.userId,
+      orgId: context.activeWorkspace?.id ?? null,
+      entityType: "message_contact_request",
+      message: "Rate limit reponse demande contact coach atteint.",
+      metadata: {
+        action: "coach_contact_respond",
+        retryAfterSeconds: rateLimit.retryAfterSeconds,
+      },
+    });
+    return messagesJson(
+      { error: "Trop de requetes. Reessaie dans quelques secondes." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rateLimit.retryAfterSeconds || 1) },
+      }
+    );
   }
 
   const { data: requestRow } = await context.admin
@@ -26,7 +56,7 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (!requestRow) {
-    return NextResponse.json({ error: "Demande introuvable." }, { status: 404 });
+    return messagesJson({ error: "Demande introuvable." }, { status: 404 });
   }
 
   const typedRequest = requestRow as {
@@ -38,7 +68,7 @@ export async function POST(request: Request) {
   };
 
   if (typedRequest.target_user_id !== context.userId) {
-    return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
+    return messagesJson({ error: "Acces refuse." }, { status: 403 });
   }
 
   if (parsedBody.data.decision === "accept") {
@@ -56,7 +86,7 @@ export async function POST(request: Request) {
       );
 
     if (contactError) {
-      return NextResponse.json(
+      return messagesJson(
         { error: contactError.message ?? "Validation impossible." },
         { status: 400 }
       );
@@ -69,11 +99,11 @@ export async function POST(request: Request) {
     .eq("id", typedRequest.id);
 
   if (deleteError) {
-    return NextResponse.json(
+    return messagesJson(
       { error: deleteError.message ?? "Mise a jour impossible." },
       { status: 400 }
     );
   }
 
-  return NextResponse.json({ ok: true, decision: parsedBody.data.decision });
+  return messagesJson({ ok: true, decision: parsedBody.data.decision });
 }

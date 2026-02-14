@@ -96,11 +96,14 @@ describe("GET /api/messages/notifications", () => {
     const response = await GET({} as Request);
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toContain("no-store");
     const body = await response.json();
     expect(body.unreadMessagesCount).toBe(4);
     expect(body.pendingCoachContactRequestsCount).toBe(2);
     expect(body.pendingCoachContactRequests).toHaveLength(1);
     expect(body.unreadPreviews).toHaveLength(1);
+    expect(body.pendingModerationReportsCount).toBe(0);
+    expect(serviceMocks.loadInbox).toHaveBeenCalledWith(admin, "coach-1", "coach");
   });
 
   it("returns 403 when messaging is blocked for org Free workspace", async () => {

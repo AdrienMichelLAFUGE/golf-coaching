@@ -30,6 +30,9 @@ describe("MessagesThreadList", () => {
             ownLastReadAt: "2026-02-13T09:00:00.000Z",
             counterpartLastReadMessageId: 5,
             counterpartLastReadAt: "2026-02-13T10:01:00.000Z",
+            frozenAt: null,
+            frozenByUserId: null,
+            frozenReason: null,
           },
         ]}
         selectedThreadId={null}

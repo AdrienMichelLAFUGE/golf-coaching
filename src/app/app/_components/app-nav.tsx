@@ -211,16 +211,34 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
   };
 
   const isActive = (href: string) => {
+    const currentPath = pathname ?? "";
+
     if (href === "/app") {
-      return pathname === "/app";
+      return currentPath === "/app";
     }
     if (href === "/app/coach") {
-      return pathname === "/app/coach";
+      return currentPath === "/app/coach";
     }
     if (href === "/app/eleve") {
-      return pathname === "/app/eleve";
+      return currentPath === "/app/eleve";
     }
-    return pathname === href || pathname?.startsWith(`${href}/`);
+    if (href === "/app/admin") {
+      return currentPath === "/app/admin";
+    }
+    if (href === "/app/org") {
+      return (
+        currentPath === "/app/org" ||
+        currentPath === "/app/org/groups" ||
+        currentPath.startsWith("/app/org/groups/")
+      );
+    }
+    if (href === "/app/org/proposals") {
+      return currentPath === "/app/org/proposals" || currentPath.startsWith("/app/org/proposals/");
+    }
+    if (href === "/app/org/members") {
+      return currentPath === "/app/org/members" || currentPath.startsWith("/app/org/members/");
+    }
+    return currentPath === href || currentPath.startsWith(`${href}/`);
   };
 
   const settingsNavItem: NavItem | null = !loading

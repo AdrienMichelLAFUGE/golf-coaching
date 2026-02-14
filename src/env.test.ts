@@ -29,6 +29,7 @@ describe("env", () => {
     delete process.env.STRIPE_PRO_PRICE_YEAR_ID;
     delete process.env.STRIPE_SUCCESS_URL;
     delete process.env.STRIPE_CANCEL_URL;
+    delete process.env.MESSAGES_PURGE_CRON_SECRET;
 
     jest.isolateModules(() => {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -58,6 +59,7 @@ describe("env", () => {
     delete process.env.STRIPE_PRO_PRICE_YEAR_ID;
     delete process.env.STRIPE_SUCCESS_URL;
     delete process.env.STRIPE_CANCEL_URL;
+    delete process.env.MESSAGES_PURGE_CRON_SECRET;
 
     expect(() => {
       jest.isolateModules(() => {

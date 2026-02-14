@@ -1,4 +1,4 @@
-﻿import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import MessagesThreadView from "./messages-thread-view";
 
 describe("MessagesThreadView", () => {
@@ -29,6 +29,9 @@ describe("MessagesThreadView", () => {
           ownLastReadAt: "2026-02-13T10:00:00.000Z",
           counterpartLastReadMessageId: 5,
           counterpartLastReadAt: "2026-02-13T10:01:00.000Z",
+          frozenAt: null,
+          frozenByUserId: null,
+          frozenReason: null,
         }}
         messages={[
           {
@@ -42,6 +45,7 @@ describe("MessagesThreadView", () => {
             createdAt: "2026-02-13T10:00:00.000Z",
           },
         ]}
+        threadMembers={[]}
         currentUserId="u1"
         loading={false}
         error=""
@@ -49,6 +53,10 @@ describe("MessagesThreadView", () => {
         onLoadOlder={async () => undefined}
         counterpartLastReadMessageId={5}
         counterpartLastReadAt="2026-02-13T10:01:00.000Z"
+        canReport={false}
+        reportingMessageId={null}
+        onReportMessage={async () => undefined}
+        onReportThread={async () => undefined}
       />
     );
 
@@ -82,6 +90,9 @@ describe("MessagesThreadView", () => {
           ownLastReadAt: "2026-02-13T10:02:00.000Z",
           counterpartLastReadMessageId: 6,
           counterpartLastReadAt: "2026-02-13T10:02:00.000Z",
+          frozenAt: null,
+          frozenByUserId: null,
+          frozenReason: null,
         }}
         messages={[
           {
@@ -105,6 +116,7 @@ describe("MessagesThreadView", () => {
             createdAt: "2026-02-13T10:01:00.000Z",
           },
         ]}
+        threadMembers={[]}
         currentUserId="u1"
         loading={false}
         error=""
@@ -112,9 +124,79 @@ describe("MessagesThreadView", () => {
         onLoadOlder={async () => undefined}
         counterpartLastReadMessageId={6}
         counterpartLastReadAt="2026-02-13T10:02:00.000Z"
+        canReport={false}
+        reportingMessageId={null}
+        onReportMessage={async () => undefined}
+        onReportThread={async () => undefined}
       />
     );
 
     expect(screen.getAllByText("Coach B")).toHaveLength(1);
+  });
+
+  it("opens group members list from header button", () => {
+    render(
+      <MessagesThreadView
+        thread={{
+          threadId: "11111111-1111-1111-1111-111111111111",
+          kind: "group",
+          workspaceOrgId: "org-1",
+          studentId: null,
+          studentName: null,
+          groupId: "22222222-2222-2222-2222-222222222222",
+          groupName: "Groupe A",
+          participantAId: "u1",
+          participantAName: "Coach A",
+          participantBId: "u2",
+          participantBName: "Coach B",
+          counterpartUserId: null,
+          counterpartName: "Groupe A",
+          lastMessageId: 6,
+          lastMessageAt: "2026-02-13T10:01:00.000Z",
+          lastMessagePreview: "Re",
+          lastMessageSenderUserId: "u2",
+          unread: false,
+          unreadCount: 0,
+          ownLastReadMessageId: 6,
+          ownLastReadAt: "2026-02-13T10:02:00.000Z",
+          counterpartLastReadMessageId: null,
+          counterpartLastReadAt: null,
+          frozenAt: null,
+          frozenByUserId: null,
+          frozenReason: null,
+        }}
+        messages={[]}
+        threadMembers={[
+          {
+            userId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            fullName: "Coach A",
+            avatarUrl: null,
+            role: "coach",
+          },
+          {
+            userId: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+            fullName: "Eleve B",
+            avatarUrl: null,
+            role: "student",
+          },
+        ]}
+        currentUserId="u1"
+        loading={false}
+        error=""
+        nextCursor={null}
+        onLoadOlder={async () => undefined}
+        counterpartLastReadMessageId={null}
+        counterpartLastReadAt={null}
+        canReport={false}
+        reportingMessageId={null}
+        onReportMessage={async () => undefined}
+        onReportThread={async () => undefined}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Membres/i }));
+
+    expect(screen.getByText("Coach A")).toBeInTheDocument();
+    expect(screen.getByText("Eleve B")).toBeInTheDocument();
   });
 });

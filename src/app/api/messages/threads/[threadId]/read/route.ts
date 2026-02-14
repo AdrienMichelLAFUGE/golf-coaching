@@ -1,7 +1,7 @@
-﻿import { NextResponse } from "next/server";
+import { messagesJson } from "@/lib/messages/http";
 import { z } from "zod";
 import { coerceMessageId, loadMessageActorContext } from "@/lib/messages/access";
-import { loadThreadParticipantContext } from "@/lib/messages/service";
+import { validateThreadAccess } from "@/lib/messages/service";
 import { MarkThreadReadSchema } from "@/lib/messages/types";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 
@@ -21,7 +21,7 @@ const resolveThreadId = async (params: Params["params"]) => {
 export async function POST(request: Request, { params }: Params) {
   const parsedBody = await parseRequestJson(request, MarkThreadReadSchema);
   if (!parsedBody.success) {
-    return NextResponse.json(
+    return messagesJson(
       { error: "Payload invalide.", details: formatZodError(parsedBody.error) },
       { status: 422 }
     );
@@ -29,20 +29,21 @@ export async function POST(request: Request, { params }: Params) {
 
   const threadId = await resolveThreadId(params);
   if (!threadId) {
-    return NextResponse.json({ error: "Payload invalide." }, { status: 422 });
+    return messagesJson({ error: "Payload invalide." }, { status: 422 });
   }
 
   const { context, response } = await loadMessageActorContext(request);
   if (response || !context) return response;
 
-  const participantContext = await loadThreadParticipantContext(
+  const accessCheck = await validateThreadAccess(
     context.admin,
+    context.userId,
+    context.profile.role,
     threadId,
-    context.userId
+    "read"
   );
-
-  if (!participantContext) {
-    return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
+  if (!accessCheck.ok) {
+    return messagesJson({ error: accessCheck.error }, { status: accessCheck.status });
   }
 
   const { data: targetMessage } = await context.admin
@@ -53,20 +54,17 @@ export async function POST(request: Request, { params }: Params) {
     .maybeSingle();
 
   if (!targetMessage) {
-    return NextResponse.json({ error: "Message introuvable." }, { status: 404 });
+    return messagesJson({ error: "Message introuvable." }, { status: 404 });
   }
 
   const currentReadMessageId = coerceMessageId(
-    participantContext.ownMember.last_read_message_id
+    accessCheck.participantContext.ownMember.last_read_message_id
   );
-  if (
-    currentReadMessageId &&
-    currentReadMessageId >= parsedBody.data.lastReadMessageId
-  ) {
-    return NextResponse.json({
+  if (currentReadMessageId && currentReadMessageId >= parsedBody.data.lastReadMessageId) {
+    return messagesJson({
       ok: true,
       lastReadMessageId: currentReadMessageId,
-      lastReadAt: participantContext.ownMember.last_read_at ?? null,
+      lastReadAt: accessCheck.participantContext.ownMember.last_read_at ?? null,
     });
   }
 
@@ -81,13 +79,13 @@ export async function POST(request: Request, { params }: Params) {
     .eq("user_id", context.userId);
 
   if (updateError) {
-    return NextResponse.json(
+    return messagesJson(
       { error: updateError.message ?? "Mise a jour impossible." },
       { status: 400 }
     );
   }
 
-  return NextResponse.json({
+  return messagesJson({
     ok: true,
     lastReadMessageId: parsedBody.data.lastReadMessageId,
     lastReadAt: now,
