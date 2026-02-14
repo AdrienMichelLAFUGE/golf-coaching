@@ -19,6 +19,10 @@ import RadarCharts, {
 } from "../../../_components/radar-charts";
 import Smart2MoveFxPanel from "../../../_components/smart2move-fx-panel";
 import type { RadarAnalytics } from "@/lib/radar/types";
+import {
+  SHARED_RADAR_SNAPSHOT_KEY,
+  extractSharedRadarSnapshot,
+} from "@/lib/radar/shared-radar-snapshot";
 
 type Report = {
   id: string;
@@ -36,7 +40,7 @@ type ReportSection = {
   media_urls: string[] | null;
   media_captions: string[] | null;
   radar_file_id?: string | null;
-  radar_config?: RadarConfig | null;
+  radar_config?: Record<string, unknown> | null;
 };
 
 type RadarFile = {
@@ -126,6 +130,9 @@ export default function ReportDetailPage() {
   const [report, setReport] = useState<Report | null>(null);
   const [sections, setSections] = useState<ReportSection[]>([]);
   const [radarFiles, setRadarFiles] = useState<Record<string, RadarFile>>({});
+  const [snapshotRadarBySection, setSnapshotRadarBySection] = useState<
+    Record<string, string>
+  >({});
   const [radarImageUrls, setRadarImageUrls] = useState<Record<string, string>>({});
   const [activeImage, setActiveImage] = useState<{
     url: string;
@@ -251,6 +258,33 @@ export default function ReportDetailPage() {
         )
       );
 
+      const snapshotRadarMap: Record<string, string> = {};
+      const snapshotRadarFiles: RadarFile[] = normalizedSections.flatMap((section) => {
+        const snapshot = extractSharedRadarSnapshot(section.radar_config);
+        if (!snapshot) return [];
+        const snapshotId = `shared-snapshot:${section.id}`;
+        snapshotRadarMap[section.id] = snapshotId;
+        return [
+          {
+            id: snapshotId,
+            original_name: snapshot.originalName,
+            source: snapshot.source,
+            file_url: snapshot.fileUrl ?? "",
+            columns: snapshot.columns.map((column) => ({
+              key: column.key,
+              group: column.group,
+              label: column.label,
+              unit: column.unit,
+            })),
+            shots: snapshot.shots,
+            stats: snapshot.stats,
+            summary: snapshot.summary,
+            config: snapshot.config,
+            analytics: snapshot.analytics,
+          } satisfies RadarFile,
+        ];
+      });
+
       if (radarIds.length > 0) {
         const { data: radarData } = await supabase
           .from("radar_files")
@@ -274,11 +308,21 @@ export default function ReportDetailPage() {
           radarMap[file.id] = normalized;
           radarList.push(normalized);
         });
+        snapshotRadarFiles.forEach((snapshotFile) => {
+          radarMap[snapshotFile.id] = snapshotFile;
+          radarList.push(snapshotFile);
+        });
         setRadarFiles(radarMap);
+        setSnapshotRadarBySection(snapshotRadarMap);
         void loadRadarImageUrls(radarList);
       } else {
-        setRadarFiles({});
-        setRadarImageUrls({});
+        const radarMap: Record<string, RadarFile> = {};
+        snapshotRadarFiles.forEach((snapshotFile) => {
+          radarMap[snapshotFile.id] = snapshotFile;
+        });
+        setRadarFiles(radarMap);
+        setSnapshotRadarBySection(snapshotRadarMap);
+        void loadRadarImageUrls(snapshotRadarFiles);
       }
       setLoading(false);
     };
@@ -446,9 +490,22 @@ export default function ReportDetailPage() {
                         )
                       ) : section.type === "radar" ? (
                         (() => {
-                          const radarFile = section.radar_file_id
-                            ? radarFiles[section.radar_file_id]
-                            : null;
+                          const fallbackSnapshotRadarId =
+                            snapshotRadarBySection[section.id] ?? null;
+                          const radarKey = section.radar_file_id ?? fallbackSnapshotRadarId;
+                          const radarFile = radarKey ? radarFiles[radarKey] : null;
+                          const sectionRadarConfig =
+                            section.radar_config && typeof section.radar_config === "object"
+                              ? (() => {
+                                  const configRest = {
+                                    ...section.radar_config,
+                                  } as Record<string, unknown>;
+                                  delete configRest[SHARED_RADAR_SNAPSHOT_KEY];
+                                  return Object.keys(configRest).length
+                                    ? (configRest as RadarConfig)
+                                    : null;
+                                })()
+                              : null;
                           return radarFile ? (
                             <div className="mt-3">
                               {radarFile.source === "smart2move" ? (
@@ -464,7 +521,7 @@ export default function ReportDetailPage() {
                                   shots={radarFile.shots ?? []}
                                   stats={radarFile.stats}
                                   summary={radarFile.summary}
-                                  config={section.radar_config ?? radarFile.config}
+                                  config={sectionRadarConfig ?? radarFile.config}
                                   analytics={radarFile.analytics}
                                 />
                               )}

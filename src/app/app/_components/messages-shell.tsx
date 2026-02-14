@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import MessagesCompose from "@/app/app/_components/messages-compose";
 import MessagesContactsModal from "@/app/app/_components/messages-contacts-modal";
@@ -35,7 +35,7 @@ const readApiError = async (response: Response, fallback: string) => {
 export default function MessagesShell({ roleScope }: MessagesShellProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { profile, loading: profileLoading } = useProfile();
+  const { profile, organization, loading: profileLoading } = useProfile();
 
   const [inbox, setInbox] = useState<MessageInboxResponse>({
     threads: [],
@@ -59,8 +59,11 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
   const [contactsData, setContactsData] = useState<MessageContactsResponse | null>(null);
   const [submittingKey, setSubmittingKey] = useState<string | null>(null);
   const [actionRequestId, setActionRequestId] = useState<string | null>(null);
+  const handledAutoOpenKeyRef = useRef<string | null>(null);
 
   const preferredThreadId = searchParams.get("threadId");
+  const openContactsParam = searchParams.get("contacts");
+  const highlightedRequestId = searchParams.get("requestId");
 
   const fetchWithAuth = useCallback(async (input: string, init?: RequestInit) => {
     const { data: sessionData } = await supabase.auth.getSession();
@@ -307,6 +310,8 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
         await loadThread(responseBody.threadId, { silent: true });
 
         const params = new URLSearchParams(searchParams.toString());
+        params.delete("contacts");
+        params.delete("requestId");
         params.set("threadId", responseBody.threadId);
         router.replace(`?${params.toString()}`);
       } catch (error) {
@@ -330,6 +335,18 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
 
   const handleStartGroupThread = async (groupId: string) => {
     await startThread({ kind: "group", groupId }, `group:${groupId}`);
+  };
+
+  const handleStartGroupInfoThread = async (groupId: string) => {
+    await startThread({ kind: "group_info", groupId }, `group_info:${groupId}`);
+  };
+
+  const handleStartOrgInfoThread = async () => {
+    await startThread({ kind: "org_info" }, "org_info");
+  };
+
+  const handleStartOrgCoachesThread = async () => {
+    await startThread({ kind: "org_coaches" }, "org_coaches");
   };
 
   const handleRequestCoachContact = async (targetEmail: string) => {
@@ -510,6 +527,26 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
   }, [loadThread, selectedThreadId]);
 
   useEffect(() => {
+    if (roleScope !== "coach") return;
+    if (openContactsParam !== "open" && !highlightedRequestId) {
+      handledAutoOpenKeyRef.current = null;
+      return;
+    }
+
+    const nextAutoOpenKey = `${openContactsParam ?? ""}:${highlightedRequestId ?? ""}`;
+    if (handledAutoOpenKeyRef.current === nextAutoOpenKey) return;
+    handledAutoOpenKeyRef.current = nextAutoOpenKey;
+
+    setContactsOpen(true);
+    void loadContacts();
+  }, [
+    highlightedRequestId,
+    loadContacts,
+    openContactsParam,
+    roleScope,
+  ]);
+
+  useEffect(() => {
     if (!profile?.id) return;
 
     const channel = supabase
@@ -568,6 +605,12 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
     () => inbox.threads.find((thread) => thread.threadId === selectedThreadId) ?? null,
     [inbox.threads, selectedThreadId]
   );
+
+  const isReadOnlyThreadForCurrentUser =
+    selectedThread !== null &&
+    profile !== null &&
+    profile.role === "student" &&
+    (selectedThread.kind === "group_info" || selectedThread.kind === "org_info");
 
   const messages = threadData?.messages ?? [];
   const nextCursor = threadData?.nextCursor ?? null;
@@ -630,6 +673,8 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
           onSelect={(threadId) => {
             setSelectedThreadId(threadId);
             const params = new URLSearchParams(searchParams.toString());
+            params.delete("contacts");
+            params.delete("requestId");
             params.set("threadId", threadId);
             router.replace(`?${params.toString()}`);
           }}
@@ -661,10 +706,15 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
           />
           {composeError ? <p className="text-sm text-red-400">{composeError}</p> : null}
           <MessagesCompose
-            disabled={!selectedThread}
+            disabled={!selectedThread || isReadOnlyThreadForCurrentUser}
             sending={sending}
             onSend={handleSendMessage}
           />
+          {isReadOnlyThreadForCurrentUser ? (
+            <p className="text-xs text-[var(--muted)]">
+              Canal informationnel: lecture seule pour les eleves.
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -673,6 +723,11 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
         loading={contactsLoading}
         error={contactsError}
         canRequestCoachContact={profile.role !== "student"}
+        highlightRequestId={highlightedRequestId}
+        canCreateInformationalThreads={
+          profile.role !== "student" && organization?.workspace_type === "org"
+        }
+        organizationName={organization?.name ?? null}
         data={contactsData}
         submittingKey={submittingKey}
         actionRequestId={actionRequestId}
@@ -681,6 +736,9 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
         onStartStudentThread={handleStartStudentThread}
         onStartCoachThread={handleStartCoachThread}
         onStartGroupThread={handleStartGroupThread}
+        onStartGroupInfoThread={handleStartGroupInfoThread}
+        onStartOrgInfoThread={handleStartOrgInfoThread}
+        onStartOrgCoachesThread={handleStartOrgCoachesThread}
         onRequestCoachContact={handleRequestCoachContact}
         onRespondCoachRequest={handleRespondCoachRequest}
       />

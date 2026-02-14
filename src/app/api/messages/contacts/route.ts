@@ -212,14 +212,77 @@ export async function GET(request: Request) {
       full_name: string | null;
     }>;
 
-  const coachContacts = counterpartProfiles
+  const coachContactsFromOptIn = counterpartProfiles
     .filter((profile) => isCoachLikeRole(profile.role))
     .map((profile) => ({
       userId: profile.id,
       fullName: profile.full_name,
       email: counterpartEmails.get(profile.id) ?? null,
       role: profile.role,
+      availability: "opt_in" as const,
     }));
+
+  let coachContactsFromSameOrg: MessageContactsResponse["coachContacts"] = [];
+  if (context.activeWorkspace.workspace_type === "org") {
+    const { data: orgMemberRows } = await admin
+      .from("org_memberships")
+      .select("user_id")
+      .eq("org_id", context.activeWorkspace.id)
+      .eq("status", "active");
+
+    const orgMemberUserIds = Array.from(
+      new Set(
+        ((orgMemberRows ?? []) as Array<{ user_id: string }>)
+          .map((row) => row.user_id)
+          .filter((userId) => userId !== context.userId)
+      )
+    );
+
+    if (orgMemberUserIds.length > 0) {
+      const [orgProfilesData, orgEmails] = await Promise.all([
+        admin
+          .from("profiles")
+          .select("id, role, full_name")
+          .in("id", orgMemberUserIds),
+        loadUserEmailsByIds(admin, orgMemberUserIds),
+      ]);
+
+      coachContactsFromSameOrg = (
+        (orgProfilesData.data ?? []) as Array<{
+          id: string;
+          role: "owner" | "coach" | "staff" | "student";
+          full_name: string | null;
+        }>
+      )
+        .filter((profile) => isCoachLikeRole(profile.role))
+        .map((profile) => ({
+          userId: profile.id,
+          fullName: profile.full_name,
+          email: orgEmails.get(profile.id) ?? null,
+          role: profile.role,
+          availability: "same_org" as const,
+        }));
+    }
+  }
+
+  const coachContactsByUserId = new Map<string, MessageContactsResponse["coachContacts"][number]>();
+  [...coachContactsFromOptIn, ...coachContactsFromSameOrg].forEach((contact) => {
+    const existing = coachContactsByUserId.get(contact.userId);
+    if (!existing) {
+      coachContactsByUserId.set(contact.userId, contact);
+      return;
+    }
+
+    if (existing.availability !== "same_org" && contact.availability === "same_org") {
+      coachContactsByUserId.set(contact.userId, contact);
+    }
+  });
+
+  const coachContacts = Array.from(coachContactsByUserId.values()).sort((first, second) => {
+    const firstLabel = first.fullName ?? first.email ?? "";
+    const secondLabel = second.fullName ?? second.email ?? "";
+    return firstLabel.localeCompare(secondLabel);
+  });
 
   const studentTargets: MessageContactsResponse["studentTargets"] = [];
   let groupTargets: MessageContactsResponse["groupTargets"] = [];

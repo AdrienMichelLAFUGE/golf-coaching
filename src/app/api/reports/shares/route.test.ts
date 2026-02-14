@@ -53,7 +53,7 @@ describe("POST /api/reports/shares", () => {
     setApiKeyMock.mockReset();
   });
 
-  it("creates an in-app pending share when recipient has a coach account", async () => {
+  it("creates a read-only copy for registered coach recipients and sends full-view email", async () => {
     const supabase = {
       auth: {
         getUser: async () => ({
@@ -75,6 +75,9 @@ describe("POST /api/reports/shares", () => {
                     report_date: "2026-02-12",
                     created_at: "2026-02-12T10:00:00.000Z",
                     sent_at: "2026-02-12T11:00:00.000Z",
+                    coach_observations: "Obs",
+                    coach_work: "Work",
+                    coach_club: "Fer 7",
                     students: [{ first_name: "Camille", last_name: "Dupont" }],
                   },
                   error: null,
@@ -88,7 +91,20 @@ describe("POST /api/reports/shares", () => {
             select: () => ({
               eq: () => ({
                 order: async () => ({
-                  data: [{ title: "Observation", content: "Contenu" }],
+                  data: [
+                    {
+                      title: "Datas",
+                      type: "radar",
+                      content: null,
+                      content_formatted: null,
+                      content_format_hash: null,
+                      media_urls: null,
+                      media_captions: null,
+                      radar_file_id: "radar-source-1",
+                      radar_config: { showTable: true },
+                      position: 0,
+                    },
+                  ],
                   error: null,
                 }),
               }),
@@ -99,24 +115,39 @@ describe("POST /api/reports/shares", () => {
       }),
     };
 
-    const reportShareInsert = jest.fn(async () => ({ error: null }));
+    const insertShareMock = jest.fn(() => ({
+      select: () => ({
+        single: async () => ({ data: { id: "share-1" }, error: null }),
+      }),
+    }));
+    const updateShareMock = jest.fn(() => ({
+      eq: async () => ({ error: null }),
+    }));
+    const insertReportMock = jest.fn(() => ({
+      select: () => ({
+        single: async () => ({ data: { id: "report-copy-1" }, error: null }),
+      }),
+    }));
+    const insertSectionsMock = jest.fn(async () => ({ error: null }));
+
     const admin = {
       from: jest.fn((table: string) => {
         if (table === "profiles") {
-          let targetId = "";
+          let profileId = "";
           const chain = {
             select: () => chain,
             eq: (_column: string, value: string) => {
-              targetId = value;
+              profileId = value;
               return chain;
             },
             maybeSingle: async () => {
-              if (targetId === "sender-1") {
+              if (profileId === "sender-1") {
                 return {
                   data: {
                     id: "sender-1",
                     role: "coach",
                     org_id: "org-1",
+                    active_workspace_id: "org-1",
                     full_name: "Coach Sender",
                   },
                   error: null,
@@ -127,6 +158,7 @@ describe("POST /api/reports/shares", () => {
                   id: "target-1",
                   role: "coach",
                   org_id: "org-2",
+                  active_workspace_id: "org-2",
                   full_name: "Coach Target",
                 },
                 error: null,
@@ -135,20 +167,66 @@ describe("POST /api/reports/shares", () => {
           };
           return chain;
         }
+
         if (table === "report_shares") {
+          let statusFilter = "";
+          const selectChain = {
+            eq: (column: string, value: string) => {
+              if (column === "status") {
+                statusFilter = value;
+              }
+              return selectChain;
+            },
+            maybeSingle: async () => {
+              if (statusFilter === "pending" || statusFilter === "accepted") {
+                return { data: null, error: null };
+              }
+              return { data: null, error: null };
+            },
+          };
           return {
-            select: () => ({
-              eq: () => ({
-                eq: () => ({
-                  eq: () => ({
-                    maybeSingle: async () => ({ data: null, error: null }),
-                  }),
-                }),
-              }),
-            }),
-            insert: reportShareInsert,
+            select: () => selectChain,
+            insert: insertShareMock,
+            update: updateShareMock,
           };
         }
+
+        if (table === "reports") {
+          return {
+            insert: insertReportMock,
+          };
+        }
+
+        if (table === "report_sections") {
+          return {
+            insert: insertSectionsMock,
+          };
+        }
+
+        if (table === "radar_files") {
+          return {
+            select: () => ({
+              in: async () => ({
+                data: [
+                  {
+                    id: "radar-source-1",
+                    source: "trackman",
+                    original_name: "trackman.png",
+                    file_url: "org-source/radar/trackman.png",
+                    columns: [{ key: "carry", group: "Distance", label: "Carry", unit: "m" }],
+                    shots: [{ shot_index: 1, carry: 145 }],
+                    stats: { avg: { carry: 145 }, dev: { carry: 0 } },
+                    summary: "Analyse data",
+                    config: { showTable: true },
+                    analytics: null,
+                  },
+                ],
+                error: null,
+              }),
+            }),
+          };
+        }
+
         return {};
       }),
     };
@@ -162,23 +240,54 @@ describe("POST /api/reports/shares", () => {
     serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
 
     const response = await POST(
-      buildRequest({ reportId: "00000000-0000-0000-0000-000000000001", recipientEmail: "target@example.com" })
+      buildRequest({
+        reportId: "00000000-0000-0000-0000-000000000001",
+        recipientEmail: "target@example.com",
+      })
     );
 
+    const payload = (await response.json()) as { delivery?: string };
+
     expect(response.status).toBe(200);
-    expect(reportShareInsert).toHaveBeenCalledWith(
+    expect(payload.delivery).toBe("email");
+    expect(insertReportMock).toHaveBeenCalledWith(
       expect.arrayContaining([
         expect.objectContaining({
-          status: "pending",
-          delivery: "in_app",
-          recipient_user_id: "target-1",
+          origin_share_id: "share-1",
+          org_id: "org-2",
+          student_id: null,
         }),
       ])
     );
-    expect(sendTransacEmailMock).not.toHaveBeenCalled();
+    expect(insertSectionsMock).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          radar_file_id: null,
+          radar_config: expect.objectContaining({
+            shared_radar_snapshot_v1: expect.objectContaining({
+              sourceRadarFileId: "radar-source-1",
+            }),
+          }),
+        }),
+      ])
+    );
+    expect(updateShareMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "accepted",
+        copied_report_id: "report-copy-1",
+        delivery: "email",
+      })
+    );
+    expect(sendTransacEmailMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        htmlContent: expect.stringContaining(
+          encodeURIComponent("/app/coach/rapports/report-copy-1")
+        ),
+      })
+    );
   });
 
-  it("sends external email with student name and login link when recipient has no account", async () => {
+  it("sends PDF + signup link when recipient has no account", async () => {
     const supabase = {
       auth: {
         getUser: async () => ({
@@ -200,6 +309,9 @@ describe("POST /api/reports/shares", () => {
                     report_date: "2026-02-12",
                     created_at: "2026-02-12T10:00:00.000Z",
                     sent_at: "2026-02-12T11:00:00.000Z",
+                    coach_observations: "Obs",
+                    coach_work: "Work",
+                    coach_club: "Fer 7",
                     students: [{ first_name: "Camille", last_name: "Dupont" }],
                   },
                   error: null,
@@ -219,16 +331,24 @@ describe("POST /api/reports/shares", () => {
                       type: "text",
                       content_formatted: "**Bon rythme**",
                       content: null,
+                      content_format_hash: null,
                       media_urls: null,
+                      media_captions: null,
                       radar_file_id: null,
+                      radar_config: null,
+                      position: 0,
                     },
                     {
                       title: "Images",
                       type: "image",
                       content_formatted: null,
                       content: "",
+                      content_format_hash: null,
                       media_urls: ["img-1"],
+                      media_captions: null,
                       radar_file_id: null,
+                      radar_config: null,
+                      position: 1,
                     },
                   ],
                   error: null,
@@ -253,6 +373,7 @@ describe("POST /api/reports/shares", () => {
                 id: "sender-1",
                 role: "coach",
                 org_id: "org-1",
+                active_workspace_id: "org-1",
                 full_name: "Coach Sender",
               },
               error: null,
@@ -261,16 +382,23 @@ describe("POST /api/reports/shares", () => {
           return chain;
         }
         if (table === "report_shares") {
+          let statusFilter = "";
+          const selectChain = {
+            eq: (column: string, value: string) => {
+              if (column === "status") {
+                statusFilter = value;
+              }
+              return selectChain;
+            },
+            maybeSingle: async () => {
+              if (statusFilter === "pending" || statusFilter === "accepted") {
+                return { data: null, error: null };
+              }
+              return { data: null, error: null };
+            },
+          };
           return {
-            select: () => ({
-              eq: () => ({
-                eq: () => ({
-                  eq: () => ({
-                    maybeSingle: async () => ({ data: null, error: null }),
-                  }),
-                }),
-              }),
-            }),
+            select: () => selectChain,
             insert: reportShareInsert,
           };
         }
@@ -293,26 +421,12 @@ describe("POST /api/reports/shares", () => {
     const payload = (await response.json()) as { delivery?: string };
     expect(response.status).toBe(200);
     expect(payload.delivery).toBe("email");
-    expect(reportShareMocks.buildSharedReportPdf).toHaveBeenCalledWith(
-      expect.objectContaining({
-        studentName: "Camille Dupont",
-        sections: expect.arrayContaining([
-          expect.objectContaining({ type: "text" }),
-          expect.objectContaining({
-            type: "image",
-            hasRichMedia: true,
-            mediaCount: 1,
-          }),
-        ]),
-      })
-    );
     expect(sendTransacEmailMock).toHaveBeenCalledWith(
       expect.objectContaining({
         subject: expect.stringContaining("Camille Dupont"),
-        htmlContent: expect.stringContaining("Eleve: <strong>Camille Dupont</strong>"),
+        htmlContent: expect.stringContaining("login?mode=signup"),
       })
     );
-    expect(sendTransacEmailMock.mock.calls[0][0].htmlContent).toContain("/login");
     expect(reportShareInsert).toHaveBeenCalledWith(
       expect.arrayContaining([
         expect.objectContaining({

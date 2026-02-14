@@ -5,6 +5,7 @@ import type { CoachContactRequestDto } from "@/lib/messages/types";
 type MessagesContactRequestsProps = {
   incoming: CoachContactRequestDto[];
   outgoing: CoachContactRequestDto[];
+  highlightRequestId?: string | null;
   actionRequestId: string | null;
   onRespond: (requestId: string, decision: "accept" | "reject") => Promise<void>;
 };
@@ -21,6 +22,7 @@ const formatDate = (value: string) => {
 export default function MessagesContactRequests({
   incoming,
   outgoing,
+  highlightRequestId = null,
   actionRequestId,
   onRespond,
 }: MessagesContactRequestsProps) {
@@ -30,6 +32,9 @@ export default function MessagesContactRequests({
         <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
           Demandes recues
         </p>
+        <p className="mt-1 text-xs text-[var(--muted)]">
+          Acceptez pour autoriser la conversation.
+        </p>
         <div className="mt-2 space-y-2">
           {incoming.length === 0 ? (
             <p className="text-sm text-[var(--muted)]">Aucune demande en attente.</p>
@@ -37,7 +42,11 @@ export default function MessagesContactRequests({
             incoming.map((request) => (
               <div
                 key={request.id}
-                className="rounded-xl border border-white/10 bg-white/5 p-3"
+                className={`rounded-xl border p-3 ${
+                  request.id === highlightRequestId
+                    ? "border-violet-300/45 bg-violet-400/15"
+                    : "border-white/10 bg-white/5"
+                }`}
               >
                 <p className="text-sm text-[var(--text)]">
                   {request.requesterName ?? request.requesterEmail ?? "Coach"}
@@ -45,6 +54,11 @@ export default function MessagesContactRequests({
                 <p className="mt-1 text-xs text-[var(--muted)]">
                   {request.requesterEmail ?? "Email indisponible"} · {formatDate(request.createdAt)}
                 </p>
+                {request.id === highlightRequestId ? (
+                  <p className="mt-1 text-[0.65rem] uppercase tracking-[0.2em] text-violet-200">
+                    Action requise
+                  </p>
+                ) : null}
                 <div className="mt-2 flex items-center gap-2">
                   <button
                     type="button"

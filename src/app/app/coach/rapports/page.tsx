@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../_components/role-guard";
 import { useProfile } from "../../_components/profile-context";
@@ -17,6 +17,7 @@ type ReportRow = {
   sent_at: string | null;
   org_id: string;
   origin_share_id: string | null;
+  shared_source_student_name: string | null;
   organizations?: OrganizationRef;
   author_profile?: AuthorProfileRef;
   students:
@@ -38,6 +39,12 @@ type AuthorProfileRef =
       full_name: string | null;
     }
   | { full_name: string | null }[]
+  | null;
+
+type ReportSharePayloadRef =
+  | {
+      source_student_name?: string | null;
+    }
   | null;
 
 const formatDate = (
@@ -77,6 +84,7 @@ export default function CoachReportsPage() {
   const [search, setSearch] = useState("");
   const [studentFilter, setStudentFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [shareTypeFilter, setShareTypeFilter] = useState("all");
   const [datePreset, setDatePreset] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -119,16 +127,65 @@ export default function CoachReportsPage() {
     if (fetchError) {
       setError(fetchError.message);
     } else {
-      setReports(data ?? []);
+      const baseReports: ReportRow[] = (
+        (data ?? []) as Array<Omit<ReportRow, "shared_source_student_name">>
+      ).map((report): ReportRow => ({
+        ...report,
+        shared_source_student_name: null,
+      }));
+
+      const originShareIds = Array.from(
+        new Set(
+          baseReports
+            .map((report) => report.origin_share_id)
+            .filter((value): value is string => Boolean(value))
+        )
+      );
+
+      if (originShareIds.length > 0) {
+        const { data: shareRows } = await supabase
+          .from("report_shares")
+          .select("id, payload")
+          .in("id", originShareIds);
+
+        const shareNameById = new Map<string, string>();
+        (shareRows ?? []).forEach((row) => {
+          const payload = row.payload as ReportSharePayloadRef;
+          const sourceStudentName = payload?.source_student_name?.trim() ?? "";
+          if (!sourceStudentName) return;
+          shareNameById.set(row.id, sourceStudentName);
+        });
+
+        baseReports.forEach((report) => {
+          if (!report.origin_share_id) return;
+          report.shared_source_student_name =
+            shareNameById.get(report.origin_share_id) ?? null;
+        });
+      }
+
+      setReports(baseReports);
     }
     setLoading(false);
   };
 
-  const getStudent = (report: ReportRow) => {
+  const getStudent = useCallback((report: ReportRow) => {
     return Array.isArray(report.students)
       ? report.students[0]
       : (report.students ?? null);
-  };
+  }, []);
+
+  const getReportStudentName = useCallback(
+    (report: ReportRow) => {
+      const student = getStudent(report);
+      if (student) {
+        return `${student.first_name} ${student.last_name ?? ""}`.trim();
+      }
+      const sourceName = report.shared_source_student_name?.trim();
+      if (sourceName) return sourceName;
+      return "-";
+    },
+    [getStudent]
+  );
 
   const formatSourceLabel = (report: ReportRow) => {
     const orgName = getOrgName(report.organizations);
@@ -153,7 +210,7 @@ export default function CoachReportsPage() {
       id,
       label,
     }));
-  }, [reports]);
+  }, [getStudent, reports]);
 
   const filteredReports = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -163,6 +220,8 @@ export default function CoachReportsPage() {
     const output = reports.filter((report) => {
       if (statusFilter === "draft" && report.sent_at) return false;
       if (statusFilter === "sent" && !report.sent_at) return false;
+      if (shareTypeFilter === "shared" && !report.origin_share_id) return false;
+      if (shareTypeFilter === "standard" && report.origin_share_id) return false;
 
       const student = getStudent(report);
       if (studentFilter !== "all" && student?.id !== studentFilter) {
@@ -170,9 +229,7 @@ export default function CoachReportsPage() {
       }
 
       if (query) {
-        const studentName = student
-          ? `${student.first_name} ${student.last_name ?? ""}`.trim()
-          : "";
+        const studentName = getReportStudentName(report);
         const haystack = `${report.title} ${studentName}`.toLowerCase();
         if (!haystack.includes(query)) return false;
       }
@@ -191,15 +248,13 @@ export default function CoachReportsPage() {
     if (sortDirection === "none") return output;
 
     return output.sort((a, b) => {
-      const aStudent = getStudent(a);
-      const bStudent = getStudent(b);
       const aValue =
         sortKey === "student"
-          ? `${aStudent?.first_name ?? ""} ${aStudent?.last_name ?? ""}`.trim()
+          ? getReportStudentName(a)
           : a.title;
       const bValue =
         sortKey === "student"
-          ? `${bStudent?.first_name ?? ""} ${bStudent?.last_name ?? ""}`.trim()
+          ? getReportStudentName(b)
           : b.title;
 
       const result = aValue.localeCompare(bValue, locale, {
@@ -211,17 +266,21 @@ export default function CoachReportsPage() {
     reports,
     search,
     statusFilter,
+    shareTypeFilter,
     studentFilter,
     dateFrom,
     dateTo,
     sortKey,
     sortDirection,
     locale,
+    getStudent,
+    getReportStudentName,
   ]);
 
   const filtersActive =
     search.trim() ||
     statusFilter !== "all" ||
+    shareTypeFilter !== "all" ||
     studentFilter !== "all" ||
     dateFrom ||
     dateTo;
@@ -389,7 +448,7 @@ export default function CoachReportsPage() {
           ) : (
             <div className="grid gap-4 text-sm text-[var(--muted)]">
               <div className="grid gap-3 rounded-xl border border-white/5 bg-white/5 p-4">
-                <div className="grid gap-3 md:grid-cols-[1.4fr_1fr_0.8fr]">
+                <div className="grid gap-3 md:grid-cols-[1.2fr_0.9fr_0.9fr_0.9fr]">
                   <div>
                     <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--text)]">
                       Recherche
@@ -431,6 +490,20 @@ export default function CoachReportsPage() {
                       <option value="all">Tous</option>
                       <option value="draft">Brouillon</option>
                       <option value="sent">Envoye</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Type
+                    </label>
+                    <select
+                      value={shareTypeFilter}
+                      onChange={(event) => setShareTypeFilter(event.target.value)}
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                    >
+                      <option value="all">Tous</option>
+                      <option value="standard">Mes rapports</option>
+                      <option value="shared">Rapports partages</option>
                     </select>
                   </div>
                 </div>
@@ -505,6 +578,7 @@ export default function CoachReportsPage() {
                       setSearch("");
                       setStudentFilter("all");
                       setStatusFilter("all");
+                      setShareTypeFilter("all");
                       setDatePreset("all");
                       setDateFrom("");
                       setDateTo("");
@@ -615,14 +689,13 @@ export default function CoachReportsPage() {
                       </div>
                       <div>
                         <p className="text-sm text-[var(--muted)]">
-                          {(() => {
-                            const student = getStudent(report);
-                            if (!student) return "-";
-                            return `${student.first_name} ${
-                              student.last_name ?? ""
-                            }`.trim();
-                          })()}
+                          {getReportStudentName(report)}
                         </p>
+                        {report.origin_share_id && !getStudent(report) ? (
+                          <p className="mt-1 text-[0.65rem] uppercase tracking-wide text-violet-200">
+                            Rapport partage non rattache
+                          </p>
+                        ) : null}
                         {(() => {
                           const student = getStudent(report);
                           if (!student?.id) return null;

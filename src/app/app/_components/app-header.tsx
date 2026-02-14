@@ -58,6 +58,7 @@ const emptyMessageNotifications: MessageNotificationsResponse = {
   unreadMessagesCount: 0,
   unreadPreviews: [],
   pendingCoachContactRequestsCount: 0,
+  pendingCoachContactRequests: [],
 };
 
 const readApiError = async (response: Response, fallback: string) => {
@@ -448,6 +449,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
               setRequestsOpen(true);
               void loadLinkRequests();
               void loadReportShareInvites();
+              void loadMessageNotifications();
             }}
             className="relative flex h-12 w-12 items-center justify-center rounded-full bg-[var(--panel)] text-[var(--muted)] transition hover:bg-white hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
           >
@@ -631,17 +633,55 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
                   ) : null}
 
                   {messageNotifications.pendingCoachContactRequestsCount > 0 && !isStudent ? (
-                    <div className="rounded-2xl border border-violet-300/25 bg-violet-400/10 p-4">
-                      <p className="text-sm text-[var(--text)]">
-                        {messageNotifications.pendingCoachContactRequestsCount} demande(s) de contact coach en attente.
+                    <div className="space-y-2">
+                      <p className="text-[0.65rem] uppercase tracking-[0.25em] text-[var(--muted)]">
+                        Demandes contact coach
                       </p>
-                      <Link
-                        href="/app/coach/messages"
-                        onClick={() => setRequestsOpen(false)}
-                        className="mt-3 inline-flex rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)]"
-                      >
-                        Ouvrir la messagerie
-                      </Link>
+
+                      {messageNotifications.pendingCoachContactRequests.length === 0 ? (
+                        <div className="rounded-2xl border border-violet-300/25 bg-violet-400/10 p-4">
+                          <p className="text-sm text-[var(--text)]">
+                            {messageNotifications.pendingCoachContactRequestsCount} demande(s) en attente.
+                          </p>
+                          <Link
+                            href="/app/coach/messages?contacts=open"
+                            onClick={() => setRequestsOpen(false)}
+                            className="mt-3 inline-flex rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)]"
+                          >
+                            Traiter dans messages
+                          </Link>
+                        </div>
+                      ) : (
+                        <>
+                          {messageNotifications.pendingCoachContactRequests.map((request) => (
+                            <Link
+                              key={request.id}
+                              href={`/app/coach/messages?contacts=open&requestId=${request.id}`}
+                              onClick={() => setRequestsOpen(false)}
+                              className="block rounded-2xl border border-violet-300/25 bg-violet-400/10 p-4 transition hover:border-violet-300/40"
+                            >
+                              <p className="text-sm font-semibold text-[var(--text)]">
+                                {request.requesterName ?? request.requesterEmail ?? "Coach"}
+                              </p>
+                              <p className="mt-1 text-xs text-[var(--muted)]">
+                                {request.requesterEmail ?? "Email indisponible"}
+                              </p>
+                              <p className="mt-3 inline-flex rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)]">
+                                Traiter la demande
+                              </p>
+                            </Link>
+                          ))}
+                          {messageNotifications.pendingCoachContactRequestsCount >
+                          messageNotifications.pendingCoachContactRequests.length ? (
+                            <p className="text-xs text-[var(--muted)]">
+                              +
+                              {messageNotifications.pendingCoachContactRequestsCount -
+                                messageNotifications.pendingCoachContactRequests.length}{" "}
+                              autre(s) demande(s)
+                            </p>
+                          ) : null}
+                        </>
+                      )}
                     </div>
                   ) : null}
 

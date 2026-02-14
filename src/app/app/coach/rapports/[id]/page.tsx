@@ -22,13 +22,17 @@ import RadarCharts, {
 import Smart2MoveFxPanel from "../../../_components/smart2move-fx-panel";
 import ShareReportModal from "../../../_components/share-report-modal";
 import type { RadarAnalytics } from "@/lib/radar/types";
+import {
+  SHARED_RADAR_SNAPSHOT_KEY,
+  extractSharedRadarSnapshot,
+} from "@/lib/radar/shared-radar-snapshot";
 
 type Report = {
   id: string;
   title: string;
   report_date: string | null;
   created_at: string;
-  student_id: string;
+  student_id: string | null;
   sent_at: string | null;
   org_id: string;
   origin_share_id: string | null;
@@ -53,7 +57,7 @@ type ReportSection = {
   media_urls: string[] | null;
   media_captions: string[] | null;
   radar_file_id?: string | null;
-  radar_config?: RadarConfig | null;
+  radar_config?: Record<string, unknown> | null;
 };
 
 type RadarFile = {
@@ -286,6 +290,9 @@ export default function CoachReportDetailPage() {
   const [report, setReport] = useState<Report | null>(null);
   const [sections, setSections] = useState<ReportSection[]>([]);
   const [radarFiles, setRadarFiles] = useState<Record<string, RadarFile>>({});
+  const [snapshotRadarBySection, setSnapshotRadarBySection] = useState<
+    Record<string, string>
+  >({});
   const [radarImageUrls, setRadarImageUrls] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -294,6 +301,7 @@ export default function CoachReportDetailPage() {
   const [shareOpen, setShareOpen] = useState(false);
   const [shareMessage, setShareMessage] = useState("");
   const [shareError, setShareError] = useState("");
+  const [sourceStudentName, setSourceStudentName] = useState<string | null>(null);
   const [activeImage, setActiveImage] = useState<{
     url: string;
     alt?: string | null;
@@ -463,7 +471,17 @@ export default function CoachReportDetailPage() {
     }
 
     if (section.type === "radar") {
-      const radarFile = section.radar_file_id ? radarFiles[section.radar_file_id] : null;
+      const fallbackSnapshotRadarId = snapshotRadarBySection[section.id] ?? null;
+      const radarKey = section.radar_file_id ?? fallbackSnapshotRadarId;
+      const radarFile = radarKey ? radarFiles[radarKey] : null;
+      const sectionRadarConfig =
+        section.radar_config && typeof section.radar_config === "object"
+          ? (() => {
+              const configRest = { ...section.radar_config } as Record<string, unknown>;
+              delete configRest[SHARED_RADAR_SNAPSHOT_KEY];
+              return Object.keys(configRest).length ? (configRest as RadarConfig) : null;
+            })()
+          : null;
       return radarFile ? (
         <div className="mt-3">
           {radarFile.source === "smart2move" ? (
@@ -479,7 +497,7 @@ export default function CoachReportDetailPage() {
               shots={radarFile.shots ?? []}
               stats={radarFile.stats}
               summary={radarFile.summary}
-              config={section.radar_config ?? radarFile.config}
+              config={sectionRadarConfig ?? radarFile.config}
               analytics={radarFile.analytics}
             />
           )}
@@ -523,6 +541,20 @@ export default function CoachReportDetailPage() {
       }
 
       setReport(reportData);
+      if (reportData.origin_share_id) {
+        const { data: shareData } = await supabase
+          .from("report_shares")
+          .select("payload")
+          .eq("id", reportData.origin_share_id)
+          .maybeSingle();
+        const payload =
+          shareData?.payload && typeof shareData.payload === "object"
+            ? (shareData.payload as { source_student_name?: string | null })
+            : null;
+        setSourceStudentName(payload?.source_student_name?.trim() ?? null);
+      } else {
+        setSourceStudentName(null);
+      }
 
       const { data: sectionsData, error: sectionsError } = await supabase
         .from("report_sections")
@@ -549,6 +581,33 @@ export default function CoachReportDetailPage() {
         )
       );
 
+      const snapshotRadarMap: Record<string, string> = {};
+      const snapshotRadarFiles: RadarFile[] = normalizedSections.flatMap((section) => {
+        const snapshot = extractSharedRadarSnapshot(section.radar_config);
+        if (!snapshot) return [];
+        const snapshotId = `shared-snapshot:${section.id}`;
+        snapshotRadarMap[section.id] = snapshotId;
+        return [
+          {
+            id: snapshotId,
+            original_name: snapshot.originalName,
+            source: snapshot.source,
+            file_url: snapshot.fileUrl ?? "",
+            columns: snapshot.columns.map((column) => ({
+              key: column.key,
+              group: column.group,
+              label: column.label,
+              unit: column.unit,
+            })),
+            shots: snapshot.shots,
+            stats: snapshot.stats,
+            summary: snapshot.summary,
+            config: snapshot.config,
+            analytics: snapshot.analytics,
+          } satisfies RadarFile,
+        ];
+      });
+
       if (radarIds.length > 0) {
         const { data: radarData } = await supabase
           .from("radar_files")
@@ -572,11 +631,21 @@ export default function CoachReportDetailPage() {
           radarMap[file.id] = normalized;
           radarList.push(normalized);
         });
+        snapshotRadarFiles.forEach((snapshotFile) => {
+          radarMap[snapshotFile.id] = snapshotFile;
+          radarList.push(snapshotFile);
+        });
         setRadarFiles(radarMap);
+        setSnapshotRadarBySection(snapshotRadarMap);
         void loadRadarImageUrls(radarList);
       } else {
-        setRadarFiles({});
-        setRadarImageUrls({});
+        const radarMap: Record<string, RadarFile> = {};
+        snapshotRadarFiles.forEach((snapshotFile) => {
+          radarMap[snapshotFile.id] = snapshotFile;
+        });
+        setRadarFiles(radarMap);
+        setSnapshotRadarBySection(snapshotRadarMap);
+        void loadRadarImageUrls(snapshotRadarFiles);
       }
       setLoading(false);
     };
@@ -759,16 +828,23 @@ export default function CoachReportDetailPage() {
             subtitle={
               <>
                 Date : {formatDate(report.report_date ?? report.created_at, locale, timezone)}
+                {sourceStudentName ? ` - Eleve source : ${sourceStudentName}` : ""}
               </>
             }
             actions={
               <>
-                <Link
-                  href={`/app/coach/eleves/${report.student_id}`}
-                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)]"
-                >
-                  Voir eleve
-                </Link>
+                {report.student_id ? (
+                  <Link
+                    href={`/app/coach/eleves/${report.student_id}`}
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)]"
+                  >
+                    Voir eleve
+                  </Link>
+                ) : (
+                  <span className="rounded-full border border-violet-300/30 bg-violet-400/10 px-4 py-2 text-xs uppercase tracking-wide text-violet-100">
+                    Rapport partage
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={() => setShareOpen(true)}

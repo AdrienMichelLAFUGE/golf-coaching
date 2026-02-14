@@ -36,11 +36,6 @@ describe("POST /api/reports/shares/respond", () => {
     const updateShareMock = jest.fn(() => ({
       eq: async () => ({ error: null }),
     }));
-    const insertStudentMock = jest.fn(() => ({
-      select: () => ({
-        single: async () => ({ data: { id: "student-copy-1" }, error: null }),
-      }),
-    }));
     const insertReportMock = jest.fn(() => ({
       select: () => ({
         single: async () => ({ data: { id: "report-copy-1" }, error: null }),
@@ -102,8 +97,6 @@ describe("POST /api/reports/shares/respond", () => {
                     coach_observations: "Obs",
                     coach_work: "Work",
                     coach_club: "Fer 7",
-                    student_id: "student-source-1",
-                    students: [{ first_name: "Camille", last_name: "Dupont", playing_hand: "right" }],
                   },
                   error: null,
                 }),
@@ -127,7 +120,7 @@ describe("POST /api/reports/shares/respond", () => {
                       type: "text",
                       media_urls: null,
                       media_captions: null,
-                      radar_file_id: null,
+                      radar_file_id: "radar-source-1",
                       radar_config: null,
                     },
                   ],
@@ -138,9 +131,27 @@ describe("POST /api/reports/shares/respond", () => {
             insert: insertSectionsMock,
           };
         }
-        if (table === "students") {
+        if (table === "radar_files") {
           return {
-            insert: insertStudentMock,
+            select: () => ({
+              in: async () => ({
+                data: [
+                  {
+                    id: "radar-source-1",
+                    source: "smart2move",
+                    original_name: "s2m.png",
+                    file_url: "org-source/radar/s2m.png",
+                    columns: [{ key: "force", group: "S2M", label: "Force", unit: "N" }],
+                    shots: [{ shot_index: 1, force: 123 }],
+                    stats: { avg: { force: 123 }, dev: { force: 0 } },
+                    summary: "Analyse S2M",
+                    config: { options: { aiContext: "{}" } },
+                    analytics: null,
+                  },
+                ],
+                error: null,
+              }),
+            }),
           };
         }
         return {};
@@ -158,17 +169,28 @@ describe("POST /api/reports/shares/respond", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(insertStudentMock).toHaveBeenCalled();
     expect(insertReportMock).toHaveBeenCalledWith(
       expect.arrayContaining([
         expect.objectContaining({
           origin_share_id: "share-1",
           org_id: "org-recipient",
-          student_id: "student-copy-1",
+          student_id: null,
         }),
       ])
     );
     expect(insertSectionsMock).toHaveBeenCalled();
+    expect(insertSectionsMock).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          radar_file_id: null,
+          radar_config: expect.objectContaining({
+            shared_radar_snapshot_v1: expect.objectContaining({
+              sourceRadarFileId: "radar-source-1",
+            }),
+          }),
+        }),
+      ])
+    );
     expect(updateShareMock).toHaveBeenCalledWith(
       expect.objectContaining({
         status: "accepted",

@@ -1,6 +1,13 @@
 ﻿import { z } from "zod";
 
-export const MESSAGE_THREAD_KINDS = ["student_coach", "coach_coach", "group"] as const;
+export const MESSAGE_THREAD_KINDS = [
+  "student_coach",
+  "coach_coach",
+  "group",
+  "group_info",
+  "org_info",
+  "org_coaches",
+] as const;
 export type MessageThreadKind = (typeof MESSAGE_THREAD_KINDS)[number];
 
 export const messageThreadKindSchema = z.enum(MESSAGE_THREAD_KINDS);
@@ -67,6 +74,7 @@ export const MessageContactItemSchema = z.object({
   fullName: z.string().nullable(),
   email: z.string().email().nullable(),
   role: z.enum(["owner", "coach", "staff", "student"]),
+  availability: z.enum(["same_org", "opt_in"]).optional(),
 });
 export type MessageContactItem = z.infer<typeof MessageContactItemSchema>;
 
@@ -110,6 +118,7 @@ export const MessageNotificationsResponseSchema = z.object({
   unreadMessagesCount: z.number().int().nonnegative(),
   unreadPreviews: z.array(MessageNotificationPreviewSchema),
   pendingCoachContactRequestsCount: z.number().int().nonnegative(),
+  pendingCoachContactRequests: z.array(CoachContactRequestDtoSchema),
 });
 export type MessageNotificationsResponse = z.infer<typeof MessageNotificationsResponseSchema>;
 
@@ -126,6 +135,16 @@ export const CreateMessageThreadSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("group"),
     groupId: z.string().uuid(),
+  }),
+  z.object({
+    kind: z.literal("group_info"),
+    groupId: z.string().uuid(),
+  }),
+  z.object({
+    kind: z.literal("org_info"),
+  }),
+  z.object({
+    kind: z.literal("org_coaches"),
   }),
 ]);
 export type CreateMessageThreadInput = z.infer<typeof CreateMessageThreadSchema>;

@@ -3,9 +3,13 @@ import { z } from "zod";
 import {
   coerceMessageId,
   hasCoachContactOptIn,
+  isCoachLikeActiveOrgMember,
   isCoachAllowedForStudent,
   isCoachLikeRole,
   isStudentLinkedToStudentId,
+  isStudentLinkedToOrganization,
+  loadOrgAudienceUserIds,
+  loadOrgCoachUserIds,
   loadOrgGroupMemberUserIds,
   loadMessageActorContext,
   loadStudentUserId,
@@ -113,8 +117,11 @@ export async function POST(request: Request, { params }: Params) {
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
-  let groupMemberUserIds: string[] | null = null;
-  if (participantContext.thread.kind === "group") {
+  let threadMemberUserIds: string[] | null = null;
+  if (
+    participantContext.thread.kind === "group" ||
+    participantContext.thread.kind === "group_info"
+  ) {
     if (!participantContext.thread.group_id) {
       return NextResponse.json({ error: "Thread invalide." }, { status: 409 });
     }
@@ -126,6 +133,15 @@ export async function POST(request: Request, { params }: Params) {
     if (!groupMembers.memberUserIds.includes(context.userId)) {
       return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
     }
+    if (
+      participantContext.thread.kind === "group_info" &&
+      !groupMembers.coachUserIds.includes(context.userId)
+    ) {
+      return NextResponse.json(
+        { error: "Acces refuse: seuls les coachs assignes peuvent publier." },
+        { status: 403 }
+      );
+    }
     if (groupMembers.memberUserIds.length < 2) {
       return NextResponse.json(
         { error: "Conversation de groupe impossible: membres insuffisants." },
@@ -133,10 +149,10 @@ export async function POST(request: Request, { params }: Params) {
       );
     }
 
-    groupMemberUserIds = groupMembers.memberUserIds;
+    threadMemberUserIds = groupMembers.memberUserIds;
 
     await context.admin.from("message_thread_members").upsert(
-      groupMemberUserIds.map((userId) => ({ thread_id: threadId, user_id: userId })),
+      threadMemberUserIds.map((userId) => ({ thread_id: threadId, user_id: userId })),
       { onConflict: "thread_id,user_id" }
     );
   }
@@ -206,16 +222,114 @@ export async function POST(request: Request, { params }: Params) {
       return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
     }
 
-    const hasContact = await hasCoachContactOptIn(
-      context.admin,
-      participantContext.thread.participant_a_id,
-      participantContext.thread.participant_b_id
-    );
-    if (!hasContact) {
+    const counterpartUserId =
+      participantContext.thread.participant_a_id === context.userId
+        ? participantContext.thread.participant_b_id
+        : participantContext.thread.participant_a_id;
+
+    let isSameOrgCoach = false;
+    if (
+      context.activeWorkspace.workspace_type === "org" &&
+      participantContext.thread.workspace_org_id === context.activeWorkspace.id
+    ) {
+      isSameOrgCoach = await isCoachLikeActiveOrgMember(
+        context.admin,
+        context.activeWorkspace.id,
+        counterpartUserId
+      );
+    }
+
+    if (!isSameOrgCoach) {
+      const hasContact = await hasCoachContactOptIn(
+        context.admin,
+        participantContext.thread.participant_a_id,
+        participantContext.thread.participant_b_id
+      );
+      if (!hasContact) {
+        return NextResponse.json(
+          { error: "Acces refuse: contact coach non autorise." },
+          { status: 403 }
+        );
+      }
+    }
+  }
+
+  if (participantContext.thread.kind === "org_info") {
+    if (context.activeWorkspace.workspace_type !== "org") {
+      return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
+    }
+
+    if (!isCoachLikeRole(context.profile.role)) {
       return NextResponse.json(
-        { error: "Acces refuse: contact coach non autorise." },
+        { error: "Acces refuse: conversation en lecture seule." },
         { status: 403 }
       );
+    }
+
+    const audience = await loadOrgAudienceUserIds(
+      context.admin,
+      participantContext.thread.workspace_org_id
+    );
+
+    if (!audience.memberUserIds.includes(context.userId)) {
+      return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
+    }
+
+    if (!audience.coachUserIds.includes(context.userId)) {
+      return NextResponse.json(
+        { error: "Acces refuse: seuls les coachs/admin peuvent publier." },
+        { status: 403 }
+      );
+    }
+
+    threadMemberUserIds = audience.memberUserIds;
+    await context.admin.from("message_thread_members").upsert(
+      threadMemberUserIds.map((userId) => ({ thread_id: threadId, user_id: userId })),
+      { onConflict: "thread_id,user_id" }
+    );
+  }
+
+  if (participantContext.thread.kind === "org_coaches") {
+    if (context.activeWorkspace.workspace_type !== "org") {
+      return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
+    }
+
+    if (!isCoachLikeRole(context.profile.role)) {
+      return NextResponse.json(
+        { error: "Acces refuse: conversation reservee aux coachs/admin." },
+        { status: 403 }
+      );
+    }
+
+    const coachUserIds = await loadOrgCoachUserIds(
+      context.admin,
+      participantContext.thread.workspace_org_id
+    );
+    if (!coachUserIds.includes(context.userId)) {
+      return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
+    }
+
+    threadMemberUserIds = coachUserIds;
+    await context.admin.from("message_thread_members").upsert(
+      threadMemberUserIds.map((userId) => ({ thread_id: threadId, user_id: userId })),
+      { onConflict: "thread_id,user_id" }
+    );
+  }
+
+  if (context.profile.role === "student") {
+    const canReadOrgInfoAsStudent =
+      participantContext.thread.kind === "org_info" &&
+      (await isStudentLinkedToOrganization(
+        context.admin,
+        context.userId,
+        participantContext.thread.workspace_org_id
+      ));
+    if (
+      !canReadOrgInfoAsStudent &&
+      participantContext.thread.kind !== "student_coach" &&
+      participantContext.thread.kind !== "group"
+    ) {
+      return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
     }
   }
 
@@ -251,7 +365,7 @@ export async function POST(request: Request, { params }: Params) {
     })
     .eq("thread_id", threadId)
     .in("user_id", [
-      ...(groupMemberUserIds ?? []),
+      ...(threadMemberUserIds ?? []),
       context.userId,
       participantContext.counterpartMember?.user_id ?? context.userId,
     ]);

@@ -1,6 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 import {
   findAuthUserByEmail,
+  isCoachLikeActiveOrgMember,
   isCoachLikeRole,
   loadMessageActorContext,
   normalizeUserPair,
@@ -45,6 +46,23 @@ export async function POST(request: Request) {
 
   if (!targetProfile || !isCoachLikeRole((targetProfile as { role: "owner" | "coach" | "staff" | "student" }).role)) {
     return NextResponse.json({ error: "Contact introuvable." }, { status: 404 });
+  }
+
+  if (context.activeWorkspace.workspace_type === "org") {
+    const isSameOrgCoach = await isCoachLikeActiveOrgMember(
+      context.admin,
+      context.activeWorkspace.id,
+      targetAuthUser.id
+    );
+    if (isSameOrgCoach) {
+      return NextResponse.json(
+        {
+          error:
+            "Contact deja disponible dans votre structure. Ouvrez une conversation directement.",
+        },
+        { status: 409 }
+      );
+    }
   }
 
   const pair = normalizeUserPair(context.userId, targetAuthUser.id);

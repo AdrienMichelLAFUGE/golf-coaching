@@ -2,9 +2,12 @@
 import {
   type AppProfileRole,
   hasCoachContactOptIn,
+  isCoachLikeActiveOrgMember,
   isCoachAllowedForStudent,
   isCoachLikeRole,
   isStudentLinkedToStudentId,
+  loadOrgAudienceUserIds,
+  loadOrgCoachUserIds,
   loadOrgGroupMemberUserIds,
   loadOrgGroupRow,
   loadMessageActorContext,
@@ -47,13 +50,33 @@ const createThreadMembers = async (
 
 const getExistingGroupThreadId = async (
   admin: AdminClient,
-  groupId: string
+  groupId: string,
+  kind: "group" | "group_info"
 ): Promise<string | null> => {
   const { data } = await admin
     .from("message_threads")
     .select("id")
-    .eq("kind", "group")
+    .eq("kind", kind)
     .eq("group_id", groupId)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  return (data as { id: string } | null)?.id ?? null;
+};
+
+const getExistingOrgThreadId = async (
+  admin: AdminClient,
+  orgId: string,
+  kind: "org_info" | "org_coaches"
+): Promise<string | null> => {
+  const { data } = await admin
+    .from("message_threads")
+    .select("id")
+    .eq("kind", kind)
+    .eq("workspace_org_id", orgId)
+    .is("student_id", null)
+    .is("group_id", null)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
@@ -96,7 +119,7 @@ export async function POST(request: Request) {
   if (response || !context) return response;
 
   const admin = context.admin;
-  if (parsed.data.kind === "group") {
+  if (parsed.data.kind === "group" || parsed.data.kind === "group_info") {
     if (context.activeWorkspace.workspace_type !== "org") {
       return NextResponse.json(
         { error: "Messagerie de groupe reservee aux structures." },
@@ -117,6 +140,16 @@ export async function POST(request: Request) {
       );
     }
 
+    if (
+      parsed.data.kind === "group_info" &&
+      !groupMembers.coachUserIds.includes(context.userId)
+    ) {
+      return NextResponse.json(
+        { error: "Acces refuse: seuls les coachs assignes peuvent publier." },
+        { status: 403 }
+      );
+    }
+
     if (groupMembers.memberUserIds.length < 2) {
       return NextResponse.json(
         { error: "Conversation de groupe impossible: membres insuffisants." },
@@ -130,7 +163,11 @@ export async function POST(request: Request) {
     const participantAId = sortedMembers[0] ?? context.userId;
     const participantBId = sortedMembers[1] ?? context.userId;
 
-    const existingThreadId = await getExistingGroupThreadId(admin, group.id);
+    const existingThreadId = await getExistingGroupThreadId(
+      admin,
+      group.id,
+      parsed.data.kind
+    );
     if (existingThreadId) {
       await createThreadMembers(
         admin,
@@ -145,7 +182,7 @@ export async function POST(request: Request) {
       .from("message_threads")
       .insert([
         {
-          kind: "group",
+          kind: parsed.data.kind,
           workspace_org_id: group.org_id,
           student_id: null,
           group_id: group.id,
@@ -158,7 +195,11 @@ export async function POST(request: Request) {
       .single();
 
     if (insertError || !insertData) {
-      const existingAfterConflict = await getExistingGroupThreadId(admin, group.id);
+      const existingAfterConflict = await getExistingGroupThreadId(
+        admin,
+        group.id,
+        parsed.data.kind
+      );
       if (existingAfterConflict) {
         await createThreadMembers(
           admin,
@@ -314,6 +355,109 @@ export async function POST(request: Request) {
     return createThreadResponse(threadId, true);
   }
 
+  if (parsed.data.kind === "org_info" || parsed.data.kind === "org_coaches") {
+    if (context.activeWorkspace.workspace_type !== "org") {
+      return NextResponse.json(
+        { error: "Conversation organisation reservee aux structures." },
+        { status: 403 }
+      );
+    }
+
+    if (!isCoachLikeRole(context.profile.role)) {
+      return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
+    }
+
+    const audience =
+      parsed.data.kind === "org_info"
+        ? await loadOrgAudienceUserIds(admin, context.activeWorkspace.id)
+        : (() => {
+            const coaches = loadOrgCoachUserIds(admin, context.activeWorkspace.id);
+            return coaches.then((coachUserIds) => ({
+              coachUserIds,
+              studentUserIds: [] as string[],
+              memberUserIds: coachUserIds,
+            }));
+          })();
+
+    const resolvedAudience = await audience;
+    if (!resolvedAudience.coachUserIds.includes(context.userId)) {
+      return NextResponse.json(
+        { error: "Acces refuse: vous ne pouvez pas publier ce canal." },
+        { status: 403 }
+      );
+    }
+
+    if (resolvedAudience.memberUserIds.length < 2) {
+      return NextResponse.json(
+        { error: "Conversation impossible: membres insuffisants." },
+        { status: 409 }
+      );
+    }
+
+    const sortedMembers = [...resolvedAudience.memberUserIds].sort((a, b) =>
+      a.localeCompare(b)
+    );
+    const participantAId = sortedMembers[0] ?? context.userId;
+    const participantBId = sortedMembers[1] ?? context.userId;
+
+    const existingThreadId = await getExistingOrgThreadId(
+      admin,
+      context.activeWorkspace.id,
+      parsed.data.kind
+    );
+    if (existingThreadId) {
+      await createThreadMembers(
+        admin,
+        existingThreadId,
+        resolvedAudience.memberUserIds,
+        [context.userId]
+      );
+      return createThreadResponse(existingThreadId, false);
+    }
+
+    const { data: insertData, error: insertError } = await admin
+      .from("message_threads")
+      .insert([
+        {
+          kind: parsed.data.kind,
+          workspace_org_id: context.activeWorkspace.id,
+          student_id: null,
+          group_id: null,
+          participant_a_id: participantAId,
+          participant_b_id: participantBId,
+          created_by: context.userId,
+        },
+      ])
+      .select("id")
+      .single();
+
+    if (insertError || !insertData) {
+      const existingAfterConflict = await getExistingOrgThreadId(
+        admin,
+        context.activeWorkspace.id,
+        parsed.data.kind
+      );
+      if (existingAfterConflict) {
+        await createThreadMembers(
+          admin,
+          existingAfterConflict,
+          resolvedAudience.memberUserIds,
+          [context.userId]
+        );
+        return createThreadResponse(existingAfterConflict, false);
+      }
+
+      return NextResponse.json(
+        { error: insertError?.message ?? "Creation thread impossible." },
+        { status: 400 }
+      );
+    }
+
+    const threadId = (insertData as { id: string }).id;
+    await createThreadMembers(admin, threadId, resolvedAudience.memberUserIds);
+    return createThreadResponse(threadId, true);
+  }
+
   if (!isCoachLikeRole(context.profile.role)) {
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
@@ -338,16 +482,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Contact introuvable." }, { status: 404 });
   }
 
-  const hasContact = await hasCoachContactOptIn(
-    admin,
-    context.userId,
-    parsed.data.coachUserId
-  );
-  if (!hasContact) {
-    return NextResponse.json(
-      { error: "Acces refuse: contact coach non autorise." },
-      { status: 403 }
+  let isSameOrgCoach = false;
+  if (context.activeWorkspace.workspace_type === "org") {
+    isSameOrgCoach = await isCoachLikeActiveOrgMember(
+      admin,
+      context.activeWorkspace.id,
+      parsed.data.coachUserId
     );
+  }
+
+  if (!isSameOrgCoach) {
+    const hasContact = await hasCoachContactOptIn(
+      admin,
+      context.userId,
+      parsed.data.coachUserId
+    );
+    if (!hasContact) {
+      return NextResponse.json(
+        { error: "Acces refuse: contact coach non autorise." },
+        { status: 403 }
+      );
+    }
   }
 
   const pair = normalizeUserPair(context.userId, parsed.data.coachUserId);

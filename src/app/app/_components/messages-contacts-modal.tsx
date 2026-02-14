@@ -9,6 +9,9 @@ type MessagesContactsModalProps = {
   loading: boolean;
   error: string;
   canRequestCoachContact: boolean;
+  canCreateInformationalThreads: boolean;
+  organizationName: string | null;
+  highlightRequestId?: string | null;
   data: MessageContactsResponse | null;
   submittingKey: string | null;
   actionRequestId: string | null;
@@ -17,6 +20,9 @@ type MessagesContactsModalProps = {
   onStartStudentThread: (studentId: string, coachId: string) => Promise<void>;
   onStartCoachThread: (coachUserId: string) => Promise<void>;
   onStartGroupThread: (groupId: string) => Promise<void>;
+  onStartGroupInfoThread: (groupId: string) => Promise<void>;
+  onStartOrgInfoThread: () => Promise<void>;
+  onStartOrgCoachesThread: () => Promise<void>;
   onRequestCoachContact: (targetEmail: string) => Promise<void>;
   onRespondCoachRequest: (requestId: string, decision: "accept" | "reject") => Promise<void>;
 };
@@ -26,6 +32,9 @@ export default function MessagesContactsModal({
   loading,
   error,
   canRequestCoachContact,
+  canCreateInformationalThreads,
+  organizationName,
+  highlightRequestId = null,
   data,
   submittingKey,
   actionRequestId,
@@ -34,6 +43,9 @@ export default function MessagesContactsModal({
   onStartStudentThread,
   onStartCoachThread,
   onStartGroupThread,
+  onStartGroupInfoThread,
+  onStartOrgInfoThread,
+  onStartOrgCoachesThread,
   onRequestCoachContact,
   onRespondCoachRequest,
 }: MessagesContactsModalProps) {
@@ -43,6 +55,16 @@ export default function MessagesContactsModal({
   const hasCoachSections = useMemo(
     () => canRequestCoachContact && data !== null,
     [canRequestCoachContact, data]
+  );
+
+  const sameOrgCoachContacts = useMemo(
+    () => (data?.coachContacts ?? []).filter((coach) => coach.availability === "same_org"),
+    [data]
+  );
+
+  const externalCoachContacts = useMemo(
+    () => (data?.coachContacts ?? []).filter((coach) => coach.availability !== "same_org"),
+    [data]
   );
 
   if (!open) return null;
@@ -152,7 +174,8 @@ export default function MessagesContactsModal({
                   <p className="text-sm text-[var(--muted)]">Aucun groupe disponible.</p>
                 ) : (
                   data.groupTargets.map((group) => {
-                    const key = `group:${group.groupId}`;
+                    const discussionKey = `group:${group.groupId}`;
+                    const infoKey = `group_info:${group.groupId}`;
                     return (
                       <div
                         key={group.groupId}
@@ -166,12 +189,22 @@ export default function MessagesContactsModal({
                         </div>
                         <button
                           type="button"
-                          disabled={submittingKey === key}
+                          disabled={submittingKey === discussionKey}
                           onClick={() => void onStartGroupThread(group.groupId)}
                           className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
                         >
-                          {submittingKey === key ? "Ouverture..." : "Ouvrir"}
+                          {submittingKey === discussionKey ? "Ouverture..." : "Discussion"}
                         </button>
+                        {canCreateInformationalThreads ? (
+                          <button
+                            type="button"
+                            disabled={submittingKey === infoKey}
+                            onClick={() => void onStartGroupInfoThread(group.groupId)}
+                            className="rounded-full border border-violet-300/35 bg-violet-400/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-violet-100 transition hover:border-violet-300/55 disabled:opacity-60"
+                          >
+                            {submittingKey === infoKey ? "Ouverture..." : "Info groupe"}
+                          </button>
+                        ) : null}
                       </div>
                     );
                   })
@@ -179,17 +212,102 @@ export default function MessagesContactsModal({
               </div>
             </section>
 
+            {canCreateInformationalThreads ? (
+              <section>
+                <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                  Canaux organisation
+                </p>
+                <div className="mt-2 grid gap-2 md:grid-cols-2">
+                  <div className="rounded-xl border border-violet-300/25 bg-violet-400/10 p-3">
+                    <p className="text-sm font-medium text-[var(--text)]">
+                      Info organisation
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--muted)]">
+                      {organizationName ?? "Structure"} en lecture pour tous, publication coach/admin.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={submittingKey === "org_info"}
+                      onClick={() => void onStartOrgInfoThread()}
+                      className="mt-3 rounded-full border border-violet-300/35 bg-violet-400/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-violet-100 transition hover:border-violet-300/55 disabled:opacity-60"
+                    >
+                      {submittingKey === "org_info" ? "Ouverture..." : "Ouvrir"}
+                    </button>
+                  </div>
+                  <div className="rounded-xl border border-sky-300/25 bg-sky-400/10 p-3">
+                    <p className="text-sm font-medium text-[var(--text)]">
+                      Tous les coachs
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--muted)]">
+                      Conversation reservee aux coachs/admin de l organisation.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={submittingKey === "org_coaches"}
+                      onClick={() => void onStartOrgCoachesThread()}
+                      className="mt-3 rounded-full border border-sky-300/35 bg-sky-400/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-sky-100 transition hover:border-sky-300/55 disabled:opacity-60"
+                    >
+                      {submittingKey === "org_coaches" ? "Ouverture..." : "Ouvrir"}
+                    </button>
+                  </div>
+                </div>
+              </section>
+            ) : null}
+
             {hasCoachSections ? (
               <section className="space-y-4">
+                {sameOrgCoachContacts.length > 0 ? (
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                      Coachs de ma structure
+                    </p>
+                    <div className="mt-2 space-y-2">
+                      {sameOrgCoachContacts.map((coach) => {
+                        const key = `coach:${coach.userId}`;
+                        return (
+                          <div
+                            key={coach.userId}
+                            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-300/25 bg-emerald-400/10 p-3"
+                          >
+                            <div>
+                              <p className="text-sm font-medium text-[var(--text)]">
+                                {coach.fullName ?? coach.email ?? "Coach"}
+                              </p>
+                              <p className="mt-1 text-xs text-[var(--muted)]">
+                                {coach.email ?? "Email indisponible"}
+                              </p>
+                              <p className="mt-1 text-[0.65rem] uppercase tracking-[0.2em] text-emerald-200">
+                                Acces direct
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={submittingKey === key}
+                              onClick={() => void onStartCoachThread(coach.userId)}
+                              className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
+                            >
+                              {submittingKey === key ? "Ouverture..." : "Ouvrir"}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+
                 <div>
                   <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                    Contacts coach
+                    {sameOrgCoachContacts.length > 0
+                      ? "Coachs externes autorises"
+                      : "Contacts coach"}
                   </p>
                   <div className="mt-2 space-y-2">
-                    {data.coachContacts.length === 0 ? (
-                      <p className="text-sm text-[var(--muted)]">Aucun contact coach.</p>
+                    {externalCoachContacts.length === 0 ? (
+                      <p className="text-sm text-[var(--muted)]">
+                        Aucun coach externe autorise.
+                      </p>
                     ) : (
-                      data.coachContacts.map((coach) => {
+                      externalCoachContacts.map((coach) => {
                         const key = `coach:${coach.userId}`;
                         return (
                           <div
@@ -221,7 +339,10 @@ export default function MessagesContactsModal({
 
                 <form onSubmit={handleRequestCoachContact} className="space-y-2 rounded-xl border border-white/10 bg-white/5 p-3">
                   <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                    Demander un nouveau contact coach
+                    Inviter un coach externe
+                  </p>
+                  <p className="text-xs text-[var(--muted)]">
+                    Entrez son email pour envoyer une demande de contact.
                   </p>
                   <div className="flex flex-wrap items-center gap-2">
                     <input
@@ -243,6 +364,7 @@ export default function MessagesContactsModal({
                 <MessagesContactRequests
                   incoming={data.pendingIncomingCoachContactRequests}
                   outgoing={data.pendingOutgoingCoachContactRequests}
+                  highlightRequestId={highlightRequestId}
                   actionRequestId={actionRequestId}
                   onRespond={onRespondCoachRequest}
                 />

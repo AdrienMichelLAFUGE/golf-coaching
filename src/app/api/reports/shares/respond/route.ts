@@ -3,22 +3,12 @@ import { z } from "zod";
 import { createSupabaseAdminClient, createSupabaseServerClientFromRequest } from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { recordActivity } from "@/lib/activity-log";
+import { copySharedReportToWorkspace } from "@/lib/report-share-copy";
 
 const respondSchema = z.object({
   shareId: z.string().uuid(),
   decision: z.enum(["accept", "reject"]),
 });
-
-type SourceStudent =
-  | { first_name: string | null; last_name: string | null; playing_hand: "right" | "left" | null }
-  | { first_name: string | null; last_name: string | null; playing_hand: "right" | "left" | null }[]
-  | null;
-
-const getSourceStudent = (value: SourceStudent) => {
-  if (!value) return null;
-  if (Array.isArray(value)) return value[0] ?? null;
-  return value;
-};
 
 export async function POST(request: Request) {
   const parsed = await parseRequestJson(request, respondSchema);
@@ -103,7 +93,7 @@ export async function POST(request: Request) {
   const { data: sourceReport, error: sourceReportError } = await admin
     .from("reports")
     .select(
-      "id, title, report_date, created_at, sent_at, coach_observations, coach_work, coach_club, student_id, students(first_name, last_name, playing_hand)"
+      "id, title, report_date, created_at, sent_at, coach_observations, coach_work, coach_club"
     )
     .eq("id", share.source_report_id)
     .maybeSingle();
@@ -129,62 +119,30 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Workspace de destination introuvable." }, { status: 400 });
   }
 
-  const sourceStudent = getSourceStudent(sourceReport.students as SourceStudent);
-  const { data: copiedStudent, error: copiedStudentError } = await admin
-    .from("students")
-    .insert([
-      {
-        org_id: targetOrgId,
-        first_name: sourceStudent?.first_name ?? "Eleve",
-        last_name: sourceStudent?.last_name ?? "Partage",
-        email: null,
-        playing_hand: sourceStudent?.playing_hand ?? null,
-      },
-    ])
-    .select("id")
-    .single();
+  const copiedReportResult = await copySharedReportToWorkspace(admin, {
+    shareId: share.id,
+    targetOrgId,
+    authorUserId: profile.id,
+    sourceReport,
+    sourceSections:
+      (sourceSections ?? []).map((section) => ({
+        title: section.title ?? null,
+        content: section.content ?? null,
+        content_formatted: section.content_formatted ?? null,
+        content_format_hash: section.content_format_hash ?? null,
+        position: section.position ?? null,
+        type: section.type ?? null,
+        media_urls: section.media_urls ?? null,
+        media_captions: section.media_captions ?? null,
+        radar_file_id: section.radar_file_id ?? null,
+        radar_config:
+          section.radar_config && typeof section.radar_config === "object"
+            ? (section.radar_config as Record<string, unknown>)
+            : null,
+      })) ?? [],
+  });
 
-  if (copiedStudentError || !copiedStudent?.id) {
-    await recordActivity({
-      admin,
-      level: "error",
-      action: "report.share.accept_student_copy_failed",
-      actorUserId: profile.id,
-      orgId: targetOrgId,
-      entityType: "report_share",
-      entityId: share.id,
-      message: copiedStudentError?.message ?? "Creation eleve de lecture impossible.",
-      metadata: {
-        sourceReportId: share.source_report_id,
-      },
-    });
-    return NextResponse.json(
-      { error: copiedStudentError?.message ?? "Creation eleve de lecture impossible." },
-      { status: 400 }
-    );
-  }
-
-  const { data: copiedReport, error: copiedReportError } = await admin
-    .from("reports")
-    .insert([
-      {
-        org_id: targetOrgId,
-        student_id: copiedStudent.id,
-        author_id: profile.id,
-        title: sourceReport.title,
-        content: null,
-        sent_at: new Date().toISOString(),
-        report_date: sourceReport.report_date ?? sourceReport.created_at.slice(0, 10),
-        coach_observations: sourceReport.coach_observations,
-        coach_work: sourceReport.coach_work,
-        coach_club: sourceReport.coach_club,
-        origin_share_id: share.id,
-      },
-    ])
-    .select("id")
-    .single();
-
-  if (copiedReportError || !copiedReport?.id) {
+  if ("error" in copiedReportResult) {
     await recordActivity({
       admin,
       level: "error",
@@ -193,57 +151,15 @@ export async function POST(request: Request) {
       orgId: targetOrgId,
       entityType: "report_share",
       entityId: share.id,
-      message: copiedReportError?.message ?? "Copie du rapport impossible.",
+      message: copiedReportResult.error,
       metadata: {
         sourceReportId: share.source_report_id,
-        copiedStudentId: copiedStudent.id,
       },
     });
     return NextResponse.json(
-      { error: copiedReportError?.message ?? "Copie du rapport impossible." },
+      { error: copiedReportResult.error },
       { status: 400 }
     );
-  }
-
-  const copiedSectionsPayload = (sourceSections ?? []).map((section) => ({
-    org_id: targetOrgId,
-    report_id: copiedReport.id,
-    title: section.title,
-    content: section.content,
-    content_formatted: section.content_formatted,
-    content_format_hash: section.content_format_hash,
-    position: section.position,
-    type: section.type,
-    media_urls: section.media_urls,
-    media_captions: section.media_captions,
-    radar_file_id: section.radar_file_id,
-    radar_config: section.radar_config,
-  }));
-
-  if (copiedSectionsPayload.length > 0) {
-    const { error: copiedSectionsError } = await admin
-      .from("report_sections")
-      .insert(copiedSectionsPayload);
-    if (copiedSectionsError) {
-      await recordActivity({
-        admin,
-        level: "error",
-        action: "report.share.accept_sections_copy_failed",
-        actorUserId: profile.id,
-        orgId: targetOrgId,
-        entityType: "report_share",
-        entityId: share.id,
-        message: copiedSectionsError.message ?? "Copie des sections impossible.",
-        metadata: {
-          sourceReportId: share.source_report_id,
-          copiedReportId: copiedReport.id,
-        },
-      });
-      return NextResponse.json(
-        { error: copiedSectionsError.message ?? "Copie des sections impossible." },
-        { status: 400 }
-      );
-    }
   }
 
   const { error: acceptError } = await admin
@@ -252,7 +168,7 @@ export async function POST(request: Request) {
       status: "accepted",
       recipient_org_id: targetOrgId,
       decided_at: new Date().toISOString(),
-      copied_report_id: copiedReport.id,
+      copied_report_id: copiedReportResult.reportId,
     })
     .eq("id", share.id);
 
@@ -268,7 +184,7 @@ export async function POST(request: Request) {
       message: acceptError.message ?? "Acceptation du partage impossible.",
       metadata: {
         sourceReportId: share.source_report_id,
-        copiedReportId: copiedReport.id,
+        copiedReportId: copiedReportResult.reportId,
       },
     });
     return NextResponse.json({ error: acceptError.message }, { status: 400 });
@@ -284,9 +200,9 @@ export async function POST(request: Request) {
     message: "Partage de rapport accepte.",
     metadata: {
       sourceReportId: share.source_report_id,
-      copiedReportId: copiedReport.id,
+      copiedReportId: copiedReportResult.reportId,
     },
   });
 
-  return NextResponse.json({ ok: true, reportId: copiedReport.id });
+  return NextResponse.json({ ok: true, reportId: copiedReportResult.reportId });
 }

@@ -3,6 +3,8 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import {
   coerceMessageId,
+  isCoachLikeActiveOrgMember,
+  isStudentLinkedToOrganization,
   isUserInOrgGroup,
   loadUserEmailsByIds,
   type AppProfileRole,
@@ -280,10 +282,35 @@ export const loadThreadParticipantContext = async (
   if (!ownMember) return null;
   if (ownMember.hidden_at) return null;
 
-  if (thread.kind === "group") {
+  if (thread.kind === "group" || thread.kind === "group_info") {
     if (!thread.group_id) return null;
     const isGroupMember = await isUserInOrgGroup(admin, userId, thread.group_id);
     if (!isGroupMember) return null;
+  }
+
+  if (thread.kind === "org_coaches") {
+    const isCoachMember = await isCoachLikeActiveOrgMember(
+      admin,
+      thread.workspace_org_id,
+      userId
+    );
+    if (!isCoachMember) return null;
+  }
+
+  if (thread.kind === "org_info") {
+    const isCoachMember = await isCoachLikeActiveOrgMember(
+      admin,
+      thread.workspace_org_id,
+      userId
+    );
+    if (!isCoachMember) {
+      const isStudentMember = await isStudentLinkedToOrganization(
+        admin,
+        userId,
+        thread.workspace_org_id
+      );
+      if (!isStudentMember) return null;
+    }
   }
 
   const counterpartMember =
@@ -323,14 +350,19 @@ export const loadInbox = async (
   let threads = (threadData ?? []) as ThreadRow[];
 
   const groupIds = threads
-    .filter((thread) => thread.kind === "group" && thread.group_id)
+    .filter(
+      (thread) =>
+        (thread.kind === "group" || thread.kind === "group_info") && thread.group_id
+    )
     .map((thread) => thread.group_id as string);
   if (groupIds.length > 0) {
     const allowedGroupIds = await loadGroupIdsForUser(admin, userId, groupIds);
     threads = threads.filter(
-      (thread) =>
-        thread.kind !== "group" ||
-        (thread.group_id !== null && allowedGroupIds.has(thread.group_id))
+      (thread) => {
+        const isGroupKind =
+          thread.kind === "group" || thread.kind === "group_info";
+        return !isGroupKind || (thread.group_id !== null && allowedGroupIds.has(thread.group_id));
+      }
     );
   }
 
@@ -410,8 +442,12 @@ export const loadInbox = async (
     const members = allMembersByThread.get(thread.id) ?? [];
     const counterpartMember = members.find((member) => member.user_id !== userId) ?? null;
 
+    const isGroupKind = thread.kind === "group" || thread.kind === "group_info";
+    const isOrgChannelKind =
+      thread.kind === "org_info" || thread.kind === "org_coaches";
+
     const counterpartUserId =
-      thread.kind === "group"
+      isGroupKind || isOrgChannelKind
         ? null
         : thread.participant_a_id === userId
           ? thread.participant_b_id
@@ -442,7 +478,17 @@ export const loadInbox = async (
       participantBName: participantBProfile?.full_name ?? null,
       counterpartUserId,
       counterpartName:
-        thread.kind === "group" ? groupName : counterpartProfile?.full_name ?? null,
+        thread.kind === "group"
+          ? groupName
+          : thread.kind === "group_info"
+            ? groupName
+              ? `Infos groupe · ${groupName}`
+              : "Infos groupe"
+            : thread.kind === "org_info"
+              ? "Infos organisation"
+              : thread.kind === "org_coaches"
+                ? "Canal coachs organisation"
+                : counterpartProfile?.full_name ?? null,
       lastMessageId,
       lastMessageAt: thread.last_message_at,
       lastMessagePreview: lastMessage?.body ?? null,
@@ -452,10 +498,13 @@ export const loadInbox = async (
       ownLastReadMessageId: coerceMessageId(ownMember?.last_read_message_id ?? null),
       ownLastReadAt: ownMember?.last_read_at ?? null,
       counterpartLastReadMessageId:
-        thread.kind === "group"
+        thread.kind === "group" || thread.kind === "group_info"
           ? null
           : coerceMessageId(counterpartMember?.last_read_message_id ?? null),
-      counterpartLastReadAt: thread.kind === "group" ? null : counterpartMember?.last_read_at ?? null,
+      counterpartLastReadAt:
+        thread.kind === "group" || thread.kind === "group_info"
+          ? null
+          : counterpartMember?.last_read_at ?? null,
     };
   });
 
@@ -549,10 +598,7 @@ export const buildUnreadPreviews = (
     .map((thread) => ({
       threadId: thread.threadId,
       kind: thread.kind,
-      fromName:
-        thread.kind === "group"
-          ? thread.groupName ?? "Nouveau message de groupe"
-          : thread.counterpartName,
+      fromName: thread.counterpartName,
       bodyPreview: thread.lastMessagePreview ?? "",
       createdAt: thread.lastMessageAt ?? new Date().toISOString(),
     }));

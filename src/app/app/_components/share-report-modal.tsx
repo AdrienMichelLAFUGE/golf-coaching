@@ -48,9 +48,9 @@ export default function ShareReportModal({ onClose, onShare }: ShareReportModalP
               Partager ce rapport
             </h3>
             <p className="mt-2 text-sm text-[var(--muted)]">
-              Si l email appartient a un coach SwingFlow, il recevra une demande dans sa
-              cloche. Sinon, un email externe sera envoye avec un PDF texte en piece
-              jointe et un lien vers SwingFlow pour lire le rapport complet.
+              Si l email appartient a un coach SwingFlow, il recevra un email avec PDF +
+              lien de visualisation complete (lecture seule). Sinon, un email externe sera
+              envoye avec PDF + lien d inscription SwingFlow.
             </p>
           </div>
           <button

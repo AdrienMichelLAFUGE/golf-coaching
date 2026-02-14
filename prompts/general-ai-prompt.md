@@ -340,7 +340,10 @@ Regles communes:
 2. Transition -> Impact
 3. Intensite des pics et chronologie
 4. Resume global mecanique
-- summary = mini resume actionnable (2 a 3 phrases max).
+- summary = mini resume actionnable (2 phrases max).
+- Concision obligatoire:
+  - analysis: chaque section = 1 paragraphe court (2 phrases max).
+  - annotations.detail/reasoning/solution/evidence: 1 a 2 phrases max.
 
 Contexte TPI:
 {tpiContextBlock}
@@ -379,7 +382,10 @@ Regles communes:
 2. Transition -> Impact
 3. Intensite des pics et chronologie
 4. Resume global mecanique
-- summary = mini resume actionnable (2 a 3 phrases max).
+- summary = mini resume actionnable (2 phrases max).
+- Concision obligatoire:
+  - analysis: chaque section = 1 paragraphe court (2 phrases max).
+  - annotations.detail/reasoning/solution/evidence: 1 a 2 phrases max.
 
 Contexte TPI:
 {tpiContextBlock}
@@ -418,7 +424,10 @@ Regles communes:
 2. Transition -> Impact
 3. Intensite des pics et chronologie
 4. Resume global mecanique
-- summary = mini resume actionnable (2 a 3 phrases max).
+- summary = mini resume actionnable (2 phrases max).
+- Concision obligatoire:
+  - analysis: chaque section = 1 paragraphe court (2 phrases max).
+  - annotations.detail/reasoning/solution/evidence: 1 a 2 phrases max.
 
 Contexte TPI:
 {tpiContextBlock}
@@ -457,7 +466,10 @@ Regles communes:
 2. Transition -> Impact
 3. Intensite des pics et chronologie
 4. Resume global mecanique
-- summary = mini resume actionnable (2 a 3 phrases max).
+- summary = mini resume actionnable (2 phrases max).
+- Concision obligatoire:
+  - analysis: chaque section = 1 paragraphe court (2 phrases max).
+  - annotations.detail/reasoning/solution/evidence: 1 a 2 phrases max.
 
 Contexte TPI:
 {tpiContextBlock}
@@ -496,7 +508,10 @@ Regles communes:
 2. Transition -> Impact
 3. Intensite des pics et chronologie
 4. Resume global mecanique
-- summary = mini resume actionnable (2 a 3 phrases max).
+- summary = mini resume actionnable (2 phrases max).
+- Concision obligatoire:
+  - analysis: chaque section = 1 paragraphe court (2 phrases max).
+  - annotations.detail/reasoning/solution/evidence: 1 a 2 phrases max.
 
 Contexte TPI:
 {tpiContextBlock}
@@ -535,7 +550,10 @@ Regles communes:
 2. Transition -> Impact
 3. Intensite des pics et chronologie
 4. Resume global mecanique
-- summary = mini resume actionnable (2 a 3 phrases max).
+- summary = mini resume actionnable (2 phrases max).
+- Concision obligatoire:
+  - analysis: chaque section = 1 paragraphe court (2 phrases max).
+  - annotations.detail/reasoning/solution/evidence: 1 a 2 phrases max.
 
 Contexte TPI:
 {tpiContextBlock}
@@ -574,7 +592,10 @@ Regles communes:
 2. Transition -> Impact
 3. Intensite des pics et chronologie
 4. Resume global mecanique
-- summary = mini resume actionnable (2 a 3 phrases max).
+- summary = mini resume actionnable (2 phrases max).
+- Concision obligatoire:
+  - analysis: chaque section = 1 paragraphe court (2 phrases max).
+  - annotations.detail/reasoning/solution/evidence: 1 a 2 phrases max.
 
 Contexte TPI:
 {tpiContextBlock}
@@ -613,7 +634,10 @@ Regles communes:
 2. Transition -> Impact
 3. Intensite des pics et chronologie
 4. Resume global mecanique
-- summary = mini resume actionnable (2 a 3 phrases max).
+- summary = mini resume actionnable (2 phrases max).
+- Concision obligatoire:
+  - analysis: chaque section = 1 paragraphe court (2 phrases max).
+  - annotations.detail/reasoning/solution/evidence: 1 a 2 phrases max.
 
 Contexte TPI:
 {tpiContextBlock}
@@ -652,7 +676,10 @@ Regles communes:
 2. Transition -> Impact
 3. Intensite des pics et chronologie
 4. Resume global mecanique
-- summary = mini resume actionnable (2 a 3 phrases max).
+- summary = mini resume actionnable (2 phrases max).
+- Concision obligatoire:
+  - analysis: chaque section = 1 paragraphe court (2 phrases max).
+  - annotations.detail/reasoning/solution/evidence: 1 a 2 phrases max.
 
 Contexte TPI:
 {tpiContextBlock}
@@ -824,4 +851,6 @@ Tache:
 - Genere 3 KPI court terme (dernier rapport uniquement).
 - Genere 3 KPI long terme (tendance sur les rapports fournis).
 - Chaque KPI doit etre actionnable et concret (pas de jargon).
+
+
 

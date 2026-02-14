@@ -9,6 +9,7 @@ import {
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { buildSharedReportPdf, findAuthUserByEmail } from "@/lib/report-share";
 import { recordActivity } from "@/lib/activity-log";
+import { copySharedReportToWorkspace } from "@/lib/report-share-copy";
 
 const shareReportSchema = z.object({
   reportId: z.string().uuid(),
@@ -42,11 +43,18 @@ const sendSharedReportEmail = async (input: {
   viewFullReportUrl: string;
   pdfFileName: string;
   pdfBase64: string;
+  accessMode: "signup" | "view";
 }) => {
   const senderName = escapeHtml(input.senderName);
   const reportTitle = escapeHtml(input.reportTitle);
   const studentName = escapeHtml(input.studentName);
   const viewFullReportUrl = escapeHtml(input.viewFullReportUrl);
+  const accessParagraph =
+    input.accessMode === "view"
+      ? `<p>Pour consulter le rapport complet (images, videos, graphiques/donnees), ouvrez ce lien :</p>
+      <p><a href="${viewFullReportUrl}" target="_blank" rel="noopener noreferrer">${viewFullReportUrl}</a></p>`
+      : `<p>Pour consulter le rapport complet (images, videos, graphiques/donnees), creez un compte SwingFlow avec cet email puis ouvrez l application :</p>
+      <p><a href="${viewFullReportUrl}" target="_blank" rel="noopener noreferrer">${viewFullReportUrl}</a></p>`;
 
   const apiInstance = new Brevo.TransactionalEmailsApi();
   apiInstance.setApiKey(Brevo.TransactionalEmailsApiApiKeys.apiKey, env.BREVO_API_KEY);
@@ -60,8 +68,7 @@ const sendSharedReportEmail = async (input: {
       <p>Rapport: <strong>${reportTitle}</strong></p>
       <p>Eleve: <strong>${studentName}</strong></p>
       <p>Le PDF joint contient le texte du rapport.</p>
-      <p>Pour consulter le rapport complet (images, videos, graphiques/donnees), creez un compte SwingFlow avec cet email puis ouvrez l application :</p>
-      <p><a href="${viewFullReportUrl}" target="_blank" rel="noopener noreferrer">${viewFullReportUrl}</a></p>
+      ${accessParagraph}
       <p>Bonne lecture,</p>
       <p>${env.BREVO_SENDER_NAME}</p>
     `,
@@ -101,7 +108,7 @@ export async function POST(request: Request) {
   const admin = createSupabaseAdminClient();
   const { data: senderProfile } = await admin
     .from("profiles")
-    .select("id, role, org_id, full_name")
+    .select("id, role, org_id, active_workspace_id, full_name")
     .eq("id", userData.user.id)
     .maybeSingle();
 
@@ -130,7 +137,9 @@ export async function POST(request: Request) {
 
   const { data: sourceSections, error: sectionsError } = await supabase
     .from("report_sections")
-    .select("title, type, content, content_formatted, media_urls, radar_file_id, position")
+    .select(
+      "title, type, content, content_formatted, content_format_hash, media_urls, media_captions, radar_file_id, radar_config, position"
+    )
     .eq("report_id", sourceReport.id)
     .order("position", { ascending: true });
 
@@ -169,6 +178,21 @@ export async function POST(request: Request) {
     );
   }
 
+  const { data: existingAccepted } = await admin
+    .from("report_shares")
+    .select("id")
+    .eq("source_report_id", sourceReport.id)
+    .eq("recipient_email", normalizedRecipientEmail)
+    .eq("status", "accepted")
+    .maybeSingle();
+
+  if (existingAccepted?.id) {
+    return NextResponse.json(
+      { error: "Ce rapport a deja ete partage avec cet email." },
+      { status: 409 }
+    );
+  }
+
   const targetAuthUser = await findAuthUserByEmail(admin, normalizedRecipientEmail);
   const targetUserId = targetAuthUser?.id ?? null;
 
@@ -177,6 +201,7 @@ export async function POST(request: Request) {
         id: string;
         role: string;
         org_id: string;
+        active_workspace_id: string | null;
         full_name: string | null;
       }
     | null = null;
@@ -184,7 +209,7 @@ export async function POST(request: Request) {
   if (targetUserId) {
     const { data } = await admin
       .from("profiles")
-      .select("id, role, org_id, full_name")
+      .select("id, role, org_id, active_workspace_id, full_name")
       .eq("id", targetUserId)
       .maybeSingle();
     targetProfile = data ?? null;
@@ -196,71 +221,6 @@ export async function POST(request: Request) {
     .filter(Boolean)
     .join(" ")
     .trim();
-
-  if (
-    targetProfile &&
-    targetProfile.role !== "student" &&
-    targetProfile.id !== senderProfile.id
-  ) {
-    const { error: shareInsertError } = await admin.from("report_shares").insert([
-      {
-        source_report_id: sourceReport.id,
-        source_org_id: sourceReport.org_id,
-        sender_id: senderProfile.id,
-        recipient_email: normalizedRecipientEmail,
-        recipient_user_id: targetProfile.id,
-        recipient_org_id: targetProfile.org_id,
-        status: "pending",
-        delivery: "in_app",
-        payload: {
-          report_title: sourceReport.title,
-          source_student_name: sourceStudentName || null,
-          sender_name: senderName,
-        },
-      },
-    ]);
-
-    if (shareInsertError) {
-      await recordActivity({
-        admin,
-        level: "error",
-        action: "report.share.in_app_failed",
-        actorUserId: senderProfile.id,
-        orgId: sourceReport.org_id,
-        entityType: "report",
-        entityId: sourceReport.id,
-        message: shareInsertError.message ?? "Creation de la demande impossible.",
-        metadata: {
-          recipientEmail: normalizedRecipientEmail,
-        },
-      });
-      return NextResponse.json(
-        { error: shareInsertError.message ?? "Creation de la demande impossible." },
-        { status: 400 }
-      );
-    }
-
-    await recordActivity({
-      admin,
-      action: "report.share.in_app",
-      actorUserId: senderProfile.id,
-      orgId: sourceReport.org_id,
-      entityType: "report",
-      entityId: sourceReport.id,
-      message: "Demande de partage envoyee en in-app.",
-      metadata: {
-        recipientEmail: normalizedRecipientEmail,
-        recipientUserId: targetProfile.id,
-      },
-    });
-
-    return NextResponse.json({
-      ok: true,
-      delivery: "in_app",
-      message: "Demande envoyee dans la cloche du coach.",
-    });
-  }
-
   const sectionsForPdf = (sourceSections ?? []).map((section) => ({
     title: section.title ?? "Section",
     content: (section.content_formatted ?? section.content ?? "").trim(),
@@ -288,7 +248,206 @@ export async function POST(request: Request) {
     .replace(/^-+|-+$/g, "")
     .slice(0, 64);
   const pdfFileName = `${safeBaseName || "rapport-swingflow"}.pdf`;
-  const viewFullReportUrl = `${env.NEXT_PUBLIC_SITE_URL}/login`;
+
+  if (
+    targetProfile &&
+    targetProfile.role !== "student" &&
+    targetProfile.id !== senderProfile.id
+  ) {
+    const targetOrgId = targetProfile.active_workspace_id ?? targetProfile.org_id;
+    if (!targetOrgId) {
+      return NextResponse.json(
+        { error: "Workspace de destination introuvable pour ce coach." },
+        { status: 400 }
+      );
+    }
+
+    const { data: shareInsertData, error: shareInsertError } = await admin
+      .from("report_shares")
+      .insert([
+        {
+          source_report_id: sourceReport.id,
+          source_org_id: sourceReport.org_id,
+          sender_id: senderProfile.id,
+          recipient_email: normalizedRecipientEmail,
+          recipient_user_id: targetProfile.id,
+          recipient_org_id: targetOrgId,
+          status: "pending",
+          delivery: "in_app",
+          payload: {
+            report_title: sourceReport.title,
+            source_student_name: sourceStudentName || null,
+            sender_name: senderName,
+          },
+        },
+      ])
+      .select("id")
+      .single();
+
+    if (shareInsertError || !shareInsertData?.id) {
+      const shareInsertErrorMessage =
+        shareInsertError?.message ?? "Creation de la demande impossible.";
+      await recordActivity({
+        admin,
+        level: "error",
+        action: "report.share.create_failed",
+        actorUserId: senderProfile.id,
+        orgId: sourceReport.org_id,
+        entityType: "report",
+        entityId: sourceReport.id,
+        message: shareInsertErrorMessage,
+        metadata: {
+          recipientEmail: normalizedRecipientEmail,
+        },
+      });
+      return NextResponse.json(
+        { error: shareInsertErrorMessage },
+        { status: 400 }
+      );
+    }
+
+    const copiedReportResult = await copySharedReportToWorkspace(admin, {
+      shareId: shareInsertData.id,
+      targetOrgId,
+      authorUserId: targetProfile.id,
+      sourceReport,
+      sourceSections:
+        (sourceSections ?? []).map((section) => ({
+          title: section.title ?? null,
+          content: section.content ?? null,
+          content_formatted: section.content_formatted ?? null,
+          content_format_hash: section.content_format_hash ?? null,
+          position: section.position ?? null,
+          type: section.type ?? null,
+          media_urls: section.media_urls ?? null,
+          media_captions: section.media_captions ?? null,
+          radar_file_id: section.radar_file_id ?? null,
+          radar_config:
+            section.radar_config && typeof section.radar_config === "object"
+              ? (section.radar_config as Record<string, unknown>)
+              : null,
+        })) ?? [],
+    });
+
+    if ("error" in copiedReportResult) {
+      await admin
+        .from("report_shares")
+        .update({
+          status: "rejected",
+          decided_at: new Date().toISOString(),
+        })
+        .eq("id", shareInsertData.id);
+      await recordActivity({
+        admin,
+        level: "error",
+        action: "report.share.copy_failed",
+        actorUserId: senderProfile.id,
+        orgId: sourceReport.org_id,
+        entityType: "report",
+        entityId: sourceReport.id,
+        message: copiedReportResult.error,
+        metadata: {
+          recipientEmail: normalizedRecipientEmail,
+          shareId: shareInsertData.id,
+        },
+      });
+      return NextResponse.json({ error: copiedReportResult.error }, { status: 400 });
+    }
+
+    const { error: acceptError } = await admin
+      .from("report_shares")
+      .update({
+        status: "accepted",
+        delivery: "email",
+        decided_at: new Date().toISOString(),
+        copied_report_id: copiedReportResult.reportId,
+      })
+      .eq("id", shareInsertData.id);
+
+    if (acceptError) {
+      await recordActivity({
+        admin,
+        level: "error",
+        action: "report.share.accept_finalize_failed",
+        actorUserId: senderProfile.id,
+        orgId: sourceReport.org_id,
+        entityType: "report",
+        entityId: sourceReport.id,
+        message: acceptError.message ?? "Validation du partage impossible.",
+        metadata: {
+          recipientEmail: normalizedRecipientEmail,
+          shareId: shareInsertData.id,
+          copiedReportId: copiedReportResult.reportId,
+        },
+      });
+      return NextResponse.json(
+        { error: acceptError.message ?? "Validation du partage impossible." },
+        { status: 400 }
+      );
+    }
+
+    const reportPath = `/app/coach/rapports/${copiedReportResult.reportId}`;
+    const viewFullReportUrl = `${env.NEXT_PUBLIC_SITE_URL}/login?next=${encodeURIComponent(reportPath)}`;
+
+    try {
+      await sendSharedReportEmail({
+        to: normalizedRecipientEmail,
+        senderName,
+        reportTitle: sourceReport.title,
+        studentName: sourceStudentName || "Eleve",
+        viewFullReportUrl,
+        pdfFileName,
+        pdfBase64,
+        accessMode: "view",
+      });
+    } catch (error) {
+      console.error("[report-share] email delivery failed:", error);
+      await recordActivity({
+        admin,
+        level: "error",
+        action: "report.share.email_failed_registered",
+        actorUserId: senderProfile.id,
+        orgId: sourceReport.org_id,
+        entityType: "report",
+        entityId: sourceReport.id,
+        message: "Envoi email impossible, mais copie creee.",
+        metadata: {
+          recipientEmail: normalizedRecipientEmail,
+          shareId: shareInsertData.id,
+          copiedReportId: copiedReportResult.reportId,
+        },
+      });
+      return NextResponse.json({
+        ok: true,
+        delivery: "in_app",
+        message:
+          "Rapport partage en lecture seule. Email indisponible: le coach peut ouvrir le rapport dans son historique.",
+      });
+    }
+
+    await recordActivity({
+      admin,
+      action: "report.share.registered_email",
+      actorUserId: senderProfile.id,
+      orgId: sourceReport.org_id,
+      entityType: "report",
+      entityId: sourceReport.id,
+      message: "Rapport partage a un coach inscrit (lecture seule).",
+      metadata: {
+        recipientEmail: normalizedRecipientEmail,
+        recipientUserId: targetProfile.id,
+        copiedReportId: copiedReportResult.reportId,
+      },
+    });
+
+    return NextResponse.json({
+      ok: true,
+      delivery: "email",
+      message: "Email envoye avec le PDF et le lien de visualisation complete.",
+    });
+  }
+
+  const viewFullReportUrl = `${env.NEXT_PUBLIC_SITE_URL}/login?mode=signup`;
 
   try {
     await sendSharedReportEmail({
@@ -299,6 +458,7 @@ export async function POST(request: Request) {
       viewFullReportUrl,
       pdfFileName,
       pdfBase64,
+      accessMode: "signup",
     });
   } catch (error) {
     console.error("[report-share] email delivery failed:", error);

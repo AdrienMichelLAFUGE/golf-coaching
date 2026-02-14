@@ -287,6 +287,34 @@ export const hasCoachContactOptIn = async (
   return Boolean(data);
 };
 
+export const isCoachLikeActiveOrgMember = async (
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  orgId: string,
+  userId: string
+): Promise<boolean> => {
+  const [{ data: membershipData }, { data: profileData }] = await Promise.all([
+    admin
+      .from("org_memberships")
+      .select("status")
+      .eq("org_id", orgId)
+      .eq("user_id", userId)
+      .maybeSingle(),
+    admin
+      .from("profiles")
+      .select("role")
+      .eq("id", userId)
+      .maybeSingle(),
+  ]);
+
+  const membership = membershipData as { status: "invited" | "active" | "disabled" } | null;
+  const profile = profileData as { role: AppProfileRole } | null;
+
+  if (!membership || membership.status !== "active") return false;
+  if (!profile) return false;
+
+  return isCoachLikeRole(profile.role);
+};
+
 export const findAuthUserByEmail = async (
   admin: ReturnType<typeof createSupabaseAdminClient>,
   email: string
@@ -448,4 +476,101 @@ export const isUserInOrgGroup = async (
     .maybeSingle();
 
   return Boolean(studentMembership);
+};
+
+export const loadOrgCoachUserIds = async (
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  orgId: string
+): Promise<string[]> => {
+  const { data } = await admin
+    .from("org_memberships")
+    .select("user_id")
+    .eq("org_id", orgId)
+    .eq("status", "active");
+
+  return Array.from(
+    new Set(
+      ((data ?? []) as Array<{ user_id: string }>)
+        .map((row) => row.user_id)
+        .filter((value) => value.length > 0)
+    )
+  );
+};
+
+export const loadOrgAudienceUserIds = async (
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  orgId: string
+): Promise<{
+  coachUserIds: string[];
+  studentUserIds: string[];
+  memberUserIds: string[];
+}> => {
+  const coachUserIds = await loadOrgCoachUserIds(admin, orgId);
+
+  const { data: studentRows } = await admin
+    .from("students")
+    .select("id")
+    .eq("org_id", orgId);
+
+  const studentIds = Array.from(
+    new Set(
+      ((studentRows ?? []) as Array<{ id: string }>)
+        .map((row) => row.id)
+        .filter((value) => value.length > 0)
+    )
+  );
+
+  let studentUserIds: string[] = [];
+  if (studentIds.length > 0) {
+    const { data: accountRows } = await admin
+      .from("student_accounts")
+      .select("user_id")
+      .in("student_id", studentIds);
+
+    studentUserIds = Array.from(
+      new Set(
+        ((accountRows ?? []) as Array<{ user_id: string }>)
+          .map((row) => row.user_id)
+          .filter((value) => value.length > 0)
+      )
+    );
+  }
+
+  const memberUserIds = Array.from(new Set([...coachUserIds, ...studentUserIds]));
+
+  return {
+    coachUserIds,
+    studentUserIds,
+    memberUserIds,
+  };
+};
+
+export const isStudentLinkedToOrganization = async (
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  userId: string,
+  orgId: string
+): Promise<boolean> => {
+  const { data: accountRows } = await admin
+    .from("student_accounts")
+    .select("student_id")
+    .eq("user_id", userId);
+
+  const studentIds = Array.from(
+    new Set(
+      ((accountRows ?? []) as Array<{ student_id: string }>)
+        .map((row) => row.student_id)
+        .filter((value) => value.length > 0)
+    )
+  );
+  if (studentIds.length === 0) return false;
+
+  const { data } = await admin
+    .from("students")
+    .select("id")
+    .eq("org_id", orgId)
+    .in("id", studentIds)
+    .limit(1)
+    .maybeSingle();
+
+  return Boolean(data);
 };

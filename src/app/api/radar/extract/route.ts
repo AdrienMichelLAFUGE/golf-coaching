@@ -560,6 +560,91 @@ const ensureSmart2MoveTitle = (
     : `Analyse ${graphLabel} - Smart2Move`;
 };
 
+const truncateSmart2MoveText = (
+  value: string | null | undefined,
+  maxSentences: number,
+  maxChars: number
+) => {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed) return "";
+  const normalized = trimmed.replace(/\s+/g, " ").trim();
+  const sentences = normalized.split(/(?<=[.!?])\s+/).filter(Boolean);
+  const limitedSentences =
+    sentences.length > maxSentences ? sentences.slice(0, maxSentences) : sentences;
+  const joined = limitedSentences.join(" ").trim();
+  if (joined.length <= maxChars) return joined;
+  const sliced = joined.slice(0, Math.max(0, maxChars - 3)).trimEnd();
+  const safeSlice = sliced.includes(" ") ? sliced.slice(0, sliced.lastIndexOf(" ")) : sliced;
+  return `${safeSlice || sliced}...`;
+};
+
+const compactSmart2MoveAnalysis = (analysis?: string | null) => {
+  const trimmed = analysis?.trim() ?? "";
+  if (!trimmed) return "";
+
+  const lines = trimmed
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!lines.length) return "";
+
+  const sectionMatcher = /^([1-4])\.\s+/;
+  const titleLine = /^analyse /i.test(lines[0]) ? lines[0] : null;
+  const startIndex = titleLine ? 1 : 0;
+
+  const sections: Array<{ heading: string; body: string[] }> = [];
+  let currentSection: { heading: string; body: string[] } | null = null;
+
+  for (let index = startIndex; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (sectionMatcher.test(line)) {
+      currentSection = { heading: line, body: [] };
+      sections.push(currentSection);
+      continue;
+    }
+    if (!currentSection) continue;
+    currentSection.body.push(line);
+  }
+
+  if (!sections.length) {
+    const compactPlain = truncateSmart2MoveText(trimmed, 8, 900);
+    if (!compactPlain) return "";
+    return titleLine ? `${titleLine}\n\n${compactPlain}` : compactPlain;
+  }
+
+  const compactSections = sections.map((section) => {
+    const compactBody = truncateSmart2MoveText(section.body.join(" "), 2, 280);
+    return compactBody ? `${section.heading}\n${compactBody}` : section.heading;
+  });
+
+  if (titleLine) {
+    return `${titleLine}\n\n${compactSections.join("\n\n")}`;
+  }
+  return compactSections.join("\n\n");
+};
+
+const compactSmart2MoveExtraction = (
+  extraction: Smart2MoveGraphExtraction
+): Smart2MoveGraphExtraction => ({
+  ...extraction,
+  annotations: extraction.annotations.map((annotation) => ({
+    ...annotation,
+    title: truncateSmart2MoveText(annotation.title, 1, 90),
+    detail: truncateSmart2MoveText(annotation.detail, 2, 240),
+    reasoning: annotation.reasoning
+      ? truncateSmart2MoveText(annotation.reasoning, 2, 220)
+      : null,
+    solution: annotation.solution
+      ? truncateSmart2MoveText(annotation.solution, 2, 220)
+      : null,
+    evidence: annotation.evidence
+      ? truncateSmart2MoveText(annotation.evidence, 2, 220)
+      : null,
+  })),
+  analysis: compactSmart2MoveAnalysis(extraction.analysis),
+  summary: extraction.summary ? truncateSmart2MoveText(extraction.summary, 2, 220) : null,
+});
+
 const tpiColorOrder: Record<string, number> = {
   red: 0,
   orange: 1,
@@ -1041,6 +1126,10 @@ Contraintes overlay/analysis:
 - Ne pas modifier les reperes fournis par le coach
 Regles de contenu:
 - Le champ evidence de chaque annotation doit etre une explication biomecanique (causalite corporelle/mecanique), pas une simple description du graphe.
+- Sortie concise obligatoire:
+  - analysis: 4 sections, chaque section = 1 paragraphe court (2 phrases max, <= 280 caracteres)
+  - annotations.detail/reasoning/solution/evidence: formulation courte et actionnable (1 a 2 phrases max)
+  - summary: 2 phrases max
 Le champ analysis doit suivre EXACTEMENT 4 sections numerotees:
 1. Adresse -> Backswing
 2. Transition -> Impact
@@ -1082,7 +1171,7 @@ Le champ analysis doit suivre EXACTEMENT 4 sections numerotees:
           ],
         },
       ],
-      max_output_tokens: isSmart2MoveGraph ? 4200 : 6500,
+      max_output_tokens: isSmart2MoveGraph ? 2200 : 6500,
       text: {
         format: {
           type: "json_schema",
@@ -1101,10 +1190,13 @@ Le champ analysis doit suivre EXACTEMENT 4 sections numerotees:
     }
     if (isSmart2MoveGraph) {
       smart2MoveExtracted = JSON.parse(outputText) as Smart2MoveGraphExtraction;
-      smart2MoveExtracted.analysis = ensureSmart2MoveTitle(
-        smart2MoveExtracted.analysis,
-        promptConfig.smart2MoveGraphLabel ?? "Smart2Move"
-      );
+      smart2MoveExtracted = compactSmart2MoveExtraction({
+        ...smart2MoveExtracted,
+        analysis: ensureSmart2MoveTitle(
+          smart2MoveExtracted.analysis,
+          promptConfig.smart2MoveGraphLabel ?? "Smart2Move"
+        ),
+      });
       if (!smart2MoveExtracted.analysis.trim()) {
         throw new Error("Analyse Smart2Move vide.");
       }
