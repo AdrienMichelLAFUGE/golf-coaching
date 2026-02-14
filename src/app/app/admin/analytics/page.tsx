@@ -227,6 +227,10 @@ export default function AdminAnalyticsPage() {
       const payload = (await response.json()) as AnalyticsPayload & { error?: string };
 
       if (!response.ok) {
+        if (response.status === 423) {
+          setLoading(false);
+          return;
+        }
         setError(payload.error ?? "Chargement impossible.");
         setLoading(false);
         return;
@@ -236,7 +240,16 @@ export default function AdminAnalyticsPage() {
       setLoading(false);
     };
 
-    loadAnalytics();
+    void loadAnalytics();
+
+    const handleBackofficeUnlocked = () => {
+      void loadAnalytics();
+    };
+    window.addEventListener("backoffice:unlocked", handleBackofficeUnlocked);
+
+    return () => {
+      window.removeEventListener("backoffice:unlocked", handleBackofficeUnlocked);
+    };
   }, [period]);
 
   const costSeries = useMemo(() => analytics?.costSeries ?? [], [analytics]);

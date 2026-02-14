@@ -40,6 +40,10 @@ export default function AdminDashboardPage() {
       };
 
       if (!response.ok) {
+        if (response.status === 423) {
+          setLoading(false);
+          return;
+        }
         setError(payload.error ?? "Chargement impossible.");
         setLoading(false);
         return;
@@ -49,7 +53,16 @@ export default function AdminDashboardPage() {
       setLoading(false);
     };
 
-    loadOverview();
+    void loadOverview();
+
+    const handleBackofficeUnlocked = () => {
+      void loadOverview();
+    };
+    window.addEventListener("backoffice:unlocked", handleBackofficeUnlocked);
+
+    return () => {
+      window.removeEventListener("backoffice:unlocked", handleBackofficeUnlocked);
+    };
   }, []);
 
   return (

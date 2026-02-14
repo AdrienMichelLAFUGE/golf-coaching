@@ -73,6 +73,10 @@ export default function AdminCoachesPage() {
     };
 
     if (!response.ok) {
+      if (response.status === 423) {
+        setLoading(false);
+        return;
+      }
       setError(payload.error ?? "Chargement impossible.");
       setLoading(false);
       return;
@@ -84,12 +88,23 @@ export default function AdminCoachesPage() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.resolve().then(() => {
+    const load = () =>
+      Promise.resolve().then(() => {
+        if (cancelled) return;
+        void loadWorkspaces();
+      });
+
+    load();
+
+    const handleBackofficeUnlocked = () => {
       if (cancelled) return;
       void loadWorkspaces();
-    });
+    };
+    window.addEventListener("backoffice:unlocked", handleBackofficeUnlocked);
+
     return () => {
       cancelled = true;
+      window.removeEventListener("backoffice:unlocked", handleBackofficeUnlocked);
     };
   }, []);
 

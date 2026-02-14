@@ -83,6 +83,9 @@ export default function AdminLogsPage() {
     const payload = (await response.json()) as LogsPayload;
 
     if (!response.ok) {
+      if (response.status === 423) {
+        return { logs: [] };
+      }
       return { logs: [], error: payload.error ?? "Chargement impossible." };
     }
 
@@ -105,7 +108,16 @@ export default function AdminLogsPage() {
       setLoading(false);
     };
 
-    loadInitialLogs();
+    void loadInitialLogs();
+
+    const handleBackofficeUnlocked = () => {
+      void loadInitialLogs();
+    };
+    window.addEventListener("backoffice:unlocked", handleBackofficeUnlocked);
+
+    return () => {
+      window.removeEventListener("backoffice:unlocked", handleBackofficeUnlocked);
+    };
   }, []);
 
   const actionOptions = useMemo(

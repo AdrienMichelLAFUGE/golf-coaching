@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import { isAdminEmail } from "@/lib/admin";
+import { assertBackofficeUnlocked } from "@/lib/backoffice-auth";
 import {
   createSupabaseAdminClient,
   createSupabaseServerClientFromRequest,
@@ -49,6 +50,13 @@ const requireAdmin = async (request: Request) => {
   if (userError || !isAdminEmail(email)) {
     return {
       error: NextResponse.json({ error: "Unauthorized." }, { status: 403 }),
+    };
+  }
+
+  const backofficeError = assertBackofficeUnlocked(request);
+  if (backofficeError) {
+    return {
+      error: backofficeError,
     };
   }
 

@@ -7,6 +7,7 @@ import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
 import { generateReportKpisForPublishedReport } from "@/lib/ai/report-kpis";
 import { recordActivity } from "@/lib/activity-log";
+import { assertBackofficeUnlocked } from "@/lib/backoffice-auth";
 
 export const runtime = "nodejs";
 
@@ -23,6 +24,9 @@ const schema = z.object({
 type StudentCursor = z.infer<typeof cursorSchema>;
 
 export async function POST(req: Request) {
+  const backofficeError = assertBackofficeUnlocked(req);
+  if (backofficeError) return backofficeError;
+
   const parsed = await parseRequestJson(req, schema);
   if (!parsed.success) {
     return Response.json(

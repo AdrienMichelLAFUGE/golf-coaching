@@ -123,6 +123,10 @@ export default function AdminPricingPage() {
     };
 
     if (!response.ok) {
+      if (response.status === 423) {
+        setLoading(false);
+        return;
+      }
       setError(payload.error ?? "Chargement impossible.");
       setLoading(false);
       return;
@@ -152,12 +156,23 @@ export default function AdminPricingPage() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.resolve().then(() => {
+    const load = () =>
+      Promise.resolve().then(() => {
+        if (cancelled) return;
+        void loadPlans();
+      });
+
+    load();
+
+    const handleBackofficeUnlocked = () => {
       if (cancelled) return;
       void loadPlans();
-    });
+    };
+    window.addEventListener("backoffice:unlocked", handleBackofficeUnlocked);
+
     return () => {
       cancelled = true;
+      window.removeEventListener("backoffice:unlocked", handleBackofficeUnlocked);
     };
   }, []);
 

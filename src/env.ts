@@ -22,6 +22,9 @@ const serverSchema = z.object({
   STRIPE_CANCEL_URL: z.string().min(1),
   MESSAGES_PURGE_CRON_SECRET: z.string().min(1).optional(),
   NEXT_PUBLIC_ADMIN_EMAILS: z.string().optional(),
+  BACKOFFICE_ADMIN_CREDENTIALS: z.string().optional(),
+  BACKOFFICE_SESSION_SECRET: z.string().optional(),
+  BACKOFFICE_SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(24).optional(),
 });
 
 const formatIssues = (issues: z.ZodIssue[]) =>
@@ -46,6 +49,10 @@ const buildTestEnv = () => ({
   STRIPE_CANCEL_URL: "http://localhost:3000/app/coach/parametres?billing=cancel",
   MESSAGES_PURGE_CRON_SECRET: process.env.MESSAGES_PURGE_CRON_SECRET ?? "test-messages-purge-secret",
   NEXT_PUBLIC_ADMIN_EMAILS: process.env.NEXT_PUBLIC_ADMIN_EMAILS,
+  BACKOFFICE_ADMIN_CREDENTIALS: process.env.BACKOFFICE_ADMIN_CREDENTIALS,
+  BACKOFFICE_SESSION_SECRET: process.env.BACKOFFICE_SESSION_SECRET,
+  BACKOFFICE_SESSION_TTL_HOURS:
+    process.env.BACKOFFICE_SESSION_TTL_HOURS ?? undefined,
 });
 
 export const env = (() => {
