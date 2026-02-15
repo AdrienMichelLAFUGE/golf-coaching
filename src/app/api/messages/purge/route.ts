@@ -4,6 +4,15 @@ import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { messagesJson } from "@/lib/messages/http";
 import { recordActivity } from "@/lib/activity-log";
 
+const expectedTokens = () =>
+  Array.from(
+    new Set(
+      [env.MESSAGES_PURGE_CRON_SECRET, env.CRON_SECRET].filter(
+        (token): token is string => Boolean(token)
+      )
+    )
+  );
+
 const extractToken = (request: Request) => {
   const direct = request.headers.get("x-messages-purge-token");
   if (direct) return direct;
@@ -16,19 +25,24 @@ const extractToken = (request: Request) => {
   return authorization;
 };
 
-export async function POST(request: Request) {
-  if (!env.MESSAGES_PURGE_CRON_SECRET) {
+const authorize = (request: Request) => {
+  const tokens = expectedTokens();
+  if (tokens.length === 0) {
     return NextResponse.json(
-      { error: "MESSAGES_PURGE_CRON_SECRET is not configured." },
+      { error: "MESSAGES_PURGE_CRON_SECRET or CRON_SECRET is not configured." },
       { status: 503 }
     );
   }
 
   const token = extractToken(request);
-  if (!token || token !== env.MESSAGES_PURGE_CRON_SECRET) {
+  if (!token || !tokens.includes(token)) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
+  return null;
+};
+
+const runPurge = async () => {
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin.rpc("purge_message_data");
 
@@ -66,4 +80,18 @@ export async function POST(request: Request) {
     redactedMessages,
     deletedReports,
   });
+};
+
+const handlePurge = async (request: Request) => {
+  const denied = authorize(request);
+  if (denied) return denied;
+  return runPurge();
+};
+
+export async function GET(request: Request) {
+  return handlePurge(request);
+}
+
+export async function POST(request: Request) {
+  return handlePurge(request);
 }

@@ -178,6 +178,8 @@ const techLabels: Record<string, string> = {
   unknown: "Unknown",
 };
 
+const apiJournalRowLimitOptions = [25, 50, 100, 250] as const;
+
 const resolveEndpointLabel = (value: string) => endpointLabels[value] ?? value;
 const resolveTechLabel = (value?: string | null) =>
   value ? (techLabels[value] ?? value) : "General";
@@ -206,6 +208,7 @@ export default function AdminAnalyticsPage() {
   const [featureSort, setFeatureSort] = useState<"asc" | "desc">("desc");
   const [coachSort, setCoachSort] = useState<"asc" | "desc">("desc");
   const [orgSort, setOrgSort] = useState<"asc" | "desc">("desc");
+  const [apiJournalRowLimit, setApiJournalRowLimit] = useState(25);
 
   useEffect(() => {
     const loadAnalytics = async () => {
@@ -258,6 +261,10 @@ export default function AdminAnalyticsPage() {
     [analytics]
   );
   const apiCallRows = useMemo(() => analytics?.apiCalls.rows ?? [], [analytics]);
+  const visibleApiCallRows = useMemo(
+    () => apiCallRows.slice(0, apiJournalRowLimit),
+    [apiCallRows, apiJournalRowLimit]
+  );
 
   const maxCost = costSeries.length
     ? Math.max(...costSeries.map((entry) => entry.costUsd))
@@ -415,8 +422,25 @@ export default function AdminAnalyticsPage() {
                     Une ligne par call sur la periode selectionnee.
                   </p>
                 </div>
-                <div className="text-right">
+                <div className="flex flex-col items-end gap-2 text-right">
+                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    Lignes
+                    <select
+                      value={apiJournalRowLimit}
+                      onChange={(event) => {
+                        setApiJournalRowLimit(Number(event.target.value));
+                      }}
+                      className="ml-2 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] text-[var(--text)]"
+                    >
+                      {apiJournalRowLimitOptions.map((value) => (
+                        <option key={value} value={value}>
+                          {value}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    {formatNumber(visibleApiCallRows.length)} /{" "}
                     {formatNumber(apiCallRows.length)} appels affiches
                   </p>
                   {analytics.apiCalls.maybeTruncated ? (
@@ -446,14 +470,14 @@ export default function AdminAnalyticsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {apiCallRows.length === 0 ? (
+                    {visibleApiCallRows.length === 0 ? (
                       <tr>
                         <td colSpan={11} className="py-3 text-sm text-[var(--muted)]">
                           Aucun appel API.
                         </td>
                       </tr>
                     ) : (
-                      apiCallRows.map((row) => {
+                      visibleApiCallRows.map((row) => {
                         const statusLabel = row.statusCode
                           ? String(row.statusCode)
                           : row.isError

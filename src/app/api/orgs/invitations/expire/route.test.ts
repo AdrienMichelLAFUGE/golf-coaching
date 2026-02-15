@@ -2,30 +2,42 @@ jest.mock("server-only", () => ({}));
 
 jest.mock("@/lib/supabase/server", () => ({
   createSupabaseAdminClient: jest.fn(() => ({
-    rpc: jest.fn(async () => ({ data: [{ redacted_messages: 4, deleted_reports: 2 }], error: null })),
+    from: jest.fn((table: string) => {
+      if (table !== "org_invitations") {
+        return {};
+      }
+
+      return {
+        update: jest.fn(() => ({
+          eq: jest.fn(() => ({
+            lt: jest.fn(() => ({
+              select: jest.fn(async () => ({
+                data: [{ id: "invite-1" }, { id: "invite-2" }],
+                error: null,
+              })),
+            })),
+          })),
+        })),
+      };
+    }),
   })),
 }));
 
-jest.mock("@/lib/activity-log", () => ({
-  recordActivity: jest.fn(async () => undefined),
-}));
-
-describe("GET/POST /api/messages/purge", () => {
+describe("GET/POST /api/orgs/invitations/expire", () => {
   beforeEach(() => {
     jest.resetModules();
   });
 
-  it("returns 503 when no purge secret is configured", async () => {
+  it("returns 503 when CRON_SECRET is not configured", async () => {
     jest.doMock("@/env", () => ({
       env: {
-        MESSAGES_PURGE_CRON_SECRET: undefined,
         CRON_SECRET: undefined,
       },
     }));
 
     await jest.isolateModulesAsync(async () => {
-      const { POST } = await import("./route");
-      const response = await POST(
+      const { GET } = await import("./route");
+      const response = await GET(
         {
           headers: new Headers({
             authorization: "Bearer anything",
@@ -40,8 +52,7 @@ describe("GET/POST /api/messages/purge", () => {
   it("returns 401 when token does not match", async () => {
     jest.doMock("@/env", () => ({
       env: {
-        MESSAGES_PURGE_CRON_SECRET: "expected-token",
-        CRON_SECRET: undefined,
+        CRON_SECRET: "expected-token",
       },
     }));
 
@@ -59,11 +70,10 @@ describe("GET/POST /api/messages/purge", () => {
     });
   });
 
-  it("returns 200 when CRON_SECRET matches on GET", async () => {
+  it("returns 200 and expired invitations count when token matches", async () => {
     jest.doMock("@/env", () => ({
       env: {
-        MESSAGES_PURGE_CRON_SECRET: undefined,
-        CRON_SECRET: "expected-cron-token",
+        CRON_SECRET: "expected-token",
       },
     }));
 
@@ -72,7 +82,7 @@ describe("GET/POST /api/messages/purge", () => {
       const response = await GET(
         {
           headers: new Headers({
-            authorization: "Bearer expected-cron-token",
+            authorization: "Bearer expected-token",
           }),
         } as Request
       );
@@ -80,8 +90,7 @@ describe("GET/POST /api/messages/purge", () => {
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toEqual({
         ok: true,
-        redactedMessages: 4,
-        deletedReports: 2,
+        expiredInvitations: 2,
       });
     });
   });

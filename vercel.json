@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/messages/purge",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/orgs/invitations/expire",
+      "schedule": "10 3 * * *"
+    }
+  ]
+}

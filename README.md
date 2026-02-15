@@ -72,6 +72,8 @@ Server-only :
 - `STRIPE_PRO_PRICE_YEAR_ID`
 - `STRIPE_SUCCESS_URL`
 - `STRIPE_CANCEL_URL`
+- `CRON_SECRET` (required for Vercel Cron Authorization header)
+- `MESSAGES_PURGE_CRON_SECRET` (optional fallback for manual/internal trigger)
 
 Stripe (webhooks attendus) :
 
@@ -98,3 +100,11 @@ Notes Stripe :
 - Assignations (`student_assignments`) definissent qui peut publier. Les non assignes peuvent proposer.
 - Les propositions (`org_proposals`) sont immuables apres soumission et l acceptation cree un nouveau contenu publie.
 - Script RLS/migrations : `scripts/supabase-workspaces.sql` (a executer sur Supabase).
+
+## Cron jobs
+
+- `0 3 * * *` -> `/api/messages/purge` (daily, UTC)
+- `10 3 * * *` -> `/api/orgs/invitations/expire` (daily, UTC)
+- Routes accept `Authorization: Bearer <token>`.
+- For Vercel Cron, set `CRON_SECRET` in Vercel environment variables.
+- `MESSAGES_PURGE_CRON_SECRET` remains supported for manual/internal calls on `/api/messages/purge`.
