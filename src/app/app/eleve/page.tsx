@@ -1071,7 +1071,7 @@ export default function StudentDashboardPage() {
             )}
           </section>
 
-          <div className="fixed bottom-24 right-3 z-40 flex flex-col items-end gap-2.5 xl:hidden">
+          <div className="fixed bottom-24 right-3 z-40 flex flex-col items-end gap-2.5 2xl:hidden">
             <button
               type="button"
               onClick={() => setMobileSectionsExpanded((prev) => !prev)}
