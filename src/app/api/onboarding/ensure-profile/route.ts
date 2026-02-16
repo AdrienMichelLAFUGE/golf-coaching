@@ -229,7 +229,10 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (profile?.id) {
-    if (!profile.full_name || !profile.full_name.trim()) {
+    if (
+      (!profile.full_name || !profile.full_name.trim()) &&
+      profile.role !== "student"
+    ) {
       const derivedName =
         String(user.user_metadata?.full_name ?? "").trim() || email.split("@")[0];
       if (derivedName) {
@@ -272,6 +275,16 @@ export async function POST(request: Request) {
       if (students.length > 0) {
         await linkStudentAccounts(admin, profile.id, students);
         const primaryStudent = students[0];
+        const studentName =
+          `${primaryStudent.first_name ?? ""} ${primaryStudent.last_name ?? ""}`.trim();
+        const profileName = profile.full_name?.trim() ?? "";
+        const emailPrefix = email.split("@")[0];
+        if (studentName && (!profileName || profileName === emailPrefix)) {
+          await admin
+            .from("profiles")
+            .update({ full_name: studentName })
+            .eq("id", profile.id);
+        }
         await admin
           .from("profiles")
           .update({

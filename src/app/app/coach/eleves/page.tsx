@@ -429,7 +429,6 @@ export default function CoachStudentsPage() {
   };
 
   const handleMenuInvite = async (student: Student) => {
-    if (student.activated_at) return;
     setPendingDeleteStudent(null);
     setMenuOpenId(null);
     await handleInviteStudent(student);
@@ -522,6 +521,9 @@ export default function CoachStudentsPage() {
     const lastName = editForm.last_name.trim();
     const email = editForm.email.trim();
     const playingHand = editForm.playing_hand || null;
+    const previousEmail = (editingStudent.email ?? "").trim().toLowerCase();
+    const nextEmail = email.toLowerCase();
+    const emailChanged = previousEmail !== nextEmail;
 
     if (!firstName) {
       setEditError("Le prenom est obligatoire.");
@@ -538,6 +540,7 @@ export default function CoachStudentsPage() {
         last_name: lastName || null,
         email: email || null,
         playing_hand: playingHand,
+        ...(emailChanged ? { invited_at: null, activated_at: null } : {}),
       })
       .eq("id", editingStudent.id);
 
@@ -774,7 +777,7 @@ export default function CoachStudentsPage() {
             ) : (
               pagedStudents.map((student) => {
                 const isPendingApproval = student.kind === "pending";
-                const inviteDisabled = isPendingApproval || Boolean(student.activated_at);
+                const inviteDisabled = isPendingApproval || !student.email;
                 const isShared =
                   student.kind === "student" ? sharedStudentSet.has(student.id) : false;
                 const isReadOnlyAction = isPendingApproval || isShared || isOrgReadOnly;
@@ -786,10 +789,10 @@ export default function CoachStudentsPage() {
                   !isReadOnlyAction;
                 const isMessageOpening = messageOpeningId === student.id;
                 const access = getStudentAccessBadge(student);
-                const inviteLabel = inviteDisabled
-                  ? "Inviter"
-                  : invitingId === student.id
-                    ? "Envoi..."
+                const inviteLabel = invitingId === student.id
+                  ? "Envoi..."
+                  : student.invited_at
+                    ? "Renvoyer"
                     : "Inviter";
                 return (
                   <div

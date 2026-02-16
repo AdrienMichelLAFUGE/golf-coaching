@@ -1903,6 +1903,9 @@ export default function CoachStudentDetailPage() {
     const lastName = editForm.last_name.trim();
     const email = editForm.email.trim();
     const playingHand = editForm.playing_hand || null;
+    const previousEmail = (student.email ?? "").trim().toLowerCase();
+    const nextEmail = email.toLowerCase();
+    const emailChanged = previousEmail !== nextEmail;
 
     if (!firstName) {
       setEditError("Le prenom est obligatoire.");
@@ -1919,6 +1922,7 @@ export default function CoachStudentDetailPage() {
         last_name: lastName || null,
         email: email || null,
         playing_hand: playingHand,
+        ...(emailChanged ? { invited_at: null, activated_at: null } : {}),
       })
       .eq("id", student.id);
 
@@ -1936,6 +1940,7 @@ export default function CoachStudentDetailPage() {
             last_name: lastName || null,
             email: email || null,
             playing_hand: playingHand,
+            ...(emailChanged ? { invited_at: null, activated_at: null } : {}),
           }
         : prev
     );

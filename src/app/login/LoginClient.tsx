@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { resolvePostLoginPath } from "@/lib/auth/post-login-path";
+import { waitForRecoveredSession } from "@/lib/auth/session-recovery";
 
 type Status = "idle" | "sending" | "sent" | "error";
 type ResetStatus = "idle" | "sending" | "sent" | "error";
@@ -11,8 +12,19 @@ type AccountType = "coach" | "student";
 type CoachFlow = "signin" | "signup";
 
 const rememberStorageKey = "gc.rememberMe";
+const lastAppPathStorageKey = "gc.lastAppPath";
 
 const isLikelyEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
+const resolveStoredAppPath = () => {
+  if (typeof window === "undefined") return null;
+  const value = window.localStorage.getItem(lastAppPathStorageKey);
+  if (!value) return null;
+  if (!value.startsWith("/app")) return null;
+  if (value.startsWith("//")) return null;
+  if (value.includes("\\")) return null;
+  return value;
+};
 
 export default function LoginClient({
   resetSuccess,
@@ -24,6 +36,7 @@ export default function LoginClient({
   initialCoachFlow: CoachFlow | null;
 }) {
   const router = useRouter();
+  const [sessionChecking, setSessionChecking] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -62,37 +75,47 @@ export default function LoginClient({
     return { ok: true as const, role: data.role ?? null };
   }
 
+  const resolveLoginTarget = useCallback(
+    () => nextPath ?? resolveStoredAppPath(),
+    [nextPath]
+  );
+
   useEffect(() => {
     let active = true;
 
     const checkSession = async () => {
-      const { data } = await supabase.auth.getSession();
+      const session = await waitForRecoveredSession(supabase.auth, {
+        timeoutMs: 1400,
+      });
       if (!active) return;
-      if (data.session) {
+      if (session) {
         const ensured = await ensureProfile();
         if (!active) return;
         if (!ensured.ok) {
           await supabase.auth.signOut();
           setStatus("error");
           setMessage(ensured.error ?? "Acces refuse.");
+          setSessionChecking(false);
           return;
         }
         router.replace(
-          nextPath ??
+          resolveLoginTarget() ??
             resolvePostLoginPath({
               role: ensured.role,
-              email: data.session.user.email ?? null,
+              email: session.user.email ?? null,
             })
         );
+        return;
       }
+      setSessionChecking(false);
     };
 
-    checkSession();
+    void checkSession();
 
     return () => {
       active = false;
     };
-  }, [router, nextPath]);
+  }, [resolveLoginTarget, router]);
 
   const handleAccountTypeChange = (nextType: AccountType) => {
     setAccountType(nextType);
@@ -132,7 +155,7 @@ export default function LoginClient({
     }
 
     router.replace(
-      nextPath ??
+      resolveLoginTarget() ??
         resolvePostLoginPath({
           role: ensured.role,
           email: trimmedEmail,
@@ -168,7 +191,8 @@ export default function LoginClient({
     }
 
     if (!data.session) {
-      const next = nextPath ? `&next=${encodeURIComponent(nextPath)}` : "";
+      const loginTarget = resolveLoginTarget();
+      const next = loginTarget ? `&next=${encodeURIComponent(loginTarget)}` : "";
       router.replace(`/auth/account?flow=coach&state=verify${next}`);
       return;
     }
@@ -181,7 +205,8 @@ export default function LoginClient({
       return;
     }
 
-    const next = nextPath ? `&next=${encodeURIComponent(nextPath)}` : "";
+    const loginTarget = resolveLoginTarget();
+    const next = loginTarget ? `&next=${encodeURIComponent(loginTarget)}` : "";
     router.replace(`/auth/account?flow=coach&state=ready${next}`);
   };
 
@@ -447,10 +472,10 @@ export default function LoginClient({
             ) : null}
             <button
               type="submit"
-              disabled={status === "sending"}
+              disabled={status === "sending" || sessionChecking}
               className="w-full rounded-xl bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-3 text-sm font-semibold text-zinc-900 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {status === "sending"
+              {status === "sending" || sessionChecking
                 ? "Traitement..."
                 : accountType === "coach" && coachFlow === "signup"
                   ? "Creer un compte coach"
@@ -492,6 +517,15 @@ export default function LoginClient({
           onClose={closeResetModal}
           onSubmit={handleResetSubmit}
         />
+      ) : null}
+
+      {sessionChecking ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-[1.5px]" />
+          <div className="relative rounded-full border border-white/15 bg-[var(--bg-elevated)]/80 px-5 py-2 text-xs uppercase tracking-[0.22em] text-[var(--muted)]">
+            Verification de la session...
+          </div>
+        </div>
       ) : null}
     </main>
   );

@@ -392,4 +392,109 @@ describe("POST /api/onboarding/ensure-profile", () => {
       })
     );
   });
+
+  it("hydrates student profile full_name from linked student record when missing", async () => {
+    const supabase = {
+      auth: {
+        getUser: async () => ({
+          data: {
+            user: {
+              id: "student-user-1",
+              email: "camille@example.com",
+              user_metadata: {},
+            },
+          },
+          error: null,
+        }),
+      },
+    } as SupabaseClient;
+
+    const profileSelect = jest.fn(() => ({
+      eq: () => ({
+        maybeSingle: async () => ({
+          data: {
+            id: "student-user-1",
+            role: "student",
+            org_id: "org-old",
+            full_name: null,
+            active_workspace_id: null,
+          },
+          error: null,
+        }),
+      }),
+    }));
+    const profileUpdateEq = jest.fn(async () => ({ error: null }));
+    const profileUpdate = jest.fn(() => ({ eq: profileUpdateEq }));
+
+    const orgSelect = jest.fn(() => ({
+      eq: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({ data: { id: "personal-1" }, error: null }),
+        }),
+      }),
+      in: async () => ({ data: [], error: null }),
+    }));
+
+    const studentAccountsUpsert = jest.fn(async () => ({ error: null }));
+    const appActivityInsert = jest.fn(async () => ({ error: null }));
+
+    const admin = {
+      from: jest.fn((table: string) => {
+        if (table === "profiles") {
+          return {
+            select: profileSelect,
+            update: profileUpdate,
+          };
+        }
+        if (table === "organizations") {
+          return {
+            select: orgSelect,
+          };
+        }
+        if (table === "students") {
+          return buildSelectList({
+            data: [
+              {
+                id: "student-1",
+                org_id: "org-1",
+                first_name: "Camille",
+                last_name: "Dupont",
+                created_at: "2026-02-16T10:00:00.000Z",
+              },
+            ],
+            error: null,
+          });
+        }
+        if (table === "student_accounts") {
+          return {
+            upsert: studentAccountsUpsert,
+          };
+        }
+        if (table === "app_activity_logs") {
+          return {
+            insert: appActivityInsert,
+          };
+        }
+        return buildSelectMaybeSingle({ data: null, error: null });
+      }),
+    };
+
+    serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
+    serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
+
+    const response = await POST(buildRequest());
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.role).toBe("student");
+    expect(studentAccountsUpsert).toHaveBeenCalledWith(
+      [{ student_id: "student-1", user_id: "student-user-1" }],
+      { onConflict: "student_id" }
+    );
+    expect(profileUpdate).toHaveBeenCalledWith({ full_name: "Camille Dupont" });
+    expect(profileUpdate).toHaveBeenCalledWith({
+      org_id: "org-1",
+      active_workspace_id: "org-1",
+    });
+  });
 });

@@ -1,10 +1,30 @@
-﻿import { POST } from "./route";
+import { POST } from "./route";
 
 jest.mock("server-only", () => ({}));
 
 jest.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClientFromRequest: jest.fn(),
   createSupabaseAdminClient: jest.fn(),
+}));
+
+jest.mock("@/lib/activity-log", () => ({
+  recordActivity: jest.fn(async () => undefined),
+}));
+
+const sendTransacEmailMock = jest.fn(async () => undefined);
+const setApiKeyMock = jest.fn();
+
+jest.mock("@getbrevo/brevo", () => ({
+  __esModule: true,
+  default: {
+    TransactionalEmailsApi: class {
+      setApiKey = setApiKeyMock;
+      sendTransacEmail = sendTransacEmailMock;
+    },
+    TransactionalEmailsApiApiKeys: {
+      apiKey: "apiKey",
+    },
+  },
 }));
 
 type QueryResult = { data: unknown; error?: { message?: string } | null };
@@ -51,6 +71,8 @@ describe("POST /api/invitations/students", () => {
   beforeEach(() => {
     serverMocks.createSupabaseServerClientFromRequest.mockReset();
     serverMocks.createSupabaseAdminClient.mockReset();
+    sendTransacEmailMock.mockClear();
+    setApiKeyMock.mockClear();
   });
 
   it("returns 422 for invalid payload", async () => {
@@ -105,4 +127,93 @@ describe("POST /api/invitations/students", () => {
     expect(body.error).toBe("Acces refuse.");
     expect(serverMocks.createSupabaseAdminClient).not.toHaveBeenCalled();
   });
+
+  it("does not activate student when target auth account already exists", async () => {
+    const supabase = {
+      auth: {
+        getUser: async () => ({ data: { user: { id: "coach-1" } }, error: null }),
+      },
+      from: (table: string) => {
+        if (table === "profiles") {
+          return buildSelectMaybeSingle({
+            data: { role: "coach", org_id: "org-1" },
+            error: null,
+          });
+        }
+        if (table === "students") {
+          return buildSelectMaybeSingle({
+            data: {
+              id: "student-1",
+              org_id: "org-1",
+              email: "student@example.com",
+              first_name: "Camille",
+              last_name: "Dupont",
+            },
+            error: null,
+          });
+        }
+        return buildSelectMaybeSingle({ data: null, error: null });
+      },
+    } as SupabaseClient;
+
+    const studentsUpdatePayloads: Array<Record<string, unknown>> = [];
+    const admin = {
+      auth: {
+        admin: {
+          listUsers: async () => ({
+            data: {
+              users: [{ id: "student-user-1", email: "student@example.com" }],
+              nextPage: null,
+            },
+            error: null,
+          }),
+          inviteUserByEmail: jest.fn(),
+        },
+      },
+      from: (table: string) => {
+        if (table === "profiles") {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({
+                  data: { id: "student-user-1", role: "student", org_id: "org-1" },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === "student_accounts") {
+          return {
+            upsert: async () => ({ error: null }),
+          };
+        }
+        if (table === "students") {
+          return {
+            update: (payload: Record<string, unknown>) => {
+              studentsUpdatePayloads.push(payload);
+              return {
+                eq: async () => ({ error: null }),
+              };
+            },
+          };
+        }
+        return {};
+      },
+    };
+
+    serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
+    serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
+
+    const response = await POST(buildRequest({ studentId: "student-1" }));
+
+    expect(response.status).toBe(200);
+    expect(studentsUpdatePayloads).toHaveLength(1);
+    expect(studentsUpdatePayloads[0]).toEqual(
+      expect.objectContaining({ invited_at: expect.any(String) })
+    );
+    expect(studentsUpdatePayloads[0].activated_at).toBeUndefined();
+    expect(sendTransacEmailMock).toHaveBeenCalledTimes(1);
+  });
 });
+

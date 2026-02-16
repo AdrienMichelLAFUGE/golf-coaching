@@ -21,9 +21,11 @@ const dynamicStorage = {
     if (typeof window === "undefined") return;
     if (shouldRememberSession()) {
       window.localStorage.setItem(key, value);
+      window.sessionStorage.removeItem(key);
       return;
     }
     window.sessionStorage.setItem(key, value);
+    window.localStorage.removeItem(key);
   },
   removeItem: (key: string) => {
     if (typeof window === "undefined") return;

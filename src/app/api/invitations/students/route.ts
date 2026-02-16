@@ -204,13 +204,6 @@ export async function POST(request: Request) {
     }
   }
 
-  if (existingUser) {
-    await admin
-      .from("students")
-      .update({ activated_at: new Date().toISOString() })
-      .eq("id", student.id);
-  }
-
   await recordActivity({
     admin,
     action: "student.invite.success",

@@ -157,6 +157,16 @@ describe("GET /api/admin/logs", () => {
             })),
           };
         }
+        if (table === "student_accounts") {
+          return {
+            select: jest.fn(() => ({
+              in: async () => ({
+                data: [],
+                error: null,
+              }),
+            })),
+          };
+        }
         throw new Error(`Unexpected table ${table}`);
       }),
     };
@@ -176,5 +186,104 @@ describe("GET /api/admin/logs", () => {
     expect(body.logs[0].action).toBe("report.publish.success");
     expect(body.logs[0].actorName).toBe("Coach Test");
     expect(body.logs[0].orgName).toBe("Org Test");
+  });
+
+  it("falls back to linked student full name when actor profile name is empty", async () => {
+    const supabase = {
+      auth: {
+        getUser: async () => ({
+          data: { user: { id: "admin-1", email: "adrien.lafuge@outlook.fr" } },
+          error: null,
+        }),
+      },
+    } as SupabaseClient;
+
+    const logsChain = {
+      gte: jest.fn(),
+      order: jest.fn(),
+      limit: jest.fn(),
+      eq: jest.fn(),
+    };
+    logsChain.gte.mockReturnValue(logsChain);
+    logsChain.order.mockReturnValue(logsChain);
+    logsChain.eq.mockReturnValue(logsChain);
+    logsChain.limit.mockResolvedValue({
+      data: [
+        {
+          id: "log-1",
+          created_at: "2026-02-13T10:00:00.000Z",
+          level: "info",
+          action: "student.updated",
+          source: "db",
+          actor_user_id: "student-user-1",
+          org_id: "org-1",
+          entity_type: "students",
+          entity_id: "student-1",
+          message: "Eleve modifie.",
+          metadata: {},
+        },
+      ],
+      error: null,
+    });
+
+    const admin = {
+      from: jest.fn((table: string) => {
+        if (table === "app_activity_logs") {
+          return { select: jest.fn(() => logsChain) };
+        }
+        if (table === "profiles") {
+          return {
+            select: jest.fn(() => ({
+              in: async () => ({
+                data: [{ id: "student-user-1", full_name: null }],
+                error: null,
+              }),
+            })),
+          };
+        }
+        if (table === "organizations") {
+          return {
+            select: jest.fn(() => ({
+              in: async () => ({
+                data: [{ id: "org-1", name: "Org Test" }],
+                error: null,
+              }),
+            })),
+          };
+        }
+        if (table === "student_accounts") {
+          return {
+            select: jest.fn(() => ({
+              in: async () => ({
+                data: [{ user_id: "student-user-1", student_id: "student-1" }],
+                error: null,
+              }),
+            })),
+          };
+        }
+        if (table === "students") {
+          return {
+            select: jest.fn(() => ({
+              in: async () => ({
+                data: [{ id: "student-1", first_name: "Camille", last_name: "Dupont" }],
+                error: null,
+              }),
+            })),
+          };
+        }
+        throw new Error(`Unexpected table ${table}`);
+      }),
+    };
+
+    serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
+    serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
+
+    const response = await GET(buildRequest());
+    if (!response) throw new Error("Missing response");
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.logs).toHaveLength(1);
+    expect(body.logs[0].actorName).toBe("Camille Dupont");
   });
 });
