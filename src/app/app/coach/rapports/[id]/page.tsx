@@ -42,6 +42,7 @@ type Report = {
   org_id: string;
   origin_share_id: string | null;
   organizations?: OrganizationRef;
+  students?: StudentRef;
 };
 
 type OrganizationRef =
@@ -49,6 +50,21 @@ type OrganizationRef =
       name: string | null;
     }
   | { name: string | null }[]
+  | null;
+
+type StudentRef =
+  | {
+      id: string;
+      first_name: string | null;
+      last_name: string | null;
+      email: string | null;
+    }
+  | {
+      id: string;
+      first_name: string | null;
+      last_name: string | null;
+      email: string | null;
+    }[]
   | null;
 
 type ReportSection = {
@@ -149,6 +165,25 @@ const getOrgName = (value?: OrganizationRef) => {
   if (!value) return null;
   if (Array.isArray(value)) return value[0]?.name ?? null;
   return value.name ?? null;
+};
+
+const getStudentRef = (value?: StudentRef) => {
+  if (!value) return null;
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value;
+};
+
+const getStudentName = (value?: StudentRef) => {
+  const student = getStudentRef(value);
+  if (!student) return null;
+  const fullName = [student.first_name, student.last_name].filter(Boolean).join(" ").trim();
+  return fullName || null;
+};
+
+const getStudentEmail = (value?: StudentRef) => {
+  const student = getStudentRef(value);
+  const email = student?.email?.trim().toLowerCase() ?? "";
+  return email || null;
 };
 
 const formatSourceLabel = (
@@ -306,6 +341,9 @@ export default function CoachReportDetailPage() {
   const [shareOpen, setShareOpen] = useState(false);
   const [shareMessage, setShareMessage] = useState("");
   const [shareError, setShareError] = useState("");
+  const [notifyStudentPending, setNotifyStudentPending] = useState(false);
+  const [notifyStudentMessage, setNotifyStudentMessage] = useState("");
+  const [notifyStudentError, setNotifyStudentError] = useState("");
   const [sourceStudentName, setSourceStudentName] = useState<string | null>(null);
   const [activeImage, setActiveImage] = useState<{
     url: string;
@@ -534,7 +572,7 @@ export default function CoachReportDetailPage() {
       const { data: reportData, error: reportError } = await supabase
         .from("reports")
         .select(
-          "id, title, report_date, created_at, student_id, sent_at, org_id, origin_share_id, organizations(name)"
+          "id, title, report_date, created_at, student_id, sent_at, org_id, origin_share_id, organizations(name), students(id, first_name, last_name, email)"
         )
         .eq("id", reportId)
         .single();
@@ -772,6 +810,110 @@ export default function CoachReportDetailPage() {
     return { message };
   };
 
+  const handleNotifyStudent = async () => {
+    if (!report) return;
+
+    if (report.origin_share_id) {
+      setNotifyStudentError("Ce rapport partage est en lecture seule.");
+      setNotifyStudentMessage("");
+      return;
+    }
+
+    const inActiveWorkspace = isReportInActiveWorkspace({
+      activeOrgId: organization?.id,
+      reportOrgId: report.org_id,
+    });
+
+    if (!inActiveWorkspace) {
+      setNotifyStudentError(
+        "Ce rapport a ete cree dans un autre workspace. Bascule sur ce workspace pour notifier l eleve."
+      );
+      setNotifyStudentMessage("");
+      return;
+    }
+
+    if (!report.sent_at) {
+      setNotifyStudentError("Publiez d abord le rapport avant d envoyer un email.");
+      setNotifyStudentMessage("");
+      return;
+    }
+
+    const studentEmail = getStudentEmail(report.students);
+    if (!report.student_id || !studentEmail) {
+      setNotifyStudentError("Cet eleve n a pas d email.");
+      setNotifyStudentMessage("");
+      return;
+    }
+
+    setNotifyStudentPending(true);
+    setNotifyStudentError("");
+    setNotifyStudentMessage("");
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setNotifyStudentError("Session invalide.");
+      setNotifyStudentPending(false);
+      return;
+    }
+
+    const response = await fetch("/api/reports/notify-student", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        reportId: report.id,
+      }),
+    });
+
+    const payload = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      message?: string;
+    };
+    if (!response.ok) {
+      setNotifyStudentError(payload.error ?? "Envoi email impossible.");
+      setNotifyStudentPending(false);
+      return;
+    }
+
+    setNotifyStudentMessage(
+      payload.message ?? `Notification envoyee a ${studentEmail}.`
+    );
+    setNotifyStudentPending(false);
+  };
+
+  const reportStudentEmail = report ? getStudentEmail(report.students) : null;
+  const reportStudentName = report ? getStudentName(report.students) : null;
+  const canNotifyStudent = Boolean(
+    report &&
+      report.student_id &&
+      report.sent_at &&
+      reportStudentEmail &&
+      !report.origin_share_id &&
+      isReportInActiveWorkspace({
+        activeOrgId: organization?.id,
+        reportOrgId: report.org_id,
+      })
+  );
+  const notifyStudentTitle = !report?.student_id
+    ? "Ce rapport n est pas associe a un eleve."
+    : report.origin_share_id
+      ? "Ce rapport partage est en lecture seule."
+      : !isReportInActiveWorkspace({
+          activeOrgId: organization?.id,
+          reportOrgId: report.org_id,
+        })
+      ? "Bascule sur le workspace d origine pour notifier l eleve."
+      : !report.sent_at
+        ? "Publiez d abord ce rapport."
+        : !reportStudentEmail
+          ? "Cet eleve n a pas d email."
+          : reportStudentName
+            ? `Notifier ${reportStudentName} (${reportStudentEmail})`
+            : `Notifier l eleve (${reportStudentEmail})`;
+
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       {loading ? (
@@ -792,6 +934,16 @@ export default function CoachReportDetailPage() {
           {shareMessage ? (
             <section className="panel rounded-2xl p-4">
               <p className="text-sm text-[var(--muted)]">{shareMessage}</p>
+            </section>
+          ) : null}
+          {notifyStudentError ? (
+            <section className="panel rounded-2xl p-4">
+              <p className="text-sm text-red-400">{notifyStudentError}</p>
+            </section>
+          ) : null}
+          {notifyStudentMessage ? (
+            <section className="panel rounded-2xl p-4">
+              <p className="text-sm text-[var(--muted)]">{notifyStudentMessage}</p>
             </section>
           ) : null}
           <PageHeader
@@ -873,6 +1025,41 @@ export default function CoachReportDetailPage() {
                     <path d="M8.6 13.5l6.8 4" />
                     <path d="M15.4 6.5l-6.8 4" />
                   </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleNotifyStudent}
+                  disabled={notifyStudentPending || !canNotifyStudent}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="Notifier l eleve par email"
+                  title={notifyStudentTitle}
+                >
+                  {notifyStudentPending ? (
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4 animate-spin"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M21 12a9 9 0 1 1-6.2-8.56" />
+                    </svg>
+                  ) : (
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <rect x="3" y="5" width="18" height="14" rx="2" ry="2" />
+                      <path d="m3 7 9 6 9-6" />
+                    </svg>
+                  )}
                 </button>
                 {canEditReport({
                   activeOrgId: organization?.id,

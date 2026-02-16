@@ -370,6 +370,9 @@ export default function CoachStudentDetailPage() {
   const [assignmentsError, setAssignmentsError] = useState("");
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [shareMessage, setShareMessage] = useState("");
+  const [inviteActionMessage, setInviteActionMessage] = useState("");
+  const [inviteActionError, setInviteActionError] = useState("");
+  const [inviteActionLoading, setInviteActionLoading] = useState(false);
   const [messageActionError, setMessageActionError] = useState("");
   const [messageActionLoading, setMessageActionLoading] = useState(false);
   const [shareStatus, setShareStatus] = useState<ShareStatus | null>(null);
@@ -2099,6 +2102,66 @@ export default function CoachStudentDetailPage() {
     router.push(`/app/coach/messages?threadId=${payload.threadId}`);
   };
 
+  const handleInviteStudent = async () => {
+    if (!student?.id) return;
+    if (isReadOnly) {
+      setInviteActionError("Lecture seule: plan Free en organisation.");
+      setInviteActionMessage("");
+      return;
+    }
+    if (student.activated_at || student.invited_at) {
+      setInviteActionError("");
+      setInviteActionMessage("");
+      return;
+    }
+    if (!student.email) {
+      setInviteActionError("Ajoute un email pour envoyer une invitation.");
+      setInviteActionMessage("");
+      return;
+    }
+
+    setInviteActionLoading(true);
+    setInviteActionError("");
+    setInviteActionMessage("");
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setInviteActionError("Session invalide. Reconnecte toi.");
+      setInviteActionLoading(false);
+      return;
+    }
+
+    const response = await fetch("/api/invitations/students", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ studentId: student.id }),
+    });
+
+    const payload = (await response.json().catch(() => ({}))) as {
+      error?: string;
+    };
+    if (!response.ok) {
+      setInviteActionError(payload.error ?? "Invitation impossible.");
+      setInviteActionLoading(false);
+      return;
+    }
+
+    setStudent((prev) =>
+      prev
+        ? {
+            ...prev,
+            invited_at: new Date().toISOString(),
+          }
+        : prev
+    );
+    setInviteActionMessage("Invitation envoyee.");
+    setInviteActionLoading(false);
+  };
+
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       {loading ? (
@@ -2187,6 +2250,26 @@ export default function CoachStudentDetailPage() {
             subtitle={student.email || "-"}
             actions={
               <>
+                {!student.activated_at && !student.invited_at ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleInviteStudent()}
+                    disabled={isReadOnly || !student.email || inviteActionLoading}
+                    className={`rounded-full border px-4 py-2 text-xs uppercase tracking-wide transition ${
+                      isReadOnly || !student.email
+                        ? "cursor-not-allowed border-white/10 bg-white/5 text-[var(--muted)] opacity-50"
+                        : "border-emerald-200/40 bg-emerald-400/20 text-emerald-100 hover:bg-emerald-400/30"
+                    }`}
+                    title={
+                      !student.email
+                        ? "Ajoute un email pour envoyer une invitation"
+                        : "Envoyer une invitation eleve"
+                    }
+                    aria-label="Inviter l eleve"
+                  >
+                    {inviteActionLoading ? "Invitation..." : "Inviter"}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => void handleOpenMessageThread()}
@@ -2292,6 +2375,12 @@ export default function CoachStudentDetailPage() {
             </p>
             {shareMessage ? (
               <p className="mt-3 text-xs text-emerald-200">{shareMessage}</p>
+            ) : null}
+            {inviteActionMessage ? (
+              <p className="mt-3 text-xs text-emerald-200">{inviteActionMessage}</p>
+            ) : null}
+            {inviteActionError ? (
+              <p className="mt-3 text-xs text-red-300">{inviteActionError}</p>
             ) : null}
             {messageActionError ? (
               <p className="mt-3 text-xs text-red-300">{messageActionError}</p>
