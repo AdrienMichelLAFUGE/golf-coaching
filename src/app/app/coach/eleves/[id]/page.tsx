@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { canDeleteReport, canEditReport } from "@/lib/report-permissions";
 import { supabase } from "@/lib/supabase/client";
 import { PLAN_ENTITLEMENTS, PLAN_LABELS } from "@/lib/plans";
 import { RADAR_LOADING_PHRASES, TPI_LOADING_PHRASES } from "@/lib/loading-phrases";
@@ -1805,11 +1806,7 @@ export default function CoachStudentDetailPage() {
 
   const handleDeleteReport = async (report: Report) => {
     if (isReadOnly) return;
-    if (report.origin_share_id) {
-      setError("Ce rapport partage est en lecture seule.");
-      return;
-    }
-    if (organization?.id && report.org_id !== organization.id) {
+    if (!canDeleteReport({ activeOrgId: organization?.id, reportOrgId: report.org_id })) {
       setError(
         "Ce rapport a ete cree dans un autre workspace. Bascule sur ce workspace pour le modifier."
       );
@@ -2702,10 +2699,19 @@ export default function CoachStudentDetailPage() {
                         ? `${authorName} - ${sourceLabel}`
                         : authorName
                       : sourceLabel;
-                    const canMutateReport =
+                    const canEdit =
                       canWriteReports &&
-                      !report.origin_share_id &&
-                      (!organization?.id || report.org_id === organization.id);
+                      canEditReport({
+                        activeOrgId: organization?.id,
+                        reportOrgId: report.org_id,
+                        originShareId: report.origin_share_id,
+                      });
+                    const canDelete =
+                      canWriteReports &&
+                      canDeleteReport({
+                        activeOrgId: organization?.id,
+                        reportOrgId: report.org_id,
+                      });
 
                     return (
                       <div
@@ -2758,14 +2764,54 @@ export default function CoachStudentDetailPage() {
                               </svg>
                             </Link>
 
-                            {canMutateReport ? (
-                              <>
-                                <Link
-                                  href={`/app/coach/rapports/nouveau?reportId=${report.id}`}
-                                  aria-label="Modifier le rapport"
-                                  title="Modifier"
-                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:bg-white/10 hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
+                            {canEdit ? (
+                              <Link
+                                href={`/app/coach/rapports/nouveau?reportId=${report.id}`}
+                                aria-label="Modifier le rapport"
+                                title="Modifier"
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:bg-white/10 hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
+                              >
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  className="h-4 w-4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  aria-hidden="true"
                                 >
+                                  <path d="M12 20h9" />
+                                  <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                                </svg>
+                              </Link>
+                            ) : null}
+
+                            {canDelete ? (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteReport(report)}
+                                disabled={deletingId === report.id}
+                                aria-label="Supprimer le rapport"
+                                title={
+                                  deletingId === report.id ? "Suppression..." : "Supprimer"
+                                }
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-red-300 transition hover:bg-white/10 hover:text-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200/40 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {deletingId === report.id ? (
+                                  <svg
+                                    viewBox="0 0 24 24"
+                                    className="h-4 w-4 animate-spin"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    aria-hidden="true"
+                                  >
+                                    <path d="M21 12a9 9 0 1 1-3-6.7" />
+                                  </svg>
+                                ) : (
                                   <svg
                                     viewBox="0 0 24 24"
                                     className="h-4 w-4"
@@ -2776,54 +2822,14 @@ export default function CoachStudentDetailPage() {
                                     strokeLinejoin="round"
                                     aria-hidden="true"
                                   >
-                                    <path d="M12 20h9" />
-                                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                                    <path d="M3 6h18" />
+                                    <path d="M8 6V4h8v2" />
+                                    <path d="M19 6l-1 14H6L5 6" />
+                                    <path d="M10 11v6" />
+                                    <path d="M14 11v6" />
                                   </svg>
-                                </Link>
-
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteReport(report)}
-                                  disabled={deletingId === report.id}
-                                  aria-label="Supprimer le rapport"
-                                  title={
-                                    deletingId === report.id ? "Suppression..." : "Supprimer"
-                                  }
-                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-red-300 transition hover:bg-white/10 hover:text-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200/40 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  {deletingId === report.id ? (
-                                    <svg
-                                      viewBox="0 0 24 24"
-                                      className="h-4 w-4 animate-spin"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      strokeWidth="2"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      aria-hidden="true"
-                                    >
-                                      <path d="M21 12a9 9 0 1 1-3-6.7" />
-                                    </svg>
-                                  ) : (
-                                    <svg
-                                      viewBox="0 0 24 24"
-                                      className="h-4 w-4"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      strokeWidth="2"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      aria-hidden="true"
-                                    >
-                                      <path d="M3 6h18" />
-                                      <path d="M8 6V4h8v2" />
-                                      <path d="M19 6l-1 14H6L5 6" />
-                                      <path d="M10 11v6" />
-                                      <path d="M14 11v6" />
-                                    </svg>
-                                  )}
-                                </button>
-                              </>
+                                )}
+                              </button>
                             ) : null}
                           </div>
                         </div>

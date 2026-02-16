@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { canDeleteReport, canEditReport } from "@/lib/report-permissions";
 import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../_components/role-guard";
 import { useProfile } from "../../_components/profile-context";
@@ -346,11 +347,7 @@ export default function CoachReportsPage() {
   }, [organization?.id]);
 
   const handleDeleteReport = async (report: ReportRow) => {
-    if (report.origin_share_id) {
-      setError("Ce rapport partage est en lecture seule.");
-      return;
-    }
-    if (organization?.id && report.org_id !== organization.id) {
+    if (!canDeleteReport({ activeOrgId: organization?.id, reportOrgId: report.org_id })) {
       setError(
         "Ce rapport a ete cree dans un autre workspace. Bascule sur ce workspace pour le modifier."
       );
@@ -649,9 +646,15 @@ export default function CoachReportsPage() {
                     <span>Actions</span>
                   </div>
                   {filteredReports.map((report) => {
-                    const canMutateReport =
-                      !report.origin_share_id &&
-                      (!organization?.id || report.org_id === organization.id);
+                    const canEdit = canEditReport({
+                      activeOrgId: organization?.id,
+                      reportOrgId: report.org_id,
+                      originShareId: report.origin_share_id,
+                    });
+                    const canDelete = canDeleteReport({
+                      activeOrgId: organization?.id,
+                      reportOrgId: report.org_id,
+                    });
                     const authorName = getAuthorName(report.author_profile);
                     const sourceLabel = formatSourceLabel(report);
                     return (
@@ -716,23 +719,23 @@ export default function CoachReportsPage() {
                         >
                           Ouvrir
                         </Link>
-                        {canMutateReport ? (
-                          <>
-                            <Link
-                              href={`/app/coach/rapports/nouveau?reportId=${report.id}`}
-                              className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
-                            >
-                              Modifier
-                            </Link>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteReport(report)}
-                              disabled={deletingId === report.id}
-                              className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:text-red-200 disabled:opacity-60"
-                            >
-                              {deletingId === report.id ? "Suppression..." : "Supprimer"}
-                            </button>
-                          </>
+                        {canEdit ? (
+                          <Link
+                            href={`/app/coach/rapports/nouveau?reportId=${report.id}`}
+                            className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                          >
+                            Modifier
+                          </Link>
+                        ) : null}
+                        {canDelete ? (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteReport(report)}
+                            disabled={deletingId === report.id}
+                            className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:text-red-200 disabled:opacity-60"
+                          >
+                            {deletingId === report.id ? "Suppression..." : "Supprimer"}
+                          </button>
                         ) : null}
                       </div>
                     </div>

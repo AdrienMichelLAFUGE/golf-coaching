@@ -6,6 +6,11 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode, SyntheticEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
+import {
+  canDeleteReport,
+  canEditReport,
+  isReportInActiveWorkspace,
+} from "@/lib/report-permissions";
 import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../../_components/role-guard";
 import { useProfile } from "../../../_components/profile-context";
@@ -655,11 +660,7 @@ export default function CoachReportDetailPage() {
 
   const handleDelete = async () => {
     if (!report) return;
-    if (report.origin_share_id) {
-      setError("Ce rapport partage est en lecture seule.");
-      return;
-    }
-    if (organization?.id && report.org_id !== organization.id) {
+    if (!canDeleteReport({ activeOrgId: organization?.id, reportOrgId: report.org_id })) {
       setError(
         "Ce rapport a ete cree dans un autre workspace. Bascule sur ce workspace pour le modifier."
       );
@@ -685,14 +686,19 @@ export default function CoachReportDetailPage() {
 
   const handlePublish = async () => {
     if (!report || report.sent_at) return;
-    if (report.origin_share_id) {
-      setError("Ce rapport partage est en lecture seule.");
-      return;
-    }
-    if (organization?.id && report.org_id !== organization.id) {
+    if (
+      !isReportInActiveWorkspace({
+        activeOrgId: organization?.id,
+        reportOrgId: report.org_id,
+      })
+    ) {
       setError(
         "Ce rapport a ete cree dans un autre workspace. Bascule sur ce workspace pour le modifier."
       );
+      return;
+    }
+    if (report.origin_share_id) {
+      setError("Ce rapport partage est en lecture seule.");
       return;
     }
     const confirmed = window.confirm(`Publier le rapport "${report.title}" ?`);
@@ -868,8 +874,11 @@ export default function CoachReportDetailPage() {
                     <path d="M15.4 6.5l-6.8 4" />
                   </svg>
                 </button>
-                {!report.origin_share_id &&
-                (!organization?.id || report.org_id === organization.id) ? (
+                {canEditReport({
+                  activeOrgId: organization?.id,
+                  reportOrgId: report.org_id,
+                  originShareId: report.origin_share_id,
+                }) ? (
                   <Link
                     href={`/app/coach/rapports/nouveau?reportId=${report.id}`}
                     className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
@@ -878,8 +887,11 @@ export default function CoachReportDetailPage() {
                   </Link>
                 ) : null}
                 {!report.sent_at &&
-                !report.origin_share_id &&
-                (!organization?.id || report.org_id === organization.id) ? (
+                canEditReport({
+                  activeOrgId: organization?.id,
+                  reportOrgId: report.org_id,
+                  originShareId: report.origin_share_id,
+                }) ? (
                   <button
                     type="button"
                     onClick={handlePublish}
@@ -889,8 +901,10 @@ export default function CoachReportDetailPage() {
                     {publishing ? "Publication..." : "Publier"}
                   </button>
                 ) : null}
-                {!report.origin_share_id &&
-                (!organization?.id || report.org_id === organization.id) ? (
+                {canDeleteReport({
+                  activeOrgId: organization?.id,
+                  reportOrgId: report.org_id,
+                }) ? (
                   <button
                     type="button"
                     onClick={handleDelete}
