@@ -6,7 +6,7 @@ import {
 } from "@/lib/messages/compliance-copy";
 
 const ORG_NAME = "SwingFlow";
-const SUPPORT_EMAIL = "contact@adrienlafuge.com";
+const SUPPORT_EMAIL = "contact@swingflow.fr";
 
 const replaceCompliancePlaceholders = (value: string) =>
   value

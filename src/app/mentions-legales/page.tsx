@@ -39,8 +39,8 @@ export default function MentionsLegalesPage() {
 
               <dt className="text-[var(--text)]/80">Email</dt>
               <dd>
-                <a className="underline underline-offset-4" href="mailto:contact@adrienlafuge.com">
-                  contact@adrienlafuge.com
+                <a className="underline underline-offset-4" href="mailto:contact@swingflow.fr">
+                  contact@swingflow.fr
                 </a>
               </dd>
 

@@ -39,8 +39,8 @@ export default function PolitiqueDeConfidentialitePage() {
             <p>Domaine de la Plaine, 45240 Marcilly-en-Villette, France</p>
             <p>
               Email :{" "}
-              <a className="underline underline-offset-4" href="mailto:contact@adrienlafuge.com">
-                contact@adrienlafuge.com
+              <a className="underline underline-offset-4" href="mailto:contact@swingflow.fr">
+                contact@swingflow.fr
               </a>
             </p>
           </section>
@@ -134,8 +134,8 @@ export default function PolitiqueDeConfidentialitePage() {
             </ul>
             <p>
               Toute demande peut être adressée à{" "}
-              <a className="underline underline-offset-4" href="mailto:contact@adrienlafuge.com">
-                contact@adrienlafuge.com
+              <a className="underline underline-offset-4" href="mailto:contact@swingflow.fr">
+                contact@swingflow.fr
               </a>
               .
             </p>

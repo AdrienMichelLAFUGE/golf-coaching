@@ -1,47 +1,26 @@
+import { existsSync } from "fs";
+import { join } from "path";
 import Image from "next/image";
 import Link from "next/link";
-import LandingReveal from "./landing-reveal";
-import ReportsFeatureShowcase from "./reports-feature-showcase";
 import Hero from "@/components/hero/Hero";
-import CentralizationSection from "./CentralizationSection";
 import PricingOffersContent from "@/components/pricing/PricingOffersContent";
-import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import TrackedCtaLink from "@/components/marketing/TrackedCtaLink";
+import { getSiteBaseUrl } from "@/lib/env/public";
 import { pricingPlansSchema, type PricingPlan } from "@/lib/pricing/types";
+import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import SectionsReadyIllustration from "./illustrations/SectionsReadyIllustration";
+import LandingReveal from "./landing-reveal";
+import StickyLandingHeader from "./StickyLandingHeader";
+import Testimonial from "./Testimonial";
+import { landingCopy } from "./landing-copy";
 
-const IconUser = ({ className = "h-5 w-5" }: { className?: string }) => (
-  <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.6">
-    <circle cx="12" cy="8" r="3.5" />
-    <path d="M4.5 19.2c1.6-3.4 5-5.2 7.5-5.2s5.9 1.8 7.5 5.2" />
-  </svg>
-);
-
-const IconChart = () => (
-  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6">
-    <path d="M3.5 19.5h17" />
-    <path d="M6.5 16.5l4.2-5 3 3.2 4.3-6" />
-    <circle cx="6.5" cy="16.5" r="1" fill="currentColor" stroke="none" />
-    <circle cx="10.7" cy="11.5" r="1" fill="currentColor" stroke="none" />
-    <circle cx="13.7" cy="14.7" r="1" fill="currentColor" stroke="none" />
-    <circle cx="18" cy="8.7" r="1" fill="currentColor" stroke="none" />
-  </svg>
-);
-
-const IconDoc = () => (
-  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6">
-    <path d="M7 3.5h6.5L19.5 9v11a1.5 1.5 0 0 1-1.5 1.5H7A1.5 1.5 0 0 1 5.5 20V5A1.5 1.5 0 0 1 7 3.5Z" />
-    <path d="M13.5 3.5V9H19" />
-    <path d="M8.5 12h7" />
-    <path d="M8.5 15.5h7" />
-  </svg>
-);
-
-const IconCheck = () => (
-  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-    <path d="M5.5 12.5l4 4 9-9" />
-  </svg>
-);
+function resolveLandingScreenshot(fileName: string, fallbackSrc: string): string {
+  const screenshotPath = join(process.cwd(), "public", "landing", "screenshots", fileName);
+  return existsSync(screenshotPath) ? `/landing/screenshots/${fileName}` : fallbackSrc;
+}
 
 export default async function LandingPage() {
+  const showSocialProof = false;
   let pricingPlans: PricingPlan[] = [];
   let pricingPlansError: string | null = null;
 
@@ -67,10 +46,51 @@ export default async function LandingPage() {
         pricingPlans = parsed.data;
       }
     }
-  } catch (err) {
-    console.error("Unexpected pricing plans load failure.", err);
+  } catch (error) {
+    console.error("Unexpected pricing plans load failure.", error);
     pricingPlansError = "Impossible de charger les offres pour le moment.";
   }
+
+  const siteBaseUrl = getSiteBaseUrl();
+  const dashboardOverviewImageSrc = resolveLandingScreenshot(
+    "dashboard-eleve-overview.png",
+    "/landing/graphs/vitesse-club-balle.png"
+  );
+  const coachDashboardImageSrc = resolveLandingScreenshot(
+    "dashboard-coach.png",
+    "/landing/graphs/tpi-exemple.png"
+  );
+
+  const organizationJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: "SwingFlow",
+    legalName: "EI LAFUGE ADRIEN",
+    url: siteBaseUrl,
+    email: "contact@swingflow.fr",
+    sameAs: [] as string[],
+  };
+
+  const softwareApplicationJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "SwingFlow",
+    applicationCategory: "BusinessApplication",
+    operatingSystem: "Web",
+    url: siteBaseUrl,
+    description:
+      "Plateforme de coaching golf pour centraliser les fiches élèves, assurer un suivi continu et générer des rapports intelligents.",
+    offers: {
+      "@type": "AggregateOffer",
+      lowPrice: 0,
+      priceCurrency: "EUR",
+      offerCount: 3,
+    },
+    provider: {
+      "@type": "Organization",
+      name: "EI LAFUGE ADRIEN",
+    },
+  };
 
   return (
     <main className="relative min-h-screen px-4 pb-28 pt-12 md:px-8 md:pb-36 md:pt-16">
@@ -79,8 +99,17 @@ export default async function LandingPage() {
       <div className="pointer-events-none absolute -right-32 top-[80px] h-[320px] w-[320px] rounded-full bg-sky-400/15 blur-[120px]" />
       <div className="pointer-events-none absolute left-1/2 top-[520px] h-[260px] w-[520px] -translate-x-1/2 rounded-[999px] bg-white/5 blur-[80px]" />
 
-      <div className="mx-auto max-w-6xl space-y-24 md:space-y-32">
-        <div className="reveal" data-reveal-stagger>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareApplicationJsonLd) }}
+      />
+
+      <div className="mx-auto max-w-6xl space-y-20 md:space-y-28">
+        <header className="reveal" data-reveal-stagger>
           <div
             className="flex flex-wrap items-center justify-between gap-4"
             data-reveal-item
@@ -103,377 +132,344 @@ export default async function LandingPage() {
                 className="h-7 w-auto min-w-0 max-w-[min(220px,60vw)] object-contain sm:h-8 sm:max-w-[min(320px,70vw)]"
               />
             </Link>
-            <Link
-              href="/login"
-              className="rounded-full border border-white/15 bg-white/5 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10 active:scale-[0.98]"
-            >
-              Se connecter
-            </Link>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <TrackedCtaLink
+                href="/login?mode=signin"
+                tracking={{
+                  id: "landing_header_signin",
+                  location: "landing_header",
+                  target: "/login?mode=signin",
+                }}
+                className="rounded-full border border-white/15 bg-white/5 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10 active:scale-[0.98]"
+              >
+                Se connecter
+              </TrackedCtaLink>
+              <TrackedCtaLink
+                href="/login?mode=signup"
+                tracking={{
+                  id: "landing_header_signup",
+                  location: "landing_header",
+                  target: "/login?mode=signup",
+                }}
+                className="inline-flex rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 active:scale-[0.98]"
+              >
+                Créer un compte coach
+              </TrackedCtaLink>
+            </div>
           </div>
-        </div>
+        </header>
 
         <Hero />
 
-        <CentralizationSection />
+        <StickyLandingHeader />
+
+        <section className="reveal relative overflow-hidden" data-reveal-stagger>
+          <div className="max-w-3xl space-y-6" data-reveal-item>
+              <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
+                Problèmes
+              </p>
+              <h2 className="mt-3 max-w-2xl text-3xl font-semibold leading-tight text-[var(--text)] md:text-4xl">
+                {landingCopy.problems.title}
+              </h2>
+              <p className="mt-4 max-w-xl text-sm leading-relaxed text-[var(--muted)]">
+                {landingCopy.problems.subtitle}
+              </p>
+              <p className="mt-6 max-w-xl text-sm font-medium text-[var(--text)]">
+                {landingCopy.problems.proof}
+              </p>
+
+              <ol className="mt-2 space-y-3">
+                {landingCopy.problems.bullets.map((bullet, index) => (
+                  <li
+                    key={bullet}
+                    className="flex items-start gap-4 rounded-2xl border border-white/15 bg-white/10 px-4 py-3"
+                  >
+                    <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">
+                      {index + 1}
+                    </span>
+                    <p className="pt-0.5 text-sm leading-relaxed text-[var(--text)]">{bullet}</p>
+                  </li>
+                ))}
+              </ol>
+
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[0.66rem] uppercase tracking-[0.2em] text-[var(--muted)]">
+                <span className="h-2 w-2 rounded-full bg-amber-400/80 animate-pulse" />
+                Temps perdu en préparation
+              </div>
+          </div>
+        </section>
 
         <section
-          className="reveal panel-outline relative overflow-hidden rounded-3xl p-8 md:p-10 lg:mr-auto lg:max-w-[90%]"
+          className="reveal relative overflow-visible rounded-[34px] border border-white/20 bg-gradient-to-br from-emerald-100/60 via-white/65 to-sky-100/55 px-8 py-10 shadow-[0_24px_60px_rgba(15,23,42,0.1)] md:px-10"
           data-reveal-stagger
         >
-          <div className="pointer-events-none absolute -right-24 top-6 h-40 w-40 rounded-full bg-emerald-400/10 blur-[60px]" />
-          <div className="pointer-events-none absolute -left-24 bottom-6 h-36 w-36 rounded-full bg-sky-400/10 blur-[60px]" />
-          <div className="max-w-2xl" data-reveal-item>
-            <h2 className="text-2xl font-semibold text-[var(--text)] md:text-3xl">
-              Le parcours en 4 étapes
-            </h2>
-            <p className="mt-3 text-sm text-[var(--muted)]">
-              Ajoutez un élève, importez vos données, construisez le rapport, publiez-le.
-              L&apos;élève le consulte dans son espace.
-            </p>
-          </div>
-          <div className="mt-10">
-            <div className="relative space-y-4 lg:hidden">
-              <span className="absolute left-4 top-0 h-full w-px bg-white/15" />
-              {[
-                { label: "Élève", icon: <IconUser /> },
-                { label: "TPI et radar", icon: <IconChart /> },
-                { label: "Rapport", icon: <IconDoc /> },
-                { label: "Publication", icon: <IconCheck /> },
-              ].map((step, index) => (
-                <div key={step.label} className="relative pl-10" data-reveal-item>
-                  <span className="absolute left-2 top-6 h-3 w-3 -translate-x-1/2 rounded-full bg-emerald-400/40" />
-                  <div className="relative z-10 flex items-start gap-3 rounded-2xl border border-white/15 bg-white/5 px-4 py-4 shadow-[0_18px_40px_rgba(0,0,0,0.2)]">
-                    <span className="mt-1 flex h-9 w-9 items-center justify-center rounded-full bg-emerald-400/15 text-emerald-200">
-                      {step.icon}
+          <div className="pointer-events-none absolute -left-16 top-6 h-40 w-40 rounded-full bg-emerald-300/25 blur-3xl" />
+          <div className="pointer-events-none absolute -right-8 bottom-2 h-48 w-48 rounded-full bg-sky-300/25 blur-3xl" />
+
+          <div className="relative grid gap-10 lg:grid-cols-[1fr_0.9fr]">
+            <div data-reveal-item>
+              <p className="text-xs uppercase tracking-[0.24em] text-slate-600">Solution</p>
+              <h2 className="mt-3 text-3xl font-semibold leading-tight text-slate-900 md:text-4xl">
+                {landingCopy.solution.title}
+              </h2>
+              <p className="mt-4 max-w-xl text-sm leading-relaxed text-slate-700">
+                {landingCopy.solution.subtitle}
+              </p>
+
+              <ul className="mt-7 space-y-3 text-sm text-slate-800">
+                {landingCopy.solution.bullets.map((bullet) => (
+                  <li key={bullet} className="flex items-start gap-3">
+                    <span className="mt-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-xs font-semibold text-white">
+                      +
                     </span>
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                        Étape {index + 1}
-                      </p>
-                      <p className="mt-1 text-sm text-[var(--text)]">{step.label}</p>
-                    </div>
-                  </div>
+                    <span>{bullet}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="mt-8 flex flex-wrap items-center gap-3">
+                <TrackedCtaLink
+                  href="/login?mode=signup"
+                  tracking={{
+                    id: "landing_solution_signup",
+                    location: "solution",
+                    target: "/login?mode=signup",
+                  }}
+                  className="inline-flex rounded-full bg-slate-900 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-slate-800 active:scale-[0.98]"
+                >
+                  {landingCopy.solution.primaryCta}
+                </TrackedCtaLink>
+                <TrackedCtaLink
+                  href="/login?mode=signin"
+                  tracking={{
+                    id: "landing_solution_signin",
+                    location: "solution",
+                    target: "/login?mode=signin",
+                  }}
+                  className="rounded-full border border-slate-900/20 bg-white/70 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-white active:scale-[0.98]"
+                >
+                  {landingCopy.solution.secondaryCta}
+                </TrackedCtaLink>
+              </div>
+            </div>
+
+            <div className="relative py-2 lg:-mr-24 xl:-mr-32" data-reveal-item>
+              <div className="pointer-events-none absolute -inset-x-6 -inset-y-8 rounded-[40px] bg-gradient-to-br from-white/70 via-white/30 to-transparent" />
+              <div className="pointer-events-none absolute -left-14 top-10 h-44 w-44 rounded-full bg-emerald-300/30 blur-3xl" />
+              <div className="pointer-events-none absolute -right-16 bottom-8 h-56 w-56 rounded-full bg-sky-300/30 blur-3xl" />
+              <Image
+                src={dashboardOverviewImageSrc}
+                alt="Dashboard élève SwingFlow"
+                width={1720}
+                height={1024}
+                priority
+                className="relative z-10 h-auto w-full drop-shadow-[0_34px_80px_rgba(15,23,42,0.28)] lg:w-[128%] lg:max-w-none lg:-ml-8"
+              />
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="fonctionnalites"
+          className="reveal scroll-mt-28"
+          data-reveal-stagger
+        >
+          <div className="grid gap-10 lg:grid-cols-[0.72fr_1.28fr]">
+            <div className="lg:sticky lg:top-28 lg:self-start" data-reveal-item>
+              <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
+                Fonctionnalités
+              </p>
+              <h2 className="mt-3 text-3xl font-semibold leading-tight text-[var(--text)] md:text-4xl">
+                {landingCopy.features.title}
+              </h2>
+              <p className="mt-4 text-sm leading-relaxed text-[var(--muted)]">
+                Moins de friction entre vos outils, plus de continuité dans vos décisions.
+              </p>
+
+              <div className="mt-8 flex items-center gap-4 rounded-2xl border border-white/15 bg-white/10 p-4">
+                <div className="h-14 w-14">
+                  <SectionsReadyIllustration />
+                </div>
+                <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                  Workflow stable, coaching vivant
+                </p>
+              </div>
+            </div>
+
+            <ol className="space-y-8">
+              {landingCopy.features.items.map((item, index) => (
+                <li
+                  key={item.title}
+                  className={`relative pl-12 ${index % 2 === 1 ? "lg:translate-x-8" : ""}`}
+                  data-reveal-item
+                >
+                  <span className="absolute left-0 top-0.5 flex h-8 w-8 items-center justify-center rounded-full border border-white/20 bg-white/75 text-xs font-semibold text-slate-700">
+                    {index + 1}
+                  </span>
+                  <h3 className="text-xl font-semibold text-[var(--text)]">{item.title}</h3>
+                  <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--muted)]">
+                    {item.description}
+                  </p>
+                  <span className="mt-3 block h-px w-24 bg-gradient-to-r from-emerald-400/60 to-transparent" />
+                </li>
+              ))}
+            </ol>
+          </div>
+        </section>
+
+        <section className="reveal relative overflow-hidden" data-reveal-stagger>
+          <div className="max-w-3xl" data-reveal-item>
+            <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">Bénéfices</p>
+            <h2 className="mt-3 text-3xl font-semibold leading-tight text-[var(--text)] md:text-4xl">
+              {landingCopy.benefits.title}
+            </h2>
+          </div>
+
+          <div className="mt-8 grid gap-6 lg:grid-cols-2">
+            <article
+              className="rounded-[28px] border border-rose-300/30 bg-gradient-to-b from-rose-100/35 via-white/45 to-white/35 p-6"
+              data-reveal-item
+            >
+              <p className="text-xs uppercase tracking-[0.22em] text-rose-700">Avant</p>
+              <ul className="mt-4 space-y-3 text-sm text-slate-700">
+                {landingCopy.benefits.rows.map((row) => (
+                  <li key={row.before} className="flex items-start gap-3">
+                    <span className="mt-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-rose-500/80 text-xs font-semibold text-white">
+                      x
+                    </span>
+                    <span>{row.before}</span>
+                  </li>
+                ))}
+              </ul>
+            </article>
+
+            <article
+              className="rounded-[28px] border border-emerald-300/35 bg-gradient-to-b from-emerald-100/45 via-white/45 to-white/35 p-6"
+              data-reveal-item
+            >
+              <p className="text-xs uppercase tracking-[0.22em] text-emerald-700">Après</p>
+              <ul className="mt-4 space-y-3 text-sm text-slate-800">
+                {landingCopy.benefits.rows.map((row) => (
+                  <li key={row.after} className="flex items-start gap-3">
+                    <span className="mt-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-xs font-semibold text-white">
+                      +
+                    </span>
+                    <span>{row.after}</span>
+                  </li>
+                ))}
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <section className="reveal" data-reveal-stagger>
+          <div className="max-w-3xl" data-reveal-item>
+            <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
+              Cas d&apos;usage
+            </p>
+            <h2 className="mt-3 text-3xl font-semibold leading-tight text-[var(--text)] md:text-4xl">
+              {landingCopy.useCases.title}
+            </h2>
+          </div>
+
+          <figure className="relative mt-8 overflow-visible" data-reveal-item>
+            <div className="pointer-events-none absolute -left-14 top-8 h-36 w-36 rounded-full bg-emerald-300/20 blur-3xl" />
+            <div className="pointer-events-none absolute -right-12 bottom-0 h-40 w-40 rounded-full bg-sky-300/20 blur-3xl" />
+            <Image
+              src={coachDashboardImageSrc}
+              alt="Dashboard coach SwingFlow pour piloter les cas d'usage indépendant et structure"
+              width={1700}
+              height={950}
+              className="relative h-auto w-full rounded-[24px] border border-white/20 bg-white/70 shadow-[0_20px_48px_rgba(15,23,42,0.16)] lg:w-[108%] lg:max-w-none lg:-ml-8"
+            />
+          </figure>
+
+          <div className="mt-10 grid gap-5 lg:grid-cols-2">
+            <article
+              className="relative overflow-hidden rounded-[30px] border border-white/20 bg-gradient-to-br from-white/65 via-white/45 to-emerald-100/35 p-7"
+              data-reveal-item
+            >
+              <div className="pointer-events-none absolute -right-10 -top-14 h-36 w-36 rounded-full bg-emerald-300/25 blur-3xl" />
+              <h3 className="relative text-xl font-semibold text-slate-900">
+                {landingCopy.useCases.coachIndependent.title}
+              </h3>
+              <ul className="relative mt-4 space-y-3 text-sm leading-relaxed text-slate-700">
+                {landingCopy.useCases.coachIndependent.bullets.map((bullet) => (
+                  <li key={bullet}>{bullet}</li>
+                ))}
+              </ul>
+            </article>
+
+            <article
+              className="relative overflow-hidden rounded-[30px] border border-white/20 bg-gradient-to-br from-white/65 via-white/45 to-sky-100/35 p-7"
+              data-reveal-item
+            >
+              <div className="pointer-events-none absolute -left-8 -bottom-12 h-36 w-36 rounded-full bg-sky-300/25 blur-3xl" />
+              <h3 className="relative text-xl font-semibold text-slate-900">
+                {landingCopy.useCases.structure.title}
+              </h3>
+              <ul className="relative mt-4 space-y-3 text-sm leading-relaxed text-slate-700">
+                {landingCopy.useCases.structure.bullets.map((bullet) => (
+                  <li key={bullet}>{bullet}</li>
+                ))}
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        {showSocialProof ? (
+          <section className="reveal" data-reveal-stagger>
+            <div className="max-w-3xl" data-reveal-item>
+              <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
+                Preuve sociale
+              </p>
+              <h2 className="mt-3 text-3xl font-semibold leading-tight text-[var(--text)] md:text-4xl">
+                {landingCopy.socialProof.title}
+              </h2>
+            </div>
+
+            <div className="mt-8 grid gap-4 lg:grid-cols-3">
+              {landingCopy.socialProof.testimonials.map((testimonial, index) => (
+                <div key={testimonial.quote} data-reveal-item>
+                  <Testimonial
+                    {...testimonial}
+                    tone={index === 1 ? "sky" : index === 2 ? "amber" : "emerald"}
+                  />
                 </div>
               ))}
             </div>
-            <div className="hidden lg:grid lg:grid-cols-4 lg:grid-rows-[auto_2rem_auto] lg:gap-x-6 lg:gap-y-0">
-              <div className="relative lg:col-start-1 lg:row-start-1" data-reveal-item>
-                <div className="relative z-10 flex items-start gap-3 rounded-2xl border border-white/15 bg-white/5 px-4 py-4 shadow-[0_18px_40px_rgba(0,0,0,0.2)]">
-                  <span className="mt-1 flex h-9 w-9 items-center justify-center rounded-full bg-emerald-400/15 text-emerald-200">
-                    <IconUser />
-                  </span>
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                      Étape 1
-                    </p>
-                    <p className="mt-1 text-sm text-[var(--text)]">Élève</p>
-                  </div>
-                </div>
-                <span className="absolute left-1/2 top-full hidden h-4 w-px -translate-x-1/2 bg-white/20 lg:block" />
-              </div>
-              <div className="relative lg:col-start-2 lg:row-start-3" data-reveal-item>
-                <span className="absolute bottom-full left-1/2 hidden h-4 w-px -translate-x-1/2 bg-white/20 lg:block" />
-                <div className="relative z-10 flex items-start gap-3 rounded-2xl border border-white/15 bg-white/5 px-4 py-4 shadow-[0_18px_40px_rgba(0,0,0,0.2)]">
-                  <span className="mt-1 flex h-9 w-9 items-center justify-center rounded-full bg-emerald-400/15 text-emerald-200">
-                    <IconChart />
-                  </span>
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                      Étape 2
-                    </p>
-                    <p className="mt-1 text-sm text-[var(--text)]">TPI et radar</p>
-                  </div>
-                </div>
-              </div>
-              <div className="relative lg:col-start-3 lg:row-start-1" data-reveal-item>
-                <div className="relative z-10 flex items-start gap-3 rounded-2xl border border-white/15 bg-white/5 px-4 py-4 shadow-[0_18px_40px_rgba(0,0,0,0.2)]">
-                  <span className="mt-1 flex h-9 w-9 items-center justify-center rounded-full bg-emerald-400/15 text-emerald-200">
-                    <IconDoc />
-                  </span>
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                      Étape 3
-                    </p>
-                    <p className="mt-1 text-sm text-[var(--text)]">Rapport</p>
-                  </div>
-                </div>
-                <span className="absolute left-1/2 top-full hidden h-4 w-px -translate-x-1/2 bg-white/20 lg:block" />
-              </div>
-              <div className="relative lg:col-start-4 lg:row-start-3" data-reveal-item>
-                <span className="absolute bottom-full left-1/2 hidden h-4 w-px -translate-x-1/2 bg-white/20 lg:block" />
-                <div className="relative z-10 flex items-start gap-3 rounded-2xl border border-white/15 bg-white/5 px-4 py-4 shadow-[0_18px_40px_rgba(0,0,0,0.2)]">
-                  <span className="mt-1 flex h-9 w-9 items-center justify-center rounded-full bg-emerald-400/15 text-emerald-200">
-                    <IconCheck />
-                  </span>
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                      Étape 4
-                    </p>
-                    <p className="mt-1 text-sm text-[var(--text)]">Publication</p>
-                  </div>
-                </div>
-              </div>
-              <div className="relative hidden lg:col-span-4 lg:row-start-2 lg:block">
-                <div className="absolute left-4 right-4 top-1/2 h-px bg-white/20" />
-              </div>
-            </div>
-          </div>
-        </section>
 
-        <ReportsFeatureShowcase />
-
-        <section className="reveal rounded-3xl p-8 md:p-10 lg:mr-auto lg:max-w-[92%]" data-reveal-stagger>
-          <h2 className="text-2xl font-semibold text-[var(--text)] md:text-3xl">
-            Données TPI et radar intégrées
-          </h2>
-          <p className="mt-3 text-sm text-[var(--muted)]">
-            <span className="block">
-              Importez le rapport TPI et vos exports radar (Flightscope).
-            </span>
-            <span className="mt-2 block">40+ graphiques disponibles.</span>
-            <span className="mt-2 block">
-              L&apos;IA peut en sélectionner automatiquement pour appuyer les notions vues en
-              séance et expliquer clairement les points à l&apos;élève.
-            </span>
-          </p>
-          <div className="mt-6 flex flex-wrap gap-3 text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-            <span>TPI</span>
-            <span>Flightscope</span>
-            <span>Radar</span>
-            <span>Synthèse</span>
-          </div>
-          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {[
-              {
-                src: "/landing/graphs/tpi-exemple.png",
-                label: "Profil TPI",
-                width: 857,
-                height: 607,
-                full: true,
-                maxWidth: "max-w-[860px]",
-                sizes: "(min-width: 1024px) 860px, (min-width: 640px) 90vw, 100vw",
-              },
-              {
-                src: "/landing/graphs/spin-vs-carry.png",
-                label: "Spin vs carry",
-                width: 457,
-                height: 611,
-                maxWidth: "max-w-[460px]",
-                sizes: "(min-width: 1024px) 360px, (min-width: 640px) 45vw, 100vw",
-              },
-              {
-                src: "/landing/graphs/vitesse-club-balle.png",
-                label: "Vitesse club / balle",
-                width: 455,
-                height: 608,
-                maxWidth: "max-w-[460px]",
-                sizes: "(min-width: 1024px) 360px, (min-width: 640px) 45vw, 100vw",
-              },
-              {
-                src: "/landing/graphs/carry-vs-total.png",
-                label: "Carry vs total",
-                width: 455,
-                height: 622,
-                maxWidth: "max-w-[460px]",
-                sizes: "(min-width: 1024px) 360px, (min-width: 640px) 45vw, 100vw",
-              },
-              {
-                src: "/landing/graphs/dispersion.png",
-                label: "Dispersion",
-                width: 459,
-                height: 625,
-                maxWidth: "max-w-[460px]",
-                sizes: "(min-width: 1024px) 360px, (min-width: 640px) 45vw, 100vw",
-              },
-              {
-                src: "/landing/graphs/impact-face.png",
-                label: "Impact face",
-                width: 940,
-                height: 688,
-                wide: true,
-                maxWidth: "max-w-[940px]",
-                sizes: "(min-width: 1024px) 940px, (min-width: 640px) 90vw, 100vw",
-              },
-            ].map((graph) => (
-              <figure
-                key={graph.src}
-                data-reveal-item
-                className={`mx-auto w-full transition hover:-translate-y-1 ${
-                  graph.full
-                    ? "sm:col-span-2 lg:col-span-3"
-                    : graph.wide
-                      ? "sm:col-span-2 lg:col-span-2"
-                      : ""
-                } ${graph.maxWidth ?? ""}`}
-              >
-                <Image
-                  src={graph.src}
-                  alt={graph.label}
-                  width={graph.width}
-                  height={graph.height}
-                  sizes={graph.sizes}
-                  className="h-auto w-full rounded-2xl object-contain shadow-[0_24px_60px_rgba(0,0,0,0.35)]"
-                />
-                <figcaption className="mt-2 text-xs text-[var(--muted)]">
-                  {graph.label}
-                </figcaption>
-              </figure>
-            ))}
-          </div>
-        </section>
-
-        <div className="grid gap-10 lg:grid-cols-2 lg:items-stretch">
-          <section
-            className="reveal panel-soft h-full rounded-3xl p-8 md:p-10"
-            data-reveal-stagger
-          >
-          <div data-reveal-item>
-            <div className="flex items-start gap-4 text-[var(--muted)]">
-              <div>
-                <h2 className="text-2xl font-semibold text-[var(--text)] md:text-3xl">
-                  Travailler à plusieurs
-                </h2>
-                <p className="mt-3 text-sm text-[var(--muted)]">
-                  - Partage d&apos;élève entre coachs <br />
-                  - Système d&apos;assignation coach/élève en mode structure. <br />
-                  <br />
-                  Idéal pour les structures avec plusieurs coachs.
-                </p>
-              </div>
+            <div
+              className="mt-7 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-b border-white/10 py-4 text-xs uppercase tracking-[0.24em] text-[var(--muted)]"
+              data-reveal-item
+            >
+              {landingCopy.socialProof.logos.map((logo, index) => (
+                <span key={logo} className="inline-flex items-center gap-4">
+                  {index > 0 ? <span className="opacity-40">/</span> : null}
+                  <span>{logo}</span>
+                </span>
+              ))}
             </div>
-              <div className="mt-6 grid gap-4 text-sm text-[var(--muted)] sm:grid-cols-2">
-                <div className="rounded-2xl border border-white/15 bg-white/5 px-4 py-4">
-                  <div className="text-xs uppercase tracking-[0.25em] text-[var(--muted)]">
-                    Workspace perso
-                  </div>
-                <p className="mt-3 text-sm text-[var(--text)]">
-                  Partage d&apos;élève entre coachs.
-                </p>
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
-                  <span className="rounded-full border border-white/20 px-3 py-1">
-                    Coach
-                  </span>
-                  <span>-</span>
-                  <span className="rounded-full border border-white/20 px-3 py-1">
-                    Élève
-                  </span>
-                </div>
-              </div>
-              <div className="rounded-2xl border border-white/15 bg-white/5 px-4 py-4">
-                <div className="text-xs uppercase tracking-[0.25em] text-[var(--muted)]">
-                  Workspace orga
-                </div>
-                <p className="mt-3 text-sm text-[var(--text)]">
-                  Assignation spécifique pour un travail robuste en équipe.
-                </p>
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
-                  <span className="rounded-full border border-white/20 px-3 py-1">
-                    Coach A
-                  </span>
-                  <span>-</span>
-                  <span className="rounded-full border border-white/20 px-3 py-1">
-                    Élève
-                  </span>
-                  <span>-</span>
-                  <span className="rounded-full border border-white/20 px-3 py-1">
-                    Coach B
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
           </section>
+        ) : null}
 
-          <section className="reveal panel-outline h-full rounded-3xl p-8 md:p-10">
-          <div className="space-y-10">
-            <div>
-              <h2 className="text-2xl font-semibold text-[var(--text)] md:text-3xl">
-                Tests standardisés pour vos élèves
-              </h2>
-              <p className="mt-3 text-sm text-[var(--muted)]">
-                - Assignez des tests normalisés et suivez leur statut.<br />
-                - L&apos;élève les complète directement depuis son espace.<br />
-                - Créez vos propres tests personnalisés.
-              </p>
-              <div className="mt-6 divide-y divide-white/10 text-sm text-[var(--muted)]">
-                <div className="py-3">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-semibold text-[var(--text)]">
-                        Pelz putting
-                      </p>
-                      <p className="mt-1 text-xs text-[var(--muted)]">
-                        Contrôle précision courte distance
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                        À faire
-                      </p>
-                      <p className="mt-1 text-xs text-[var(--muted)]">12/03</p>
-                    </div>
-                  </div>
-                  <div className="mt-3 h-1.5 w-full rounded-full bg-white/10">
-                    <div className="h-full w-1/3 rounded-full bg-amber-400/40" />
-                  </div>
-                </div>
-                <div className="py-3">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-semibold text-[var(--text)]">
-                        Wedging drapeau
-                      </p>
-                      <p className="mt-1 text-xs text-[var(--muted)]">
-                        Régularité distance cible
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                        En cours
-                      </p>
-                      <p className="mt-1 text-xs text-[var(--muted)]">18/03</p>
-                    </div>
-                  </div>
-                  <div className="mt-3 h-1.5 w-full rounded-full bg-white/10">
-                    <div className="h-full w-2/3 rounded-full bg-emerald-400/40" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="h-px w-full bg-white/10" aria-hidden="true" />
-
-            <div>
-              <h2 className="text-2xl font-semibold text-[var(--text)] md:text-3xl">
-                Un espace élève clair
-              </h2>
-              <p className="mt-3 text-sm text-[var(--muted)]">
-                Chaque élève retrouve ses rapports publiés et ses tests à compléter.<br />
-                Pas d&apos;outil externe à fournir.
-              </p>
-              <div className="panel-outline mt-6 rounded-2xl px-4 py-4 text-sm text-[var(--muted)]">
-                <div className="flex items-center justify-between border-b border-white/10 pb-2">
-                  <span>Rapport séance du 10/03</span>
-                  <span>Lire</span>
-                </div>
-                <div className="mt-2 flex items-center justify-between border-b border-white/10 pb-2">
-                  <span>Rapport séance du 28/02</span>
-                  <span>Lire</span>
-                </div>
-                <div className="mt-2 flex items-center justify-between">
-                  <span>Test putting à compléter</span>
-                  <span>Voir</span>
-                </div>
-              </div>
-            </div>
+        <section
+          id="pricing"
+          className="reveal scroll-mt-28"
+          data-reveal-stagger
+        >
+          <div className="mx-auto max-w-3xl text-center" data-reveal-item>
+            <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">Tarifs</p>
+            <h2 className="mt-3 text-3xl font-semibold leading-tight text-[var(--text)] md:text-4xl">
+              {landingCopy.pricing.title}
+            </h2>
+            <p className="mt-4 text-sm leading-relaxed text-[var(--muted)]">
+              {landingCopy.pricing.subtitle}
+            </p>
           </div>
-          </section>
-        </div>
-        <section className="reveal" data-reveal-stagger>
-          <div
-            data-reveal-item
-            className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-4 md:px-8"
-          >
+
+          <div className="mt-8" data-reveal-item>
             <PricingOffersContent
               variant="marketing"
               plans={pricingPlans}
@@ -482,43 +478,94 @@ export default async function LandingPage() {
           </div>
         </section>
 
-        <section className="reveal panel-outline rounded-3xl p-8 md:p-10 lg:mr-auto lg:max-w-[92%] flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-2xl font-semibold text-[var(--text)]">
-              Prêt à centraliser votre suivi ?
+        <section
+          id="faq"
+          className="reveal scroll-mt-28"
+          data-reveal-stagger
+        >
+          <div className="max-w-3xl" data-reveal-item>
+            <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">FAQ</p>
+            <h2 className="mt-3 text-3xl font-semibold leading-tight text-[var(--text)] md:text-4xl">
+              {landingCopy.faq.title}
             </h2>
-            <p className="mt-3 text-sm text-[var(--muted)]">
-              Créez un compte coach et découvrez l&apos;espace de travail.
-            </p>
           </div>
-          <Link
-            href="/"
-            className="inline-flex rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 active:scale-[0.98]"
-          >
-            La plateforme arrive bientôt...
-          </Link>
+
+          <div className="mt-8 border-y border-white/10" data-reveal-item>
+            {landingCopy.faq.items.map((item, index) => (
+              <details
+                key={item.question}
+                className={`group py-4 ${index > 0 ? "border-t border-white/10" : ""}`}
+              >
+                <summary className="flex cursor-pointer list-none items-start justify-between gap-4 text-sm font-semibold text-[var(--text)]">
+                  <span>{item.question}</span>
+                  <span className="text-[var(--muted)] transition group-open:rotate-45">+</span>
+                </summary>
+                <p className="mt-3 max-w-3xl text-sm leading-relaxed text-[var(--muted)]">
+                  {item.answer}
+                </p>
+              </details>
+            ))}
+          </div>
+        </section>
+
+        <section
+          className="reveal relative overflow-hidden rounded-[34px] border border-white/20 bg-gradient-to-r from-slate-900/90 via-slate-800/90 to-emerald-900/80 p-8 text-white shadow-[0_26px_60px_rgba(15,23,42,0.35)] md:p-10"
+          data-reveal-stagger
+        >
+          <div className="pointer-events-none absolute -left-20 -bottom-24 h-52 w-52 rounded-full bg-emerald-300/20 blur-3xl" />
+
+          <div className="relative" data-reveal-item>
+            <h2 className="max-w-3xl text-3xl font-semibold leading-tight md:text-4xl">
+              {landingCopy.finalCta.title}
+            </h2>
+            <p className="mt-4 max-w-2xl text-sm leading-relaxed text-white/75">
+              {landingCopy.finalCta.subtitle}
+            </p>
+
+            <div className="mt-7 flex flex-wrap items-center gap-3">
+              <TrackedCtaLink
+                href="/login?mode=signup"
+                tracking={{
+                  id: "landing_final_signup",
+                  location: "final_cta",
+                  target: "/login?mode=signup",
+                }}
+                className="inline-flex rounded-full bg-white px-5 py-2 text-xs font-semibold uppercase tracking-wide text-slate-900 transition hover:bg-white/90 active:scale-[0.98]"
+              >
+                {landingCopy.finalCta.primaryCta}
+              </TrackedCtaLink>
+              <TrackedCtaLink
+                href="/login?mode=signin"
+                tracking={{
+                  id: "landing_final_signin",
+                  location: "final_cta",
+                  target: "/login?mode=signin",
+                }}
+                className="rounded-full border border-white/35 bg-white/10 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-white/20 active:scale-[0.98]"
+              >
+                {landingCopy.finalCta.secondaryCta}
+              </TrackedCtaLink>
+            </div>
+          </div>
         </section>
 
         <footer className="pt-10 text-xs text-[var(--muted)]">
           <div className="mx-auto max-w-6xl border-t border-white/10 pt-6">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <p>©2026 SwingFlow – Tous droits réservés</p>
+              <p>(c)2026 SwingFlow - Tous droits réservés</p>
               <nav aria-label="Liens légaux" className="flex flex-wrap gap-x-2 gap-y-1">
-                <Link
-                  href="/mentions-legales"
-                  className="transition hover:text-[var(--text)]"
-                >
+                <Link href="/mentions-legales" className="transition hover:text-[var(--text)]">
                   Mentions légales
                 </Link>
-                <span aria-hidden="true">·</span>
+                <span aria-hidden="true">-</span>
                 <Link href="/cgv" className="transition hover:text-[var(--text)]">
                   CGV
                 </Link>
-                <span aria-hidden="true">·</span>
+                <span aria-hidden="true">-</span>
                 <Link href="/cgu" className="transition hover:text-[var(--text)]">
                   CGU
                 </Link>
-                <span aria-hidden="true">·</span>
+                <span aria-hidden="true">-</span>
                 <Link
                   href="/politique-de-confidentialite"
                   className="transition hover:text-[var(--text)]"

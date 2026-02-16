@@ -90,12 +90,15 @@ export default function Hero() {
                   Centralisez eleves, tests et donnees (TPI, Trackman...) pour un coaching plus clair et plus constant.
                 </p>
                 <div className={styles.ctaRow}>
-                  <Link href="/login" className={styles.ctaPrimary}>
-                    La plateforme arrive bientôt...
+                  <Link href="/login?mode=signup" className={styles.ctaPrimary}>
+                    Creer un compte coach
+                  </Link>
+                  <Link href="/login?mode=signin" className={styles.ctaSecondary}>
+                    Se connecter
                   </Link>
                 </div>
                 <p className={styles.smallLine}>
-                  Connectez Trackman, Flightscope, TPI, Smart2Move...
+                  Le compte eleve se cree via invitation coach.
                 </p>
               </div>
             </div>
@@ -152,12 +155,15 @@ export default function Hero() {
                 Centralisez : élèves, tests, fiches d&apos;entraînement et données (TPI, Trackman...) pour un coaching plus clair et plus constant.
               </p>
               <div className={styles.ctaRow}>
-                <Link href="/login" className={styles.ctaPrimary}>
-                  La plateforme arrive bientôt...
+                <Link href="/login?mode=signup" className={styles.ctaPrimary}>
+                  Creer un compte coach
+                </Link>
+                <Link href="/login?mode=signin" className={styles.ctaSecondary}>
+                  Se connecter
                 </Link>
               </div>
               <p className={styles.smallLine}>
-                Connectez Trackman, Flightscope, TPI, Smart2Move...
+                Le compte eleve se cree via invitation coach.
               </p>
             </motion.div>
           </div>

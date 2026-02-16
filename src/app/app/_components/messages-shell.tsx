@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -1015,7 +1015,7 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
     organization?.workspace_type === "org"
       ? (organization.name ?? "votre organisation")
       : "SwingFlow";
-  const charterSupportEmail = "contact@adrienlafuge.com";
+  const charterSupportEmail = "contact@swingflow.fr";
 
   const messages = threadData?.messages ?? [];
   const nextCursor = threadData?.nextCursor ?? null;
