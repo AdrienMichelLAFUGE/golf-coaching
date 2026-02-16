@@ -25,6 +25,7 @@ import RadarCharts, {
 } from "../../../_components/radar-charts";
 import Smart2MoveFxPanel from "../../../_components/smart2move-fx-panel";
 import Smart2MoveMarkersModal from "../../../_components/smart2move-markers-modal";
+import StudentCalendar from "../../../_components/student-calendar/StudentCalendar";
 import { RADAR_CHART_DEFINITIONS, RADAR_CHART_GROUPS } from "@/lib/radar/charts/registry";
 import {
   RADAR_TECH_OPTIONS,
@@ -274,6 +275,164 @@ const NORMALIZED_TEST_CHOICES: Array<{
   },
 ];
 
+const MOBILE_SECTION_SHORTCUTS = [
+  {
+    id: "synthese",
+    label: "Synthese",
+    toneClass:
+      "border-slate-300/70 bg-slate-50/95 text-slate-700 shadow-[0_10px_24px_rgba(2,6,23,0.2)] hover:bg-slate-100",
+  },
+  {
+    id: "rapports",
+    label: "Rapports",
+    toneClass:
+      "border-pink-300/70 bg-pink-50/95 text-pink-700 shadow-[0_10px_24px_rgba(131,24,67,0.2)] hover:bg-pink-100",
+  },
+  {
+    id: "tpi",
+    label: "TPI",
+    toneClass:
+      "border-teal-300/70 bg-teal-50/95 text-teal-700 shadow-[0_10px_24px_rgba(19,78,74,0.2)] hover:bg-teal-100",
+  },
+  {
+    id: "calendrier",
+    label: "Calendrier",
+    toneClass:
+      "border-cyan-300/70 bg-cyan-50/95 text-cyan-700 shadow-[0_10px_24px_rgba(14,116,144,0.2)] hover:bg-cyan-100",
+  },
+  {
+    id: "standard-tests",
+    label: "Tests",
+    toneClass:
+      "border-orange-300/70 bg-orange-50/95 text-orange-700 shadow-[0_10px_24px_rgba(154,52,18,0.2)] hover:bg-orange-100",
+  },
+  {
+    id: "datas",
+    label: "Datas",
+    toneClass:
+      "border-violet-300/70 bg-violet-50/95 text-violet-700 shadow-[0_10px_24px_rgba(91,33,182,0.2)] hover:bg-violet-100",
+  },
+] as const;
+
+type MobileSectionShortcutId = (typeof MOBILE_SECTION_SHORTCUTS)[number]["id"];
+
+const renderMobileSectionShortcutIcon = (id: MobileSectionShortcutId) => {
+  if (id === "synthese") {
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        className="h-4 w-4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M4 14a8 8 0 1 1 16 0" />
+        <path d="M12 14l4-4" />
+        <circle cx="12" cy="14" r="1.4" />
+      </svg>
+    );
+  }
+  if (id === "rapports") {
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        className="h-4 w-4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M14 3v4a1 1 0 0 0 1 1h4" />
+        <path d="M6 3h8l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
+        <path d="M8 11h8" />
+        <path d="M8 15h8" />
+        <path d="M8 19h5" />
+      </svg>
+    );
+  }
+  if (id === "tpi") {
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        className="h-4 w-4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M4 8v8" />
+        <path d="M7 6v12" />
+        <path d="M17 6v12" />
+        <path d="M20 8v8" />
+        <path d="M7 12h10" />
+      </svg>
+    );
+  }
+  if (id === "calendrier") {
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        className="h-4 w-4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <rect x="3" y="4" width="18" height="18" rx="2" />
+        <path d="M8 2v4" />
+        <path d="M16 2v4" />
+        <path d="M3 10h18" />
+      </svg>
+    );
+  }
+  if (id === "standard-tests") {
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        className="h-4 w-4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M9 3h6l1 2h3v2H5V5h3l1-2z" />
+        <path d="M7 9h10v10H7z" />
+        <path d="M9 13h6" />
+      </svg>
+    );
+  }
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4 19h16" />
+      <path d="M7 15l4-4 3 2 4-5" />
+      <circle cx="7" cy="15" r="1" />
+      <circle cx="11" cy="11" r="1" />
+      <circle cx="14" cy="13" r="1" />
+      <circle cx="18" cy="8" r="1" />
+    </svg>
+  );
+};
+
 export default function CoachStudentDetailPage() {
   const {
     organization,
@@ -353,6 +512,7 @@ export default function CoachStudentDetailPage() {
   const [radarDeletingId, setRadarDeletingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [mobileSectionsExpanded, setMobileSectionsExpanded] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editForm, setEditForm] = useState<StudentEditForm>({
     first_name: "",
@@ -454,6 +614,17 @@ export default function CoachStudentDetailPage() {
   const canWriteReports = workspaceType === "org" ? canPublishInOrg : !isReadOnly;
   const canManageAssignments = workspaceType === "org" && isWorkspacePremium && !isReadOnly;
   const radarTechMeta = getRadarTechMeta(radarTech);
+  const mobileSectionActionShapeClass = mobileSectionsExpanded
+    ? "w-[9.75rem] justify-start px-3"
+    : "w-11 justify-center px-0";
+  const mobileSectionActionLabelClass = mobileSectionsExpanded
+    ? "ml-2 max-w-[6.5rem] translate-x-0 opacity-100"
+    : "ml-0 max-w-0 -translate-x-1 opacity-0";
+  const getMobileSectionActionDelay = (index: number) => `${index * 45}ms`;
+  const getMobileSectionLabelDelay = (index: number) => {
+    const revealOffsetMs = mobileSectionsExpanded ? 80 : 0;
+    return `${index * 45 + revealOffsetMs}ms`;
+  };
   const getCoachLabel = (fullName: string | null | undefined, coachId: string) => {
     const trimmed = fullName?.trim();
     if (trimmed) return trimmed;
@@ -559,6 +730,13 @@ export default function CoachStudentDetailPage() {
     },
     []
   );
+
+  const handleMobileSectionScroll = useCallback((sectionId: MobileSectionShortcutId) => {
+    const section = document.getElementById(sectionId);
+    if (!section) return;
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
+    setMobileSectionsExpanded(false);
+  }, []);
 
   const handleRadarFilterChange = (next: string) => {
     if (!isRadarFilter(next)) {
@@ -2392,7 +2570,10 @@ export default function CoachStudentDetailPage() {
             ) : null}
           </div>
 
-          <section className="panel relative overflow-hidden rounded-3xl p-6">
+          <section
+            id="synthese"
+            className="panel relative overflow-hidden scroll-mt-24 rounded-3xl p-6"
+          >
             <div
               aria-hidden="true"
               className="pointer-events-none absolute inset-0"
@@ -2743,7 +2924,10 @@ export default function CoachStudentDetailPage() {
           ) : null}
 
           <div className="reports-tpi-stack">
-            <section className="order-1 min-w-0 border border-pink-200 bg-[var(--panel)] rounded-2xl p-6">
+            <section
+              id="rapports"
+              className="order-1 min-w-0 border border-pink-200 bg-[var(--panel)] relative scroll-mt-24 rounded-2xl p-6"
+            >
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-[var(--text)]">Rapports</h3>
                 {!canWriteReports ? (
@@ -3272,9 +3456,34 @@ export default function CoachStudentDetailPage() {
             </section>
           </div>
 
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] xl:items-start">
+            <section
+              id="calendrier"
+              className="panel-soft scroll-mt-24 rounded-2xl p-5 xl:sticky xl:top-24 xl:row-span-2"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-[var(--text)]">
+                    Calendrier eleve
+                  </h3>
+                  <p className="mt-1 text-sm text-[var(--muted)]">
+                    Lecture seule des echeances (tournois, competitions, entrainements).
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4">
+                <StudentCalendar
+                  studentId={student.id}
+                  mode="coach"
+                  locale={locale}
+                  timezone={timezone}
+                />
+              </div>
+            </section>
+
             <section
               id="standard-tests"
-              className=" relative scroll-mt-24 rounded-2xl border border-orange-200 bg-[var(--panel)] p-6 lg:col-span-2"
+              className="relative scroll-mt-24 rounded-2xl border border-orange-200 bg-[var(--panel)] p-6 xl:col-start-2"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -3450,7 +3659,10 @@ export default function CoachStudentDetailPage() {
               ) : null}
             </section>
 
-            <section className=" border border-purple-200 bg-[var(--panel)] relative rounded-2xl p-6 lg:col-span-2">
+            <section
+              id="datas"
+              className="relative scroll-mt-24 rounded-2xl border border-purple-200 bg-[var(--panel)] p-6 xl:col-start-2"
+            >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-semibold text-[var(--text)]">
@@ -3878,6 +4090,61 @@ export default function CoachStudentDetailPage() {
                 )}
               </div>
             </section>
+          </div>
+
+          <div className="fixed bottom-24 right-3 z-40 flex flex-col items-end gap-2.5 xl:hidden">
+            <button
+              type="button"
+              onClick={() => setMobileSectionsExpanded((prev) => !prev)}
+              className="flex h-8 w-11 items-center justify-center text-zinc-600 transition hover:text-zinc-800"
+              aria-label={
+                mobileSectionsExpanded
+                  ? "Replier la navigation de sections"
+                  : "Afficher la navigation de sections"
+              }
+              title={
+                mobileSectionsExpanded
+                  ? "Replier la navigation de sections"
+                  : "Afficher la navigation de sections"
+              }
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className={`h-5 w-5 transition-transform duration-300 ease-in-out ${
+                  mobileSectionsExpanded ? "rotate-90" : "rotate-0"
+                }`}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+            {MOBILE_SECTION_SHORTCUTS.map((shortcut, index) => (
+              <button
+                key={shortcut.id}
+                type="button"
+                onClick={() => handleMobileSectionScroll(shortcut.id)}
+                className={`flex h-11 items-center overflow-hidden rounded-full border transition-all duration-300 ease-in-out ${mobileSectionActionShapeClass} ${shortcut.toneClass}`}
+                style={{ transitionDelay: getMobileSectionActionDelay(index) }}
+                aria-label={`Aller a ${shortcut.label}`}
+                title={shortcut.label}
+              >
+                <span className="shrink-0">
+                  {renderMobileSectionShortcutIcon(shortcut.id)}
+                </span>
+                <span
+                  className={`inline-flex items-center overflow-hidden whitespace-nowrap text-[0.58rem] font-semibold uppercase leading-none tracking-wide transition-all duration-300 ease-in-out ${mobileSectionActionLabelClass}`}
+                  style={{ transitionDelay: getMobileSectionLabelDelay(index) }}
+                >
+                  {shortcut.label}
+                </span>
+              </button>
+            ))}
+          </div>
 
             {tpiDetail ? (
               <div

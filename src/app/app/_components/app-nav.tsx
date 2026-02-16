@@ -147,6 +147,7 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
         title: "Eleve",
         items: [
           { label: "Dashboard eleve", href: "/app/eleve" },
+          { label: "Calendrier", href: "/app/eleve/calendrier" },
           { label: "Tests", href: "/app/eleve/tests" },
           { label: "Rapports", href: "/app/eleve/rapports" },
           ...(showMessagingEntry
@@ -160,6 +161,7 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
         items: [
           { label: "Dashboard", href: "/app/coach" },
           { label: "Elèves", href: "/app/coach/eleves" },
+          { label: "Calendrier", href: "/app/coach/calendrier" },
           { label: "Tests", href: "/app/coach/tests" },
           ...(showMessagingEntry
             ? [{ label: "Messages", href: "/app/coach/messages" }]
@@ -179,6 +181,7 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
         items: [
           { label: "Dashboard", href: "/app/coach" },
           { label: "Elèves", href: "/app/coach/eleves" },
+          { label: "Calendrier", href: "/app/coach/calendrier" },
           { label: "Tests", href: "/app/coach/tests" },
           ...(showMessagingEntry
             ? [{ label: "Messages", href: "/app/coach/messages" }]
@@ -312,6 +315,16 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
         </svg>
       );
     }
+    if (href === "/app/coach/calendrier") {
+      return (
+        <svg viewBox="0 0 24 24" {...sharedProps}>
+          <rect x="3" y="4" width="18" height="17" rx="2" />
+          <path d="M16 2v4" />
+          <path d="M8 2v4" />
+          <path d="M3 10h18" />
+        </svg>
+      );
+    }
     if (href === "/app/coach/rapports") {
       return (
         <svg viewBox="0 0 24 24" {...sharedProps}>
@@ -398,6 +411,16 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
           <path d="M9 4V2h6v2" />
           <path d="M7 10h10" />
           <path d="M7 14h7" />
+        </svg>
+      );
+    }
+    if (href === "/app/eleve/calendrier") {
+      return (
+        <svg viewBox="0 0 24 24" {...sharedProps}>
+          <rect x="3" y="4" width="18" height="17" rx="2" />
+          <path d="M16 2v4" />
+          <path d="M8 2v4" />
+          <path d="M3 10h18" />
         </svg>
       );
     }
@@ -812,3 +835,4 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
     </aside>
   );
 }
+

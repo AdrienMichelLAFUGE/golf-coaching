@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../_components/role-guard";
 import { useProfile } from "../_components/profile-context";
@@ -75,6 +75,117 @@ const formatDate = (
   return new Date(value).toLocaleDateString(locale ?? "fr-FR", options);
 };
 
+const MOBILE_DASHBOARD_SHORTCUTS = [
+  {
+    id: "synthese",
+    label: "Synthese",
+    toneClass:
+      "border-slate-300/70 bg-slate-50/95 text-slate-700 shadow-[0_10px_24px_rgba(2,6,23,0.2)] hover:bg-slate-100",
+  },
+  {
+    id: "partages",
+    label: "Partages",
+    toneClass:
+      "border-cyan-300/70 bg-cyan-50/95 text-cyan-700 shadow-[0_10px_24px_rgba(14,116,144,0.2)] hover:bg-cyan-100",
+  },
+  {
+    id: "rapports",
+    label: "Rapports",
+    toneClass:
+      "border-pink-300/70 bg-pink-50/95 text-pink-700 shadow-[0_10px_24px_rgba(131,24,67,0.2)] hover:bg-pink-100",
+  },
+  {
+    id: "tpi",
+    label: "TPI",
+    toneClass:
+      "border-teal-300/70 bg-teal-50/95 text-teal-700 shadow-[0_10px_24px_rgba(19,78,74,0.2)] hover:bg-teal-100",
+  },
+] as const;
+
+type StudentDashboardShortcutId = (typeof MOBILE_DASHBOARD_SHORTCUTS)[number]["id"];
+
+const renderStudentDashboardShortcutIcon = (id: StudentDashboardShortcutId) => {
+  if (id === "synthese") {
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        className="h-4 w-4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M4 14a8 8 0 1 1 16 0" />
+        <path d="M12 14l4-4" />
+        <circle cx="12" cy="14" r="1.4" />
+      </svg>
+    );
+  }
+
+  if (id === "partages") {
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        className="h-4 w-4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <circle cx="18" cy="5" r="3" />
+        <circle cx="6" cy="12" r="3" />
+        <circle cx="18" cy="19" r="3" />
+        <path d="M8.6 13.5l6.8 3.9" />
+        <path d="M15.4 6.6L8.6 10.5" />
+      </svg>
+    );
+  }
+
+  if (id === "rapports") {
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        className="h-4 w-4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M14 3v4a1 1 0 0 0 1 1h4" />
+        <path d="M6 3h8l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
+        <path d="M8 11h8" />
+        <path d="M8 15h8" />
+        <path d="M8 19h5" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4 8v8" />
+      <path d="M7 6v12" />
+      <path d="M17 6v12" />
+      <path d="M20 8v8" />
+      <path d="M7 12h10" />
+    </svg>
+  );
+};
+
 export default function StudentDashboardPage() {
   const { organization } = useProfile();
   const [student, setStudent] = useState<Student | null>(null);
@@ -103,6 +214,7 @@ export default function StudentDashboardPage() {
   const [activeShares, setActiveShares] = useState<ActiveShare[]>([]);
   const [shareError, setShareError] = useState("");
   const [shareRevokingId, setShareRevokingId] = useState<string | null>(null);
+  const [mobileSectionsExpanded, setMobileSectionsExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [noStudent, setNoStudent] = useState(false);
@@ -126,6 +238,32 @@ export default function StudentDashboardPage() {
     if (!student) return "Eleve";
     return `${student.first_name} ${student.last_name ?? ""}`.trim();
   }, [student]);
+  const hasActiveShares = activeShares.length > 0;
+  const mobileSectionActionShapeClass = mobileSectionsExpanded
+    ? "w-[9.75rem] justify-start px-3"
+    : "w-11 justify-center px-0";
+  const mobileSectionActionLabelClass = mobileSectionsExpanded
+    ? "ml-2 max-w-[6.5rem] translate-x-0 opacity-100"
+    : "ml-0 max-w-0 -translate-x-1 opacity-0";
+  const getMobileSectionActionDelay = (index: number) => `${index * 45}ms`;
+  const getMobileSectionLabelDelay = (index: number) => {
+    const revealOffsetMs = mobileSectionsExpanded ? 80 : 0;
+    return `${index * 45 + revealOffsetMs}ms`;
+  };
+  const visibleMobileShortcuts = useMemo(
+    () =>
+      MOBILE_DASHBOARD_SHORTCUTS.filter(
+        (shortcut) => shortcut.id !== "partages" || hasActiveShares
+      ),
+    [hasActiveShares]
+  );
+
+  const handleMobileSectionScroll = useCallback((sectionId: StudentDashboardShortcutId) => {
+    const section = document.getElementById(sectionId);
+    if (!section) return;
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
+    setMobileSectionsExpanded(false);
+  }, []);
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -173,7 +311,12 @@ export default function StudentDashboardPage() {
         return;
       }
 
-      const primaryStudent = (studentsData ?? [])[0] as Student | undefined;
+      const studentRows = (studentsData ?? []) as Student[];
+      const workspaceStudent =
+        organization?.id
+          ? studentRows.find((row) => row.org_id === organization.id) ?? null
+          : null;
+      const primaryStudent = workspaceStudent ?? studentRows[0];
       if (!primaryStudent) {
         setNoStudent(true);
         setLoading(false);
@@ -266,7 +409,7 @@ export default function StudentDashboardPage() {
     };
 
     loadDashboard();
-  }, []);
+  }, [organization?.id]);
 
   const tpiCounts = useMemo(() => {
     const total = tpiTests.length;
@@ -533,7 +676,10 @@ export default function StudentDashboardPage() {
             }
           />
 
-          <section className="panel relative overflow-hidden rounded-3xl p-6">
+          <section
+            id="synthese"
+            className="panel relative overflow-hidden scroll-mt-24 rounded-3xl p-6"
+          >
             <div
               aria-hidden="true"
               className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_10%,rgba(110,231,183,0.10),transparent_55%),radial-gradient(circle_at_85%_0%,rgba(186,230,253,0.12),transparent_58%)]"
@@ -750,7 +896,7 @@ export default function StudentDashboardPage() {
           </section>
 
           {activeShares.length > 0 ? (
-            <section className="panel-soft rounded-2xl p-6">
+            <section id="partages" className="panel-soft scroll-mt-24 rounded-2xl p-6">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-semibold text-[var(--text)]">
@@ -791,7 +937,7 @@ export default function StudentDashboardPage() {
             </section>
           ) : null}
 
-          <section className="panel rounded-2xl p-6">
+          <section id="rapports" className="panel scroll-mt-24 rounded-2xl p-6">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-[var(--text)]">
                 Derniers rapports
@@ -841,7 +987,10 @@ export default function StudentDashboardPage() {
             </div>
           </section>
 
-          <section className="panel relative rounded-2xl border-l-2 border-rose-400/40 p-6">
+          <section
+            id="tpi"
+            className="panel relative scroll-mt-24 rounded-2xl border-l-2 border-rose-400/40 p-6"
+          >
             <span
               aria-hidden="true"
               className="pointer-events-none absolute left-0 top-0 h-0.5 w-full rounded-t-2xl bg-rose-400/80"
@@ -921,6 +1070,61 @@ export default function StudentDashboardPage() {
               </p>
             )}
           </section>
+
+          <div className="fixed bottom-24 right-3 z-40 flex flex-col items-end gap-2.5 xl:hidden">
+            <button
+              type="button"
+              onClick={() => setMobileSectionsExpanded((prev) => !prev)}
+              className="flex h-8 w-11 items-center justify-center text-zinc-600 transition hover:text-zinc-800"
+              aria-label={
+                mobileSectionsExpanded
+                  ? "Replier la navigation de sections"
+                  : "Afficher la navigation de sections"
+              }
+              title={
+                mobileSectionsExpanded
+                  ? "Replier la navigation de sections"
+                  : "Afficher la navigation de sections"
+              }
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className={`h-5 w-5 transition-transform duration-300 ease-in-out ${
+                  mobileSectionsExpanded ? "rotate-90" : "rotate-0"
+                }`}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+
+            {visibleMobileShortcuts.map((shortcut, index) => (
+              <button
+                key={shortcut.id}
+                type="button"
+                onClick={() => handleMobileSectionScroll(shortcut.id)}
+                className={`flex h-11 items-center overflow-hidden rounded-full border transition-all duration-300 ease-in-out ${mobileSectionActionShapeClass} ${shortcut.toneClass}`}
+                style={{ transitionDelay: getMobileSectionActionDelay(index) }}
+                aria-label={`Aller a ${shortcut.label}`}
+                title={shortcut.label}
+              >
+                <span className="shrink-0">
+                  {renderStudentDashboardShortcutIcon(shortcut.id)}
+                </span>
+                <span
+                  className={`inline-flex items-center overflow-hidden whitespace-nowrap text-[0.58rem] font-semibold uppercase leading-none tracking-wide transition-all duration-300 ease-in-out ${mobileSectionActionLabelClass}`}
+                  style={{ transitionDelay: getMobileSectionLabelDelay(index) }}
+                >
+                  {shortcut.label}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </RoleGuard>
