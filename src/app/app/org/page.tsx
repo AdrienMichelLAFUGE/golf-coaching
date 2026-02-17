@@ -8,9 +8,9 @@ import RoleGuard from "../_components/role-guard";
 import { useProfile } from "../_components/profile-context";
 import Badge from "../_components/badge";
 import {
-  ORG_GROUP_DEFAULT_COLOR,
   ORG_GROUP_COLOR_LABELS,
   ORG_GROUP_COLOR_TOKENS,
+  getOrgGroupPrimaryCardClass,
   type OrgGroupColorToken,
 } from "@/lib/org-groups";
 
@@ -22,21 +22,11 @@ type GroupRow = {
   color_token: OrgGroupColorToken | null;
   studentCount: number;
   coachCount: number;
+  studentIds: string[];
+  coachIds: string[];
 };
 
 type GroupTreeNode = GroupRow & { children: GroupTreeNode[] };
-
-const ORG_ROOT_CARD_CLASS: Record<OrgGroupColorToken, string> = {
-  mint: "border-emerald-300/70 bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500",
-  sky: "border-sky-300/70 bg-gradient-to-br from-sky-500 via-blue-500 to-indigo-500",
-  peach: "border-red-300/70 bg-gradient-to-br from-red-500 via-rose-500 to-fuchsia-600",
-  lavender: "border-violet-300/70 bg-gradient-to-br from-violet-500 via-purple-500 to-fuchsia-500",
-  lemon: "border-amber-300/70 bg-gradient-to-br from-amber-400 via-orange-500 to-amber-600",
-  rose: "border-slate-400/70 bg-gradient-to-br from-slate-700 via-indigo-700 to-cyan-600",
-};
-
-const getOrgRootCardClass = (token?: OrgGroupColorToken | null) =>
-  ORG_ROOT_CARD_CLASS[token ?? ORG_GROUP_DEFAULT_COLOR];
 
 export default function OrgOverviewPage() {
   const { organization, workspaceType, isWorkspaceAdmin, isWorkspacePremium } =
@@ -86,7 +76,11 @@ export default function OrgOverviewPage() {
     }
     const uniqueGroups = new Map<string, GroupRow>();
     (payload.groups ?? []).forEach((group) => {
-      uniqueGroups.set(group.id, group);
+      uniqueGroups.set(group.id, {
+        ...group,
+        studentIds: group.studentIds ?? [],
+        coachIds: group.coachIds ?? [],
+      });
     });
     setGroups(Array.from(uniqueGroups.values()));
     setLoading(false);
@@ -155,6 +149,46 @@ export default function OrgOverviewPage() {
     };
     walk(groupTree, 0);
     return output;
+  }, [groupTree]);
+
+  const rootAggregates = useMemo(() => {
+    const aggregates = new Map<
+      string,
+      { studentCount: number; coachCount: number; totalSubgroups: number }
+    >();
+
+    const walk = (
+      node: GroupTreeNode
+    ): {
+      studentIds: Set<string>;
+      coachIds: Set<string>;
+      totalSubgroups: number;
+    } => {
+      const studentIds = new Set(node.studentIds);
+      const coachIds = new Set(node.coachIds);
+      let totalSubgroups = 0;
+
+      node.children.forEach((child) => {
+        const childResult = walk(child);
+        totalSubgroups += 1 + childResult.totalSubgroups;
+        childResult.studentIds.forEach((studentId) => studentIds.add(studentId));
+        childResult.coachIds.forEach((coachId) => coachIds.add(coachId));
+      });
+
+      aggregates.set(node.id, {
+        studentCount: studentIds.size,
+        coachCount: coachIds.size,
+        totalSubgroups,
+      });
+
+      return { studentIds, coachIds, totalSubgroups };
+    };
+
+    groupTree.forEach((root) => {
+      walk(root);
+    });
+
+    return aggregates;
   }, [groupTree]);
 
   const renderSubgroupTree = (nodes: GroupTreeNode[], depth = 1): ReactNode =>
@@ -368,8 +402,11 @@ export default function OrgOverviewPage() {
           ) : (
             <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
               {groupTree.map((rootGroup) => {
-                const rootCardClass = getOrgRootCardClass(rootGroup.color_token);
-                const totalSubgroups = rootGroup.children.length;
+                const rootCardClass = getOrgGroupPrimaryCardClass(rootGroup.color_token);
+                const aggregate = rootAggregates.get(rootGroup.id);
+                const totalStudentCount = aggregate?.studentCount ?? rootGroup.studentCount;
+                const totalCoachCount = aggregate?.coachCount ?? rootGroup.coachCount;
+                const totalSubgroups = aggregate?.totalSubgroups ?? rootGroup.children.length;
                 return (
                   <article
                     key={rootGroup.id}
@@ -413,9 +450,9 @@ export default function OrgOverviewPage() {
                       </div>
 
                       <p className="mt-4 text-xs text-white/90">
-                        <span className="font-semibold">{rootGroup.studentCount}</span> eleves
+                        <span className="font-semibold">{totalStudentCount}</span> eleves
                         <span className="mx-1.5 opacity-70">-</span>
-                        <span className="font-semibold">{rootGroup.coachCount}</span> coachs
+                        <span className="font-semibold">{totalCoachCount}</span> coachs
                         <span className="mx-1.5 opacity-70">-</span>
                         <span className="font-semibold">{totalSubgroups}</span> sous-groupes
                       </p>

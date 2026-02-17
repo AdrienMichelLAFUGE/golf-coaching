@@ -100,30 +100,38 @@ export async function GET(request: Request) {
 
   const { data: studentRows } = await admin
     .from("org_group_students")
-    .select("group_id")
+    .select("group_id, student_id")
     .in("group_id", groupIds);
 
   const { data: coachRows } = await admin
     .from("org_group_coaches")
-    .select("group_id")
+    .select("group_id, coach_id")
     .in("group_id", groupIds);
 
-  const studentCountByGroup = new Map<string, number>();
+  const studentIdsByGroup = new Map<string, Set<string>>();
   (studentRows ?? []).forEach((row) => {
-    const key = (row as { group_id: string }).group_id;
-    studentCountByGroup.set(key, (studentCountByGroup.get(key) ?? 0) + 1);
+    const typedRow = row as { group_id: string; student_id: string };
+    if (!studentIdsByGroup.has(typedRow.group_id)) {
+      studentIdsByGroup.set(typedRow.group_id, new Set<string>());
+    }
+    studentIdsByGroup.get(typedRow.group_id)?.add(typedRow.student_id);
   });
 
-  const coachCountByGroup = new Map<string, number>();
+  const coachIdsByGroup = new Map<string, Set<string>>();
   (coachRows ?? []).forEach((row) => {
-    const key = (row as { group_id: string }).group_id;
-    coachCountByGroup.set(key, (coachCountByGroup.get(key) ?? 0) + 1);
+    const typedRow = row as { group_id: string; coach_id: string };
+    if (!coachIdsByGroup.has(typedRow.group_id)) {
+      coachIdsByGroup.set(typedRow.group_id, new Set<string>());
+    }
+    coachIdsByGroup.get(typedRow.group_id)?.add(typedRow.coach_id);
   });
 
   const payload = baseGroups.map((group) => ({
     ...group,
-    studentCount: studentCountByGroup.get(group.id) ?? 0,
-    coachCount: coachCountByGroup.get(group.id) ?? 0,
+    studentCount: studentIdsByGroup.get(group.id)?.size ?? 0,
+    coachCount: coachIdsByGroup.get(group.id)?.size ?? 0,
+    studentIds: Array.from(studentIdsByGroup.get(group.id) ?? []),
+    coachIds: Array.from(coachIdsByGroup.get(group.id) ?? []),
   }));
 
   return NextResponse.json({ groups: payload });

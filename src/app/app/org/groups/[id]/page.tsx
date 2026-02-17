@@ -19,9 +19,11 @@ import RoleGuard from "../../../_components/role-guard";
 import { useProfile } from "../../../_components/profile-context";
 import Badge from "../../../_components/badge";
 import {
+  ORG_GROUP_DEFAULT_COLOR,
   ORG_GROUP_COLOR_LABELS,
   ORG_GROUP_COLOR_TOKENS,
   getOrgGroupColorTheme,
+  getOrgGroupPrimaryCardClass,
   type OrgGroupColorToken,
 } from "@/lib/org-groups";
 
@@ -63,6 +65,8 @@ type GroupPayload = {
   coaches: CoachRow[];
   selectedStudentIds: string[];
   selectedCoachIds: string[];
+  memberStudentIds: string[];
+  studentGroupIdsByStudent: Record<string, string[]>;
   parentGroup: { id: string; name: string } | null;
   availableGroups: GroupSummaryRow[];
 };
@@ -74,6 +78,11 @@ type MemberRow = {
   isActive: boolean;
   hasTests: boolean;
   testStatus: "assigned" | "in_progress" | "finalized" | null;
+  groupBadges: Array<{
+    id: string;
+    label: string;
+    colorToken: OrgGroupColorToken | null;
+  }>;
 };
 
 type ActiveFilter = "all" | "active" | "inactive";
@@ -208,6 +217,10 @@ export default function OrgGroupDetailPage() {
   const [coaches, setCoaches] = useState<CoachRow[]>([]);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [selectedCoachIds, setSelectedCoachIds] = useState<string[]>([]);
+  const [memberStudentIds, setMemberStudentIds] = useState<string[]>([]);
+  const [studentGroupIdsByStudent, setStudentGroupIdsByStudent] = useState<
+    Record<string, string[]>
+  >({});
   const [editOpen, setEditOpen] = useState(false);
   const [studentsOpen, setStudentsOpen] = useState(false);
   const [coachesOpen, setCoachesOpen] = useState(false);
@@ -266,6 +279,8 @@ export default function OrgGroupDetailPage() {
     setCoaches(payload.coaches ?? []);
     setSelectedStudentIds(payload.selectedStudentIds ?? []);
     setSelectedCoachIds(payload.selectedCoachIds ?? []);
+    setMemberStudentIds(payload.memberStudentIds ?? []);
+    setStudentGroupIdsByStudent(payload.studentGroupIdsByStudent ?? {});
     setLoading(false);
   }, [groupId]);
 
@@ -306,13 +321,82 @@ export default function OrgGroupDetailPage() {
     return coaches.filter((coach) => coach.name.toLowerCase().includes(query));
   }, [coachQuery, coaches]);
 
-  const selectedStudentSet = useMemo(() => new Set(selectedStudentIds), [selectedStudentIds]);
   const selectedCoachSet = useMemo(() => new Set(selectedCoachIds), [selectedCoachIds]);
+  const memberStudentSet = useMemo(() => new Set(memberStudentIds), [memberStudentIds]);
+
+  const groupsById = useMemo(() => {
+    const entries = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        parent_group_id: string | null;
+        color_token: OrgGroupColorToken | null;
+      }
+    >();
+    availableGroups.forEach((availableGroup) => {
+      entries.set(availableGroup.id, {
+        id: availableGroup.id,
+        name: availableGroup.name,
+        parent_group_id: availableGroup.parent_group_id,
+        color_token: availableGroup.color_token,
+      });
+    });
+    if (group) {
+      entries.set(group.id, {
+        id: group.id,
+        name: group.name,
+        parent_group_id: group.parent_group_id,
+        color_token: group.color_token,
+      });
+    }
+    return entries;
+  }, [availableGroups, group]);
 
   const memberRows = useMemo<MemberRow[]>(() => {
+    const resolveMainGroupColorToken = (groupId: string): OrgGroupColorToken | null => {
+      let cursor = groupsById.get(groupId);
+      let safety = 0;
+      while (cursor?.parent_group_id && safety < 32) {
+        const parent = groupsById.get(cursor.parent_group_id);
+        if (!parent) break;
+        cursor = parent;
+        safety += 1;
+      }
+      return (cursor?.color_token ?? ORG_GROUP_DEFAULT_COLOR) as OrgGroupColorToken;
+    };
+
     return students
-      .filter((student) => selectedStudentSet.has(student.id))
+      .filter((student) => memberStudentSet.has(student.id))
       .map((student) => ({
+        groupBadges: Array.from(
+          new Set(
+            (studentGroupIdsByStudent[student.id] ?? [])
+              .filter((studentGroupId) =>
+                group?.parent_group_id === null ? studentGroupId !== group.id : true
+              )
+              .filter((studentGroupId) => groupsById.has(studentGroupId))
+          )
+        )
+          .map((studentGroupId) => {
+            const groupEntry = groupsById.get(studentGroupId);
+            if (!groupEntry) return null;
+            return {
+              id: groupEntry.id,
+              label: groupEntry.name,
+              colorToken: resolveMainGroupColorToken(groupEntry.id),
+            };
+          })
+          .filter(
+            (
+              value
+            ): value is {
+              id: string;
+              label: string;
+              colorToken: OrgGroupColorToken | null;
+            } => Boolean(value)
+          )
+          .sort((left, right) => left.label.localeCompare(right.label, "fr", { sensitivity: "base" })),
         id: student.id,
         fullName: `${student.first_name} ${student.last_name ?? ""}`.trim(),
         email: student.email ?? null,
@@ -323,7 +407,7 @@ export default function OrgGroupDetailPage() {
       .sort((left, right) =>
         left.fullName.localeCompare(right.fullName, "fr", { sensitivity: "base" })
       );
-  }, [selectedStudentSet, students]);
+  }, [group, groupsById, memberStudentSet, studentGroupIdsByStudent, students]);
 
   const selectedCoaches = useMemo(
     () =>
@@ -564,7 +648,7 @@ export default function OrgGroupDetailPage() {
                 </span>
               ) : null}
               {parentGroup ? <Badge tone="muted">Sous-groupe de {parentGroup.name}</Badge> : null}
-              <Badge tone="muted">{selectedStudentIds.length} eleves</Badge>
+              <Badge tone="muted">{memberRows.length} eleves</Badge>
               <Badge tone="muted">{selectedCoachIds.length} coachs</Badge>
             </div>
           }
@@ -604,7 +688,9 @@ export default function OrgGroupDetailPage() {
               <div>
                 <h3 className="text-sm font-semibold text-[var(--text)]">Membres du groupe</h3>
                 <p className="mt-1 text-xs text-[var(--muted)]">
-                  Liste des eleves assignes au groupe.
+                  {group.parent_group_id
+                    ? "Liste des eleves assignes a ce sous-groupe."
+                    : "Liste des eleves assignes au groupe principal et a ses sous-groupes."}
                 </p>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-1.5 text-xs">
@@ -739,6 +825,21 @@ export default function OrgGroupDetailPage() {
                       <p className="mt-1 truncate text-xs text-[var(--muted)]">
                         {member.email ?? "Aucun email"}
                       </p>
+                      {member.groupBadges.length > 0 ? (
+                        <div className="mt-1.5 flex flex-wrap gap-1">
+                          {member.groupBadges.map((badge) => (
+                              <Badge
+                                key={`${member.id}-${badge.id}`}
+                                size="sm"
+                                className={`${getOrgGroupPrimaryCardClass(
+                                  badge.colorToken
+                                )} text-white`}
+                              >
+                                {badge.label}
+                              </Badge>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                     <div className="col-span-2 flex items-center justify-start gap-2 md:col-span-1 md:justify-self-center">
                       <span className="text-xs text-[var(--muted)] md:hidden">Actif :</span>

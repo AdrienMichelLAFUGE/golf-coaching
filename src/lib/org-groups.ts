@@ -20,6 +20,15 @@ export const ORG_GROUP_COLOR_LABELS: Record<OrgGroupColorToken, string> = {
 
 export const ORG_GROUP_DEFAULT_COLOR: OrgGroupColorToken = "mint";
 
+export const ORG_GROUP_PRIMARY_CARD_CLASSES: Record<OrgGroupColorToken, string> = {
+  mint: "border-emerald-300/70 bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500",
+  sky: "border-sky-300/70 bg-gradient-to-br from-sky-500 via-blue-500 to-indigo-500",
+  peach: "border-red-300/70 bg-gradient-to-br from-red-500 via-rose-500 to-fuchsia-600",
+  lavender: "border-violet-300/70 bg-gradient-to-br from-violet-500 via-purple-500 to-fuchsia-500",
+  lemon: "border-amber-300/70 bg-gradient-to-br from-amber-400 via-orange-500 to-amber-600",
+  rose: "border-slate-400/70 bg-gradient-to-br from-slate-700 via-indigo-700 to-cyan-600",
+};
+
 export const ORG_GROUP_COLOR_THEME: Record<
   OrgGroupColorToken,
   {
@@ -82,3 +91,12 @@ export const getOrgGroupColorTheme = (
   return ORG_GROUP_COLOR_THEME[ORG_GROUP_DEFAULT_COLOR];
 };
 
+export const getOrgGroupPrimaryCardClass = (
+  token?: OrgGroupColorToken | string | null
+) => {
+  if (!token) return ORG_GROUP_PRIMARY_CARD_CLASSES[ORG_GROUP_DEFAULT_COLOR];
+  if (token in ORG_GROUP_PRIMARY_CARD_CLASSES) {
+    return ORG_GROUP_PRIMARY_CARD_CLASSES[token as OrgGroupColorToken];
+  }
+  return ORG_GROUP_PRIMARY_CARD_CLASSES[ORG_GROUP_DEFAULT_COLOR];
+};

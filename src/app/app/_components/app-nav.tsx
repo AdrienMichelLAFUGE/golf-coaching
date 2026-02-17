@@ -172,7 +172,7 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
             ? [{ label: "Messages", href: "/app/coach/messages" }]
             : []),
           { label: "Propositions", href: "/app/org/proposals" },
-          { label: "Groupes / ecole", href: "/app/org" },
+          { label: "Gestion Groupe", href: "/app/org" },
           ...(isWorkspaceAdmin
             ? [
                 { label: "Gestion Staff", href: "/app/org/members" },

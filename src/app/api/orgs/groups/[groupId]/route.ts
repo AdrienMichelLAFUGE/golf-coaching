@@ -31,6 +31,14 @@ type GroupRow = {
   created_at: string;
 };
 
+type GroupSummaryRow = {
+  id: string;
+  name: string;
+  parent_group_id: string | null;
+  color_token: OrgGroupColorToken | null;
+  created_at: string;
+};
+
 const buildMembershipError = () => NextResponse.json({ error: "Acces refuse." }, { status: 403 });
 
 const normalizeParentGroupId = (value?: string | null): string | null => {
@@ -140,6 +148,32 @@ const ensureWriteAccess = async (
   return null;
 };
 
+const collectDescendantGroupIds = (
+  groups: GroupSummaryRow[],
+  rootGroupId: string
+): string[] => {
+  const childrenByParent = new Map<string, string[]>();
+  groups.forEach((group) => {
+    if (!group.parent_group_id) return;
+    const siblings = childrenByParent.get(group.parent_group_id) ?? [];
+    siblings.push(group.id);
+    childrenByParent.set(group.parent_group_id, siblings);
+  });
+
+  const collected = new Set<string>();
+  const stack = [...(childrenByParent.get(rootGroupId) ?? [])];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || collected.has(current)) continue;
+    collected.add(current);
+    const children = childrenByParent.get(current) ?? [];
+    children.forEach((childId) => stack.push(childId));
+  }
+
+  return Array.from(collected);
+};
+
 export async function GET(request: Request, { params }: Params) {
   const { groupId } = await params;
   const context = await loadContext(request);
@@ -166,12 +200,12 @@ export async function GET(request: Request, { params }: Params) {
     .eq("org_id", profile.org_id)
     .order("created_at", { ascending: true });
 
+  const allGroupRows = (allGroups ?? []) as GroupSummaryRow[];
+
   const parentGroupId = (group as GroupRow).parent_group_id;
   const parentGroup =
-    parentGroupId && Array.isArray(allGroups)
-      ? (allGroups as Array<{ id: string; name: string }>).find(
-          (entry) => entry.id === parentGroupId
-        ) ?? null
+    parentGroupId && allGroupRows.length > 0
+      ? allGroupRows.find((entry) => entry.id === parentGroupId) ?? null
       : null;
 
   const { data: students } = await admin
@@ -226,12 +260,40 @@ export async function GET(request: Request, { params }: Params) {
     .select("coach_id")
     .eq("group_id", group.id);
 
-  const selectedStudentIds = (groupStudents ?? []).map(
-    (row) => (row as { student_id: string }).student_id
+  const selectedStudentIds = Array.from(
+    new Set((groupStudents ?? []).map((row) => (row as { student_id: string }).student_id))
   );
-  const selectedCoachIds = (groupCoaches ?? []).map(
-    (row) => (row as { coach_id: string }).coach_id
+  const selectedCoachIds = Array.from(
+    new Set((groupCoaches ?? []).map((row) => (row as { coach_id: string }).coach_id))
   );
+
+  const descendantGroupIds =
+    parentGroupId === null ? collectDescendantGroupIds(allGroupRows, group.id) : [];
+  const memberScopeGroupIds = [group.id, ...descendantGroupIds];
+
+  const { data: memberGroupStudents } = await admin
+    .from("org_group_students")
+    .select("group_id, student_id")
+    .in("group_id", memberScopeGroupIds);
+
+  const memberStudentIds = Array.from(
+    new Set(
+      (memberGroupStudents ?? []).map((row) => (row as { student_id: string }).student_id)
+    )
+  );
+
+  const studentGroupIdsByStudent = (memberGroupStudents ?? []).reduce<
+    Record<string, string[]>
+  >((acc, row) => {
+    const typedRow = row as { group_id: string; student_id: string };
+    if (!acc[typedRow.student_id]) {
+      acc[typedRow.student_id] = [];
+    }
+    if (!acc[typedRow.student_id].includes(typedRow.group_id)) {
+      acc[typedRow.student_id].push(typedRow.group_id);
+    }
+    return acc;
+  }, {});
 
   const coachRows = (coaches ?? []).map((row) => {
     const typed = row as {
@@ -276,8 +338,10 @@ export async function GET(request: Request, { params }: Params) {
     coaches: coachRows,
     selectedStudentIds,
     selectedCoachIds,
+    memberStudentIds,
+    studentGroupIdsByStudent,
     parentGroup,
-    availableGroups: (allGroups ?? []).map((entry) => ({
+    availableGroups: allGroupRows.map((entry) => ({
       id: (entry as { id: string }).id,
       name: (entry as { name: string }).name,
       parent_group_id: (entry as { parent_group_id: string | null }).parent_group_id ?? null,

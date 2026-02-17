@@ -11,6 +11,11 @@ import Badge from "../../_components/badge";
 import StudentCreateModal, {
   StudentCreateButton,
 } from "../../_components/student-create-modal";
+import {
+  ORG_GROUP_DEFAULT_COLOR,
+  getOrgGroupPrimaryCardClass,
+  type OrgGroupColorToken,
+} from "@/lib/org-groups";
 
 type Student = {
   id: string;
@@ -31,6 +36,20 @@ type PendingStudentRequest = {
   last_name: string | null;
   email: string | null;
   playing_hand: "right" | "left" | null;
+};
+
+type OrgGroupWithMembers = {
+  id: string;
+  name: string;
+  parent_group_id: string | null;
+  color_token: OrgGroupColorToken | null;
+  studentIds?: string[];
+};
+
+type StudentGroupBadge = {
+  id: string;
+  label: string;
+  colorToken: OrgGroupColorToken | null;
 };
 
 type StudentListItem =
@@ -95,6 +114,9 @@ export default function CoachStudentsPage() {
   const [editError, setEditError] = useState("");
   const [sharedStudentIds, setSharedStudentIds] = useState<string[]>([]);
   const [tpiActiveById, setTpiActiveById] = useState<Record<string, boolean>>({});
+  const [studentGroupBadgesByStudentId, setStudentGroupBadgesByStudentId] = useState<
+    Record<string, StudentGroupBadge[]>
+  >({});
   const [pendingStudentRequests, setPendingStudentRequests] = useState<
     PendingStudentRequest[]
   >([]);
@@ -272,6 +294,89 @@ export default function CoachStudentsPage() {
     setPendingStudentRequests(payload.requests ?? []);
   }, [currentWorkspaceType]);
 
+  const loadStudentGroupLabels = useCallback(async () => {
+    if (currentWorkspaceType !== "org") {
+      setStudentGroupBadgesByStudentId({});
+      return;
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setStudentGroupBadgesByStudentId({});
+      return;
+    }
+
+    const response = await fetch("/api/orgs/groups", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const payload = (await response.json().catch(() => ({}))) as {
+      groups?: OrgGroupWithMembers[];
+    };
+
+    if (!response.ok) {
+      setStudentGroupBadgesByStudentId({});
+      return;
+    }
+
+    const groupsById = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        parent_group_id: string | null;
+        color_token: OrgGroupColorToken | null;
+      }
+    >();
+    (payload.groups ?? []).forEach((group) => {
+      groupsById.set(group.id, {
+        id: group.id,
+        name: group.name,
+        parent_group_id: group.parent_group_id,
+        color_token: group.color_token ?? null,
+      });
+    });
+
+    const resolveMainGroupColorToken = (groupId: string): OrgGroupColorToken | null => {
+      let cursor = groupsById.get(groupId);
+      let safety = 0;
+      while (cursor?.parent_group_id && safety < 32) {
+        const parent = groupsById.get(cursor.parent_group_id);
+        if (!parent) break;
+        cursor = parent;
+        safety += 1;
+      }
+      return (cursor?.color_token ?? ORG_GROUP_DEFAULT_COLOR) as OrgGroupColorToken;
+    };
+
+    const badgesByStudent = new Map<string, Map<string, StudentGroupBadge>>();
+    (payload.groups ?? []).forEach((group) => {
+      const groupLabel = group.name.trim();
+      if (!groupLabel) return;
+      (group.studentIds ?? []).forEach((studentId) => {
+        if (!badgesByStudent.has(studentId)) {
+          badgesByStudent.set(studentId, new Map<string, StudentGroupBadge>());
+        }
+        badgesByStudent.get(studentId)?.set(group.id, {
+          id: group.id,
+          label: groupLabel,
+          colorToken: resolveMainGroupColorToken(group.id),
+        });
+      });
+    });
+
+    const normalized = Array.from(
+      badgesByStudent.entries()
+    ).reduce<Record<string, StudentGroupBadge[]>>((acc, [studentId, badges]) => {
+      acc[studentId] = Array.from(badges.values()).sort((left, right) =>
+        left.label.localeCompare(right.label, "fr", { sensitivity: "base" })
+      );
+      return acc;
+    }, {});
+
+    setStudentGroupBadgesByStudentId(normalized);
+  }, [currentWorkspaceType]);
+
   useEffect(() => {
     let cancelled = false;
     Promise.resolve().then(async () => {
@@ -293,6 +398,17 @@ export default function CoachStudentsPage() {
       cancelled = true;
     };
   }, [loadPendingStudentRequests]);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.resolve().then(async () => {
+      if (cancelled) return;
+      await loadStudentGroupLabels();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadStudentGroupLabels]);
 
   useEffect(() => {
     let cancelled = false;
@@ -789,6 +905,10 @@ export default function CoachStudentsPage() {
                   !isReadOnlyAction;
                 const isMessageOpening = messageOpeningId === student.id;
                 const access = getStudentAccessBadge(student);
+                const groupBadges =
+                  student.kind === "student"
+                    ? studentGroupBadgesByStudentId[student.id] ?? []
+                    : [];
                 const inviteLabel = invitingId === student.id
                   ? "Envoi..."
                   : student.invited_at
@@ -857,6 +977,21 @@ export default function CoachStudentsPage() {
                         <p className="mt-0.5 truncate text-xs text-[var(--muted)]">
                           {student.email || "Aucun email"}
                         </p>
+                        {groupBadges.length > 0 ? (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {groupBadges.map((badge) => (
+                              <Badge
+                                key={`${student.id}-${badge.id}`}
+                                size="sm"
+                                className={`${getOrgGroupPrimaryCardClass(
+                                  badge.colorToken
+                                )} text-white`}
+                              >
+                                {badge.label}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : null}
                         {isPendingApproval ? (
                           <p className="mt-1 text-[0.7rem] text-amber-100">
                             En attente d approbation par le coach proprietaire.
