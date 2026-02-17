@@ -18,7 +18,7 @@ export const MessageDtoSchema = z.object({
   senderUserId: z.string().uuid(),
   senderName: z.string().nullable(),
   senderAvatarUrl: z.string().nullable(),
-  senderRole: z.enum(["owner", "coach", "staff", "student"]).nullable(),
+  senderRole: z.enum(["owner", "coach", "staff", "student", "parent"]).nullable(),
   body: z.string().min(1).max(2000),
   createdAt: z.string().min(1),
 });
@@ -28,7 +28,7 @@ export const MessageThreadMemberSchema = z.object({
   userId: z.string().uuid(),
   fullName: z.string().nullable(),
   avatarUrl: z.string().nullable(),
-  role: z.enum(["owner", "coach", "staff", "student"]).nullable(),
+  role: z.enum(["owner", "coach", "staff", "student", "parent"]).nullable(),
 });
 export type MessageThreadMember = z.infer<typeof MessageThreadMemberSchema>;
 
@@ -84,7 +84,7 @@ export const MessageContactItemSchema = z.object({
   userId: z.string().uuid(),
   fullName: z.string().nullable(),
   email: z.string().email().nullable(),
-  role: z.enum(["owner", "coach", "staff", "student"]),
+  role: z.enum(["owner", "coach", "staff", "student", "parent"]),
   availability: z.enum(["same_org", "opt_in"]).optional(),
 });
 export type MessageContactItem = z.infer<typeof MessageContactItemSchema>;
@@ -217,7 +217,7 @@ export const MessageReportSnapshotItemSchema = z.object({
   id: z.number().int().positive(),
   senderUserId: z.string().uuid(),
   senderName: z.string().nullable(),
-  senderRole: z.enum(["owner", "coach", "staff", "student"]).nullable(),
+  senderRole: z.enum(["owner", "coach", "staff", "student", "parent"]).nullable(),
   createdAt: z.string().min(1),
   body: z.string().min(1),
 });
@@ -243,7 +243,7 @@ export const MessageSuspensionDtoSchema = z.object({
   orgId: z.string().uuid(),
   userId: z.string().uuid(),
   userName: z.string().nullable(),
-  userRole: z.enum(["owner", "coach", "staff", "student"]).nullable(),
+  userRole: z.enum(["owner", "coach", "staff", "student", "parent"]).nullable(),
   reason: z.string().min(1),
   suspendedUntil: z.string().nullable(),
   createdAt: z.string().min(1),

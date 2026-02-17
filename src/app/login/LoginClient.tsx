@@ -8,7 +8,7 @@ import { waitForRecoveredSession } from "@/lib/auth/session-recovery";
 
 type Status = "idle" | "sending" | "sent" | "error";
 type ResetStatus = "idle" | "sending" | "sent" | "error";
-type AccountType = "coach" | "student";
+type AccountType = "coach" | "student" | "parent";
 type CoachFlow = "signin" | "signup";
 
 const rememberStorageKey = "gc.rememberMe";
@@ -119,7 +119,7 @@ export default function LoginClient({
 
   const handleAccountTypeChange = (nextType: AccountType) => {
     setAccountType(nextType);
-    if (nextType === "student") {
+    if (nextType !== "coach") {
       setCoachFlow("signin");
       setAcceptTerms(false);
     }
@@ -317,9 +317,11 @@ export default function LoginClient({
           <p className="mt-2 text-sm text-[var(--muted)]">
             {accountType === "student"
               ? "Acces eleve uniquement sur invitation."
+              : accountType === "parent"
+                ? "Acces parent en lecture seule pour suivre vos enfants."
               : "Choisis ton mode d acces."}
           </p>
-          <div className="mt-6 grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/5 p-1 text-xs uppercase tracking-wide text-[var(--muted)]">
+          <div className="mt-6 grid grid-cols-3 gap-2 rounded-2xl border border-white/10 bg-white/5 p-1 text-xs uppercase tracking-wide text-[var(--muted)]">
             <button
               type="button"
               onClick={() => handleAccountTypeChange("coach")}
@@ -341,6 +343,17 @@ export default function LoginClient({
               }`}
             >
               Eleve
+            </button>
+            <button
+              type="button"
+              onClick={() => handleAccountTypeChange("parent")}
+              className={`rounded-xl px-3 py-2 transition ${
+                accountType === "parent"
+                  ? "bg-white/15 text-[var(--text)]"
+                  : "hover:text-[var(--text)]"
+              }`}
+            >
+              Parent
             </button>
           </div>
           {accountType === "coach" ? (
@@ -481,8 +494,18 @@ export default function LoginClient({
                   ? "Creer un compte coach"
                   : accountType === "student"
                     ? "Connexion eleve"
+                    : accountType === "parent"
+                      ? "Connexion parent"
                     : "Se connecter"}
             </button>
+            {accountType === "parent" ? (
+              <a
+                href="/signup/parent"
+                className="block text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+              >
+                Creer un compte parent
+              </a>
+            ) : null}
           </form>
           <button
             type="button"
@@ -504,6 +527,8 @@ export default function LoginClient({
         <div className="panel-outline rounded-2xl px-5 py-4 text-xs text-[var(--muted)]">
           {accountType === "student"
             ? "Un compte eleve est cree uniquement via une invitation coach."
+            : accountType === "parent"
+              ? "Un compte parent permet de consulter les espaces enfants en lecture seule."
             : "Creer un compte coach pour demarrer en freemium."}
         </div>
       </div>

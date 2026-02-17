@@ -260,6 +260,184 @@ describe("POST /api/onboarding/ensure-profile", () => {
     expect(reportSharesSelect).toHaveBeenCalled();
   });
 
+  it("creates parent profile and personal workspace when role hint is parent", async () => {
+    const supabase = {
+      auth: {
+        getUser: async () => ({
+          data: {
+            user: {
+              id: "parent-1",
+              email: "parent@example.com",
+              user_metadata: { role: "parent", full_name: "Parent Test" },
+            },
+          },
+          error: null,
+        }),
+      },
+    } as SupabaseClient;
+
+    const profileSelect = jest.fn(() => ({
+      eq: () => ({
+        maybeSingle: async () => ({ data: null, error: null }),
+      }),
+    }));
+    const profileUpsert = jest.fn(async () => ({ error: null }));
+    const profileUpdateEq = jest.fn(async () => ({ error: null }));
+    const profileUpdate = jest.fn(() => ({ eq: profileUpdateEq }));
+
+    const orgSelect = jest.fn(() => ({
+      eq: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({ data: null, error: null }),
+        }),
+      }),
+      in: async () => ({ data: [], error: null }),
+    }));
+    const orgInsert = jest.fn(() => ({
+      select: () => ({
+        single: async () => ({ data: { id: "personal-parent-1" }, error: null }),
+      }),
+    }));
+
+    const orgMembershipInsert = jest.fn(async () => ({ error: null }));
+    const appActivityInsert = jest.fn(async () => ({ error: null }));
+
+    const admin = {
+      from: jest.fn((table: string) => {
+        if (table === "profiles") {
+          return {
+            select: profileSelect,
+            upsert: profileUpsert,
+            update: profileUpdate,
+          };
+        }
+        if (table === "students") {
+          return buildSelectList({ data: [], error: null });
+        }
+        if (table === "organizations") {
+          return { select: orgSelect, insert: orgInsert };
+        }
+        if (table === "org_memberships") {
+          return {
+            insert: orgMembershipInsert,
+          };
+        }
+        if (table === "app_activity_logs") {
+          return {
+            insert: appActivityInsert,
+          };
+        }
+        return buildSelectMaybeSingle({ data: null, error: null });
+      }),
+    };
+
+    serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
+    serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
+
+    const response = await POST(buildRequest());
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.role).toBe("parent");
+    expect(profileUpsert).toHaveBeenCalledWith(
+      {
+        id: "parent-1",
+        role: "parent",
+        full_name: "Parent Test",
+      },
+      { onConflict: "id" }
+    );
+    expect(profileUpdate).toHaveBeenCalledWith({
+      org_id: "personal-parent-1",
+      active_workspace_id: "personal-parent-1",
+    });
+    expect(orgMembershipInsert).toHaveBeenCalledWith([
+      {
+        org_id: "personal-parent-1",
+        user_id: "parent-1",
+        role: "admin",
+        status: "active",
+        premium_active: true,
+      },
+    ]);
+  });
+
+  it("reconciles existing legacy parent account stamped as coach", async () => {
+    const supabase = {
+      auth: {
+        getUser: async () => ({
+          data: {
+            user: {
+              id: "parent-legacy-1",
+              email: "parent.legacy@example.com",
+              user_metadata: { role: "parent", full_name: "Parent Legacy" },
+            },
+          },
+          error: null,
+        }),
+      },
+    } as SupabaseClient;
+
+    const profileSelect = jest.fn(() => ({
+      eq: () => ({
+        maybeSingle: async () => ({
+          data: {
+            id: "parent-legacy-1",
+            role: "coach",
+            org_id: "personal-parent-legacy-1",
+            full_name: "Parent Legacy",
+            active_workspace_id: "personal-parent-legacy-1",
+          },
+          error: null,
+        }),
+      }),
+    }));
+    const profileUpdateEq = jest.fn(async () => ({ error: null }));
+    const profileUpdate = jest.fn(() => ({ eq: profileUpdateEq }));
+
+    const orgSelect = jest.fn(() => ({
+      eq: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({
+            data: { id: "personal-parent-legacy-1" },
+            error: null,
+          }),
+        }),
+      }),
+    }));
+
+    const appActivityInsert = jest.fn(async () => ({ error: null }));
+
+    const admin = {
+      from: jest.fn((table: string) => {
+        if (table === "profiles") {
+          return {
+            select: profileSelect,
+            update: profileUpdate,
+          };
+        }
+        if (table === "organizations") {
+          return { select: orgSelect };
+        }
+        if (table === "app_activity_logs") {
+          return { insert: appActivityInsert };
+        }
+        return buildSelectMaybeSingle({ data: null, error: null });
+      }),
+    };
+
+    serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
+    serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
+
+    const response = await POST(buildRequest());
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.role).toBe("parent");
+    expect(profileUpdate).toHaveBeenCalledWith({ role: "parent" });
+    expect(profileUpdateEq).toHaveBeenCalledWith("id", "parent-legacy-1");
+  });
+
   it("claims emailed report shares as in-app pending notifications for new coach", async () => {
     const supabase = {
       auth: {

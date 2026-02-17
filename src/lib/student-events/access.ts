@@ -4,7 +4,7 @@ type AdminClient = ReturnType<typeof import("@/lib/supabase/server").createSupab
 
 type WorkspaceType = "personal" | "org";
 
-type StudentEventAccessReason = "student" | "coach_linked" | "forbidden";
+type StudentEventAccessReason = "student" | "coach_linked" | "parent_linked" | "forbidden";
 
 export type StudentEventAccess = {
   canRead: boolean;
@@ -57,6 +57,12 @@ const sharedViewerAccess = (): StudentEventAccess => ({
   reason: "coach_linked",
 });
 
+const parentLinkedAccess = (): StudentEventAccess => ({
+  canRead: true,
+  canWrite: false,
+  reason: "parent_linked",
+});
+
 const isStudentLinked = async (
   admin: AdminClient,
   userId: string,
@@ -66,6 +72,21 @@ const isStudentLinked = async (
     .from("student_accounts")
     .select("id")
     .eq("user_id", userId)
+    .eq("student_id", studentId)
+    .maybeSingle();
+
+  return Boolean(data);
+};
+
+const isParentLinked = async (
+  admin: AdminClient,
+  userId: string,
+  studentId: string
+): Promise<boolean> => {
+  const { data } = await admin
+    .from("parent_child_links")
+    .select("id")
+    .eq("parent_user_id", userId)
     .eq("student_id", studentId)
     .maybeSingle();
 
@@ -185,6 +206,10 @@ export const resolveStudentEventAccess = async (
 
   if (await isStudentLinked(admin, userId, studentId)) {
     return studentAccess();
+  }
+
+  if (await isParentLinked(admin, userId, studentId)) {
+    return parentLinkedAccess();
   }
 
   if (await isActiveShareViewer(admin, studentId, userId, userEmail)) {

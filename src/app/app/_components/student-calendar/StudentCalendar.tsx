@@ -250,6 +250,7 @@ export default function StudentCalendar({
   const calendarSectionRef = useRef<HTMLElement | null>(null);
   const touchStartXRef = useRef<number | null>(null);
   const canEdit = mode === "student" || editable;
+  const isParentReadOnly = mode === "parent";
   const reducedMotion = useReducedMotion();
 
   const monthGrid = useMemo(() => buildMonthGrid(monthDate), [monthDate]);
@@ -839,7 +840,7 @@ export default function StudentCalendar({
     );
   };
 
-  const showStickyCreateButton = canEdit && isCalendarSectionInView;
+  const showStickyCreateButton = (canEdit || isParentReadOnly) && isCalendarSectionInView;
 
   return (
     <section ref={calendarSectionRef} className="space-y-5">
@@ -1038,14 +1039,19 @@ export default function StudentCalendar({
         </AnimatePresence>
       </div>
 
-      {canEdit ? (
+      {canEdit || isParentReadOnly ? (
         <div className="mt-3 hidden lg:flex justify-end">
           <button
             type="button"
             onClick={openCreateSheet}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/10 text-[var(--text)] shadow-[0_10px_22px_rgba(0,0,0,0.18)] transition hover:scale-[1.03] hover:bg-white/20"
+            disabled={!canEdit}
+            className={`inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/20 shadow-[0_10px_22px_rgba(0,0,0,0.18)] transition ${
+              canEdit
+                ? "bg-white/10 text-[var(--text)] hover:scale-[1.03] hover:bg-white/20"
+                : "cursor-not-allowed bg-white/5 text-[var(--muted)] opacity-60"
+            }`}
             aria-label="Ajouter un evenement"
-            title="Ajouter un evenement"
+            title={canEdit ? "Ajouter un evenement" : "Lecture seule (parent)"}
           >
             <svg
               viewBox="0 0 24 24"
@@ -1358,7 +1364,13 @@ export default function StudentCalendar({
         <button
           type="button"
           onClick={openCreateSheet}
-          className="fixed bottom-6 left-6 z-40 inline-flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 text-zinc-900 shadow-[0_14px_30px_rgba(0,0,0,0.35)] transition hover:scale-[1.02] lg:hidden"
+          disabled={!canEdit}
+          title={canEdit ? "Ajouter un evenement" : "Lecture seule (parent)"}
+          className={`fixed bottom-6 left-6 z-40 inline-flex h-12 w-12 items-center justify-center rounded-full shadow-[0_14px_30px_rgba(0,0,0,0.35)] transition lg:hidden ${
+            canEdit
+              ? "bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 text-zinc-900 hover:scale-[1.02]"
+              : "cursor-not-allowed border border-white/20 bg-white/10 text-[var(--muted)] opacity-60"
+          }`}
           aria-label="Ajouter un evenement"
         >
           <svg

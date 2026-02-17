@@ -1,7 +1,8 @@
-﻿import {
+import {
   coerceMessageId,
   findAuthUserByEmail,
   isCoachAllowedForStudent,
+  isCoachLikeRole,
   normalizeUserPair,
 } from "./access";
 
@@ -30,6 +31,14 @@ describe("messages access helpers", () => {
     expect(coerceMessageId("34")).toBe(34);
     expect(coerceMessageId("abc")).toBeNull();
     expect(coerceMessageId(0)).toBeNull();
+  });
+
+  it("treats only owner/coach/staff as coach-like roles", () => {
+    expect(isCoachLikeRole("owner")).toBe(true);
+    expect(isCoachLikeRole("coach")).toBe(true);
+    expect(isCoachLikeRole("staff")).toBe(true);
+    expect(isCoachLikeRole("student")).toBe(false);
+    expect(isCoachLikeRole("parent")).toBe(false);
   });
 
   it("allows a personal workspace owner to message the student", async () => {
@@ -154,3 +163,4 @@ describe("messages access helpers", () => {
     expect(listUsers).toHaveBeenCalledTimes(2);
   });
 });
+

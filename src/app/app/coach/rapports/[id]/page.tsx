@@ -344,6 +344,10 @@ export default function CoachReportDetailPage() {
   const [notifyStudentPending, setNotifyStudentPending] = useState(false);
   const [notifyStudentMessage, setNotifyStudentMessage] = useState("");
   const [notifyStudentError, setNotifyStudentError] = useState("");
+  const [notifyModalOpen, setNotifyModalOpen] = useState(false);
+  const [notifySendToParents, setNotifySendToParents] = useState(false);
+  const [parentRecipientsCount, setParentRecipientsCount] = useState(0);
+  const [parentRecipientsLoading, setParentRecipientsLoading] = useState(false);
   const [sourceStudentName, setSourceStudentName] = useState<string | null>(null);
   const [activeImage, setActiveImage] = useState<{
     url: string;
@@ -810,7 +814,7 @@ export default function CoachReportDetailPage() {
     return { message };
   };
 
-  const handleNotifyStudent = async () => {
+  const openNotifyStudentModal = async () => {
     if (!report) return;
 
     if (report.origin_share_id) {
@@ -845,6 +849,43 @@ export default function CoachReportDetailPage() {
       return;
     }
 
+    setNotifyStudentError("");
+    setNotifyStudentMessage("");
+    setNotifySendToParents(false);
+    setParentRecipientsCount(0);
+    setNotifyModalOpen(true);
+    setParentRecipientsLoading(true);
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setParentRecipientsLoading(false);
+      return;
+    }
+
+    const response = await fetch(`/api/students/${report.student_id}/parents/count`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    const payload = (await response.json().catch(() => ({}))) as {
+      count?: number;
+    };
+    if (response.ok) {
+      setParentRecipientsCount(typeof payload.count === "number" ? payload.count : 0);
+    } else {
+      setParentRecipientsCount(0);
+    }
+    setParentRecipientsLoading(false);
+  };
+
+  const handleNotifyStudent = async (sendToLinkedParents: boolean) => {
+    if (!report) return;
+
+    const studentEmail = getStudentEmail(report.students);
+    if (!report.student_id || !studentEmail) return;
+
     setNotifyStudentPending(true);
     setNotifyStudentError("");
     setNotifyStudentMessage("");
@@ -865,6 +906,7 @@ export default function CoachReportDetailPage() {
       },
       body: JSON.stringify({
         reportId: report.id,
+        sendToLinkedParents,
       }),
     });
 
@@ -881,6 +923,7 @@ export default function CoachReportDetailPage() {
     setNotifyStudentMessage(
       payload.message ?? `Notification envoyee a ${studentEmail}.`
     );
+    setNotifyModalOpen(false);
     setNotifyStudentPending(false);
   };
 
@@ -1028,7 +1071,7 @@ export default function CoachReportDetailPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={handleNotifyStudent}
+                  onClick={() => void openNotifyStudentModal()}
                   disabled={notifyStudentPending || !canNotifyStudent}
                   className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
                   aria-label="Notifier l eleve par email"
@@ -1161,6 +1204,93 @@ export default function CoachReportDetailPage() {
       )}
       {shareOpen ? (
         <ShareReportModal onClose={() => setShareOpen(false)} onShare={handleShare} />
+      ) : null}
+      {notifyModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6">
+          <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[var(--bg-elevated)] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                  Notification eleve
+                </p>
+                <h3 className="mt-2 text-lg font-semibold text-[var(--text)]">
+                  Envoyer le rapport par email
+                </h3>
+                <p className="mt-2 text-sm text-[var(--muted)]">
+                  Le PDF et le lien de lecture seront envoyes a l eleve.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (notifyStudentPending) return;
+                  setNotifyModalOpen(false);
+                }}
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-60"
+                aria-label="Fermer"
+                disabled={notifyStudentPending}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M18 6L6 18" />
+                  <path d="M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="mt-5 rounded-xl border border-white/10 bg-white/5 p-4">
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={notifySendToParents}
+                  onChange={(event) => setNotifySendToParents(event.target.checked)}
+                  disabled={
+                    notifyStudentPending || parentRecipientsLoading || parentRecipientsCount === 0
+                  }
+                  className="mt-0.5 h-4 w-4 rounded border-white/10 bg-[var(--bg-elevated)]"
+                />
+                <span className="space-y-1 text-sm">
+                  <span className="block text-[var(--text)]">
+                    Envoyer aussi aux parents rattaches
+                  </span>
+                  <span className="block text-xs text-[var(--muted)]">
+                    {parentRecipientsLoading
+                      ? "Verification des rattachements parents..."
+                      : parentRecipientsCount > 0
+                        ? `${parentRecipientsCount} parent(s) rattache(s) recevront aussi la notification.`
+                        : "Aucun parent rattache a cet eleve."}
+                  </span>
+                </span>
+              </label>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setNotifyModalOpen(false)}
+                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                disabled={notifyStudentPending}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleNotifyStudent(notifySendToParents)}
+                disabled={notifyStudentPending}
+                className="rounded-full border border-emerald-200/40 bg-emerald-400/20 px-4 py-2 text-xs uppercase tracking-wide text-emerald-100 transition hover:bg-emerald-400/30 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {notifyStudentPending ? "Envoi..." : "Envoyer"}
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
       <MediaLightbox
         key={activeImage?.url ?? "media-lightbox-empty"}

@@ -14,6 +14,7 @@ export const runtime = "nodejs";
 
 const notifyStudentSchema = z.object({
   reportId: z.string().uuid(),
+  sendToLinkedParents: z.boolean().optional().default(false),
 });
 
 type StudentRef =
@@ -82,6 +83,7 @@ const buildStudentReportLoginUrl = (reportId: string) => {
 
 const sendStudentReportNotificationEmail = async (input: {
   to: string;
+  recipientKind: "student" | "parent";
   studentName: string;
   coachName: string;
   reportTitle: string;
@@ -93,6 +95,11 @@ const sendStudentReportNotificationEmail = async (input: {
   const studentName = escapeHtml(input.studentName);
   const coachName = escapeHtml(input.coachName);
   const reportTitle = escapeHtml(input.reportTitle);
+  const greeting = input.recipientKind === "parent" ? "Bonjour," : `Bonjour ${studentName},`;
+  const opening =
+    input.recipientKind === "parent"
+      ? `${coachName} a publie un nouveau rapport pour ${studentName} sur SwingFlow.`
+      : `${coachName} a publie un nouveau rapport sur SwingFlow.`;
 
   const apiInstance = new Brevo.TransactionalEmailsApi();
   apiInstance.setApiKey(Brevo.TransactionalEmailsApiApiKeys.apiKey, env.BREVO_API_KEY);
@@ -102,8 +109,8 @@ const sendStudentReportNotificationEmail = async (input: {
     to: [{ email: input.to }],
     subject: `Nouveau rapport SwingFlow: ${input.reportTitle}`,
     htmlContent: `
-      <p>Bonjour ${studentName},</p>
-      <p>${coachName} a publie un nouveau rapport sur SwingFlow.</p>
+      <p>${greeting}</p>
+      <p>${opening}</p>
       <p>Le PDF est joint pour une lecture rapide. Pour consulter la version complete (media, graphiques, historique), connectez-vous a votre espace eleve :</p>
       <p style="margin: 24px 0;">
         <a
@@ -226,6 +233,7 @@ export async function POST(request: Request) {
     .join(" ")
     .trim();
   const coachName = senderProfile.full_name?.trim() || "Votre coach";
+  const sendToLinkedParents = parsed.data.sendToLinkedParents;
 
   const { data: sectionsData, error: sectionsError } = await supabase
     .from("report_sections")
@@ -281,17 +289,51 @@ export async function POST(request: Request) {
     .slice(0, 64);
   const pdfFileName = `${safeBaseName || "rapport-swingflow"}.pdf`;
   const reportUrl = buildStudentReportLoginUrl(reportRow.id);
+  let parentRecipients: string[] = [];
+
+  if (sendToLinkedParents) {
+    const { data: parentsData, error: parentsError } = await admin
+      .from("parent_child_links")
+      .select("parent_email")
+      .eq("student_id", reportRow.student_id);
+
+    if (parentsError) {
+      return NextResponse.json(
+        { error: "Chargement des parents rattaches impossible." },
+        { status: 400 }
+      );
+    }
+
+    parentRecipients = Array.from(
+      new Set(
+        ((parentsData ?? []) as Array<{ parent_email: string | null }>)
+          .map((row) => row.parent_email?.trim().toLowerCase() ?? "")
+          .filter((email) => Boolean(email) && email !== studentEmail)
+      )
+    );
+  }
+
+  const recipients = [
+    { email: studentEmail, recipientKind: "student" as const },
+    ...parentRecipients.map((email) => ({
+      email,
+      recipientKind: "parent" as const,
+    })),
+  ];
 
   try {
-    await sendStudentReportNotificationEmail({
-      to: studentEmail,
-      studentName: studentName || "Eleve",
-      coachName,
-      reportTitle: reportRow.title,
-      reportUrl,
-      pdfFileName,
-      pdfBase64: pdfBuffer.toString("base64"),
-    });
+    for (const recipient of recipients) {
+      await sendStudentReportNotificationEmail({
+        to: recipient.email,
+        recipientKind: recipient.recipientKind,
+        studentName: studentName || "Eleve",
+        coachName,
+        reportTitle: reportRow.title,
+        reportUrl,
+        pdfFileName,
+        pdfBase64: pdfBuffer.toString("base64"),
+      });
+    }
   } catch (error) {
     await recordActivity({
       admin,
@@ -305,6 +347,7 @@ export async function POST(request: Request) {
       metadata: {
         studentId: reportRow.student_id,
         studentEmail,
+        parentRecipientsCount: parentRecipients.length,
         reason: error instanceof Error ? error.message : String(error),
       },
     });
@@ -322,11 +365,20 @@ export async function POST(request: Request) {
     metadata: {
       studentId: reportRow.student_id,
       studentEmail,
+      parentRecipientsCount: parentRecipients.length,
+      recipientsCount: recipients.length,
     },
   });
 
+  const recipientsLabel =
+    parentRecipients.length > 0
+      ? `${studentEmail} + ${parentRecipients.length} parent(s)`
+      : studentEmail;
+
   return NextResponse.json({
     ok: true,
-    message: `Notification envoyee a ${studentEmail}.`,
+    message: `Notification envoyee a ${recipientsLabel}.`,
+    recipientsCount: recipients.length,
+    parentRecipientsCount: parentRecipients.length,
   });
 }

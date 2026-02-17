@@ -12,7 +12,7 @@ import {
 } from "@/lib/supabase/server";
 import { recordActivity } from "@/lib/activity-log";
 
-export type AppProfileRole = "owner" | "coach" | "staff" | "student";
+export type AppProfileRole = "owner" | "coach" | "staff" | "student" | "parent";
 
 type ProfileRow = {
   id: string;
@@ -78,7 +78,8 @@ export const coerceMessageId = (value: unknown): number | null => {
   return null;
 };
 
-export const isCoachLikeRole = (role: AppProfileRole) => role !== "student";
+export const isCoachLikeRole = (role: AppProfileRole) =>
+  role === "owner" || role === "coach" || role === "staff";
 
 export const loadMessageActorContext = async (
   request: Request,

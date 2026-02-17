@@ -39,12 +39,19 @@ export default function AppPage() {
   const [invitesLoading, setInvitesLoading] = useState(false);
   const [inviteActionId, setInviteActionId] = useState<string | null>(null);
   const isStudent = profile?.role === "student";
+  const isParent = profile?.role === "parent";
 
   useEffect(() => {
     if (!loading && isStudent) {
       router.replace("/app/eleve");
     }
   }, [isStudent, loading, router]);
+
+  useEffect(() => {
+    if (!loading && isParent) {
+      router.replace("/parent");
+    }
+  }, [isParent, loading, router]);
 
   const loadInvites = useCallback(async () => {
     if (!profile || profile.role === "student") return;
@@ -279,7 +286,7 @@ export default function AppPage() {
     setMessage("Invitation refusee.");
   };
 
-  if (!loading && isStudent) {
+  if (!loading && (isStudent || isParent)) {
     return (
       <section className="panel rounded-2xl p-6">
         <p className="text-sm text-[var(--muted)]">Redirection vers ton dashboard...</p>

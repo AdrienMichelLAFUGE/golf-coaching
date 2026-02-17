@@ -210,6 +210,7 @@ export async function POST(request: Request) {
 
   const user = userData.user;
   const admin = createSupabaseAdminClient();
+  const metadataRoleHint = String(user.user_metadata?.role ?? "").toLowerCase();
   const email = user.email?.trim();
   if (!email) {
     await recordActivity({
@@ -229,9 +230,31 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (profile?.id) {
+    let effectiveRole = profile.role as
+      | "owner"
+      | "coach"
+      | "staff"
+      | "student"
+      | "parent";
+
+    // Legacy DB trigger can still stamp parent signups as coach.
+    // Reconcile once on login using the auth metadata role.
+    if (metadataRoleHint === "parent" && effectiveRole === "coach") {
+      const { error: roleUpdateError } = await admin
+        .from("profiles")
+        .update({ role: "parent" })
+        .eq("id", profile.id);
+
+      if (roleUpdateError) {
+        return NextResponse.json({ error: roleUpdateError.message }, { status: 400 });
+      }
+
+      effectiveRole = "parent";
+    }
+
     if (
       (!profile.full_name || !profile.full_name.trim()) &&
-      profile.role !== "student"
+      effectiveRole !== "student"
     ) {
       const derivedName =
         String(user.user_metadata?.full_name ?? "").trim() || email.split("@")[0];
@@ -247,10 +270,12 @@ export async function POST(request: Request) {
       profile.id,
       profile.full_name ?? null
     );
-    if (profile.role === "owner" || profile.role === "coach") {
+    if (effectiveRole === "owner" || effectiveRole === "coach" || effectiveRole === "parent") {
       if (profile.org_id) {
-        const role = profile.role === "owner" ? "admin" : "coach";
-        await ensureOrgMembership(admin, profile.org_id, profile.id, role);
+        if (effectiveRole === "owner" || effectiveRole === "coach") {
+          const role = effectiveRole === "owner" ? "admin" : "coach";
+          await ensureOrgMembership(admin, profile.org_id, profile.id, role);
+        }
       }
       if (personalWorkspaceId && profile.active_workspace_id !== personalWorkspaceId) {
         await admin
@@ -261,16 +286,18 @@ export async function POST(request: Request) {
           })
           .eq("id", profile.id);
       }
-      const targetWorkspaceId =
-        personalWorkspaceId ?? profile.active_workspace_id ?? profile.org_id ?? null;
-      if (targetWorkspaceId) {
-        await claimEmailedReportShares(admin, {
-          email,
-          userId: profile.id,
-          targetOrgId: targetWorkspaceId,
-        });
+      if (effectiveRole === "owner" || effectiveRole === "coach") {
+        const targetWorkspaceId =
+          personalWorkspaceId ?? profile.active_workspace_id ?? profile.org_id ?? null;
+        if (targetWorkspaceId) {
+          await claimEmailedReportShares(admin, {
+            email,
+            userId: profile.id,
+            targetOrgId: targetWorkspaceId,
+          });
+        }
       }
-    } else if (profile.role === "student") {
+    } else if (effectiveRole === "student") {
       const students = await loadStudentsByEmail(admin, email);
       if (students.length > 0) {
         await linkStudentAccounts(admin, profile.id, students);
@@ -313,10 +340,10 @@ export async function POST(request: Request) {
       entityId: profile.id,
       message: "Connexion reussie.",
       metadata: {
-        role: profile.role,
+        role: effectiveRole,
       },
     });
-    return NextResponse.json({ ok: true, role: profile.role });
+    return NextResponse.json({ ok: true, role: effectiveRole });
   }
 
   const students = await loadStudentsByEmail(admin, email);
@@ -356,8 +383,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, role: "student" });
   }
 
-  const roleHint = String(user.user_metadata?.role ?? "").toLowerCase();
-  if (roleHint !== "coach" && roleHint !== "owner") {
+  const roleHint = metadataRoleHint;
+  if (roleHint !== "coach" && roleHint !== "owner" && roleHint !== "parent") {
     await recordActivity({
       admin,
       level: "warn",
@@ -372,10 +399,12 @@ export async function POST(request: Request) {
   }
 
   const fullName = String(user.user_metadata?.full_name ?? "").trim();
+  const resolvedRole =
+    roleHint === "owner" ? "owner" : roleHint === "parent" ? "parent" : "coach";
   const { error: profileError } = await admin.from("profiles").upsert(
     {
       id: user.id,
-      role: roleHint === "owner" ? "owner" : "coach",
+      role: resolvedRole,
       full_name: fullName || null,
     },
     { onConflict: "id" }
@@ -405,44 +434,46 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data: membershipData } = await admin
-    .from("org_memberships")
-    .select("org_id")
-    .eq("user_id", user.id);
-  const orgIds = Array.from(
-    new Set((membershipData ?? []).map((membership) => membership.org_id))
-  );
+  if (resolvedRole === "owner" || resolvedRole === "coach") {
+    const { data: membershipData } = await admin
+      .from("org_memberships")
+      .select("org_id")
+      .eq("user_id", user.id);
+    const orgIds = Array.from(
+      new Set((membershipData ?? []).map((membership) => membership.org_id))
+    );
 
-  if (orgIds.length > 0) {
-    const { data: orgsData } = await admin
-      .from("organizations")
-      .select("id, name, workspace_type, owner_profile_id")
-      .in("id", orgIds);
+    if (orgIds.length > 0) {
+      const { data: orgsData } = await admin
+        .from("organizations")
+        .select("id, name, workspace_type, owner_profile_id")
+        .in("id", orgIds);
 
-    const legacyOrgIds =
-      orgsData
-        ?.filter(
-          (org) =>
-            org.workspace_type === "org" &&
-            !org.owner_profile_id &&
-            org.name === "Nouvelle organisation"
-        )
-        .map((org) => org.id) ?? [];
+      const legacyOrgIds =
+        orgsData
+          ?.filter(
+            (org) =>
+              org.workspace_type === "org" &&
+              !org.owner_profile_id &&
+              org.name === "Nouvelle organisation"
+          )
+          .map((org) => org.id) ?? [];
 
-    if (legacyOrgIds.length > 0) {
-      await admin
-        .from("org_memberships")
-        .delete()
-        .eq("user_id", user.id)
-        .in("org_id", legacyOrgIds);
+      if (legacyOrgIds.length > 0) {
+        await admin
+          .from("org_memberships")
+          .delete()
+          .eq("user_id", user.id)
+          .in("org_id", legacyOrgIds);
+      }
     }
-  }
 
-  await claimEmailedReportShares(admin, {
-    email,
-    userId: user.id,
-    targetOrgId: personalWorkspaceId,
-  });
+    await claimEmailedReportShares(admin, {
+      email,
+      userId: user.id,
+      targetOrgId: personalWorkspaceId,
+    });
+  }
 
   await recordActivity({
     admin,
@@ -453,12 +484,12 @@ export async function POST(request: Request) {
     entityId: user.id,
     message: "Connexion reussie.",
     metadata: {
-      role: roleHint === "owner" ? "owner" : "coach",
+      role: resolvedRole,
     },
   });
 
   return NextResponse.json({
     ok: true,
-    role: roleHint === "owner" ? "owner" : "coach",
+    role: resolvedRole,
   });
 }

@@ -1,6 +1,6 @@
 import { isAdminEmail } from "@/lib/admin";
 
-export type AppProfileRole = "owner" | "coach" | "staff" | "student";
+export type AppProfileRole = "owner" | "coach" | "staff" | "student" | "parent";
 
 export const resolvePostLoginPath = ({
   role,
@@ -10,7 +10,7 @@ export const resolvePostLoginPath = ({
   email?: string | null;
 }) => {
   if (isAdminEmail(email)) return "/app/admin";
+  if (role === "parent") return "/parent";
   if (role === "student") return "/app/eleve";
   return "/app/coach";
 };
-

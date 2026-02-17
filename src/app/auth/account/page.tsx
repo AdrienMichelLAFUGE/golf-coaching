@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase/client";
 import { resolvePostLoginPath } from "@/lib/auth/post-login-path";
 
 const paramsSchema = z.object({
-  flow: z.enum(["coach", "student"]).optional(),
+  flow: z.enum(["coach", "student", "parent"]).optional(),
   state: z.enum(["ready", "verify"]).optional(),
   next: z.string().optional(),
 });
@@ -31,7 +31,8 @@ function AccountStatusContent() {
 
   const flow = parsed.success ? (parsed.data.flow ?? "coach") : "coach";
   const state = parsed.success ? (parsed.data.state ?? "ready") : "ready";
-  const flowLabel = flow === "student" ? "eleve" : "coach";
+  const flowLabel =
+    flow === "student" ? "eleve" : flow === "parent" ? "parent" : "coach";
   const nextPath = (() => {
     if (!parsed.success) return null;
     const raw = parsed.data.next;
@@ -41,7 +42,7 @@ function AccountStatusContent() {
     return raw;
   })();
 
-  const fallbackRole = flow === "student" ? "student" : "coach";
+  const fallbackRole = flow === "student" ? "student" : flow === "parent" ? "parent" : "coach";
   const fallbackRedirectPath = nextPath ?? resolvePostLoginPath({ role: fallbackRole });
 
   useEffect(() => {

@@ -13,7 +13,7 @@ export type Profile = {
   id: string;
   org_id: string;
   active_workspace_id?: string | null;
-  role: "owner" | "coach" | "staff" | "student";
+  role: "owner" | "coach" | "staff" | "student" | "parent";
   full_name: string | null;
   avatar_url?: string | null;
   premium_active?: boolean | null;

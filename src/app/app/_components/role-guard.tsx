@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase/client";
 import { useProfile } from "./profile-context";
 
 type RoleGuardProps = {
-  allowedRoles: Array<"owner" | "coach" | "staff" | "student">;
+  allowedRoles: Array<"owner" | "coach" | "staff" | "student" | "parent">;
   children: React.ReactNode;
   fallback?: React.ReactNode;
 };

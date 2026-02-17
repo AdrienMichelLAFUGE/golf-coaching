@@ -1,4 +1,4 @@
-export type StudentCalendarMode = "student" | "coach";
+export type StudentCalendarMode = "student" | "coach" | "parent";
 
 export type StudentEventType = "tournament" | "competition" | "training" | "other";
 

@@ -123,13 +123,18 @@ describe("POST /api/students/personal", () => {
 
     expect(response.status).toBe(200);
     expect(studentInsert).toHaveBeenCalledWith([
-      {
+      expect.objectContaining({
         org_id: "org-personal",
         first_name: "Camille",
         last_name: "Dupont",
         email: "camille@example.com",
         playing_hand: "right",
-      },
+        parent_secret_code_plain: expect.stringMatching(/^[A-Z0-9]{8}$/),
+        parent_secret_code_hash: expect.stringMatching(
+          /^sha256\$[0-9a-f]{32}\$[0-9a-f]{64}$/
+        ),
+        parent_secret_code_rotated_at: expect.any(String),
+      }),
     ]);
   });
 });

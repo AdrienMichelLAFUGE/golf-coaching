@@ -533,6 +533,15 @@ export default function CoachStudentDetailPage() {
   const [inviteActionMessage, setInviteActionMessage] = useState("");
   const [inviteActionError, setInviteActionError] = useState("");
   const [inviteActionLoading, setInviteActionLoading] = useState(false);
+  const [parentSecretCode, setParentSecretCode] = useState<string | null>(null);
+  const [parentSecretCodeRotatedAt, setParentSecretCodeRotatedAt] = useState<string | null>(
+    null
+  );
+  const [parentSecretCodeVisible, setParentSecretCodeVisible] = useState(false);
+  const [parentSecretCodeLoading, setParentSecretCodeLoading] = useState(false);
+  const [parentSecretCodeRegenerating, setParentSecretCodeRegenerating] = useState(false);
+  const [parentSecretCodeError, setParentSecretCodeError] = useState("");
+  const [parentSecretCodeMessage, setParentSecretCodeMessage] = useState("");
   const [messageActionError, setMessageActionError] = useState("");
   const [messageActionLoading, setMessageActionLoading] = useState(false);
   const [shareStatus, setShareStatus] = useState<ShareStatus | null>(null);
@@ -561,6 +570,7 @@ export default function CoachStudentDetailPage() {
     workspaceType === "org" && isWorkspacePremium && (isAssigned || isWorkspaceAdmin);
   const canProposeInOrg = workspaceType === "org" && isWorkspacePremium && !isAssigned;
   const shareAccess = getViewerShareAccess(shareStatus);
+  const canManageParentCode = !shareAccess.canRead && Boolean(studentId);
   const getOrgName = useCallback((value?: OrganizationRef) => {
     if (!value) return null;
     if (Array.isArray(value)) return value[0]?.name ?? null;
@@ -2235,6 +2245,119 @@ export default function CoachStudentDetailPage() {
     setRadarConfigFile(null);
   };
 
+  const loadParentSecretCode = useCallback(async () => {
+    if (!studentId || !canManageParentCode) {
+      setParentSecretCode(null);
+      setParentSecretCodeRotatedAt(null);
+      setParentSecretCodeVisible(false);
+      setParentSecretCodeError("");
+      setParentSecretCodeMessage("");
+      return;
+    }
+
+    setParentSecretCodeLoading(true);
+    setParentSecretCodeError("");
+    setParentSecretCodeMessage("");
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setParentSecretCodeError("Session invalide. Reconnecte toi.");
+      setParentSecretCodeLoading(false);
+      return;
+    }
+
+    const response = await fetch(`/api/students/${studentId}/secret-code`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    const payload = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      secretCode?: string;
+      rotatedAt?: string | null;
+    };
+
+    if (!response.ok || !payload.secretCode) {
+      setParentSecretCodeError(
+        payload.error ?? "Chargement du code parent impossible."
+      );
+      setParentSecretCode(null);
+      setParentSecretCodeRotatedAt(null);
+      setParentSecretCodeLoading(false);
+      return;
+    }
+
+    setParentSecretCode(payload.secretCode);
+    setParentSecretCodeRotatedAt(payload.rotatedAt ?? null);
+    setParentSecretCodeLoading(false);
+  }, [studentId, canManageParentCode]);
+
+  const handleCopyParentSecretCode = async () => {
+    if (!parentSecretCode) return;
+    try {
+      await navigator.clipboard.writeText(parentSecretCode);
+      setParentSecretCodeError("");
+      setParentSecretCodeMessage("Code parent copie.");
+    } catch {
+      setParentSecretCodeMessage("");
+      setParentSecretCodeError("Copie impossible.");
+    }
+  };
+
+  const handleRegenerateParentSecretCode = async () => {
+    if (!studentId || !parentSecretCode || !canManageParentCode) return;
+
+    const confirmed = window.confirm(
+      "Regenerer le code parent ? L ancien code ne fonctionnera plus."
+    );
+    if (!confirmed) return;
+
+    setParentSecretCodeRegenerating(true);
+    setParentSecretCodeError("");
+    setParentSecretCodeMessage("");
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setParentSecretCodeError("Session invalide. Reconnecte toi.");
+      setParentSecretCodeRegenerating(false);
+      return;
+    }
+
+    const response = await fetch(`/api/students/${studentId}/secret-code/regenerate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    const payload = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      secretCode?: string;
+      rotatedAt?: string | null;
+    };
+
+    if (!response.ok || !payload.secretCode) {
+      setParentSecretCodeError(
+        payload.error ?? "Regeneration du code parent impossible."
+      );
+      setParentSecretCodeRegenerating(false);
+      return;
+    }
+
+    setParentSecretCode(payload.secretCode);
+    setParentSecretCodeRotatedAt(payload.rotatedAt ?? null);
+    setParentSecretCodeVisible(true);
+    setParentSecretCodeMessage("Code parent regenere.");
+    setParentSecretCodeRegenerating(false);
+  };
+
+  useEffect(() => {
+    void loadParentSecretCode();
+  }, [loadParentSecretCode]);
+
   const handleOpenMessageThread = async () => {
     if (!student?.id) return;
     if (!profile?.id) {
@@ -2562,6 +2685,78 @@ export default function CoachStudentDetailPage() {
             ) : null}
             {messageActionError ? (
               <p className="mt-3 text-xs text-red-300">{messageActionError}</p>
+            ) : null}
+            {canManageParentCode ? (
+              <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                      Code parent
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--muted)]">
+                      Utilise pour rattacher un compte parent (nom, prenom, email, code).
+                    </p>
+                  </div>
+                  {parentSecretCodeRotatedAt ? (
+                    <p className="text-[0.65rem] text-[var(--muted)]">
+                      Maj: {formatDate(parentSecretCodeRotatedAt, locale, timezone)}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <code className="rounded-lg border border-white/15 bg-[var(--bg-elevated)] px-3 py-1.5 text-xs tracking-[0.2em] text-[var(--text)]">
+                    {parentSecretCodeLoading
+                      ? "Chargement..."
+                      : parentSecretCodeVisible
+                        ? parentSecretCode ?? "--------"
+                        : "********"}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => setParentSecretCodeVisible((prev) => !prev)}
+                    disabled={parentSecretCodeLoading || !parentSecretCode}
+                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[0.62rem] uppercase tracking-[0.14em] text-[var(--text)] transition hover:border-white/25 disabled:cursor-not-allowed disabled:opacity-50"
+                    title="Afficher ou masquer le code parent"
+                  >
+                    {parentSecretCodeVisible ? "Masquer" : "Afficher"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyParentSecretCode()}
+                    disabled={parentSecretCodeLoading || !parentSecretCode}
+                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[0.62rem] uppercase tracking-[0.14em] text-[var(--text)] transition hover:border-white/25 disabled:cursor-not-allowed disabled:opacity-50"
+                    title="Copier le code parent"
+                  >
+                    Copier
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleRegenerateParentSecretCode()}
+                    disabled={
+                      parentSecretCodeLoading ||
+                      parentSecretCodeRegenerating ||
+                      !parentSecretCode ||
+                      isReadOnly
+                    }
+                    className="rounded-full border border-amber-300/40 bg-amber-400/10 px-3 py-1.5 text-[0.62rem] uppercase tracking-[0.14em] text-amber-100 transition hover:bg-amber-400/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    title={
+                      isReadOnly
+                        ? "Lecture seule: regeneration indisponible."
+                        : "Regenerer le code parent"
+                    }
+                  >
+                    {parentSecretCodeRegenerating ? "Regeneration..." : "Regenerer"}
+                  </button>
+                </div>
+
+                {parentSecretCodeMessage ? (
+                  <p className="mt-2 text-xs text-emerald-200">{parentSecretCodeMessage}</p>
+                ) : null}
+                {parentSecretCodeError ? (
+                  <p className="mt-2 text-xs text-red-300">{parentSecretCodeError}</p>
+                ) : null}
+              </div>
             ) : null}
             {isReadOnly ? (
               <div className="mt-4 rounded-xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-xs uppercase tracking-wide text-amber-100">

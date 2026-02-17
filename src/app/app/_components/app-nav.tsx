@@ -142,7 +142,12 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
   const sections: NavSection[] = [];
 
   if (!loading) {
-    if (profile?.role === "student") {
+    if (profile?.role === "parent") {
+      sections.push({
+        title: "Parent",
+        items: [{ label: "Portail parent", href: "/parent" }],
+      });
+    } else if (profile?.role === "student") {
       sections.push({
         title: "Eleve",
         items: [
@@ -253,13 +258,15 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
   const settingsNavItem: NavItem | null = !loading
     ? profile?.role === "student"
       ? { label: "Parametres", href: "/app/eleve/parametres" }
+      : profile?.role === "parent"
+        ? null
       : {
           label: workspaceType === "org" ? "Parametres org" : "Parametres",
           href: "/app/coach/parametres",
         }
     : null;
   const workspacesNavItem: NavItem | null =
-    !loading && profile?.role !== "student"
+    !loading && profile?.role !== "student" && profile?.role !== "parent"
       ? { label: "Espace de travail", href: "/app" }
       : null;
 

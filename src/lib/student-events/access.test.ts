@@ -166,6 +166,28 @@ describe("resolveStudentEventAccess", () => {
     });
   });
 
+  it("grants parent read-only when linked to student", async () => {
+    const admin = buildAdmin({
+      student_accounts: { data: null, error: null },
+      parent_child_links: { data: { id: "link-1" }, error: null },
+    });
+
+    const access = await resolveStudentEventAccess(
+      admin as unknown as ReturnType<
+        typeof import("@/lib/supabase/server").createSupabaseAdminClient
+      >,
+      "parent-1",
+      "11111111-1111-1111-1111-111111111111",
+      "parent@example.com"
+    );
+
+    expect(access).toEqual({
+      canRead: true,
+      canWrite: false,
+      reason: "parent_linked",
+    });
+  });
+
   it("denies org coach read access when not assigned", async () => {
     const admin = buildAdmin({
       student_accounts: { data: null, error: null },
