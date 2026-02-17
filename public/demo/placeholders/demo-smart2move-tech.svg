@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">Smart2Move technology placeholder</title>
+  <desc id="desc">Placeholder for Smart2Move technology selection step in demo</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#111827" />
+    </linearGradient>
+    <linearGradient id="acc" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.3" />
+      <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.2" />
+    </linearGradient>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#bg)" />
+  <rect x="120" y="90" width="1360" height="720" rx="28" fill="url(#acc)" stroke="#7dd3fc" stroke-opacity="0.35" />
+  <rect x="200" y="180" width="1200" height="220" rx="20" fill="#0b1220" stroke="#475569" stroke-opacity="0.5" />
+  <rect x="200" y="440" width="580" height="280" rx="20" fill="#0b1220" stroke="#475569" stroke-opacity="0.45" />
+  <rect x="820" y="440" width="580" height="280" rx="20" fill="#0b1220" stroke="#475569" stroke-opacity="0.45" />
+  <text x="800" y="305" text-anchor="middle" fill="#e2e8f0" font-family="Segoe UI, Arial, sans-serif" font-size="58" font-weight="700">
+    Smart2Move
+  </text>
+  <text x="800" y="365" text-anchor="middle" fill="#94a3b8" font-family="Segoe UI, Arial, sans-serif" font-size="24">
+    Sélection de technologie · Démo placeholder
+  </text>
+</svg>
