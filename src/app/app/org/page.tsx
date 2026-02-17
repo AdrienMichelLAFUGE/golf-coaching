@@ -1,20 +1,42 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
 import PageBack from "../_components/page-back";
 import RoleGuard from "../_components/role-guard";
 import { useProfile } from "../_components/profile-context";
 import Badge from "../_components/badge";
+import {
+  ORG_GROUP_DEFAULT_COLOR,
+  ORG_GROUP_COLOR_LABELS,
+  ORG_GROUP_COLOR_TOKENS,
+  type OrgGroupColorToken,
+} from "@/lib/org-groups";
 
 type GroupRow = {
   id: string;
   name: string;
   description: string | null;
+  parent_group_id: string | null;
+  color_token: OrgGroupColorToken | null;
   studentCount: number;
   coachCount: number;
 };
+
+type GroupTreeNode = GroupRow & { children: GroupTreeNode[] };
+
+const ORG_ROOT_CARD_CLASS: Record<OrgGroupColorToken, string> = {
+  mint: "border-emerald-300/70 bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500",
+  sky: "border-sky-300/70 bg-gradient-to-br from-sky-500 via-blue-500 to-indigo-500",
+  peach: "border-red-300/70 bg-gradient-to-br from-red-500 via-rose-500 to-fuchsia-600",
+  lavender: "border-violet-300/70 bg-gradient-to-br from-violet-500 via-purple-500 to-fuchsia-500",
+  lemon: "border-amber-300/70 bg-gradient-to-br from-amber-400 via-orange-500 to-amber-600",
+  rose: "border-slate-400/70 bg-gradient-to-br from-slate-700 via-indigo-700 to-cyan-600",
+};
+
+const getOrgRootCardClass = (token?: OrgGroupColorToken | null) =>
+  ORG_ROOT_CARD_CLASS[token ?? ORG_GROUP_DEFAULT_COLOR];
 
 export default function OrgOverviewPage() {
   const { organization, workspaceType, isWorkspaceAdmin, isWorkspacePremium } =
@@ -25,9 +47,14 @@ export default function OrgOverviewPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [parentGroupId, setParentGroupId] = useState("");
+  const [colorToken, setColorToken] = useState<OrgGroupColorToken>("mint");
   const canEdit = isWorkspaceAdmin || isWorkspacePremium;
+  const canDelete = isWorkspaceAdmin;
   const isOrgReadOnly = workspaceType === "org" && !canEdit;
   const modeLabel =
     (organization?.workspace_type ?? "personal") === "org"
@@ -57,7 +84,11 @@ export default function OrgOverviewPage() {
       setLoading(false);
       return;
     }
-    setGroups(payload.groups ?? []);
+    const uniqueGroups = new Map<string, GroupRow>();
+    (payload.groups ?? []).forEach((group) => {
+      uniqueGroups.set(group.id, group);
+    });
+    setGroups(Array.from(uniqueGroups.values()));
     setLoading(false);
   };
 
@@ -83,6 +114,116 @@ export default function OrgOverviewPage() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [createOpen, creating]);
 
+  const groupTree = useMemo(() => {
+    const groupsById = new Map<string, GroupTreeNode>();
+    groups.forEach((group) => {
+      if (!groupsById.has(group.id)) {
+        groupsById.set(group.id, {
+          ...group,
+          children: [],
+        });
+      }
+    });
+
+    const roots: GroupTreeNode[] = [];
+    groupsById.forEach((node) => {
+      if (node.parent_group_id && groupsById.has(node.parent_group_id)) {
+        const parentNode = groupsById.get(node.parent_group_id);
+        if (parentNode && !parentNode.children.some((child) => child.id === node.id)) {
+          parentNode.children.push(node);
+        }
+      } else {
+        roots.push(node);
+      }
+    });
+
+    const sortTree = (nodes: GroupTreeNode[]) => {
+      nodes.sort((left, right) => left.name.localeCompare(right.name, "fr"));
+      nodes.forEach((node) => sortTree(node.children));
+    };
+    sortTree(roots);
+    return roots;
+  }, [groups]);
+
+  const parentOptions = useMemo(() => {
+    const output: Array<{ id: string; label: string; depth: number }> = [];
+    const walk = (nodes: GroupTreeNode[], depth: number) => {
+      nodes.forEach((node) => {
+        output.push({ id: node.id, label: node.name, depth });
+        walk(node.children, depth + 1);
+      });
+    };
+    walk(groupTree, 0);
+    return output;
+  }, [groupTree]);
+
+  const renderSubgroupTree = (nodes: GroupTreeNode[], depth = 1): ReactNode =>
+    nodes.map((node) => (
+      <div key={node.id} className="space-y-2">
+        <div
+          className="relative flex items-center justify-between gap-3 rounded-xl border border-white/30 bg-black/15 px-3 py-2 pr-14 backdrop-blur-[2px]"
+          style={{ marginLeft: `${Math.max(0, depth - 1) * 10}px` }}
+        >
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-white">{node.name}</p>
+            {node.description?.trim() ? (
+              <p className="mt-0.5 truncate text-[11px] text-white/80">
+                {node.description}
+              </p>
+            ) : null}
+            <p className="mt-1 text-[10px] text-white/80">
+              {node.studentCount} eleves - {node.coachCount} coachs
+            </p>
+            <Link
+              href={`/app/org/groups/${node.id}`}
+              aria-label={`Ouvrir le sous-groupe ${node.name}`}
+              title="Ouvrir le sous-groupe"
+              className="mt-1 inline-flex items-center gap-1 text-[10px] font-medium text-white/85 transition hover:text-white"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="h-3 w-3"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+              </svg>
+              Ouvrir
+            </Link>
+          </div>
+          {canDelete ? (
+            <button
+              type="button"
+              onClick={() => void handleDeleteGroup(node)}
+              disabled={deletingGroupId === node.id}
+              aria-label={`Supprimer le sous-groupe ${node.name}`}
+              title="Supprimer le sous-groupe"
+              className="absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/30 bg-black/20 text-[10px] text-white/85 transition hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="h-2.5 w-2.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M18 6L6 18" />
+                <path d="M6 6l12 12" />
+              </svg>
+            </button>
+          ) : null}
+        </div>
+        {node.children.length > 0 ? renderSubgroupTree(node.children, depth + 1) : null}
+      </div>
+    ));
+
   const handleCreate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!name.trim()) return;
@@ -101,7 +242,12 @@ export default function OrgOverviewPage() {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ name, description }),
+      body: JSON.stringify({
+        name,
+        description,
+        parentGroupId: parentGroupId || null,
+        colorToken: parentGroupId ? null : colorToken,
+      }),
     });
     const payload = (await response.json()) as { error?: string };
     if (!response.ok) {
@@ -111,9 +257,44 @@ export default function OrgOverviewPage() {
     }
     setName("");
     setDescription("");
+    setParentGroupId("");
+    setColorToken("mint");
     setCreateOpen(false);
     await loadGroups();
     setCreating(false);
+  };
+
+  const handleDeleteGroup = async (group: Pick<GroupRow, "id" | "name">) => {
+    if (!canDelete) return;
+    const confirmed = window.confirm(
+      `Supprimer le groupe "${group.name}" ? Cette action est irreversible.`
+    );
+    if (!confirmed) return;
+
+    setDeleteError("");
+    setDeletingGroupId(group.id);
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setDeleteError("Session invalide.");
+      setDeletingGroupId(null);
+      return;
+    }
+
+    const response = await fetch(`/api/orgs/groups/${group.id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+    if (!response.ok) {
+      setDeleteError(payload?.error ?? "Suppression impossible.");
+      setDeletingGroupId(null);
+      return;
+    }
+
+    await loadGroups();
+    setDeletingGroupId(null);
   };
 
   return (
@@ -145,6 +326,10 @@ export default function OrgOverviewPage() {
               type="button"
               onClick={() => {
                 setCreateError("");
+                setName("");
+                setDescription("");
+                setParentGroupId("");
+                setColorToken("mint");
                 setCreateOpen(true);
               }}
               disabled={!canEdit}
@@ -169,6 +354,7 @@ export default function OrgOverviewPage() {
         </section>
 
         {error ? <p className="text-sm text-red-400">{error}</p> : null}
+        {deleteError ? <p className="text-sm text-red-400">{deleteError}</p> : null}
 
         <section className="space-y-3">
           {loading ? (
@@ -180,52 +366,128 @@ export default function OrgOverviewPage() {
               Aucun groupe pour l instant.
             </div>
           ) : (
-            groups.map((group) => (
-              <div
-                key={group.id}
-                className="panel rounded-2xl border border-white/10 p-5"
-              >
-                <div className="grid grid-cols-[32px_minmax(0,1fr)] gap-3">
-                  <div className="flex items-center justify-center self-center">
-                    <Link
-                      href={`/app/org/groups/${group.id}`}
-                      aria-label={`Ouvrir le groupe ${group.name}`}
-                      title="Ouvrir le groupe"
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
-                    >
-                      <svg
-                        viewBox="0 0 24 24"
-                        className="h-3.5 w-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
+            <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+              {groupTree.map((rootGroup) => {
+                const rootCardClass = getOrgRootCardClass(rootGroup.color_token);
+                const totalSubgroups = rootGroup.children.length;
+                return (
+                  <article
+                    key={rootGroup.id}
+                    className={`relative overflow-hidden rounded-2xl border text-white shadow-[0_10px_28px_rgba(15,23,42,0.28)] ${rootCardClass}`}
+                  >
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/35 via-black/10 to-transparent" />
+                    <div className="pointer-events-none absolute -right-10 top-8 h-28 w-28 rounded-full border border-white/15 bg-white/10" />
+                    <div className="pointer-events-none absolute right-10 top-2 h-3 w-3 rounded-full bg-white/20" />
+
+                    <div className="relative p-5">
+                      <div className="flex items-start gap-3">
+                        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-black/5 bg-white/90 text-zinc-900 shadow-sm">
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-5 w-5"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden="true"
+                          >
+                            <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+                          </svg>
+                        </span>
+
+                        <div className="min-w-0">
+                          <h3 className="truncate text-lg font-semibold text-white">
+                            {rootGroup.name}
+                          </h3>
+                          {rootGroup.description?.trim() ? (
+                            <p className="mt-1.5 line-clamp-2 text-sm text-white/90">
+                              {rootGroup.description}
+                            </p>
+                          ) : (
+                            <p className="mt-1.5 text-sm text-white/85">
+                              
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <p className="mt-4 text-xs text-white/90">
+                        <span className="font-semibold">{rootGroup.studentCount}</span> eleves
+                        <span className="mx-1.5 opacity-70">-</span>
+                        <span className="font-semibold">{rootGroup.coachCount}</span> coachs
+                        <span className="mx-1.5 opacity-70">-</span>
+                        <span className="font-semibold">{totalSubgroups}</span> sous-groupes
+                      </p>
+
+                      <div className="mt-4 flex items-center gap-2">
+                        <Link
+                          href={`/app/org/groups/${rootGroup.id}`}
+                          aria-label={`Ouvrir le groupe ${rootGroup.name}`}
+                          title="Ouvrir le groupe"
+                          className="inline-flex items-center gap-2 rounded-lg border-white/30 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800 transition hover:bg-white/90"
+                        >
+                          Ouvrir
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-3.5 w-3.5"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden="true"
+                          >
+                            <path d="m9 18 6-6-6-6" />
+                          </svg>
+                        </Link>
+                      </div>
+
+                      <details
+                        open={rootGroup.children.length > 0}
+                        className="mt-4 rounded-xl border border-white/25 bg-black/15 backdrop-blur-[2px]"
                       >
-                        <path d="M9 18l6-6-6-6" />
-                      </svg>
-                    </Link>
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-[var(--text)]">
-                          {group.name}
-                        </p>
-                        <p className="mt-1 text-xs text-[var(--muted)]">
-                          {group.description ?? "Aucune description."}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--muted)]">
-                        <Badge tone="muted">{group.studentCount} eleves</Badge>
-                        <Badge tone="muted">{group.coachCount} coachs</Badge>
-                      </div>
+                        <summary className="cursor-pointer list-none px-3 py-2 text-xs font-medium text-white/90">
+                          Sous-groupes ({totalSubgroups})
+                        </summary>
+                        <div className="border-t border-white/20 px-3 py-2">
+                          {rootGroup.children.length === 0 ? (
+                            <p className="text-xs text-white/80">Aucun sous-groupe.</p>
+                          ) : (
+                            <div className="space-y-2">{renderSubgroupTree(rootGroup.children)}</div>
+                          )}
+                        </div>
+                      </details>
                     </div>
-                  </div>
-                </div>
-              </div>
-            ))
+
+                    {canDelete ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteGroup(rootGroup)}
+                        disabled={deletingGroupId === rootGroup.id}
+                        aria-label={`Supprimer le groupe ${rootGroup.name}`}
+                        title="Supprimer le groupe"
+                        className="absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/35 bg-black/20 text-[10px] text-white/95 transition hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-2.5 w-2.5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M18 6L6 18" />
+                          <path d="M6 6l12 12" />
+                        </svg>
+                      </button>
+                    ) : null}
+                  </article>
+                );
+              })}
+            </div>
           )}
         </section>
 
@@ -301,6 +563,46 @@ export default function OrgOverviewPage() {
                       className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500 focus:border-[var(--accent)] focus:outline-none disabled:opacity-60"
                       placeholder="Optionnel"
                     />
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Groupe parent
+                    </label>
+                    <select
+                      value={parentGroupId}
+                      onChange={(event) => setParentGroupId(event.target.value)}
+                      disabled={!canEdit || creating}
+                      className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none disabled:opacity-60"
+                    >
+                      <option value="">Aucun (groupe principal)</option>
+                      {parentOptions.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {`${"\u00A0".repeat(option.depth * 2)}${option.depth > 0 ? "-> " : ""}${option.label}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Couleur pastel (groupe principal)
+                    </label>
+                    <select
+                      value={colorToken}
+                      onChange={(event) => setColorToken(event.target.value as OrgGroupColorToken)}
+                      disabled={!canEdit || creating || Boolean(parentGroupId)}
+                      className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none disabled:opacity-60"
+                    >
+                      {ORG_GROUP_COLOR_TOKENS.map((token) => (
+                        <option key={token} value={token}>
+                          {ORG_GROUP_COLOR_LABELS[token]}
+                        </option>
+                      ))}
+                    </select>
+                    {parentGroupId ? (
+                      <p className="mt-1 text-xs text-[var(--muted)]">
+                        Les sous-groupes utilisent la couleur du groupe parent.
+                      </p>
+                    ) : null}
                   </div>
                   {isOrgReadOnly ? (
                     <p className="text-sm text-amber-300">

@@ -18,11 +18,26 @@ import PageHeader from "../../../_components/page-header";
 import RoleGuard from "../../../_components/role-guard";
 import { useProfile } from "../../../_components/profile-context";
 import Badge from "../../../_components/badge";
+import {
+  ORG_GROUP_COLOR_LABELS,
+  ORG_GROUP_COLOR_TOKENS,
+  getOrgGroupColorTheme,
+  type OrgGroupColorToken,
+} from "@/lib/org-groups";
 
 type GroupRow = {
   id: string;
   name: string;
   description: string | null;
+  parent_group_id: string | null;
+  color_token: OrgGroupColorToken | null;
+};
+
+type GroupSummaryRow = {
+  id: string;
+  name: string;
+  parent_group_id: string | null;
+  color_token: OrgGroupColorToken | null;
 };
 
 type StudentRow = {
@@ -48,6 +63,8 @@ type GroupPayload = {
   coaches: CoachRow[];
   selectedStudentIds: string[];
   selectedCoachIds: string[];
+  parentGroup: { id: string; name: string } | null;
+  availableGroups: GroupSummaryRow[];
 };
 
 type MemberRow = {
@@ -185,6 +202,8 @@ export default function OrgGroupDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [group, setGroup] = useState<GroupRow | null>(null);
+  const [parentGroup, setParentGroup] = useState<{ id: string; name: string } | null>(null);
+  const [availableGroups, setAvailableGroups] = useState<GroupSummaryRow[]>([]);
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [coaches, setCoaches] = useState<CoachRow[]>([]);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
@@ -199,6 +218,9 @@ export default function OrgGroupDetailPage() {
   const [coachQuery, setCoachQuery] = useState("");
   const [groupDraftName, setGroupDraftName] = useState("");
   const [groupDraftDescription, setGroupDraftDescription] = useState("");
+  const [groupDraftParentId, setGroupDraftParentId] = useState("");
+  const [groupDraftColorToken, setGroupDraftColorToken] =
+    useState<OrgGroupColorToken>("mint");
   const [studentDraftIds, setStudentDraftIds] = useState<string[]>([]);
   const [coachDraftIds, setCoachDraftIds] = useState<string[]>([]);
   const [savingGroup, setSavingGroup] = useState(false);
@@ -238,6 +260,8 @@ export default function OrgGroupDetailPage() {
       return;
     }
     setGroup(payload.group);
+    setParentGroup(payload.parentGroup ?? null);
+    setAvailableGroups(payload.availableGroups ?? []);
     setStudents(payload.students ?? []);
     setCoaches(payload.coaches ?? []);
     setSelectedStudentIds(payload.selectedStudentIds ?? []);
@@ -329,6 +353,14 @@ export default function OrgGroupDetailPage() {
     });
   }, [activeFilter, memberQuery, memberRows, testFilter]);
 
+  const parentCandidates = useMemo(
+    () =>
+      availableGroups
+        .filter((candidate) => candidate.id !== groupId)
+        .sort((left, right) => left.name.localeCompare(right.name, "fr")),
+    [availableGroups, groupId]
+  );
+
   const getCoachInitials = (coachName: string) => {
     const parts = coachName
       .trim()
@@ -351,6 +383,8 @@ export default function OrgGroupDetailPage() {
     setError("");
     setGroupDraftName(group.name);
     setGroupDraftDescription(group.description ?? "");
+    setGroupDraftParentId(group.parent_group_id ?? "");
+    setGroupDraftColorToken(group.color_token ?? "mint");
     setEditOpen(true);
   };
 
@@ -405,7 +439,12 @@ export default function OrgGroupDetailPage() {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ name: trimmedName, description: groupDraftDescription }),
+      body: JSON.stringify({
+        name: trimmedName,
+        description: groupDraftDescription,
+        parentGroupId: groupDraftParentId || null,
+        colorToken: groupDraftParentId ? null : groupDraftColorToken,
+      }),
     });
     const payload = (await response.json()) as { error?: string };
     if (!response.ok) {
@@ -515,6 +554,16 @@ export default function OrgGroupDetailPage() {
           meta={
             <div className="flex flex-wrap items-center gap-2">
               <Badge className={modeBadgeTone}>{modeLabel}</Badge>
+              {group && !group.parent_group_id ? (
+                <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-[var(--muted)]">
+                  <span
+                    className={`h-2.5 w-2.5 rounded-full ${getOrgGroupColorTheme(group.color_token).dotClass}`}
+                    aria-hidden="true"
+                  />
+                  Groupe principal
+                </span>
+              ) : null}
+              {parentGroup ? <Badge tone="muted">Sous-groupe de {parentGroup.name}</Badge> : null}
               <Badge tone="muted">{selectedStudentIds.length} eleves</Badge>
               <Badge tone="muted">{selectedCoachIds.length} coachs</Badge>
             </div>
@@ -544,7 +593,13 @@ export default function OrgGroupDetailPage() {
         ) : !group ? (
           <div className="panel rounded-2xl p-6 text-sm text-[var(--muted)]">Groupe introuvable.</div>
         ) : (
-          <section className="panel overflow-hidden rounded-2xl border border-white/10">
+          <section
+            className={`panel overflow-hidden rounded-2xl border ${
+              group.parent_group_id
+                ? "border-white/10"
+                : getOrgGroupColorTheme(group.color_token).cardClass
+            }`}
+          >
             <div className="flex flex-wrap items-center justify-between gap-3 border-white/10 px-6 py-4">
               <div>
                 <h3 className="text-sm font-semibold text-[var(--text)]">Membres du groupe</h3>
@@ -763,6 +818,48 @@ export default function OrgGroupDetailPage() {
                   className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500 focus:border-[var(--accent)] focus:outline-none disabled:opacity-60"
                   placeholder="Optionnel"
                 />
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                  Groupe parent
+                </label>
+                <select
+                  value={groupDraftParentId}
+                  onChange={(event) => setGroupDraftParentId(event.target.value)}
+                  disabled={!canEdit || savingGroup}
+                  className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none disabled:opacity-60"
+                >
+                  <option value="">Aucun (groupe principal)</option>
+                  {parentCandidates.map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>
+                      {candidate.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                  Couleur pastel (groupe principal)
+                </label>
+                <select
+                  value={groupDraftColorToken}
+                  onChange={(event) =>
+                    setGroupDraftColorToken(event.target.value as OrgGroupColorToken)
+                  }
+                  disabled={!canEdit || savingGroup || Boolean(groupDraftParentId)}
+                  className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none disabled:opacity-60"
+                >
+                  {ORG_GROUP_COLOR_TOKENS.map((token) => (
+                    <option key={token} value={token}>
+                      {ORG_GROUP_COLOR_LABELS[token]}
+                    </option>
+                  ))}
+                </select>
+                {groupDraftParentId ? (
+                  <p className="mt-1 text-xs text-[var(--muted)]">
+                    Les sous-groupes utilisent la couleur du groupe parent.
+                  </p>
+                ) : null}
               </div>
               {isOrgReadOnly ? (
                 <p className="text-sm text-amber-300">Freemium: lecture seule en organisation.</p>

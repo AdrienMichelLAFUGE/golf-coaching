@@ -10,6 +10,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type SetStateAction,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
@@ -56,6 +57,13 @@ import {
   VIDEO_MAX_PER_SECTION as VIDEO_PER_SECTION_LIMIT,
   VIDEO_MAX_SECTIONS_PER_REPORT as VIDEO_SECTIONS_LIMIT,
 } from "@/lib/report-video";
+import {
+  REPORT_UNDO_HISTORY_LIMIT,
+  buildNextUndoStack,
+  cloneReportSectionsForHistory,
+  popUndoSnapshot,
+  reportSectionHasContent,
+} from "./report-history";
 
 type SectionType = "text" | "image" | "video" | "radar";
 type SectionLibraryFilterValue = "all" | SectionType;
@@ -564,8 +572,28 @@ export default function CoachReportBuilderPage() {
     tags?: string[];
     status?: { label: string; value: string }[];
   } | null>(null);
-  const [reportSections, setReportSections] = useState<ReportSection[]>(
+  const [reportSections, setReportSectionsState] = useState<ReportSection[]>(
     defaultReportSections.map(createSection)
+  );
+  const reportUndoStackRef = useRef<ReportSection[][]>([]);
+  const reportUndoPreviousRef = useRef<ReportSection[] | null>(null);
+  const reportUndoSkipNextRef = useRef(false);
+  const reportUndoInProgressRef = useRef(false);
+  const [reportUndoCount, setReportUndoCount] = useState(0);
+  const [pendingSectionDeletion, setPendingSectionDeletion] = useState<ReportSection | null>(
+    null
+  );
+  const setReportSections = useCallback(
+    (
+      updater: SetStateAction<ReportSection[]>,
+      options?: { trackHistory?: boolean }
+    ) => {
+      if (options?.trackHistory === false) {
+        reportUndoSkipNextRef.current = true;
+      }
+      setReportSectionsState(updater);
+    },
+    []
   );
   const [customSection, setCustomSection] = useState("");
   const [customType, setCustomType] = useState<SectionType>("text");
@@ -1369,6 +1397,60 @@ export default function CoachReportBuilderPage() {
     setSectionsMessageType(type);
   };
 
+  const clearReportUndoHistory = useCallback(() => {
+    reportUndoStackRef.current = [];
+    reportUndoPreviousRef.current = null;
+    reportUndoSkipNextRef.current = false;
+    reportUndoInProgressRef.current = false;
+    setReportUndoCount(0);
+  }, []);
+
+  const handleUndoReportChange = () => {
+    const { previous, rest } = popUndoSnapshot(reportUndoStackRef.current);
+    if (!previous) return;
+    reportUndoStackRef.current = rest;
+    setReportUndoCount(rest.length);
+    reportUndoInProgressRef.current = true;
+    setReportSectionsState(previous);
+    setSectionsNotice("Derniere action annulee.", "success");
+  };
+
+  useEffect(() => {
+    const snapshot = cloneReportSectionsForHistory(reportSections);
+    if (!reportUndoPreviousRef.current) {
+      reportUndoPreviousRef.current = snapshot;
+      return;
+    }
+
+    if (reportUndoSkipNextRef.current) {
+      reportUndoSkipNextRef.current = false;
+      reportUndoPreviousRef.current = snapshot;
+      return;
+    }
+
+    if (reportUndoInProgressRef.current) {
+      reportUndoInProgressRef.current = false;
+      reportUndoPreviousRef.current = snapshot;
+      return;
+    }
+
+    reportUndoStackRef.current = buildNextUndoStack(
+      reportUndoPreviousRef.current,
+      reportUndoStackRef.current,
+      REPORT_UNDO_HISTORY_LIMIT
+    );
+    setReportUndoCount(reportUndoStackRef.current.length);
+    reportUndoPreviousRef.current = snapshot;
+  }, [reportSections]);
+
+  useEffect(() => {
+    if (!pendingSectionDeletion) return;
+    const stillExists = reportSections.some((section) => section.id === pendingSectionDeletion.id);
+    if (!stillExists) {
+      setPendingSectionDeletion(null);
+    }
+  }, [pendingSectionDeletion, reportSections]);
+
   const setLayoutNotice = (message: string, type: "idle" | "error" | "success") => {
     setLayoutMessage(message);
     setLayoutMessageType(type);
@@ -1553,39 +1635,58 @@ export default function CoachReportBuilderPage() {
     shouldAnimate.current = true;
   };
 
-  const handleRemoveFromReport = (section: ReportSection) => {
-    setReportSections((prev) => prev.filter((item) => item.id !== section.id));
+  const removeSectionFromReportById = (sectionId: string) => {
+    setReportSections((prev) => prev.filter((item) => item.id !== sectionId));
     setAiPreviews((prev) => {
-      if (!prev[section.id]) return prev;
+      if (!prev[sectionId]) return prev;
       const next = { ...prev };
-      delete next[section.id];
+      delete next[sectionId];
       return next;
     });
     setCollapsedSections((prev) => {
-      if (!prev[section.id]) return prev;
+      if (!prev[sectionId]) return prev;
       const next = { ...prev };
-      delete next[section.id];
+      delete next[sectionId];
       return next;
     });
     setImageErrors((prev) => {
-      if (!prev[section.id]) return prev;
+      if (!prev[sectionId]) return prev;
       const next = { ...prev };
-      delete next[section.id];
+      delete next[sectionId];
       return next;
     });
     setUploadingSections((prev) => {
-      if (!prev[section.id]) return prev;
+      if (!prev[sectionId]) return prev;
       const next = { ...prev };
-      delete next[section.id];
+      delete next[sectionId];
       return next;
     });
     shouldAnimate.current = true;
+  };
+
+  const handleRemoveFromReport = (section: ReportSection) => {
+    if (reportSectionHasContent(section)) {
+      setPendingSectionDeletion(section);
+      return;
+    }
+    removeSectionFromReportById(section.id);
+  };
+
+  const handleCancelSectionDeletion = () => {
+    setPendingSectionDeletion(null);
+  };
+
+  const handleConfirmSectionDeletion = () => {
+    if (!pendingSectionDeletion) return;
+    removeSectionFromReportById(pendingSectionDeletion.id);
+    setPendingSectionDeletion(null);
   };
 
   const handleClearReportSections = () => {
     if (reportSections.length === 0) return;
     if (!window.confirm("Retirer toutes les sections du rapport ?")) return;
     setReportSections([]);
+    setPendingSectionDeletion(null);
     setAiPreviews({});
     setCollapsedSections({});
     setImageErrors({});
@@ -3096,10 +3197,11 @@ export default function CoachReportBuilderPage() {
   }, [draftKey, isNewReport, legacyDraftKey, loadingReport, requestedStudentId]);
 
   const applyLocalDraft = useCallback((draft: LocalDraft) => {
+    clearReportUndoHistory();
     setStudentId(draft.studentId ?? "");
     setTitle(draft.title ?? "");
     setReportDate(draft.reportDate ?? formatDateInput(new Date()));
-    setReportSections(draft.reportSections);
+    setReportSections(draft.reportSections, { trackHistory: false });
     setWorkingObservations(draft.workingObservations ?? "");
     setWorkingNotes(draft.workingNotes ?? "");
     setWorkingClub(draft.workingClub ?? "");
@@ -3107,7 +3209,7 @@ export default function CoachReportBuilderPage() {
     setSelectedLayoutOptionId(draft.selectedLayoutOptionId ?? "");
     // After a restore, show the editor step so the user immediately sees recovered content.
     setBuilderStep(draft.builderStep ?? "report");
-  }, []);
+  }, [clearReportUndoHistory, setReportSections]);
 
   const persistLocalDraft = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -3152,7 +3254,7 @@ export default function CoachReportBuilderPage() {
   ]);
 
 
-  const loadReportForEdit = async (reportId: string) => {
+  const loadReportForEdit = useCallback(async (reportId: string) => {
     setLoadingReport(true);
     setStatusMessage("");
     setStatusType("idle");
@@ -3247,14 +3349,16 @@ export default function CoachReportBuilderPage() {
         ? formatDateInputValue(reportData.report_date)
         : formatDateInputValue(reportData.created_at)
     );
-    setReportSections(nextSections);
+    clearReportUndoHistory();
+    setReportSections(nextSections, { trackHistory: false });
     setAiPreviews({});
     setAiSummary("");
     setAiError("");
     setLoadingReport(false);
-  };
+  }, [organization?.id, router, clearReportUndoHistory, setReportSections]);
 
-  const resetBuilderState = () => {
+  const resetBuilderState = useCallback(() => {
+    clearReportUndoHistory();
     setEditingReportId(null);
     setEditingReportOrgId(null);
     setIsSharedReadOnly(false);
@@ -3262,7 +3366,7 @@ export default function CoachReportBuilderPage() {
     setTitle("");
     setReportDate(formatDateInput(new Date()));
     setSentAt(null);
-    setReportSections(defaultReportSections.map(createSection));
+    setReportSections(defaultReportSections.map(createSection), { trackHistory: false });
     setWorkingObservations("");
     setWorkingNotes("");
     setWorkingClub("");
@@ -3273,7 +3377,8 @@ export default function CoachReportBuilderPage() {
     setSectionsMessageType("idle");
     setStatusMessage("");
     setStatusType("idle");
-  };
+    setPendingSectionDeletion(null);
+  }, [clearReportUndoHistory, setReportSections]);
 
   const handleResumeLocalDraft = () => {
     const draft = peekLocalDraft();
@@ -4976,7 +5081,7 @@ export default function CoachReportBuilderPage() {
     const reportId = searchParams.get("reportId");
     if (!reportId || reportId === editingReportId) return;
     loadReportForEdit(reportId);
-  }, [searchParams, editingReportId]);
+  }, [searchParams, editingReportId, loadReportForEdit]);
 
   useEffect(() => {
     const reportId = searchParams.get("reportId");
@@ -4986,7 +5091,7 @@ export default function CoachReportBuilderPage() {
       return;
     }
     resetBuilderState();
-  }, [searchParams, editingReportId]);
+  }, [searchParams, editingReportId, resetBuilderState]);
 
   useLayoutEffect(() => {
     reportSections.forEach((section) => {
@@ -5069,10 +5174,6 @@ export default function CoachReportBuilderPage() {
     };
   }, [studentId, resolveLatestTpiReportId]);
 
-  const selectedStudent = useMemo(
-    () => students.find((student) => student.id === studentId) ?? null,
-    [students, studentId]
-  );
   const hasReportId = Boolean(searchParams.get("reportId"));
   const activeBuilderStep = hasReportId || isEditing ? "report" : builderStep;
   const studentPickerCandidates = useMemo(() => {
@@ -5142,6 +5243,7 @@ export default function CoachReportBuilderPage() {
     aiSettingsModalOpen ||
     sectionLibraryOpen ||
     sectionCreateModalOpen ||
+    pendingSectionDeletion !== null ||
     studentPickerOpen ||
     radarImportOpen ||
     smart2MoveMarkersModalOpen ||
@@ -5176,15 +5278,15 @@ export default function CoachReportBuilderPage() {
   const stickyActionLabelClass = stickyActionsExpanded
     ? "ml-2 max-w-[6.5rem] translate-x-0 opacity-100"
     : "ml-0 max-w-0 -translate-x-1 opacity-0";
-  const stickyActionCount = 6;
+  const stickyActionCount = 7;
   const getStickyActionDelay = (index: number) => {
     const stepMs = 45;
-    const orderIndex = stickyActionsExpanded ? index : index;
+    const orderIndex = Math.min(index, stickyActionCount - 1);
     return `${orderIndex * stepMs}ms`;
   };
   const getStickyLabelDelay = (index: number) => {
     const stepMs = 45;
-    const orderIndex = stickyActionsExpanded ? index : index;
+    const orderIndex = Math.min(index, stickyActionCount - 1);
     const revealOffsetMs = stickyActionsExpanded ? 80 : 0;
     return `${orderIndex * stepMs + revealOffsetMs}ms`;
   };
@@ -6969,6 +7071,29 @@ export default function CoachReportBuilderPage() {
                     >
                       {saving ? "Sauvegarde..." : saveLabel}
                     </button>
+                    <button
+                      type="button"
+                      disabled={saving || loadingReport || reportUndoCount === 0}
+                      onClick={handleUndoReportChange}
+                      className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10 disabled:opacity-60"
+                      aria-label="Annuler la derniere action"
+                      title="Annuler la derniere action"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-3.5 w-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M9 14L4 9l5-5" />
+                        <path d="M4 9h9a7 7 0 1 1 0 14h-2" />
+                      </svg>
+                      Annuler
+                    </button>
                     {isEditing ? (
                       <span
                         className={`rounded-md border border-dashed px-2 py-1 text-[0.55rem] uppercase tracking-wide select-none ${
@@ -7520,6 +7645,37 @@ export default function CoachReportBuilderPage() {
                     </button>
                     <button
                       type="button"
+                      disabled={saving || loadingReport || reportUndoCount === 0}
+                      onClick={handleUndoReportChange}
+                      className={`flex h-11 items-center overflow-hidden rounded-full border border-black/15 bg-white/95 text-zinc-700 shadow-[0_10px_24px_rgba(0,0,0,0.28)] transition-all duration-300 ease-in-out hover:bg-zinc-100 disabled:opacity-60 lg:h-12 ${stickyActionShapeClass}`}
+                      style={{ transitionDelay: getStickyActionDelay(1) }}
+                      aria-label="Annuler la derniere action"
+                      title="Annuler la derniere action"
+                    >
+                      <span className="shrink-0">
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M9 14L4 9l5-5" />
+                          <path d="M4 9h9a7 7 0 1 1 0 14h-2" />
+                        </svg>
+                      </span>
+                      <span
+                        className={`inline-flex items-center overflow-hidden whitespace-nowrap text-[0.58rem] font-semibold uppercase leading-none tracking-wide transition-all duration-300 ease-in-out ${stickyActionLabelClass}`}
+                        style={{ transitionDelay: getStickyLabelDelay(1) }}
+                      >
+                        Annuler
+                      </span>
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => {
                         setSectionsNotice("", "idle");
                         setSectionSearch("");
@@ -7527,7 +7683,7 @@ export default function CoachReportBuilderPage() {
                         setSectionLibraryOpen(true);
                       }}
                       className={`flex h-11 items-center overflow-hidden rounded-full border border-black/15 bg-white/95 text-zinc-700 shadow-[0_10px_24px_rgba(0,0,0,0.28)] transition-all duration-300 ease-in-out hover:bg-zinc-100 lg:h-12 ${stickyActionShapeClass}`}
-                      style={{ transitionDelay: getStickyActionDelay(1) }}
+                      style={{ transitionDelay: getStickyActionDelay(2) }}
                       aria-label="Ajouter une section"
                       title="Ajouter une section"
                     >
@@ -7548,7 +7704,7 @@ export default function CoachReportBuilderPage() {
                       </span>
                       <span
                         className={`inline-flex items-center overflow-hidden whitespace-nowrap text-[0.58rem] font-semibold uppercase leading-none tracking-wide transition-all duration-300 ease-in-out ${stickyActionLabelClass}`}
-                        style={{ transitionDelay: getStickyLabelDelay(1) }}
+                        style={{ transitionDelay: getStickyLabelDelay(2) }}
                       >
                         Ajouter section
                       </span>
@@ -7568,7 +7724,7 @@ export default function CoachReportBuilderPage() {
                           ? "border-amber-300 bg-amber-50 text-amber-700"
                           : "border-black/15 bg-white/95 text-zinc-700 hover:bg-zinc-100"
                       }`}
-                      style={{ transitionDelay: getStickyActionDelay(2) }}
+                      style={{ transitionDelay: getStickyActionDelay(3) }}
                       aria-label="Resume du rapport"
                       title={aiBusyId === "summary" ? "IA..." : "Resume du rapport"}
                     >
@@ -7591,7 +7747,7 @@ export default function CoachReportBuilderPage() {
                       </span>
                       <span
                         className={`inline-flex items-center overflow-hidden whitespace-nowrap text-[0.58rem] font-semibold uppercase leading-none tracking-wide transition-all duration-300 ease-in-out ${stickyActionLabelClass}`}
-                        style={{ transitionDelay: getStickyLabelDelay(2) }}
+                        style={{ transitionDelay: getStickyLabelDelay(3) }}
                       >
                         Resume rapide
                       </span>
@@ -7600,7 +7756,7 @@ export default function CoachReportBuilderPage() {
                       type="button"
                       onClick={() => setAiAssistantModalOpen(true)}
                       className={`flex h-11 items-center overflow-hidden rounded-full border border-cyan-300 bg-cyan-50 text-cyan-700 shadow-[0_10px_24px_rgba(0,0,0,0.28)] transition-all duration-300 ease-in-out hover:bg-cyan-100 lg:h-12 ${stickyActionShapeClass}`}
-                      style={{ transitionDelay: getStickyActionDelay(3) }}
+                      style={{ transitionDelay: getStickyActionDelay(4) }}
                       aria-label="Ouvrir l assistant IA"
                       title="Assistant IA"
                     >
@@ -7622,7 +7778,7 @@ export default function CoachReportBuilderPage() {
                       </span>
                       <span
                         className={`inline-flex items-center overflow-hidden whitespace-nowrap text-[0.58rem] font-semibold uppercase leading-none tracking-wide transition-all duration-300 ease-in-out ${stickyActionLabelClass}`}
-                        style={{ transitionDelay: getStickyLabelDelay(3) }}
+                        style={{ transitionDelay: getStickyLabelDelay(4) }}
                       >
                         Assistant IA
                       </span>
@@ -7646,7 +7802,7 @@ export default function CoachReportBuilderPage() {
                           ? "border-amber-300 bg-amber-50 text-amber-700"
                           : "border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100"
                       }`}
-                      style={{ transitionDelay: getStickyActionDelay(4) }}
+                      style={{ transitionDelay: getStickyActionDelay(5) }}
                       aria-label="Auto detect datas graphs"
                       title={radarAiAutoBusy ? "IA..." : "Auto detect datas graphs"}
                     >
@@ -7671,7 +7827,7 @@ export default function CoachReportBuilderPage() {
                       </span>
                       <span
                         className={`inline-flex items-center overflow-hidden whitespace-nowrap text-[0.58rem] font-semibold uppercase leading-none tracking-wide transition-all duration-300 ease-in-out ${stickyActionLabelClass}`}
-                        style={{ transitionDelay: getStickyLabelDelay(4) }}
+                        style={{ transitionDelay: getStickyLabelDelay(5) }}
                       >
                         Mode datas
                       </span>
@@ -7691,7 +7847,7 @@ export default function CoachReportBuilderPage() {
                           ? "border-amber-300 bg-amber-50 text-amber-700"
                           : "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
                       }`}
-                      style={{ transitionDelay: getStickyActionDelay(5) }}
+                      style={{ transitionDelay: getStickyActionDelay(6) }}
                       aria-label="Finaliser"
                       title={aiBusyId === "finalize" ? "IA..." : "Finaliser"}
                     >
@@ -7711,7 +7867,7 @@ export default function CoachReportBuilderPage() {
                       </span>
                       <span
                         className={`inline-flex items-center overflow-hidden whitespace-nowrap text-[0.58rem] font-semibold uppercase leading-none tracking-wide transition-all duration-300 ease-in-out ${stickyActionLabelClass}`}
-                        style={{ transitionDelay: getStickyLabelDelay(5) }}
+                        style={{ transitionDelay: getStickyLabelDelay(6) }}
                       >
                         Finition IA
                       </span>
@@ -10297,6 +10453,59 @@ export default function CoachReportBuilderPage() {
                     </p>
                   </div>
                 ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {pendingSectionDeletion ? (
+          <div
+            className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="report-section-delete-title"
+          >
+            <button
+              type="button"
+              aria-label="Fermer"
+              className="absolute inset-0 bg-black/45 backdrop-blur-sm"
+              onClick={handleCancelSectionDeletion}
+            />
+            <div className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-white/10 bg-[var(--bg-elevated)] shadow-[var(--shadow-strong)]">
+              <div className="border-b border-white/10 px-6 py-4">
+                <h3
+                  id="report-section-delete-title"
+                  className="text-base font-semibold text-[var(--text)]"
+                >
+                  Supprimer cette section ?
+                </h3>
+                <p className="mt-2 text-sm text-[var(--muted)]">
+                  La section <span className="font-semibold text-[var(--text)]">
+                    {pendingSectionDeletion.title}
+                  </span>{" "}
+                  contient deja du contenu. Cette action est irreversible.
+                </p>
+              </div>
+              <div className="space-y-3 px-6 py-5">
+                <p className="text-xs text-[var(--muted)]">
+                  Conseil: utilise d&apos;abord le bouton &quot;Annuler&quot; si la suppression etait
+                  involontaire.
+                </p>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCancelSectionDeletion}
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmSectionDeletion}
+                    className="rounded-full border border-red-300/40 bg-red-500/20 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-red-200 transition hover:bg-red-500/30"
+                  >
+                    Supprimer la section
+                  </button>
+                </div>
               </div>
             </div>
           </div>

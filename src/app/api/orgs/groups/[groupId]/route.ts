@@ -7,10 +7,17 @@ import {
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
 import { recordActivity } from "@/lib/activity-log";
+import {
+  ORG_GROUP_COLOR_TOKENS,
+  ORG_GROUP_DEFAULT_COLOR,
+  type OrgGroupColorToken,
+} from "@/lib/org-groups";
 
 const updateSchema = z.object({
-  name: z.string().min(1).optional(),
+  name: z.string().trim().min(1).optional(),
   description: z.string().optional().or(z.literal("")),
+  parentGroupId: z.string().uuid().optional().nullable().or(z.literal("")),
+  colorToken: z.enum(ORG_GROUP_COLOR_TOKENS).optional().nullable(),
 });
 
 type Params = { params: { groupId: string } | Promise<{ groupId: string }> };
@@ -19,10 +26,69 @@ type GroupRow = {
   id: string;
   name: string;
   description: string | null;
+  parent_group_id: string | null;
+  color_token: OrgGroupColorToken | null;
   created_at: string;
 };
 
 const buildMembershipError = () => NextResponse.json({ error: "Acces refuse." }, { status: 403 });
+
+const normalizeParentGroupId = (value?: string | null): string | null => {
+  if (!value) return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const ensureParentNotCircular = async (
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  orgId: string,
+  groupId: string,
+  candidateParentId: string
+) => {
+  if (groupId === candidateParentId) {
+    return "Un groupe ne peut pas etre son propre parent.";
+  }
+
+  const { data: parentGroup, error: parentError } = await admin
+    .from("org_groups")
+    .select("id, parent_group_id")
+    .eq("org_id", orgId)
+    .eq("id", candidateParentId)
+    .maybeSingle();
+
+  if (parentError || !parentGroup) {
+    return "Groupe parent introuvable.";
+  }
+
+  const visited = new Set<string>([candidateParentId]);
+  let cursor = (parentGroup as { parent_group_id: string | null }).parent_group_id;
+  let safety = 0;
+
+  while (cursor && safety < 32) {
+    if (cursor === groupId) {
+      return "Le parent selectionne cree une boucle dans la hierarchie.";
+    }
+    if (visited.has(cursor)) {
+      return "Hierarchie invalide detectee.";
+    }
+    visited.add(cursor);
+
+    const { data: nextParent, error: nextError } = await admin
+      .from("org_groups")
+      .select("parent_group_id")
+      .eq("org_id", orgId)
+      .eq("id", cursor)
+      .maybeSingle();
+
+    if (nextError || !nextParent) {
+      break;
+    }
+    cursor = (nextParent as { parent_group_id: string | null }).parent_group_id;
+    safety += 1;
+  }
+
+  return null;
+};
 
 const loadContext = async (request: Request) => {
   const supabase = createSupabaseServerClientFromRequest(request);
@@ -82,7 +148,7 @@ export async function GET(request: Request, { params }: Params) {
   const { admin, profile } = context;
   const { data: group, error: groupError } = await admin
     .from("org_groups")
-    .select("id, name, description, created_at")
+    .select("id, name, description, parent_group_id, color_token, created_at")
     .eq("org_id", profile.org_id)
     .eq("id", groupId)
     .maybeSingle();
@@ -93,6 +159,20 @@ export async function GET(request: Request, { params }: Params) {
   if (!group) {
     return NextResponse.json({ error: "Groupe introuvable." }, { status: 404 });
   }
+
+  const { data: allGroups } = await admin
+    .from("org_groups")
+    .select("id, name, parent_group_id, color_token, created_at")
+    .eq("org_id", profile.org_id)
+    .order("created_at", { ascending: true });
+
+  const parentGroupId = (group as GroupRow).parent_group_id;
+  const parentGroup =
+    parentGroupId && Array.isArray(allGroups)
+      ? (allGroups as Array<{ id: string; name: string }>).find(
+          (entry) => entry.id === parentGroupId
+        ) ?? null
+      : null;
 
   const { data: students } = await admin
     .from("students")
@@ -196,6 +276,13 @@ export async function GET(request: Request, { params }: Params) {
     coaches: coachRows,
     selectedStudentIds,
     selectedCoachIds,
+    parentGroup,
+    availableGroups: (allGroups ?? []).map((entry) => ({
+      id: (entry as { id: string }).id,
+      name: (entry as { name: string }).name,
+      parent_group_id: (entry as { parent_group_id: string | null }).parent_group_id ?? null,
+      color_token: (entry as { color_token: OrgGroupColorToken | null }).color_token ?? null,
+    })),
   });
 }
 
@@ -228,12 +315,63 @@ export async function PATCH(request: Request, { params }: Params) {
     return permissionError;
   }
 
-  const payload: Record<string, string | null> = {};
+  const { data: currentGroup, error: currentGroupError } = await admin
+    .from("org_groups")
+    .select("id, parent_group_id, color_token")
+    .eq("org_id", profile.org_id)
+    .eq("id", groupId)
+    .maybeSingle();
+
+  if (currentGroupError) {
+    return NextResponse.json({ error: currentGroupError.message }, { status: 400 });
+  }
+  if (!currentGroup) {
+    return NextResponse.json({ error: "Groupe introuvable." }, { status: 404 });
+  }
+
+  const payload: {
+    name?: string;
+    description?: string | null;
+    parent_group_id?: string | null;
+    color_token?: OrgGroupColorToken | null;
+  } = {};
   if (typeof parsed.data.name !== "undefined") {
     payload.name = parsed.data.name.trim();
   }
   if (typeof parsed.data.description !== "undefined") {
     payload.description = parsed.data.description?.trim() || null;
+  }
+
+  const hasParentInput = typeof parsed.data.parentGroupId !== "undefined";
+  const nextParentGroupId = hasParentInput
+    ? normalizeParentGroupId(parsed.data.parentGroupId ?? null)
+    : ((currentGroup as { parent_group_id: string | null }).parent_group_id ?? null);
+
+  if (hasParentInput) {
+    if (nextParentGroupId) {
+      const hierarchyError = await ensureParentNotCircular(
+        admin,
+        profile.org_id,
+        groupId,
+        nextParentGroupId
+      );
+      if (hierarchyError) {
+        return NextResponse.json({ error: hierarchyError }, { status: 422 });
+      }
+    }
+    payload.parent_group_id = nextParentGroupId;
+  }
+
+  if (typeof parsed.data.colorToken !== "undefined") {
+    payload.color_token = nextParentGroupId ? null : parsed.data.colorToken ?? null;
+  } else if (hasParentInput && nextParentGroupId) {
+    payload.color_token = null;
+  } else if (
+    hasParentInput &&
+    !nextParentGroupId &&
+    !(currentGroup as { color_token: OrgGroupColorToken | null }).color_token
+  ) {
+    payload.color_token = ORG_GROUP_DEFAULT_COLOR;
   }
 
   if (!Object.keys(payload).length) {
@@ -279,8 +417,7 @@ export async function DELETE(request: Request, { params }: Params) {
   if (context.error) return context.error;
 
   const { admin, profile, membership } = context;
-  const permissionError = await ensureWriteAccess(admin, profile.id, membership.role);
-  if (permissionError) {
+  if (membership.role !== "admin") {
     await recordActivity({
       admin,
       level: "warn",
@@ -289,9 +426,9 @@ export async function DELETE(request: Request, { params }: Params) {
       orgId: profile.org_id,
       entityType: "org_group",
       entityId: groupId,
-      message: "Suppression groupe refusee: plan insuffisant.",
+      message: "Suppression groupe refusee: role admin requis.",
     });
-    return permissionError;
+    return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
   const { error: deleteError } = await admin

@@ -171,6 +171,7 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
           ...(isWorkspaceAdmin
             ? [
                 { label: "Gestion Staff", href: "/app/org/members" },
+                { label: "Reglages org", href: "/app/org/settings" },
               ]
             : []),
         ],
@@ -240,6 +241,11 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
     }
     if (href === "/app/org/members") {
       return currentPath === "/app/org/members" || currentPath.startsWith("/app/org/members/");
+    }
+    if (href === "/app/org/settings") {
+      return (
+        currentPath === "/app/org/settings" || currentPath.startsWith("/app/org/settings/")
+      );
     }
     return currentPath === href || currentPath.startsWith(`${href}/`);
   };
@@ -373,6 +379,14 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
           <circle cx="16" cy="8" r="3" />
           <path d="M3 20c0-3 3-5 6-5" />
           <path d="M12 20c0-3 3-5 6-5" />
+        </svg>
+      );
+    }
+    if (href === "/app/org/settings") {
+      return (
+        <svg viewBox="0 0 24 24" {...sharedProps}>
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a7.8 7.8 0 0 0 .1-6l2-1-2-3-2 1a8 8 0 0 0-5-2l-.5-2h-4l-.5 2a8 8 0 0 0-5 2l-2-1-2 3 2 1a7.8 7.8 0 0 0 .1 6l-2 1 2 3 2-1a8 8 0 0 0 5 2l.5 2h4l.5-2a8 8 0 0 0 5-2l2 1 2-3-2-1z" />
         </svg>
       );
     }
