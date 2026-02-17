@@ -70,7 +70,11 @@ describe("POST /api/orgs/groups/[groupId]/students", () => {
     planMocks.loadPersonalPlanTier.mockReset();
   });
 
-  it("reassigns students to a group", async () => {
+  it("syncs students only inside the targeted group", async () => {
+    const studentOne = "11111111-1111-1111-1111-111111111111";
+    const studentTwo = "22222222-2222-2222-2222-222222222222";
+    const removedStudent = "33333333-3333-3333-3333-333333333333";
+
     const supabase = {
       auth: {
         getUser: async () => ({
@@ -82,11 +86,28 @@ describe("POST /api/orgs/groups/[groupId]/students", () => {
 
     planMocks.loadPersonalPlanTier.mockResolvedValue("pro");
 
-    const deleteAssignments = jest.fn(() => ({
-      eq: () => ({
-        in: async () => ({ error: null }),
-      }),
+    const selectExistingEqGroup = jest.fn(async () => ({
+      data: [{ student_id: studentOne }, { student_id: removedStudent }],
+      error: null,
     }));
+    const selectExistingEqOrg = jest.fn(() => ({
+      eq: selectExistingEqGroup,
+    }));
+    const selectExistingAssignments = jest.fn(() => ({
+      eq: selectExistingEqOrg,
+    }));
+
+    const deleteAssignmentsIn = jest.fn(async () => ({ error: null }));
+    const deleteAssignmentsEqGroup = jest.fn(() => ({
+      in: deleteAssignmentsIn,
+    }));
+    const deleteAssignmentsEqOrg = jest.fn(() => ({
+      eq: deleteAssignmentsEqGroup,
+    }));
+    const deleteAssignments = jest.fn(() => ({
+      eq: deleteAssignmentsEqOrg,
+    }));
+
     const insertAssignments = jest.fn(async () => ({ error: null }));
 
     const admin = {
@@ -103,14 +124,18 @@ describe("POST /api/orgs/groups/[groupId]/students", () => {
         if (table === "students") {
           return buildSelectListWithIn({
             data: [
-              { id: "11111111-1111-1111-1111-111111111111" },
-              { id: "22222222-2222-2222-2222-222222222222" },
+              { id: studentOne },
+              { id: studentTwo },
             ],
             error: null,
           });
         }
         if (table === "org_group_students") {
-          return { delete: deleteAssignments, insert: insertAssignments };
+          return {
+            select: selectExistingAssignments,
+            delete: deleteAssignments,
+            insert: insertAssignments,
+          };
         }
         return {};
       }),
@@ -121,27 +146,22 @@ describe("POST /api/orgs/groups/[groupId]/students", () => {
 
     const response = await POST(
       buildRequest({
-        studentIds: [
-          "11111111-1111-1111-1111-111111111111",
-          "22222222-2222-2222-2222-222222222222",
-        ],
+        studentIds: [studentOne, studentTwo],
       }),
       { params: { groupId: "group-1" } }
     );
 
     expect(response.status).toBe(200);
+    expect(selectExistingAssignments).toHaveBeenCalled();
     expect(deleteAssignments).toHaveBeenCalled();
+    expect(deleteAssignmentsEqOrg).toHaveBeenCalledWith("org_id", "org-1");
+    expect(deleteAssignmentsEqGroup).toHaveBeenCalledWith("group_id", "group-1");
+    expect(deleteAssignmentsIn).toHaveBeenCalledWith("student_id", [removedStudent]);
     expect(insertAssignments).toHaveBeenCalledWith([
       {
         org_id: "org-1",
         group_id: "group-1",
-        student_id: "11111111-1111-1111-1111-111111111111",
-        created_by: "user-1",
-      },
-      {
-        org_id: "org-1",
-        group_id: "group-1",
-        student_id: "22222222-2222-2222-2222-222222222222",
+        student_id: studentTwo,
         created_by: "user-1",
       },
     ]);

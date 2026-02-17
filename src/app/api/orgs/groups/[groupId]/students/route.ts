@@ -170,13 +170,13 @@ export async function POST(request: Request, { params }: Params) {
     return NextResponse.json({ error: "Aucun eleve valide." }, { status: 400 });
   }
 
-  const { error: deleteError } = await admin
+  const { data: existingGroupStudents, error: existingGroupStudentsError } = await admin
     .from("org_group_students")
-    .delete()
+    .select("student_id")
     .eq("org_id", profile.org_id)
-    .in("student_id", validStudentIds);
+    .eq("group_id", groupId);
 
-  if (deleteError) {
+  if (existingGroupStudentsError) {
     await recordActivity({
       admin,
       level: "error",
@@ -185,34 +185,68 @@ export async function POST(request: Request, { params }: Params) {
       orgId: profile.org_id,
       entityType: "org_group",
       entityId: groupId,
-      message: deleteError.message ?? "Nettoyage ancienne assignation groupe impossible.",
+      message: existingGroupStudentsError.message ?? "Lecture des eleves du groupe impossible.",
     });
-    return NextResponse.json({ error: deleteError.message }, { status: 400 });
+    return NextResponse.json({ error: existingGroupStudentsError.message }, { status: 400 });
   }
 
-  const assignments = validStudentIds.map((studentId) => ({
+  const currentStudentIds = (existingGroupStudents ?? []).map(
+    (row) => (row as { student_id: string }).student_id
+  );
+  const currentStudentSet = new Set(currentStudentIds);
+  const nextStudentSet = new Set(validStudentIds);
+
+  const studentIdsToRemove = currentStudentIds.filter((studentId) => !nextStudentSet.has(studentId));
+  const studentIdsToAdd = validStudentIds.filter((studentId) => !currentStudentSet.has(studentId));
+
+  if (studentIdsToRemove.length > 0) {
+    const { error: deleteError } = await admin
+      .from("org_group_students")
+      .delete()
+      .eq("org_id", profile.org_id)
+      .eq("group_id", groupId)
+      .in("student_id", studentIdsToRemove);
+
+    if (deleteError) {
+      await recordActivity({
+        admin,
+        level: "error",
+        action: "group.assign_students.failed",
+        actorUserId: profile.id,
+        orgId: profile.org_id,
+        entityType: "org_group",
+        entityId: groupId,
+        message: deleteError.message ?? "Suppression des eleves du groupe impossible.",
+      });
+      return NextResponse.json({ error: deleteError.message }, { status: 400 });
+    }
+  }
+
+  const assignments = studentIdsToAdd.map((studentId) => ({
     org_id: profile.org_id,
     group_id: groupId,
     student_id: studentId,
     created_by: profile.id,
   }));
 
-  const { error: insertError } = await admin
-    .from("org_group_students")
-    .insert(assignments);
+  if (assignments.length > 0) {
+    const { error: insertError } = await admin
+      .from("org_group_students")
+      .insert(assignments);
 
-  if (insertError) {
-    await recordActivity({
-      admin,
-      level: "error",
-      action: "group.assign_students.failed",
-      actorUserId: profile.id,
-      orgId: profile.org_id,
-      entityType: "org_group",
-      entityId: groupId,
-      message: insertError.message ?? "Assignation eleves groupe impossible.",
-    });
-    return NextResponse.json({ error: insertError.message }, { status: 400 });
+    if (insertError) {
+      await recordActivity({
+        admin,
+        level: "error",
+        action: "group.assign_students.failed",
+        actorUserId: profile.id,
+        orgId: profile.org_id,
+        entityType: "org_group",
+        entityId: groupId,
+        message: insertError.message ?? "Assignation eleves groupe impossible.",
+      });
+      return NextResponse.json({ error: insertError.message }, { status: 400 });
+    }
   }
 
   await recordActivity({
@@ -223,7 +257,11 @@ export async function POST(request: Request, { params }: Params) {
     entityType: "org_group",
     entityId: groupId,
     message: "Eleves du groupe mis a jour.",
-    metadata: { studentCount: validStudentIds.length },
+    metadata: {
+      studentCount: validStudentIds.length,
+      added: studentIdsToAdd.length,
+      removed: studentIdsToRemove.length,
+    },
   });
 
   return NextResponse.json({ ok: true });
