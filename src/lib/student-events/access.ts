@@ -45,7 +45,13 @@ const studentAccess = (): StudentEventAccess => ({
   reason: "student",
 });
 
-const coachReadOnlyAccess = (): StudentEventAccess => ({
+const coachLinkedAccess = (): StudentEventAccess => ({
+  canRead: true,
+  canWrite: true,
+  reason: "coach_linked",
+});
+
+const sharedViewerAccess = (): StudentEventAccess => ({
   canRead: true,
   canWrite: false,
   reason: "coach_linked",
@@ -182,7 +188,7 @@ export const resolveStudentEventAccess = async (
   }
 
   if (await isActiveShareViewer(admin, studentId, userId, userEmail)) {
-    return coachReadOnlyAccess();
+    return sharedViewerAccess();
   }
 
   const [student, profile] = await Promise.all([
@@ -205,9 +211,7 @@ export const resolveStudentEventAccess = async (
   }
 
   if (organization.workspace_type === "personal") {
-    return organization.owner_profile_id === userId
-      ? coachReadOnlyAccess()
-      : forbiddenAccess();
+    return organization.owner_profile_id === userId ? coachLinkedAccess() : forbiddenAccess();
   }
 
   const [isMember, assigned] = await Promise.all([
@@ -219,5 +223,5 @@ export const resolveStudentEventAccess = async (
     return forbiddenAccess();
   }
 
-  return coachReadOnlyAccess();
+  return coachLinkedAccess();
 };

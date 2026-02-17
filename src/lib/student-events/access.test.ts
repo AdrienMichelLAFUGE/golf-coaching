@@ -45,7 +45,7 @@ describe("resolveStudentEventAccess", () => {
     expect(admin.from).toHaveBeenCalledWith("student_accounts");
   });
 
-  it("grants coach read-only in personal workspace when owner", async () => {
+  it("grants coach read/write in personal workspace when owner", async () => {
     const admin = buildAdmin({
       student_accounts: { data: null, error: null },
       students: {
@@ -83,12 +83,12 @@ describe("resolveStudentEventAccess", () => {
 
     expect(access).toEqual({
       canRead: true,
-      canWrite: false,
+      canWrite: true,
       reason: "coach_linked",
     });
   });
 
-  it("grants coach read-only in org workspace when assigned and active", async () => {
+  it("grants coach read/write in org workspace when assigned and active", async () => {
     const admin = buildAdmin({
       student_accounts: { data: null, error: null },
       students: {
@@ -136,7 +136,7 @@ describe("resolveStudentEventAccess", () => {
 
     expect(access).toEqual({
       canRead: true,
-      canWrite: false,
+      canWrite: true,
       reason: "coach_linked",
     });
   });

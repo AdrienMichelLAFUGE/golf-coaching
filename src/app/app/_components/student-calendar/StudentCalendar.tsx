@@ -88,6 +88,7 @@ const ErrorResponseSchema = z.object({
 type StudentCalendarProps = {
   studentId: string;
   mode: StudentCalendarMode;
+  editable?: boolean;
   locale?: string;
   timezone?: string;
 };
@@ -214,6 +215,7 @@ const getErrorMessage = (payload: unknown, fallback: string) => {
 export default function StudentCalendar({
   studentId,
   mode,
+  editable = false,
   locale = "fr-FR",
   timezone,
 }: StudentCalendarProps) {
@@ -243,9 +245,11 @@ export default function StudentCalendar({
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
   const [historyInitialized, setHistoryInitialized] = useState(false);
+  const [isCalendarSectionInView, setIsCalendarSectionInView] = useState(false);
 
+  const calendarSectionRef = useRef<HTMLElement | null>(null);
   const touchStartXRef = useRef<number | null>(null);
-  const canEdit = mode === "student";
+  const canEdit = mode === "student" || editable;
   const reducedMotion = useReducedMotion();
 
   const monthGrid = useMemo(() => buildMonthGrid(monthDate), [monthDate]);
@@ -518,6 +522,30 @@ export default function StudentCalendar({
       cancelled = true;
     };
   }, [historyInitialized, historyLoading, loadHistoryEvents]);
+
+  useEffect(() => {
+    if (!canEdit) return;
+
+    const section = calendarSectionRef.current;
+    if (!section || typeof window === "undefined") return;
+    if (typeof window.IntersectionObserver === "undefined") return;
+
+    const observer = new window.IntersectionObserver(
+      ([entry]) => {
+        setIsCalendarSectionInView(entry.isIntersecting);
+      },
+      {
+        threshold: [0.12, 0.3],
+        rootMargin: "-8% 0px -8% 0px",
+      }
+    );
+
+    observer.observe(section);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [canEdit]);
 
   const handleSaveEvent = async (input: EventUpsertInput) => {
     if (!canEdit) return;
@@ -811,8 +839,10 @@ export default function StudentCalendar({
     );
   };
 
+  const showStickyCreateButton = canEdit && isCalendarSectionInView;
+
   return (
-    <section className="space-y-5">
+    <section ref={calendarSectionRef} className="space-y-5">
       <div className="px-1">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -1007,6 +1037,32 @@ export default function StudentCalendar({
           </motion.div>
         </AnimatePresence>
       </div>
+
+      {canEdit ? (
+        <div className="mt-3 hidden lg:flex justify-end">
+          <button
+            type="button"
+            onClick={openCreateSheet}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/10 text-[var(--text)] shadow-[0_10px_22px_rgba(0,0,0,0.18)] transition hover:scale-[1.03] hover:bg-white/20"
+            aria-label="Ajouter un evenement"
+            title="Ajouter un evenement"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 5v14" />
+              <path d="M5 12h14" />
+            </svg>
+          </button>
+        </div>
+      ) : null}
 
       <div className="relative mt-4 border-t border-white/10 pt-4">
         <div className="flex items-center justify-between gap-2">
@@ -1298,11 +1354,11 @@ export default function StudentCalendar({
         </AnimatePresence>
       </div>
 
-      {canEdit ? (
+      {showStickyCreateButton ? (
         <button
           type="button"
           onClick={openCreateSheet}
-          className="fixed bottom-6 right-6 z-40 inline-flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 text-zinc-900 shadow-[0_14px_30px_rgba(0,0,0,0.35)] transition hover:scale-[1.02]"
+          className="fixed bottom-6 left-6 z-40 inline-flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 text-zinc-900 shadow-[0_14px_30px_rgba(0,0,0,0.35)] transition hover:scale-[1.02] lg:hidden"
           aria-label="Ajouter un evenement"
         >
           <svg

@@ -3467,7 +3467,7 @@ export default function CoachStudentDetailPage() {
                     Calendrier eleve
                   </h3>
                   <p className="mt-1 text-sm text-[var(--muted)]">
-                    Lecture seule des echeances (tournois, competitions, entrainements).
+                    Gere les echeances de l eleve (tournois, competitions, entrainements).
                   </p>
                 </div>
               </div>
@@ -3475,6 +3475,7 @@ export default function CoachStudentDetailPage() {
                 <StudentCalendar
                   studentId={student.id}
                   mode="coach"
+                  editable
                   locale={locale}
                   timezone={timezone}
                 />
