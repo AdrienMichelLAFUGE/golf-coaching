@@ -60,6 +60,14 @@ export default async function LandingPage() {
     "dashboard-coach.png",
     "/landing/graphs/tpi-exemple.png"
   );
+  const calendarCoachImageSrc = resolveLandingScreenshot(
+    "calendar-coach.png",
+    coachDashboardImageSrc
+  );
+  const calendarStudentImageSrc = resolveLandingScreenshot(
+    "calendar-student.png",
+    dashboardOverviewImageSrc
+  );
 
   const organizationJsonLd = {
     "@context": "https://schema.org",
@@ -164,6 +172,87 @@ export default async function LandingPage() {
 
         <StickyLandingHeader />
 
+        <section className="reveal relative overflow-visible" data-reveal-stagger>
+          <div className="pointer-events-none absolute -left-16 top-8 h-48 w-48 rounded-full bg-emerald-300/20 blur-3xl" />
+          <div className="pointer-events-none absolute -right-20 bottom-4 h-56 w-56 rounded-full bg-sky-300/20 blur-3xl" />
+
+          <div className="grid gap-10 lg:grid-cols-[1fr_1.1fr] lg:items-start">
+            <div className="space-y-5" data-reveal-item>
+              <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
+                Calendrier structure
+              </p>
+              <h2 className="text-3xl font-semibold leading-tight text-[var(--text)] md:text-4xl">
+                {landingCopy.calendarFeature.title}
+              </h2>
+              <p className="max-w-xl text-sm leading-relaxed text-[var(--muted)]">
+                {landingCopy.calendarFeature.subtitle}
+              </p>
+
+              <ul className="space-y-3">
+                {landingCopy.calendarFeature.bullets.map((bullet) => (
+                  <li key={bullet} className="flex items-start gap-3 text-sm leading-relaxed text-[var(--text)]">
+                    <span className="mt-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-emerald-300/40 bg-emerald-300/20 text-[0.62rem] font-semibold text-emerald-100">
+                      +
+                    </span>
+                    <span>{bullet}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <p className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm text-[var(--text)]">
+                {landingCopy.calendarFeature.structureProof}
+              </p>
+
+              <div className="flex flex-wrap items-center gap-3 pt-1">
+                <TrackedCtaLink
+                  href="/demo"
+                  tracking={{
+                    id: "landing_calendar_demo",
+                    location: "calendar_feature",
+                    target: "/demo",
+                  }}
+                  className="inline-flex rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 active:scale-[0.98]"
+                >
+                  {landingCopy.calendarFeature.primaryCta}
+                </TrackedCtaLink>
+                <TrackedCtaLink
+                  href="/login?mode=signup"
+                  tracking={{
+                    id: "landing_calendar_signup",
+                    location: "calendar_feature",
+                    target: "/login?mode=signup",
+                  }}
+                  className="rounded-full border border-white/15 bg-white/5 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10 active:scale-[0.98]"
+                >
+                  {landingCopy.calendarFeature.secondaryCta}
+                </TrackedCtaLink>
+              </div>
+            </div>
+
+            <div className="relative pb-8 pt-2 lg:-mr-20 xl:-mr-28" data-reveal-item>
+              <figure className="relative z-20 w-[92%] overflow-hidden rounded-[24px] border border-white/20 bg-white/70 shadow-[0_24px_56px_rgba(15,23,42,0.2)]">
+                <Image
+                  src={calendarCoachImageSrc}
+                  alt="Vue calendrier coach dans SwingFlow"
+                  width={1560}
+                  height={960}
+                  className="h-auto w-full"
+                />
+              </figure>
+
+              <figure className="absolute -bottom-2 right-0 z-30 w-[52%] overflow-hidden rounded-[20px] border border-white/25 bg-white/75 shadow-[0_18px_40px_rgba(15,23,42,0.2)] lg:right-4">
+                <Image
+                  src={calendarStudentImageSrc}
+                  alt="Vue calendrier élève dans SwingFlow"
+                  width={960}
+                  height={1600}
+                  className="h-auto w-full"
+                />
+              </figure>
+            </div>
+          </div>
+        </section>
+
         <section className="reveal relative overflow-hidden" data-reveal-stagger>
           <div className="max-w-3xl space-y-6" data-reveal-item>
               <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
@@ -264,7 +353,7 @@ export default async function LandingPage() {
                 width={1720}
                 height={1024}
                 priority
-                className="relative z-10 h-auto w-full drop-shadow-[0_34px_80px_rgba(15,23,42,0.28)] lg:w-[128%] lg:max-w-none lg:-ml-8"
+                className="relative z-10 h-auto w-full rounded-xl drop-shadow-[0_34px_80px_rgba(15,23,42,0.28)] lg:w-[128%] lg:max-w-none lg:-ml-8"
               />
             </div>
           </div>
@@ -580,3 +669,4 @@ export default async function LandingPage() {
     </main>
   );
 }
+

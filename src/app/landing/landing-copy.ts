@@ -49,6 +49,11 @@ export const landingCopy = {
           "Relances et statut élève restent visibles, sans changer votre façon de coacher.",
       },
       {
+        title: "Calendrier élève et structure",
+        description:
+          "Échéances, tournois, résultats et planning multi-groupes restent lisibles pour l'élève comme pour l'équipe coach.",
+      },
+      {
         title: "Historique exploitable",
         description:
           "Chaque décision de coaching reste traçable dans le temps.",
@@ -59,6 +64,21 @@ export const landingCopy = {
           "Partage propre, assignations claires, continuité même quand les coachs tournent.",
       },
     ],
+  },
+  calendarFeature: {
+    title: "Un calendrier de suivi, pensé pour les indépendants et les structures.",
+    subtitle:
+      "Vous visualisez les échéances de la saison de vos élèves, vous suivez les résultats tournoi et vous gardez une lecture claire du planning, même en multi-coachs.",
+    bullets: [
+      "Pour l'élève : ses dates importantes, ses tours et ses résultats, sans friction.",
+      "Pour le coach : un calendrier global de suivi, avec les deadlines de chaque élève et les résultats à jour.",
+      "Pour les structures : chaque élève a son calendrier, mais vous avez aussi une vision d'ensemble pour piloter l'activité de coaching.",
+      "Saisie résultat simple : score brut, classement tour et stats optionnelles au bon moment.",
+    ],
+    structureProof:
+      "Pour une structure, c'est un vrai gain de fiabilité : moins d'oublis, plus de visibilité équipe.",
+    primaryCta: "Voir le calendrier en action",
+    secondaryCta: "Créer mon compte coach",
   },
   benefits: {
     title: "Ce qui change concrètement dans votre semaine",

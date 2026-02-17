@@ -390,7 +390,7 @@ export default function PricingOffersContent({
                           <p className={`mt-2 text-xs ${highlight ? "text-white/60" : "text-slate-500"}`}>
                             Equiv {formatMonthlyEquivalent(plan)}
                           </p>
-                        ) : billingInterval === "month" && !isFree ? (
+                        ) : billingInterval === "month" && !isFree && !isEnterprise? (
                           <p className={`mt-2 text-xs ${highlight ? "text-white/60" : "text-slate-500"}`}>
                             Facturation mensuelle.
                           </p>
