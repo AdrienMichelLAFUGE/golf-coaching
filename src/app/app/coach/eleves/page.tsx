@@ -854,7 +854,7 @@ export default function CoachStudentsPage() {
             <span className="text-right">Actions</span>
           </div>
 
-          <div className="divide-y divide-white/10">
+          <div>
             {loading ? (
               <div className="px-6 py-6 text-sm text-[var(--muted)]">
                 Chargement des eleves...
@@ -917,7 +917,7 @@ export default function CoachStudentsPage() {
                 return (
                   <div
                     key={student.id}
-                    className={`relative grid grid-cols-[32px_minmax(0,1fr)] gap-x-3 gap-y-3 px-6 py-4 text-[var(--text)] transition md:grid-cols-[32px_1fr_0.3fr_1fr_56px] md:items-center ${
+                    className={`relative grid grid-cols-[32px_minmax(0,1fr)] gap-x-3 gap-y-3 border-b border-white/10 px-6 py-4 text-[var(--text)] transition last:border-b-0 md:grid-cols-[32px_1fr_0.3fr_1fr_56px] md:items-center ${
                       isPendingApproval ? "bg-white/[0.015] opacity-65" : "hover:bg-white/5"
                     }`}
                   >

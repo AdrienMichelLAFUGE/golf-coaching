@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import PageBack from "../../../_components/page-back";
 import PageHeader from "../../../_components/page-header";
@@ -206,6 +206,7 @@ function ModalFrame({
 
 export default function OrgGroupDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const groupId = typeof params?.id === "string" ? params.id : params?.id?.[0] ?? "";
   const { workspaceType, isWorkspaceAdmin, isWorkspacePremium, organization } = useProfile();
   const [loading, setLoading] = useState(true);
@@ -240,8 +241,14 @@ export default function OrgGroupDetailPage() {
   const [savingStudents, setSavingStudents] = useState(false);
   const [savingCoaches, setSavingCoaches] = useState(false);
   const [propagating, setPropagating] = useState(false);
+  const [groupActionsOpen, setGroupActionsOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [deletingGroup, setDeletingGroup] = useState(false);
 
   const canEdit = isWorkspaceAdmin || isWorkspacePremium;
+  const canDelete = isWorkspaceAdmin;
   const isOrgReadOnly = workspaceType === "org" && !canEdit;
   const modeLabel =
     (organization?.workspace_type ?? "personal") === "org"
@@ -295,17 +302,39 @@ export default function OrgGroupDetailPage() {
   }, [loadGroup]);
 
   useEffect(() => {
-    if (!editOpen && !studentsOpen && !coachesOpen) return;
+    if (!editOpen && !studentsOpen && !coachesOpen && !deleteConfirmOpen) return;
     const handleKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (savingGroup || savingStudents || savingCoaches || propagating) return;
+      if (savingGroup || savingStudents || savingCoaches || propagating || deletingGroup) return;
       setEditOpen(false);
       setStudentsOpen(false);
       setCoachesOpen(false);
+      setDeleteConfirmOpen(false);
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [coachesOpen, editOpen, propagating, savingCoaches, savingGroup, savingStudents, studentsOpen]);
+  }, [
+    coachesOpen,
+    deleteConfirmOpen,
+    deletingGroup,
+    editOpen,
+    propagating,
+    savingCoaches,
+    savingGroup,
+    savingStudents,
+    studentsOpen,
+  ]);
+
+  useEffect(() => {
+    if (!groupActionsOpen) return;
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-group-actions-menu]")) return;
+      setGroupActionsOpen(false);
+    };
+    window.addEventListener("click", handleClick);
+    return () => window.removeEventListener("click", handleClick);
+  }, [groupActionsOpen]);
 
   const filteredStudents = useMemo(() => {
     const query = studentQuery.trim().toLowerCase();
@@ -488,6 +517,14 @@ export default function OrgGroupDetailPage() {
     setCoachesOpen(true);
   };
 
+  const openDeleteConfirmModal = () => {
+    if (!group || !canDelete || deletingGroup) return;
+    setGroupActionsOpen(false);
+    setDeleteError("");
+    setDeleteConfirmText("");
+    setDeleteConfirmOpen(true);
+  };
+
   const toggleStudentDraft = (studentId: string) => {
     setStudentDraftIds((prev) =>
       prev.includes(studentId) ? prev.filter((id) => id !== studentId) : [...prev, studentId]
@@ -539,6 +576,41 @@ export default function OrgGroupDetailPage() {
     setEditOpen(false);
     await loadGroup();
     setSavingGroup(false);
+  };
+
+  const handleDeleteGroup = async () => {
+    if (!group || !canDelete || deletingGroup) return;
+    if (deleteConfirmText.trim() !== group.name) {
+      setDeleteError("Le nom du groupe ne correspond pas.");
+      return;
+    }
+
+    setDeletingGroup(true);
+    setDeleteError("");
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setDeleteError("Session invalide.");
+      setDeletingGroup(false);
+      return;
+    }
+
+    const response = await fetch(`/api/orgs/groups/${group.id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+    if (!response.ok) {
+      setDeleteError(payload?.error ?? "Suppression impossible.");
+      setDeletingGroup(false);
+      return;
+    }
+
+    setDeletingGroup(false);
+    setDeleteConfirmOpen(false);
+    setDeleteConfirmText("");
+    router.push("/app/org");
+    router.refresh();
   };
 
   const saveStudents = async () => {
@@ -663,6 +735,50 @@ export default function OrgGroupDetailPage() {
               <IconActionButton label="Coachs" onClick={openCoachesModal} disabled={!group}>
                 <CoachesIcon />
               </IconActionButton>
+              {canDelete ? (
+                <div className="relative" data-group-actions-menu>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setGroupActionsOpen((prev) => !prev);
+                    }}
+                    disabled={!group || deletingGroup}
+                    aria-label="Actions du groupe"
+                    title="Actions du groupe"
+                    aria-expanded={groupActionsOpen}
+                    aria-haspopup="menu"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+                      <circle cx="12" cy="5" r="2" />
+                      <circle cx="12" cy="12" r="2" />
+                      <circle cx="12" cy="19" r="2" />
+                    </svg>
+                  </button>
+                  {groupActionsOpen ? (
+                    <div
+                      role="menu"
+                      onClick={(event) => event.stopPropagation()}
+                      className="absolute right-0 top-full z-50 mt-2 w-44 rounded-xl border border-white/10 bg-[var(--bg-elevated)] p-1 text-xs shadow-[0_12px_30px_rgba(0,0,0,0.35)]"
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={openDeleteConfirmModal}
+                        disabled={!group || deletingGroup}
+                        className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide transition ${
+                          !group || deletingGroup
+                            ? "cursor-not-allowed text-rose-200/60"
+                            : "text-rose-200 hover:bg-rose-400/10"
+                        }`}
+                      >
+                        {deletingGroup ? "Suppression..." : "Supprimer le groupe"}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           }
         />
@@ -786,7 +902,7 @@ export default function OrgGroupDetailPage() {
               <span className="text-center">Actif</span>
               <span className="text-center">Test</span>
             </div>
-            <div className="divide-y divide-white/10">
+            <div>
               {filteredMembers.length === 0 ? (
                 <div className="px-6 py-6 text-sm text-[var(--muted)]">
                   {memberRows.length === 0
@@ -797,7 +913,7 @@ export default function OrgGroupDetailPage() {
                 filteredMembers.map((member) => (
                   <div
                     key={member.id}
-                    className="grid grid-cols-[32px_minmax(0,1fr)] gap-x-3 gap-y-2 px-6 py-4 md:grid-cols-[32px_minmax(0,1fr)_120px_150px] md:items-center md:gap-6"
+                    className="grid grid-cols-[32px_minmax(0,1fr)] gap-x-3 gap-y-2 border-b border-white/10 px-6 py-4 last:border-b-0 md:grid-cols-[32px_minmax(0,1fr)_120px_150px] md:items-center md:gap-6"
                   >
                     <div className="flex items-center justify-center self-center md:justify-self-center">
                       <Link
@@ -967,6 +1083,58 @@ export default function OrgGroupDetailPage() {
               ) : null}
               {error ? <p className="text-sm text-red-400">{error}</p> : null}
             </form>
+          </ModalFrame>
+        ) : null}
+
+        {deleteConfirmOpen ? (
+          <ModalFrame
+            title="Confirmer la suppression"
+            titleId="group-delete-title"
+            onClose={() => setDeleteConfirmOpen(false)}
+            disableClose={deletingGroup}
+            footer={
+              <>
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmOpen(false)}
+                  disabled={deletingGroup}
+                  className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-[var(--text)] transition hover:bg-white/10 disabled:opacity-60"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteGroup()}
+                  disabled={
+                    !group || deletingGroup || deleteConfirmText.trim() !== (group?.name ?? "")
+                  }
+                  className="rounded-xl border border-rose-300/40 bg-rose-400/15 px-5 py-2 text-sm font-semibold text-rose-200 transition hover:bg-rose-400/25 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {deletingGroup ? "Suppression..." : "Supprimer definitivement"}
+                </button>
+              </>
+            }
+          >
+            <div className="space-y-4 px-6 py-5">
+              <p className="text-sm text-[var(--text)]">
+                Vous allez supprimer ce groupe de facon definitive.
+              </p>
+              <p className="text-xs text-[var(--muted)]">
+                Cette action est irreversible. Pour confirmer, tapez exactement:
+              </p>
+              <p className="rounded-xl border border-rose-300/30 bg-rose-400/10 px-3 py-2 text-sm font-semibold text-rose-200">
+                {group?.name ?? ""}
+              </p>
+              <input
+                value={deleteConfirmText}
+                onChange={(event) => setDeleteConfirmText(event.target.value)}
+                disabled={deletingGroup}
+                placeholder="Nom du groupe"
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500 focus:border-rose-300/40 focus:outline-none disabled:opacity-60"
+                autoFocus
+              />
+              {deleteError ? <p className="text-sm text-red-400">{deleteError}</p> : null}
+            </div>
           </ModalFrame>
         ) : null}
 

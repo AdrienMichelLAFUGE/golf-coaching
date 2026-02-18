@@ -173,11 +173,11 @@ export default function MessagesThreadView({
             {threadMembers.length === 0 ? (
               <p className="text-xs text-[var(--muted)]">Membres indisponibles.</p>
             ) : (
-              <div className="space-y-2">
+              <div className="divide-y divide-white/10">
                 {threadMembers.map((member) => {
                   const memberLabel = member.fullName?.trim() || "Utilisateur";
                   return (
-                    <div key={member.userId} className="flex items-center gap-2">
+                    <div key={member.userId} className="flex items-center gap-2 py-2 first:pt-0 last:pb-0">
                       {member.avatarUrl ? (
                         <span
                           role="img"

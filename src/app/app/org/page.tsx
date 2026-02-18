@@ -10,6 +10,7 @@ import Badge from "../_components/badge";
 import {
   ORG_GROUP_COLOR_LABELS,
   ORG_GROUP_COLOR_TOKENS,
+  getOrgGroupColorTheme,
   getOrgGroupPrimaryCardClass,
   type OrgGroupColorToken,
 } from "@/lib/org-groups";
@@ -37,14 +38,11 @@ export default function OrgOverviewPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
-  const [deleteError, setDeleteError] = useState("");
-  const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [parentGroupId, setParentGroupId] = useState("");
   const [colorToken, setColorToken] = useState<OrgGroupColorToken>("mint");
   const canEdit = isWorkspaceAdmin || isWorkspacePremium;
-  const canDelete = isWorkspaceAdmin;
   const isOrgReadOnly = workspaceType === "org" && !canEdit;
   const modeLabel =
     (organization?.workspace_type ?? "personal") === "org"
@@ -195,7 +193,7 @@ export default function OrgOverviewPage() {
     nodes.map((node) => (
       <div key={node.id} className="space-y-2">
         <div
-          className="relative flex items-center justify-between gap-3 rounded-xl border border-white/30 bg-black/15 px-3 py-2 pr-14 backdrop-blur-[2px]"
+          className="flex items-center justify-between gap-3 rounded-xl border border-white/30 bg-black/15 px-3 py-2 backdrop-blur-[2px]"
           style={{ marginLeft: `${Math.max(0, depth - 1) * 10}px` }}
         >
           <div className="min-w-0">
@@ -208,51 +206,27 @@ export default function OrgOverviewPage() {
             <p className="mt-1 text-[10px] text-white/80">
               {node.studentCount} eleves - {node.coachCount} coachs
             </p>
-            <Link
-              href={`/app/org/groups/${node.id}`}
-              aria-label={`Ouvrir le sous-groupe ${node.name}`}
-              title="Ouvrir le sous-groupe"
-              className="mt-1 inline-flex items-center gap-1 text-[10px] font-medium text-white/85 transition hover:text-white"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                className="h-3 w-3"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
-              </svg>
-              Ouvrir
-            </Link>
           </div>
-          {canDelete ? (
-            <button
-              type="button"
-              onClick={() => void handleDeleteGroup(node)}
-              disabled={deletingGroupId === node.id}
-              aria-label={`Supprimer le sous-groupe ${node.name}`}
-              title="Supprimer le sous-groupe"
-              className="absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/30 bg-black/20 text-[10px] text-white/85 transition hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-50"
+          <Link
+            href={`/app/org/groups/${node.id}`}
+            aria-label={`Ouvrir le sous-groupe ${node.name}`}
+            title="Ouvrir le sous-groupe"
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/30 bg-black/20 text-white/85 transition hover:text-white"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="h-3.5 w-3.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
             >
-              <svg
-                viewBox="0 0 24 24"
-                className="h-2.5 w-2.5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M18 6L6 18" />
-                <path d="M6 6l12 12" />
-              </svg>
-            </button>
-          ) : null}
+              <path d="M7 17 17 7" />
+              <path d="M8 7h9v9" />
+            </svg>
+          </Link>
         </div>
         {node.children.length > 0 ? renderSubgroupTree(node.children, depth + 1) : null}
       </div>
@@ -296,39 +270,6 @@ export default function OrgOverviewPage() {
     setCreateOpen(false);
     await loadGroups();
     setCreating(false);
-  };
-
-  const handleDeleteGroup = async (group: Pick<GroupRow, "id" | "name">) => {
-    if (!canDelete) return;
-    const confirmed = window.confirm(
-      `Supprimer le groupe "${group.name}" ? Cette action est irreversible.`
-    );
-    if (!confirmed) return;
-
-    setDeleteError("");
-    setDeletingGroupId(group.id);
-
-    const { data: sessionData } = await supabase.auth.getSession();
-    const token = sessionData.session?.access_token;
-    if (!token) {
-      setDeleteError("Session invalide.");
-      setDeletingGroupId(null);
-      return;
-    }
-
-    const response = await fetch(`/api/orgs/groups/${group.id}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-    if (!response.ok) {
-      setDeleteError(payload?.error ?? "Suppression impossible.");
-      setDeletingGroupId(null);
-      return;
-    }
-
-    await loadGroups();
-    setDeletingGroupId(null);
   };
 
   return (
@@ -388,7 +329,6 @@ export default function OrgOverviewPage() {
         </section>
 
         {error ? <p className="text-sm text-red-400">{error}</p> : null}
-        {deleteError ? <p className="text-sm text-red-400">{deleteError}</p> : null}
 
         <section className="space-y-3">
           {loading ? (
@@ -497,30 +437,6 @@ export default function OrgOverviewPage() {
                       </details>
                     </div>
 
-                    {canDelete ? (
-                      <button
-                        type="button"
-                        onClick={() => void handleDeleteGroup(rootGroup)}
-                        disabled={deletingGroupId === rootGroup.id}
-                        aria-label={`Supprimer le groupe ${rootGroup.name}`}
-                        title="Supprimer le groupe"
-                        className="absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/35 bg-black/20 text-[10px] text-white/95 transition hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        <svg
-                          viewBox="0 0 24 24"
-                          className="h-2.5 w-2.5"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden="true"
-                        >
-                          <path d="M18 6L6 18" />
-                          <path d="M6 6l12 12" />
-                        </svg>
-                      </button>
-                    ) : null}
                   </article>
                 );
               })}
@@ -623,18 +539,41 @@ export default function OrgOverviewPage() {
                     <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
                       Couleur pastel (groupe principal)
                     </label>
-                    <select
-                      value={colorToken}
-                      onChange={(event) => setColorToken(event.target.value as OrgGroupColorToken)}
-                      disabled={!canEdit || creating || Boolean(parentGroupId)}
-                      className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none disabled:opacity-60"
+                    <div
+                      role="radiogroup"
+                      aria-label="Couleur du groupe"
+                      className="mt-2 grid grid-cols-2 gap-2"
                     >
-                      {ORG_GROUP_COLOR_TOKENS.map((token) => (
-                        <option key={token} value={token}>
-                          {ORG_GROUP_COLOR_LABELS[token]}
-                        </option>
-                      ))}
-                    </select>
+                      {ORG_GROUP_COLOR_TOKENS.map((token) => {
+                        const selected = colorToken === token;
+                        const dotClass = getOrgGroupColorTheme(token).dotClass;
+                        return (
+                          <label
+                            key={token}
+                            className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition ${
+                              selected
+                                ? "border-emerald-300/40 bg-emerald-400/10 text-[var(--text)]"
+                                : "border-white/10 bg-white/5 text-[var(--muted)]"
+                            } ${!canEdit || creating || Boolean(parentGroupId) ? "opacity-60" : "cursor-pointer hover:border-white/20 hover:text-[var(--text)]"}`}
+                          >
+                            <input
+                              type="radio"
+                              name="group-color-token"
+                              value={token}
+                              checked={selected}
+                              onChange={() => setColorToken(token)}
+                              disabled={!canEdit || creating || Boolean(parentGroupId)}
+                              className="sr-only"
+                            />
+                            <span
+                              className={`h-2.5 w-2.5 rounded-full ${dotClass}`}
+                              aria-hidden="true"
+                            />
+                            <span>{ORG_GROUP_COLOR_LABELS[token]}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
                     {parentGroupId ? (
                       <p className="mt-1 text-xs text-[var(--muted)]">
                         Les sous-groupes utilisent la couleur du groupe parent.

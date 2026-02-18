@@ -274,7 +274,7 @@ export default function OrgMembersPage() {
 
         <section className="panel rounded-2xl p-6">
           <h3 className="text-lg font-semibold text-[var(--text)]">Membres actifs</h3>
-          <div className="mt-4 space-y-3 text-sm text-[var(--muted)]">
+          <div className="mt-4 text-sm text-[var(--muted)]">
             {loading ? (
               <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3">
                 Chargement...
@@ -284,31 +284,33 @@ export default function OrgMembersPage() {
                 Aucun membre.
               </div>
             ) : (
-              members.map((member) => (
-                <div
-                  key={member.id}
-                  className="flex flex-col gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 md:flex-row md:items-center md:justify-between"
-                >
-                  <div>
-                    <p className="font-medium text-[var(--text)]">
-                      {member.profiles?.full_name ?? "Coach"}
-                    </p>
-                    <p className="text-xs text-[var(--muted)]">
-                      {member.role === "admin" ? "Admin" : "Coach"} - {member.status}
-                    </p>
+              <div className="rounded-xl border border-white/5 bg-white/5">
+                {members.map((member) => (
+                  <div
+                    key={member.id}
+                    className="flex flex-col gap-3 border-b border-white/10 px-4 py-3 last:border-b-0 md:flex-row md:items-center md:justify-between"
+                  >
+                    <div>
+                      <p className="font-medium text-[var(--text)]">
+                        {member.profiles?.full_name ?? "Coach"}
+                      </p>
+                      <p className="text-xs text-[var(--muted)]">
+                        {member.role === "admin" ? "Admin" : "Coach"} - {member.status}
+                      </p>
+                    </div>
+                    {member.role !== "admin" ? (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveMember(member)}
+                        disabled={removingId === member.id}
+                        className="rounded-full border border-rose-300/30 bg-rose-400/10 px-3 py-1 text-xs uppercase tracking-wide text-rose-100 transition hover:border-rose-300/60 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {removingId === member.id ? "Suppression..." : "Retirer"}
+                      </button>
+                    ) : null}
                   </div>
-                  {member.role !== "admin" ? (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveMember(member)}
-                      disabled={removingId === member.id}
-                      className="rounded-full border border-rose-300/30 bg-rose-400/10 px-3 py-1 text-xs uppercase tracking-wide text-rose-100 transition hover:border-rose-300/60 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {removingId === member.id ? "Suppression..." : "Retirer"}
-                    </button>
-                  ) : null}
-                </div>
-              ))
+                ))}
+              </div>
             )}
           </div>
         </section>
