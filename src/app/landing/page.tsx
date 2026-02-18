@@ -68,6 +68,10 @@ export default async function LandingPage() {
     "calendar-student.png",
     dashboardOverviewImageSrc
   );
+  const groupManagementImageSrc = resolveLandingScreenshot(
+    "gestion-groupe.png",
+    "/landing/screenshots/IA-autoLayout.png"
+  );
 
   const organizationJsonLd = {
     "@context": "https://schema.org",
@@ -253,6 +257,74 @@ export default async function LandingPage() {
           </div>
         </section>
 
+        <section
+          className="reveal relative overflow-visible rounded-[30px] border border-white/15 bg-gradient-to-br from-white/75 via-white/45 to-emerald-100/40 p-8 shadow-[0_20px_56px_rgba(15,23,42,0.12)] md:p-10"
+          data-reveal-stagger
+        >
+          <div className="pointer-events-none absolute -left-16 top-8 h-44 w-44 rounded-full bg-emerald-300/25 blur-3xl" />
+          <div className="pointer-events-none absolute -right-12 bottom-2 h-52 w-52 rounded-full bg-sky-300/20 blur-3xl" />
+
+          <div className="relative grid gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+            <div className="space-y-5 lg:pr-2" data-reveal-item>
+              <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
+                Gestion des groupes
+              </p>
+              <h2 className="text-3xl font-semibold leading-tight text-[var(--text)] md:text-4xl">
+                {landingCopy.groupManagement.title}
+              </h2>
+              <p className="max-w-xl text-sm leading-relaxed text-[var(--muted)]">
+                {landingCopy.groupManagement.subtitle}
+              </p>
+
+              <ul className="space-y-3">
+                {landingCopy.groupManagement.bullets.map((bullet) => (
+                  <li
+                    key={bullet}
+                    className="flex items-start gap-3 text-sm leading-relaxed text-[var(--text)]"
+                  >
+                    <span className="mt-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-sky-300/50 bg-sky-300/20 text-[0.62rem] font-semibold text-sky-900">
+                      +
+                    </span>
+                    <span>{bullet}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <p className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm text-[var(--text)]">
+                {landingCopy.groupManagement.proof}
+              </p>
+            </div>
+
+            <div
+              className="relative -mb-4 sm:-mb-6 md:-mb-10 md:-mr-8 lg:-mr-14 lg:translate-y-2 lg:-mb-16"
+              data-reveal-item
+            >
+              <div className="pointer-events-none absolute -left-10 -top-16 h-44 w-44 rounded-full bg-sky-300/20 blur-3xl" />
+              <div className="pointer-events-none absolute -left-1 top-4 h-32 w-32 rounded-full bg-emerald-300/15 blur-3xl" />
+              <a
+                href={groupManagementImageSrc}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Voir la capture de gestion de groupe en pleine taille"
+                className="group relative z-20 block w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+              >
+                <figure className="w-full max-w-none overflow-hidden rounded-2xl border border-white/20 bg-white/75 p-1 shadow-[0_20px_44px_rgba(15,23,42,0.22)] transition-transform duration-200 md:w-[132%] lg:w-[156%] lg:-translate-x-6 xl:w-[166%] group-hover:scale-[1.01]">
+                  <Image
+                    src={groupManagementImageSrc}
+                    alt="Vue de la gestion de groupe et sous-groupe dans SwingFlow"
+                    width={1600}
+                    height={1000}
+                    className="h-auto w-full"
+                    priority={false}
+                  />
+                </figure>
+                <span className="pointer-events-none absolute inset-x-0 bottom-3 mx-auto flex w-fit items-center rounded-full bg-white/85 px-3 py-1 text-xs font-semibold text-slate-900 opacity-0 shadow-lg transition-opacity duration-200 group-hover:opacity-100">
+                  Cliquer pour agrandir
+                </span>
+              </a>
+            </div>
+          </div>
+        </section>
         <section className="reveal relative overflow-hidden" data-reveal-stagger>
           <div className="max-w-3xl space-y-6" data-reveal-item>
               <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">

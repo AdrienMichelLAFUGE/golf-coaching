@@ -80,6 +80,19 @@ export const landingCopy = {
     primaryCta: "Voir le calendrier en action",
     secondaryCta: "Créer mon compte coach",
   },
+  groupManagement: {
+    title: "Gérez vos groupes en mode opérationnel",
+    subtitle:
+      "Créez vos groupes et sous-groupes selon votre organisation, puis pilotez les actions importantes sans perdre de temps.",
+    bullets: [
+      "Classez vos élèves par niveau, objectif ou rythme sans reprendre vos listes chaque semaine.",
+      "Affectez un coach référent et des priorités de séance en quelques clics.",
+      "Passez de la vue groupe à la vue sous-groupe pour traiter les tâches prioritaires.",
+      "Centralisez la gestion : chaque coach retrouve l'information utile au bon moment.",
+    ],
+    proof:
+      "Moins de changement de contexte, plus de temps sur le terrain et un suivi plus stable pour votre structure.",
+  },
   benefits: {
     title: "Ce qui change concrètement dans votre semaine",
     rows: [
