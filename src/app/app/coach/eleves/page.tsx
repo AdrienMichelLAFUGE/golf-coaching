@@ -337,7 +337,7 @@ export default function CoachStudentsPage() {
       });
     });
 
-    const resolveMainGroupColorToken = (groupId: string): OrgGroupColorToken | null => {
+    const resolveMainGroup = (groupId: string) => {
       let cursor = groupsById.get(groupId);
       let safety = 0;
       while (cursor?.parent_group_id && safety < 32) {
@@ -346,21 +346,23 @@ export default function CoachStudentsPage() {
         cursor = parent;
         safety += 1;
       }
-      return (cursor?.color_token ?? ORG_GROUP_DEFAULT_COLOR) as OrgGroupColorToken;
+      return cursor ?? null;
     };
 
     const badgesByStudent = new Map<string, Map<string, StudentGroupBadge>>();
     (payload.groups ?? []).forEach((group) => {
-      const groupLabel = group.name.trim();
+      const mainGroup = resolveMainGroup(group.id);
+      if (!mainGroup) return;
+      const groupLabel = mainGroup.name.trim();
       if (!groupLabel) return;
       (group.studentIds ?? []).forEach((studentId) => {
         if (!badgesByStudent.has(studentId)) {
           badgesByStudent.set(studentId, new Map<string, StudentGroupBadge>());
         }
-        badgesByStudent.get(studentId)?.set(group.id, {
-          id: group.id,
+        badgesByStudent.get(studentId)?.set(mainGroup.id, {
+          id: mainGroup.id,
           label: groupLabel,
-          colorToken: resolveMainGroupColorToken(group.id),
+          colorToken: (mainGroup.color_token ?? ORG_GROUP_DEFAULT_COLOR) as OrgGroupColorToken,
         });
       });
     });

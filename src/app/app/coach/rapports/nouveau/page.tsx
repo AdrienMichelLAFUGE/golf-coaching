@@ -619,6 +619,10 @@ export default function CoachReportBuilderPage() {
   const shouldAnimate = useRef(false);
   const skipResetRef = useRef(false);
   const showSlots = dragEnabled && (dragIndex !== null || draggingAvailable !== null);
+  const reportSectionStructureKey = useMemo(
+    () => reportSections.map((section) => section.id).join("|"),
+    [reportSections]
+  );
   const [students, setStudents] = useState<StudentOption[]>([]);
   const [studentsLoaded, setStudentsLoaded] = useState(false);
   const [studentsLoading, setStudentsLoading] = useState(false);
@@ -1066,6 +1070,23 @@ export default function CoachReportBuilderPage() {
       templateLookup.set(template.title.toLowerCase(), template);
     });
 
+    const fallbackImageTemplate: SectionTemplate = {
+      title: "Images du swing",
+      type: "image",
+      tags: ["visual", "swing"],
+    };
+
+    const fallbackVideoTemplate: SectionTemplate = {
+      title: "Videos du swing",
+      type: "video",
+      tags: ["video", "swing"],
+    };
+
+    const requiredMediaTemplates: SectionTemplate[] = [
+      sectionTemplates.find((template) => template.type === "image") ?? fallbackImageTemplate,
+      sectionTemplates.find((template) => template.type === "video") ?? fallbackVideoTemplate,
+    ];
+
     const dedupeTemplates = (templates: SectionTemplate[]) => {
       const seen = new Set<string>();
       return templates.filter((template) => {
@@ -1085,6 +1106,25 @@ export default function CoachReportBuilderPage() {
       sectionTemplates.filter((template) =>
         (template.tags ?? []).some((tag) => tags.includes(tag))
       );
+
+    const ensureRequiredMediaTemplates = (templates: SectionTemplate[]) => {
+      let next = dedupeTemplates(templates);
+
+      requiredMediaTemplates.forEach((requiredTemplate) => {
+        if (next.some((template) => template.type === requiredTemplate.type)) return;
+        next = [...next, requiredTemplate];
+      });
+
+      let hasVideo = false;
+      next = next.filter((template) => {
+        if (template.type !== "video") return true;
+        if (hasVideo) return false;
+        hasVideo = true;
+        return true;
+      });
+
+      return dedupeTemplates(next);
+    };
 
     const addPreset = ({
       id,
@@ -1117,6 +1157,8 @@ export default function CoachReportBuilderPage() {
       if (limit) {
         templates = templates.slice(0, limit);
       }
+
+      templates = ensureRequiredMediaTemplates(templates);
 
       if (templates.length === 0) return;
       presets.push({ id, title, hint, templates, source: "suggested" });
@@ -1151,6 +1193,7 @@ export default function CoachReportBuilderPage() {
       title: "Detaille",
       hint: "Plus de profondeur",
       titles: [
+        "Fichiers datas",
         "Resume de la seance",
         "Points forts",
         "Axes d amelioration",
@@ -1160,16 +1203,16 @@ export default function CoachReportBuilderPage() {
         "Plan 7 jours",
         "Routine pre-shot",
       ],
-      limit: 8,
+      limit: 9,
       fill: true,
     });
     addPreset({
       id: "suggested:technique",
       title: "Technique",
       hint: "Seance technique swing",
-      titles: coreTitles,
+      titles: [...coreTitles, "Fichiers datas"],
       tags: ["technique", "swing", "setup", "impact"],
-      limit: 6,
+      limit: 7,
     });
     addPreset({
       id: "suggested:shortgame",
@@ -5094,10 +5137,12 @@ export default function CoachReportBuilderPage() {
   }, [searchParams, editingReportId, resetBuilderState]);
 
   useLayoutEffect(() => {
-    reportSections.forEach((section) => {
-      resizeTextareaById(section.id);
+    textareaRefs.current.forEach((textarea) => {
+      if (!textarea) return;
+      textarea.style.height = "auto";
+      textarea.style.height = `${textarea.scrollHeight}px`;
     });
-  }, [reportSections]);
+  }, [reportSectionStructureKey]);
 
   // Note: workingNotes/workingObservations are auto-sized on input to avoid iOS scroll jumps.
 
