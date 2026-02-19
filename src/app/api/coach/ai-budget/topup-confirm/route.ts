@@ -8,6 +8,7 @@ import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { stripe } from "@/lib/stripe";
 import { getAiBudgetMonthWindow } from "@/lib/ai/budget";
 import { recordActivity } from "@/lib/activity-log";
+import { resolveAiCreditTopupActions } from "@/lib/billing";
 
 export const runtime = "nodejs";
 
@@ -68,10 +69,15 @@ export async function POST(request: Request) {
   const coachId = session.metadata?.coach_id ?? null;
   const orgId = session.metadata?.org_id ?? profile.org_id ?? null;
   const topupCents = Number(session.metadata?.topup_cents ?? 0);
+  const metadataTopupActions = Number(session.metadata?.topup_actions ?? 0);
+  const topupActions =
+    Number.isFinite(metadataTopupActions) && metadataTopupActions > 0
+      ? Math.round(metadataTopupActions)
+      : resolveAiCreditTopupActions(Math.round(topupCents));
   if (!coachId || coachId !== userId) {
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
-  if (!Number.isFinite(topupCents) || topupCents <= 0) {
+  if (!Number.isFinite(topupCents) || topupCents <= 0 || topupActions <= 0) {
     return NextResponse.json({ error: "Metadata recharge invalide." }, { status: 422 });
   }
 
@@ -91,7 +97,11 @@ export async function POST(request: Request) {
       },
     });
     return NextResponse.json(
-      { status: "pending", amount_cents: Math.round(topupCents) },
+      {
+        status: "pending",
+        amount_cents: Math.round(topupCents),
+        amount_actions: topupActions,
+      },
       { status: 409 }
     );
   }
@@ -107,6 +117,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       status: "already_credited",
       amount_cents: Math.round(topupCents),
+      amount_actions: topupActions,
     });
   }
 
@@ -114,7 +125,7 @@ export async function POST(request: Request) {
   const { error: topupError } = await admin.from("ai_credit_topups").insert([
     {
       profile_id: coachId,
-      amount_cents: Math.round(topupCents),
+      amount_cents: topupActions,
       month_key: monthKey,
       note: topupReference,
       created_by: userId,
@@ -134,6 +145,7 @@ export async function POST(request: Request) {
       metadata: {
         checkoutSessionId: session.id ?? sessionId,
         amountCents: Math.round(topupCents),
+        amountActions: topupActions,
       },
     });
     return NextResponse.json(
@@ -153,11 +165,13 @@ export async function POST(request: Request) {
     metadata: {
       checkoutSessionId: session.id ?? sessionId,
       amountCents: Math.round(topupCents),
+      amountActions: topupActions,
     },
   });
 
   return NextResponse.json({
     status: "credited",
     amount_cents: Math.round(topupCents),
+    amount_actions: topupActions,
   });
 }

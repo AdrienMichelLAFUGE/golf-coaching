@@ -12,7 +12,7 @@ import { loadPersonalPlanTier } from "@/lib/plan-access";
 import { applyTemplate, loadPromptSection } from "@/lib/promptLoader";
 import { recordActivity } from "@/lib/activity-log";
 import { isAiBudgetBlocked, loadAiBudgetSummary } from "@/lib/ai/budget";
-import { computeAiCostEurCents, formatEurCents } from "@/lib/ai/pricing";
+import { computeAiCostEurCents } from "@/lib/ai/pricing";
 
 export const runtime = "nodejs";
 
@@ -691,9 +691,7 @@ export async function POST(request: Request) {
       });
       return NextResponse.json(
         {
-          error: `Budget IA mensuel atteint (${formatEurCents(
-            aiBudget.monthSpentCents
-          )} / ${formatEurCents(aiBudget.monthAvailableCents ?? 0)}). Recharge des credits pour continuer.`,
+          error: `Quota IA atteint (${aiBudget.monthSpentActions.toLocaleString("fr-FR")} / ${(aiBudget.monthAvailableActions ?? 0).toLocaleString("fr-FR")} actions). Recharge des credits pour continuer.`,
         },
         { status: 403 }
       );

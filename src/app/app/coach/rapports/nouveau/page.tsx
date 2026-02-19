@@ -8650,14 +8650,14 @@ export default function CoachReportBuilderPage() {
                                   <div className="grid gap-2 sm:grid-cols-2">
                                     {section.mediaUrls.map((url, index) => (
                                       <div
-                                        key={url}
+                                        key={`${section.id}-video-${index}-${url}`}
                                         className="relative overflow-hidden rounded-xl border border-white/10 bg-black/30"
                                       >
                                         <video
                                           src={url}
                                           controls
                                           playsInline
-                                          className="max-h-40 w-full bg-black/40 object-contain"
+                                          className="h-40 w-full bg-black/40 object-contain"
                                         />
                                         <button
                                           type="button"
@@ -8736,14 +8736,14 @@ export default function CoachReportBuilderPage() {
                                   <div className="grid gap-2 sm:grid-cols-2">
                                     {section.mediaUrls.map((url, index) => (
                                       <div
-                                        key={url}
+                                        key={`${section.id}-image-${index}-${url}`}
                                         className="relative overflow-hidden rounded-xl border border-white/10 bg-black/30"
                                       >
                                         <img
                                           src={url}
                                           alt={section.title}
-                                          className="max-h-40 w-full bg-black/40 object-contain"
-                                          loading="lazy"
+                                          className="h-40 w-full bg-black/40 object-contain"
+                                          loading="eager"
                                         />
                                         <button
                                           type="button"

@@ -51,14 +51,15 @@ type OrganizationSettings = {
 
 type AiBudgetSummary = {
   enabled: boolean;
-  monthly_budget_cents: number | null;
-  spent_cents_current_month: number;
-  topup_cents_current_month: number;
-  topup_carryover_cents?: number;
-  topup_remaining_cents_current_month?: number;
-  base_remaining_cents_current_month?: number;
-  available_cents_current_month: number | null;
-  remaining_cents_current_month: number | null;
+  monthly_budget_actions: number | null;
+  spent_actions_current_month: number;
+  spent_cost_cents_current_month: number;
+  topup_actions_current_month: number;
+  topup_carryover_actions?: number;
+  topup_remaining_actions_current_month?: number;
+  base_remaining_actions_current_month?: number;
+  available_actions_current_month: number | null;
+  remaining_actions_current_month: number | null;
   usage_percent_current_month: number | null;
   month_key: string;
   window_kind?: "calendar_month" | "sliding_pro";
@@ -66,6 +67,11 @@ type AiBudgetSummary = {
   window_start_iso?: string;
   window_end_iso?: string;
   quota_reset_at_iso?: string;
+  plan_override_tier?: "free" | "pro" | "enterprise" | null;
+  plan_override_starts_at_iso?: string | null;
+  plan_override_expires_at_iso?: string | null;
+  plan_override_unlimited?: boolean;
+  plan_override_active?: boolean;
 };
 
 const STORAGE_BUCKET = "coach-assets";
@@ -75,7 +81,6 @@ const AI_TOPUP_FIXED_ACTIONS_BY_CENTS: Record<number, number> = {
   1000: 350,
   2000: 800,
 };
-const AVERAGE_AI_ACTION_COST_USD = 0.017;
 
 type TopupValidationState = "idle" | "validating" | "pending" | "success";
 
@@ -175,6 +180,35 @@ export default function CoachSettingsPage() {
       maximumFractionDigits: 2,
     }).format(cents / 100);
   const usageWindowLabel = useMemo(() => {
+    const overrideTier = aiBudgetSummary?.plan_override_tier ?? null;
+    const overrideActive = aiBudgetSummary?.plan_override_active ?? false;
+    const overrideUnlimited = Boolean(aiBudgetSummary?.plan_override_unlimited);
+    const overrideStartRaw = aiBudgetSummary?.plan_override_starts_at_iso ?? null;
+    const overrideEndRaw = aiBudgetSummary?.plan_override_expires_at_iso ?? null;
+    if (overrideTier && overrideActive) {
+      if (overrideUnlimited) {
+        return "periode active (override admin en continu)";
+      }
+      const formatDate = new Intl.DateTimeFormat(locale, {
+        dateStyle: "short",
+        timeZone: "UTC",
+      });
+      const start = overrideStartRaw ? new Date(overrideStartRaw) : null;
+      const end = overrideEndRaw ? new Date(overrideEndRaw) : null;
+      const hasValidStart = start && !Number.isNaN(start.getTime());
+      const hasValidEnd = end && !Number.isNaN(end.getTime());
+      if (hasValidStart && hasValidEnd) {
+        return `periode active (${formatDate.format(start)} - ${formatDate.format(end)})`;
+      }
+      if (hasValidStart) {
+        return `periode active (depuis ${formatDate.format(start)})`;
+      }
+      if (hasValidEnd) {
+        return `periode active (jusqu'au ${formatDate.format(end)})`;
+      }
+      return "periode active (override admin)";
+    }
+
     const windowDays = aiBudgetSummary?.window_days ?? null;
     const windowStartRaw = aiBudgetSummary?.window_start_iso ?? null;
     const windowEndRaw = aiBudgetSummary?.window_end_iso ?? null;
@@ -211,6 +245,11 @@ export default function CoachSettingsPage() {
     });
   }, [
     aiBudgetSummary?.month_key,
+    aiBudgetSummary?.plan_override_tier,
+    aiBudgetSummary?.plan_override_active,
+    aiBudgetSummary?.plan_override_unlimited,
+    aiBudgetSummary?.plan_override_starts_at_iso,
+    aiBudgetSummary?.plan_override_expires_at_iso,
     aiBudgetSummary?.window_days,
     aiBudgetSummary?.window_start_iso,
     aiBudgetSummary?.window_end_iso,
@@ -218,8 +257,17 @@ export default function CoachSettingsPage() {
   ]);
   const usagePercent = aiBudgetSummary?.usage_percent_current_month ?? null;
   const quotaResetLabel = useMemo(() => {
+    const overrideResetRaw =
+      aiBudgetSummary?.plan_override_active &&
+      !aiBudgetSummary?.plan_override_unlimited &&
+      aiBudgetSummary?.plan_override_expires_at_iso
+        ? aiBudgetSummary.plan_override_expires_at_iso
+        : null;
     const resetRaw =
-      aiBudgetSummary?.quota_reset_at_iso ?? aiBudgetSummary?.window_end_iso ?? null;
+      overrideResetRaw ??
+      aiBudgetSummary?.quota_reset_at_iso ??
+      aiBudgetSummary?.window_end_iso ??
+      null;
     if (!resetRaw) return null;
     const parsed = new Date(resetRaw);
     if (Number.isNaN(parsed.getTime())) return null;
@@ -228,16 +276,14 @@ export default function CoachSettingsPage() {
       timeZone: timezone,
     }).format(parsed);
   }, [
+    aiBudgetSummary?.plan_override_active,
+    aiBudgetSummary?.plan_override_unlimited,
+    aiBudgetSummary?.plan_override_expires_at_iso,
     aiBudgetSummary?.quota_reset_at_iso,
     aiBudgetSummary?.window_end_iso,
     locale,
     timezone,
   ]);
-  const estimateActions = (amountCents: number) => {
-    if (amountCents <= 0) return 0;
-    const amountUsdEstimate = amountCents / 100;
-    return Math.max(1, Math.round(amountUsdEstimate / AVERAGE_AI_ACTION_COST_USD));
-  };
   const estimateTopupActions = (amountCents: number) => {
     if (amountCents <= 0) return 0;
     const fixed = AI_TOPUP_FIXED_ACTIONS_BY_CENTS[amountCents];
@@ -488,6 +534,7 @@ export default function CoachSettingsPage() {
             status?: "credited" | "already_credited" | "pending";
             error?: string;
             amount_cents?: number;
+            amount_actions?: number;
           };
           const elapsedMs = Date.now() - validationStartedAt;
           if (elapsedMs < 1200) {
@@ -504,16 +551,18 @@ export default function CoachSettingsPage() {
             setTopupValidationState("pending");
           } else if (confirmPayload.status === "already_credited") {
             setSuccess("Recharge IA deja prise en compte.");
-            const creditedActions = estimateTopupActions(
-              Number(confirmPayload.amount_cents ?? 0)
-            );
+            const creditedActions =
+              Number(confirmPayload.amount_actions ?? 0) > 0
+                ? Math.round(Number(confirmPayload.amount_actions))
+                : estimateTopupActions(Number(confirmPayload.amount_cents ?? 0));
             setTopupValidationActions(creditedActions > 0 ? creditedActions : null);
             setTopupValidationState("success");
           } else {
             setSuccess("Recharge IA creditee.");
-            const creditedActions = estimateTopupActions(
-              Number(confirmPayload.amount_cents ?? 0)
-            );
+            const creditedActions =
+              Number(confirmPayload.amount_actions ?? 0) > 0
+                ? Math.round(Number(confirmPayload.amount_actions))
+                : estimateTopupActions(Number(confirmPayload.amount_cents ?? 0));
             setTopupValidationActions(creditedActions > 0 ? creditedActions : null);
             setTopupValidationState("success");
           }
@@ -836,30 +885,29 @@ export default function CoachSettingsPage() {
                   </p>
                 )}
                 {(() => {
-                  const spentActions = estimateActions(
-                    aiBudgetSummary.spent_cents_current_month
+                  const spentActions = Math.max(
+                    0,
+                    aiBudgetSummary.spent_actions_current_month
                   );
                   const quotaActions =
-                    aiBudgetSummary.monthly_budget_cents === null
+                    aiBudgetSummary.monthly_budget_actions === null
                       ? null
-                      : estimateActions(aiBudgetSummary.monthly_budget_cents);
-                  const topupActions = estimateTopupActions(
-                    aiBudgetSummary.topup_cents_current_month
-                  );
-                  const topupRemainingCents = Math.max(
+                      : Math.max(0, aiBudgetSummary.monthly_budget_actions);
+                  const topupActions = Math.max(
                     0,
-                    aiBudgetSummary.topup_remaining_cents_current_month ??
-                      (aiBudgetSummary.topup_cents_current_month +
-                        (aiBudgetSummary.topup_carryover_cents ?? 0) -
-                        aiBudgetSummary.spent_cents_current_month)
+                    aiBudgetSummary.topup_actions_current_month
                   );
-                  const topupRemainingActions = estimateTopupActions(topupRemainingCents);
+                  const topupRemainingActions = Math.max(
+                    0,
+                    aiBudgetSummary.topup_remaining_actions_current_month ??
+                      (aiBudgetSummary.topup_actions_current_month +
+                        (aiBudgetSummary.topup_carryover_actions ?? 0) -
+                        aiBudgetSummary.spent_actions_current_month)
+                  );
                   const remainingActions =
-                    aiBudgetSummary.remaining_cents_current_month === null
+                    aiBudgetSummary.remaining_actions_current_month === null
                       ? null
-                      : estimateActions(
-                          Math.max(0, aiBudgetSummary.remaining_cents_current_month)
-                        );
+                      : Math.max(0, aiBudgetSummary.remaining_actions_current_month);
 
                   return (
                     <div className="grid gap-2 text-xs text-[var(--muted)] sm:grid-cols-2">
@@ -879,8 +927,8 @@ export default function CoachSettingsPage() {
                         Restant:{" "}
                         <span
                           className={
-                            aiBudgetSummary.remaining_cents_current_month !== null &&
-                            aiBudgetSummary.remaining_cents_current_month <= 0
+                            aiBudgetSummary.remaining_actions_current_month !== null &&
+                            aiBudgetSummary.remaining_actions_current_month <= 0
                               ? "text-rose-300"
                               : "text-[var(--text)]"
                           }
@@ -909,6 +957,11 @@ export default function CoachSettingsPage() {
                 {quotaResetLabel ? (
                   <p className="text-[11px] text-[var(--muted)]">
                     Le quota principal sera reinitialise le {quotaResetLabel}.
+                  </p>
+                ) : aiBudgetSummary.plan_override_active &&
+                  aiBudgetSummary.plan_override_unlimited ? (
+                  <p className="text-[11px] text-[var(--muted)]">
+                    Override admin actif en continu (sans date de fin).
                   </p>
                 ) : null}
                 <div className="rounded-xl border border-white/10 bg-[var(--bg-elevated)] p-3">

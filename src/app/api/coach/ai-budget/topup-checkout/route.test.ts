@@ -152,6 +152,7 @@ describe("POST /api/coach/ai-budget/topup-checkout", () => {
           coach_id: "coach-1",
           actor_user_id: "coach-1",
           topup_cents: "1000",
+          topup_actions: "350",
         }),
       })
     );

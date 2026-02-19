@@ -30,7 +30,9 @@ type OrganizationRow = {
   owner_profile_id: string | null;
   plan_tier: string | null;
   plan_tier_override: string | null;
+  plan_tier_override_starts_at: string | null;
   plan_tier_override_expires_at: string | null;
+  plan_tier_override_unlimited: boolean | null;
   messaging_charter_version: number | null;
 };
 
@@ -114,7 +116,7 @@ export const loadMessageActorContext = async (
   const { data: workspaceData, error: workspaceError } = await admin
     .from("organizations")
     .select(
-      "id, name, workspace_type, owner_profile_id, plan_tier, plan_tier_override, plan_tier_override_expires_at, messaging_charter_version"
+      "id, name, workspace_type, owner_profile_id, plan_tier, plan_tier_override, plan_tier_override_starts_at, plan_tier_override_expires_at, plan_tier_override_unlimited, messaging_charter_version"
     )
     .eq("id", activeWorkspaceId)
     .maybeSingle();
@@ -130,7 +132,10 @@ export const loadMessageActorContext = async (
   const effectivePlanTier = resolveEffectivePlanTier(
     activeWorkspace.plan_tier,
     activeWorkspace.plan_tier_override,
-    activeWorkspace.plan_tier_override_expires_at
+    activeWorkspace.plan_tier_override_expires_at,
+    new Date(),
+    activeWorkspace.plan_tier_override_starts_at,
+    activeWorkspace.plan_tier_override_unlimited
   ).tier;
 
   if (

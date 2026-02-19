@@ -1,8 +1,8 @@
 import {
   computeAccess,
   resolveProQuotaPolicy,
-  PRO_MONTHLY_AI_BUDGET_CENTS,
-  PRO_YEARLY_AI_BUDGET_CENTS,
+  PRO_MONTHLY_AI_QUOTA_ACTIONS,
+  PRO_YEARLY_AI_QUOTA_ACTIONS,
 } from "./billing";
 
 describe("computeAccess", () => {
@@ -66,7 +66,7 @@ describe("resolveProQuotaPolicy", () => {
     expect(policy).toEqual({
       interval: "month",
       windowDays: 30,
-      budgetCents: PRO_MONTHLY_AI_BUDGET_CENTS,
+      quotaActions: PRO_MONTHLY_AI_QUOTA_ACTIONS,
     });
   });
 
@@ -75,7 +75,7 @@ describe("resolveProQuotaPolicy", () => {
     expect(policy).toEqual({
       interval: "year",
       windowDays: 365,
-      budgetCents: PRO_YEARLY_AI_BUDGET_CENTS,
+      quotaActions: PRO_YEARLY_AI_QUOTA_ACTIONS,
     });
   });
 

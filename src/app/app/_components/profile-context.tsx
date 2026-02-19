@@ -30,7 +30,9 @@ export type OrganizationSettings = {
   owner_profile_id?: string | null;
   plan_tier?: PlanTier | null;
   plan_tier_override?: PlanTier | null;
+  plan_tier_override_starts_at?: string | null;
   plan_tier_override_expires_at?: string | null;
+  plan_tier_override_unlimited?: boolean | null;
   ai_enabled: boolean | null;
   tpi_enabled: boolean | null;
   radar_enabled: boolean | null;
@@ -51,7 +53,9 @@ export type PersonalWorkspace = {
   owner_profile_id: string | null;
   plan_tier?: PlanTier | null;
   plan_tier_override?: PlanTier | null;
+  plan_tier_override_starts_at?: string | null;
   plan_tier_override_expires_at?: string | null;
+  plan_tier_override_unlimited?: boolean | null;
   ai_enabled?: boolean | null;
 };
 
@@ -68,7 +72,9 @@ export type WorkspaceMembership = {
     owner_profile_id: string | null;
     plan_tier?: PlanTier | null;
     plan_tier_override?: PlanTier | null;
+    plan_tier_override_starts_at?: string | null;
     plan_tier_override_expires_at?: string | null;
+    plan_tier_override_unlimited?: boolean | null;
     ai_enabled?: boolean | null;
   } | null;
 };
@@ -139,7 +145,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       const { data: orgData, error: orgError } = await supabase
         .from("organizations")
         .select(
-          "id, name, logo_url, accent_color, locale, timezone, workspace_type, owner_profile_id, plan_tier, plan_tier_override, plan_tier_override_expires_at, ai_enabled, tpi_enabled, radar_enabled, coaching_dynamic_enabled, ai_model, ai_tone, ai_tech_level, ai_style, ai_length, ai_imagery, ai_focus"
+          "id, name, logo_url, accent_color, locale, timezone, workspace_type, owner_profile_id, plan_tier, plan_tier_override, plan_tier_override_starts_at, plan_tier_override_expires_at, plan_tier_override_unlimited, ai_enabled, tpi_enabled, radar_enabled, coaching_dynamic_enabled, ai_model, ai_tone, ai_tech_level, ai_style, ai_length, ai_imagery, ai_focus"
         )
         .eq("id", activeWorkspaceId)
         .single();
@@ -155,7 +161,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       const { data: personalData, error: personalError } = await supabase
         .from("organizations")
         .select(
-          "id, name, workspace_type, owner_profile_id, plan_tier, plan_tier_override, plan_tier_override_expires_at, ai_enabled"
+          "id, name, workspace_type, owner_profile_id, plan_tier, plan_tier_override, plan_tier_override_starts_at, plan_tier_override_expires_at, plan_tier_override_unlimited, ai_enabled"
         )
         .eq("workspace_type", "personal")
         .eq("owner_profile_id", profileData.id)
@@ -168,7 +174,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       const { data: membershipData } = await supabase
         .from("org_memberships")
         .select(
-          "id, org_id, role, status, premium_active, organizations(id, name, workspace_type, owner_profile_id, plan_tier, plan_tier_override, plan_tier_override_expires_at, ai_enabled)"
+          "id, org_id, role, status, premium_active, organizations(id, name, workspace_type, owner_profile_id, plan_tier, plan_tier_override, plan_tier_override_starts_at, plan_tier_override_expires_at, plan_tier_override_unlimited, ai_enabled)"
         )
         .eq("user_id", profileData.id)
         .order("created_at", { ascending: true });
@@ -226,12 +232,18 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const personalPlanState = resolveEffectivePlanTier(
     personalWorkspace?.plan_tier,
     personalWorkspace?.plan_tier_override,
-    personalWorkspace?.plan_tier_override_expires_at
+    personalWorkspace?.plan_tier_override_expires_at,
+    new Date(),
+    personalWorkspace?.plan_tier_override_starts_at,
+    personalWorkspace?.plan_tier_override_unlimited
   );
   const orgPlanState = resolveEffectivePlanTier(
     organization?.plan_tier,
     organization?.plan_tier_override,
-    organization?.plan_tier_override_expires_at
+    organization?.plan_tier_override_expires_at,
+    new Date(),
+    organization?.plan_tier_override_starts_at,
+    organization?.plan_tier_override_unlimited
   );
   const planTier = workspaceType === "org" ? personalPlanState.tier : orgPlanState.tier;
   const planTierOverrideActive =

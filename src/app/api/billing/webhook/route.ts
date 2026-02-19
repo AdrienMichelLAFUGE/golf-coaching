@@ -4,7 +4,7 @@ import type Stripe from "stripe";
 import { env } from "@/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { stripe } from "@/lib/stripe";
-import { computeAccess, isProPriceId } from "@/lib/billing";
+import { computeAccess, isProPriceId, resolveAiCreditTopupActions } from "@/lib/billing";
 import { getAiBudgetMonthWindow } from "@/lib/ai/budget";
 import { recordActivity } from "@/lib/activity-log";
 
@@ -231,11 +231,21 @@ export async function POST(request: Request) {
           const orgId = session.metadata?.org_id ?? null;
           const actorUserId = session.metadata?.actor_user_id ?? null;
           const topupCents = Number(session.metadata?.topup_cents ?? 0);
+          const metadataTopupActions = Number(session.metadata?.topup_actions ?? 0);
+          const topupActions =
+            Number.isFinite(metadataTopupActions) && metadataTopupActions > 0
+              ? Math.round(metadataTopupActions)
+              : resolveAiCreditTopupActions(Math.round(topupCents));
           const isPaid =
             event.type === "checkout.session.async_payment_succeeded" ||
             session.payment_status === "paid";
 
-          if (!coachId || !Number.isFinite(topupCents) || topupCents <= 0) {
+          if (
+            !coachId ||
+            !Number.isFinite(topupCents) ||
+            topupCents <= 0 ||
+            topupActions <= 0
+          ) {
             await recordActivity({
               admin,
               level: "warn",
@@ -296,6 +306,7 @@ export async function POST(request: Request) {
                 eventType: event.type,
                 checkoutSessionId: session.id ?? null,
                 amountCents: Math.round(topupCents),
+                amountActions: topupActions,
               },
             });
             break;
@@ -305,7 +316,7 @@ export async function POST(request: Request) {
           const { error: topupError } = await admin.from("ai_credit_topups").insert([
             {
               profile_id: coachId,
-              amount_cents: Math.round(topupCents),
+              amount_cents: topupActions,
               month_key: monthKey,
               note: topupReference,
               created_by: actorUserId || null,
@@ -330,6 +341,7 @@ export async function POST(request: Request) {
               eventType: event.type,
               checkoutSessionId: session.id ?? null,
               amountCents: Math.round(topupCents),
+              amountActions: topupActions,
             },
           });
           logStripeEvent(event.id, event.type, orgId);

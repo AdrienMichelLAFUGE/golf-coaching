@@ -43,15 +43,15 @@ export async function GET(request: Request) {
   });
 
   let usagePercentCurrentMonth: number | null = null;
-  if (summary.monthAvailableCents !== null) {
-    if (summary.monthAvailableCents <= 0) {
-      usagePercentCurrentMonth = summary.monthSpentCents > 0 ? 100 : 0;
+  if (summary.monthAvailableActions !== null) {
+    if (summary.monthAvailableActions <= 0) {
+      usagePercentCurrentMonth = summary.monthSpentActions > 0 ? 100 : 0;
     } else {
       usagePercentCurrentMonth = Math.min(
         100,
         Math.max(
           0,
-          Math.round((summary.monthSpentCents / summary.monthAvailableCents) * 100)
+          Math.round((summary.monthSpentActions / summary.monthAvailableActions) * 100)
         )
       );
     }
@@ -60,14 +60,15 @@ export async function GET(request: Request) {
   return NextResponse.json({
     summary: {
       enabled: summary.enabled,
-      monthly_budget_cents: summary.monthlyBudgetCents,
-      spent_cents_current_month: summary.monthSpentCents,
-      topup_cents_current_month: summary.monthTopupCents,
-      topup_carryover_cents: summary.carryoverTopupCents,
-      topup_remaining_cents_current_month: summary.topupRemainingCents,
-      base_remaining_cents_current_month: summary.baseRemainingCents,
-      available_cents_current_month: summary.monthAvailableCents,
-      remaining_cents_current_month: summary.monthRemainingCents,
+      monthly_budget_actions: summary.monthlyBudgetActions,
+      spent_actions_current_month: summary.monthSpentActions,
+      spent_cost_cents_current_month: summary.monthSpentCostCents,
+      topup_actions_current_month: summary.monthTopupActions,
+      topup_carryover_actions: summary.carryoverTopupActions,
+      topup_remaining_actions_current_month: summary.topupRemainingActions,
+      base_remaining_actions_current_month: summary.baseRemainingActions,
+      available_actions_current_month: summary.monthAvailableActions,
+      remaining_actions_current_month: summary.monthRemainingActions,
       usage_percent_current_month: usagePercentCurrentMonth,
       month_key: summary.monthKey,
       window_kind: summary.windowKind,
@@ -75,6 +76,11 @@ export async function GET(request: Request) {
       window_start_iso: summary.windowStartIso,
       window_end_iso: summary.windowEndIso,
       quota_reset_at_iso: summary.windowEndIso,
+      plan_override_tier: summary.planOverride.tier,
+      plan_override_starts_at_iso: summary.planOverride.startsAtIso,
+      plan_override_expires_at_iso: summary.planOverride.endsAtIso,
+      plan_override_unlimited: summary.planOverride.unlimited,
+      plan_override_active: summary.planOverride.isActive,
     },
   });
 }

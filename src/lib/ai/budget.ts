@@ -1,22 +1,39 @@
 import "server-only";
 
-import { computeAiCostEurCentsFromUsageRow } from "@/lib/ai/pricing";
-import { computeAccess, resolveProQuotaPolicy } from "@/lib/billing";
+import {
+  computeAiActionCountFromUsageRow,
+  computeAiCostEurCentsFromUsageRow,
+} from "@/lib/ai/pricing";
+import {
+  computeAccess,
+  resolveAiCreditTopupActions,
+  resolveProQuotaPolicy,
+} from "@/lib/billing";
+import { isPlanTierOverrideActive } from "@/lib/plans";
 
 type AdminClient = ReturnType<
   typeof import("@/lib/supabase/server").createSupabaseAdminClient
 >;
 
-type AiBudgetSummary = {
+type PlanOverrideSummary = {
+  tier: "free" | "pro" | "enterprise" | null;
+  startsAtIso: string | null;
+  endsAtIso: string | null;
+  unlimited: boolean;
+  isActive: boolean;
+};
+
+export type AiBudgetSummary = {
   enabled: boolean;
-  monthlyBudgetCents: number | null;
-  monthTopupCents: number;
-  carryoverTopupCents: number;
-  topupRemainingCents: number;
-  baseRemainingCents: number;
-  monthSpentCents: number;
-  monthAvailableCents: number | null;
-  monthRemainingCents: number | null;
+  monthlyBudgetActions: number | null;
+  monthTopupActions: number;
+  carryoverTopupActions: number;
+  topupRemainingActions: number;
+  baseRemainingActions: number;
+  monthSpentActions: number;
+  monthSpentCostCents: number;
+  monthAvailableActions: number | null;
+  monthRemainingActions: number | null;
   monthKey: string;
   monthStartIso: string;
   monthEndIso: string;
@@ -24,6 +41,7 @@ type AiBudgetSummary = {
   windowDays: number | null;
   windowStartIso: string;
   windowEndIso: string;
+  planOverride: PlanOverrideSummary;
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -39,6 +57,14 @@ const parseIsoDate = (value?: string | null) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
+const emptyPlanOverrideSummary = (): PlanOverrideSummary => ({
+  tier: null,
+  startsAtIso: null,
+  endsAtIso: null,
+  unlimited: false,
+  isActive: false,
+});
+
 export const getAiBudgetMonthWindow = (now: Date = new Date()) => {
   const year = now.getUTCFullYear();
   const month = now.getUTCMonth();
@@ -52,7 +78,7 @@ export const getAiBudgetMonthWindow = (now: Date = new Date()) => {
   };
 };
 
-const loadProSlidingWindow = async (params: {
+const loadPersonalBillingContext = async (params: {
   admin: AdminClient;
   userId: string;
   now: Date;
@@ -62,7 +88,7 @@ const loadProSlidingWindow = async (params: {
     const orgResponse = (await admin
       .from("organizations")
       .select(
-        "id, workspace_type, owner_profile_id, stripe_status, stripe_current_period_end, stripe_price_id"
+        "id, workspace_type, owner_profile_id, stripe_status, stripe_current_period_end, stripe_price_id, plan_tier_override, plan_tier_override_starts_at, plan_tier_override_expires_at, plan_tier_override_unlimited"
       )
       .eq("workspace_type", "personal")
       .eq("owner_profile_id", userId)
@@ -71,11 +97,38 @@ const loadProSlidingWindow = async (params: {
         stripe_status?: string | null;
         stripe_current_period_end?: string | null;
         stripe_price_id?: string | null;
+        plan_tier_override?: "free" | "pro" | "enterprise" | null;
+        plan_tier_override_starts_at?: string | null;
+        plan_tier_override_expires_at?: string | null;
+        plan_tier_override_unlimited?: boolean | null;
       } | null;
     };
 
     const org = orgResponse.data;
-    if (!org) return null;
+    if (!org) {
+      return {
+        proWindow: null,
+        planOverride: emptyPlanOverrideSummary(),
+      };
+    }
+
+    const planOverrideTier = org.plan_tier_override ?? null;
+    const planOverrideStartsAt = org.plan_tier_override_starts_at ?? null;
+    const planOverrideExpiresAt = org.plan_tier_override_expires_at ?? null;
+    const planOverrideUnlimited = Boolean(org.plan_tier_override_unlimited);
+    const planOverride: PlanOverrideSummary = {
+      tier: planOverrideTier,
+      startsAtIso: planOverrideStartsAt,
+      endsAtIso: planOverrideExpiresAt,
+      unlimited: planOverrideUnlimited,
+      isActive: isPlanTierOverrideActive({
+        overrideTier: planOverrideTier,
+        overrideStartsAt: planOverrideStartsAt,
+        overrideExpiresAt: planOverrideExpiresAt,
+        overrideUnlimited: planOverrideUnlimited,
+        now,
+      }),
+    };
 
     const access = computeAccess(
       {
@@ -86,36 +139,51 @@ const loadProSlidingWindow = async (params: {
       now
     );
     if (access.planTier !== "pro") {
-      return null;
+      return {
+        proWindow: null,
+        planOverride,
+      };
     }
 
     const quota = resolveProQuotaPolicy(org.stripe_price_id ?? null);
     if (!quota) {
-      return null;
+      return {
+        proWindow: null,
+        planOverride,
+      };
     }
 
     const periodEnd = parseIsoDate(org.stripe_current_period_end ?? null);
     if (!periodEnd || periodEnd.getTime() <= now.getTime()) {
-      return null;
+      return {
+        proWindow: null,
+        planOverride,
+      };
     }
 
     const periodStart = new Date(periodEnd.getTime() - quota.windowDays * DAY_MS);
     return {
-      windowKind: "sliding_pro" as const,
-      windowDays: quota.windowDays,
-      windowStartIso: periodStart.toISOString(),
-      windowEndIso: periodEnd.toISOString(),
-      budgetCents: quota.budgetCents,
+      proWindow: {
+        windowKind: "sliding_pro" as const,
+        windowDays: quota.windowDays,
+        windowStartIso: periodStart.toISOString(),
+        windowEndIso: periodEnd.toISOString(),
+        quotaActions: quota.quotaActions,
+      },
+      planOverride,
     };
   } catch {
-    return null;
+    return {
+      proWindow: null,
+      planOverride: emptyPlanOverrideSummary(),
+    };
   }
 };
 
 type BudgetEvent = {
   timestampMs: number;
   kind: "topup" | "usage";
-  amountCents: number;
+  amountActions: number;
 };
 
 const sortBudgetEvents = (a: BudgetEvent, b: BudgetEvent) => {
@@ -146,32 +214,39 @@ const createFixedPeriodIndexResolver = (windowStartTs: number, periodMs: number)
 };
 
 const consumeBudget = (params: {
-  amountCents: number;
-  topupBalanceCents: number;
-  baseRemainingCents: number;
+  amountActions: number;
+  topupBalanceActions: number;
+  baseRemainingActions: number;
 }) => {
-  const amountCents = Math.max(0, params.amountCents);
-  let remaining = amountCents;
-  let topupBalanceCents = Math.max(0, params.topupBalanceCents);
-  let baseRemainingCents = Math.max(0, params.baseRemainingCents);
+  const amountActions = Math.max(0, params.amountActions);
+  let remaining = amountActions;
+  let topupBalanceActions = Math.max(0, params.topupBalanceActions);
+  let baseRemainingActions = Math.max(0, params.baseRemainingActions);
 
-  if (topupBalanceCents > 0 && remaining > 0) {
-    const topupUsage = Math.min(remaining, topupBalanceCents);
-    topupBalanceCents -= topupUsage;
+  if (topupBalanceActions > 0 && remaining > 0) {
+    const topupUsage = Math.min(remaining, topupBalanceActions);
+    topupBalanceActions -= topupUsage;
     remaining -= topupUsage;
   }
 
-  if (baseRemainingCents > 0 && remaining > 0) {
-    const baseUsage = Math.min(remaining, baseRemainingCents);
-    baseRemainingCents -= baseUsage;
+  if (baseRemainingActions > 0 && remaining > 0) {
+    const baseUsage = Math.min(remaining, baseRemainingActions);
+    baseRemainingActions -= baseUsage;
     remaining -= baseUsage;
   }
 
   return {
-    topupBalanceCents,
-    baseRemainingCents,
-    uncoveredCents: remaining,
+    topupBalanceActions,
+    baseRemainingActions,
+    uncoveredActions: remaining,
   };
+};
+
+const resolveLegacyTopupActions = (rawAmount: number) => {
+  const normalized = Math.max(0, Math.round(rawAmount));
+  const mapped = resolveAiCreditTopupActions(normalized);
+  if (mapped > 0) return mapped;
+  return normalized;
 };
 
 export const loadAiBudgetSummary = async (params: {
@@ -188,7 +263,7 @@ export const loadAiBudgetSummary = async (params: {
   const { monthKey, monthStartIso, monthEndIso } = getAiBudgetMonthWindow(now);
 
   let enabled = Boolean(params.profileBudget?.ai_budget_enabled);
-  let monthlyBudgetCents = params.profileBudget?.ai_budget_monthly_cents ?? null;
+  let monthlyBudgetActions = params.profileBudget?.ai_budget_monthly_cents ?? null;
   if (!params.profileBudget) {
     let profileData:
       | {
@@ -215,34 +290,39 @@ export const loadAiBudgetSummary = async (params: {
       profileData = null;
     }
     enabled = Boolean(profileData?.ai_budget_enabled);
-    monthlyBudgetCents = profileData?.ai_budget_monthly_cents ?? null;
+    monthlyBudgetActions = profileData?.ai_budget_monthly_cents ?? null;
   }
 
-  const proWindow = await loadProSlidingWindow({ admin, userId, now });
+  const billingContext = await loadPersonalBillingContext({ admin, userId, now });
+  const proWindow = billingContext.proWindow;
+  const planOverride = billingContext.planOverride;
   const windowKind = proWindow ? "sliding_pro" : "calendar_month";
   const windowStartIso = proWindow?.windowStartIso ?? monthStartIso;
   const windowEndIso = proWindow?.windowEndIso ?? monthEndIso;
   const windowDays = proWindow?.windowDays ?? null;
-  const baseBudgetCents = Math.max(
-    0,
-    proWindow?.budgetCents ?? (monthlyBudgetCents ?? 0)
-  );
 
-  // Pro personal subscriptions always enforce the quota budget policy.
+  const manualBudgetActions = Math.max(0, Math.round(toNumber(monthlyBudgetActions)));
+  const resolvedBaseBudgetActions =
+    manualBudgetActions > 0
+      ? manualBudgetActions
+      : Math.max(0, proWindow?.quotaActions ?? 0);
+
+  // Personal Pro subscriptions always enforce quota. Admin value overrides if set.
   const budgetEnabled = proWindow ? true : enabled;
-  const budgetValueCents = proWindow ? proWindow.budgetCents : monthlyBudgetCents;
+  const budgetValueActions = budgetEnabled ? resolvedBaseBudgetActions : null;
 
   if (!budgetEnabled) {
     return {
       enabled: false,
-      monthlyBudgetCents: budgetValueCents,
-      monthTopupCents: 0,
-      carryoverTopupCents: 0,
-      topupRemainingCents: 0,
-      baseRemainingCents: 0,
-      monthSpentCents: 0,
-      monthAvailableCents: null,
-      monthRemainingCents: null,
+      monthlyBudgetActions: budgetValueActions,
+      monthTopupActions: 0,
+      carryoverTopupActions: 0,
+      topupRemainingActions: 0,
+      baseRemainingActions: 0,
+      monthSpentActions: 0,
+      monthSpentCostCents: 0,
+      monthAvailableActions: null,
+      monthRemainingActions: null,
       monthKey,
       monthStartIso,
       monthEndIso,
@@ -250,11 +330,14 @@ export const loadAiBudgetSummary = async (params: {
       windowDays,
       windowStartIso,
       windowEndIso,
+      planOverride,
     };
   }
 
-  let topups: Array<{ amount_cents?: number | null; created_at?: string | null }> | null | undefined =
-    [];
+  let topups:
+    | Array<{ amount_cents?: number | null; created_at?: string | null }>
+    | null
+    | undefined = [];
   try {
     const topupsResponse = (await admin
       .from("ai_credit_topups")
@@ -307,12 +390,13 @@ export const loadAiBudgetSummary = async (params: {
 
   const pastEvents: BudgetEvent[] = [];
   const currentEvents: BudgetEvent[] = [];
-  let currentTopupCents = 0;
-  let currentSpentCents = 0;
+  let currentTopupActions = 0;
+  let currentSpentActions = 0;
+  let currentSpentCostCents = 0;
 
   (topups ?? []).forEach((row) => {
-    const amountCents = toNumber(row.amount_cents);
-    if (amountCents <= 0) return;
+    const amountActions = resolveLegacyTopupActions(toNumber(row.amount_cents));
+    if (amountActions <= 0) return;
     const createdAt = parseIsoDate(row.created_at ?? null);
     if (!createdAt) return;
     const timestampMs = createdAt.getTime();
@@ -320,10 +404,10 @@ export const loadAiBudgetSummary = async (params: {
     const event: BudgetEvent = {
       timestampMs,
       kind: "topup",
-      amountCents,
+      amountActions,
     };
     if (timestampMs >= windowStartTs) {
-      currentTopupCents += amountCents;
+      currentTopupActions += amountActions;
       currentEvents.push(event);
       return;
     }
@@ -331,8 +415,8 @@ export const loadAiBudgetSummary = async (params: {
   });
 
   (usageRows ?? []).forEach((row) => {
-    const amountCents = computeAiCostEurCentsFromUsageRow(row);
-    if (amountCents <= 0) return;
+    const amountActions = computeAiActionCountFromUsageRow(row);
+    if (amountActions <= 0) return;
     const createdAt = parseIsoDate(row.created_at ?? null);
     if (!createdAt) return;
     const timestampMs = createdAt.getTime();
@@ -340,10 +424,11 @@ export const loadAiBudgetSummary = async (params: {
     const event: BudgetEvent = {
       timestampMs,
       kind: "usage",
-      amountCents,
+      amountActions,
     };
     if (timestampMs >= windowStartTs) {
-      currentSpentCents += amountCents;
+      currentSpentActions += amountActions;
+      currentSpentCostCents += computeAiCostEurCentsFromUsageRow(row);
       currentEvents.push(event);
       return;
     }
@@ -353,62 +438,63 @@ export const loadAiBudgetSummary = async (params: {
   pastEvents.sort(sortBudgetEvents);
   currentEvents.sort(sortBudgetEvents);
 
-  let carryoverTopupCents = 0;
+  let carryoverTopupActions = 0;
   let activePastPeriodIndex: number | null = null;
-  let pastBaseRemainingCents = baseBudgetCents;
+  let pastBaseRemainingActions = resolvedBaseBudgetActions;
 
   pastEvents.forEach((event) => {
     const periodIndex = periodIndexResolver(event.timestampMs);
     if (periodIndex >= 0) return;
     if (activePastPeriodIndex === null || periodIndex !== activePastPeriodIndex) {
       activePastPeriodIndex = periodIndex;
-      pastBaseRemainingCents = baseBudgetCents;
+      pastBaseRemainingActions = resolvedBaseBudgetActions;
     }
     if (event.kind === "topup") {
-      carryoverTopupCents += event.amountCents;
+      carryoverTopupActions += event.amountActions;
       return;
     }
     const consumed = consumeBudget({
-      amountCents: event.amountCents,
-      topupBalanceCents: carryoverTopupCents,
-      baseRemainingCents: pastBaseRemainingCents,
+      amountActions: event.amountActions,
+      topupBalanceActions: carryoverTopupActions,
+      baseRemainingActions: pastBaseRemainingActions,
     });
-    carryoverTopupCents = consumed.topupBalanceCents;
-    pastBaseRemainingCents = consumed.baseRemainingCents;
+    carryoverTopupActions = consumed.topupBalanceActions;
+    pastBaseRemainingActions = consumed.baseRemainingActions;
   });
 
-  let topupRemainingCents = carryoverTopupCents;
-  let baseRemainingCents = baseBudgetCents;
+  let topupRemainingActions = carryoverTopupActions;
+  let baseRemainingActions = resolvedBaseBudgetActions;
   currentEvents.forEach((event) => {
     if (event.kind === "topup") {
-      topupRemainingCents += event.amountCents;
+      topupRemainingActions += event.amountActions;
       return;
     }
     const consumed = consumeBudget({
-      amountCents: event.amountCents,
-      topupBalanceCents: topupRemainingCents,
-      baseRemainingCents,
+      amountActions: event.amountActions,
+      topupBalanceActions: topupRemainingActions,
+      baseRemainingActions,
     });
-    topupRemainingCents = consumed.topupBalanceCents;
-    baseRemainingCents = consumed.baseRemainingCents;
+    topupRemainingActions = consumed.topupBalanceActions;
+    baseRemainingActions = consumed.baseRemainingActions;
   });
 
-  const monthAvailableCents = Math.max(
+  const monthAvailableActions = Math.max(
     0,
-    baseBudgetCents + carryoverTopupCents + currentTopupCents
+    resolvedBaseBudgetActions + carryoverTopupActions + currentTopupActions
   );
-  const monthRemainingCents = monthAvailableCents - currentSpentCents;
+  const monthRemainingActions = monthAvailableActions - currentSpentActions;
 
   return {
     enabled: true,
-    monthlyBudgetCents: budgetValueCents,
-    monthTopupCents: currentTopupCents,
-    carryoverTopupCents,
-    topupRemainingCents,
-    baseRemainingCents,
-    monthSpentCents: currentSpentCents,
-    monthAvailableCents,
-    monthRemainingCents,
+    monthlyBudgetActions: budgetValueActions,
+    monthTopupActions: currentTopupActions,
+    carryoverTopupActions,
+    topupRemainingActions,
+    baseRemainingActions,
+    monthSpentActions: currentSpentActions,
+    monthSpentCostCents: currentSpentCostCents,
+    monthAvailableActions,
+    monthRemainingActions,
     monthKey,
     monthStartIso,
     monthEndIso,
@@ -416,11 +502,12 @@ export const loadAiBudgetSummary = async (params: {
     windowDays,
     windowStartIso,
     windowEndIso,
+    planOverride,
   };
 };
 
 export const isAiBudgetBlocked = (summary: AiBudgetSummary) =>
   summary.enabled &&
-  summary.monthAvailableCents !== null &&
-  summary.monthRemainingCents !== null &&
-  summary.monthRemainingCents <= 0;
+  summary.monthAvailableActions !== null &&
+  summary.monthRemainingActions !== null &&
+  summary.monthRemainingActions <= 0;

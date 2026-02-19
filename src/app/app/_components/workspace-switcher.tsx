@@ -137,7 +137,10 @@ export default function WorkspaceSwitcher() {
   const personalPlanTier = resolveEffectivePlanTier(
     personalWorkspace?.plan_tier,
     personalWorkspace?.plan_tier_override,
-    personalWorkspace?.plan_tier_override_expires_at
+    personalWorkspace?.plan_tier_override_expires_at,
+    new Date(),
+    personalWorkspace?.plan_tier_override_starts_at,
+    personalWorkspace?.plan_tier_override_unlimited
   ).tier;
   const canCreateOrg = isCoach && personalPlanTier !== "free";
 

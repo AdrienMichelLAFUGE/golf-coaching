@@ -129,6 +129,7 @@ describe("POST /api/coach/ai-budget/topup-confirm", () => {
     expect(response.status).toBe(200);
     expect(body.status).toBe("credited");
     expect(body.amount_cents).toBe(500);
+    expect(body.amount_actions).toBe(150);
     expect(topupInsert).toHaveBeenCalledTimes(1);
     const firstInsertCall = (topupInsert as jest.Mock).mock.calls[0] as [
       Array<{
@@ -141,7 +142,7 @@ describe("POST /api/coach/ai-budget/topup-confirm", () => {
     expect(insertedTopup).toEqual(
       expect.objectContaining({
         profile_id: "coach-1",
-        amount_cents: 500,
+        amount_cents: 150,
         created_by: "coach-1",
       })
     );

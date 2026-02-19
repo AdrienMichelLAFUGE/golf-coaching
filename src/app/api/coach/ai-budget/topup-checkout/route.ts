@@ -8,6 +8,7 @@ import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { stripe } from "@/lib/stripe";
 import {
   AI_CREDIT_TOPUP_OPTIONS_CENTS,
+  resolveAiCreditTopupActions,
   resolveAbsoluteUrl,
   resolveAiCreditTopupPriceId,
 } from "@/lib/billing";
@@ -71,7 +72,8 @@ export async function POST(request: Request) {
   }
 
   const priceId = resolveAiCreditTopupPriceId(amountCents);
-  if (!priceId) {
+  const amountActions = resolveAiCreditTopupActions(amountCents);
+  if (!priceId || amountActions <= 0) {
     await recordActivity({
       admin,
       level: "error",
@@ -109,6 +111,7 @@ export async function POST(request: Request) {
         coach_id: profile.id,
         actor_user_id: userId,
         topup_cents: String(amountCents),
+        topup_actions: String(amountActions),
       },
     });
 
@@ -126,6 +129,7 @@ export async function POST(request: Request) {
       message: "Session checkout recharge IA creee (coach).",
       metadata: {
         amountCents,
+        amountActions,
       },
     });
 

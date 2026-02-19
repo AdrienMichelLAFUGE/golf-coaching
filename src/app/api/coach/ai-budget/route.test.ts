@@ -155,13 +155,14 @@ describe("GET /api/coach/ai-budget", () => {
     const response = await GET(buildRequest());
     const body = (await response.json()) as {
       summary: {
-        spent_cents_current_month: number;
-        topup_cents_current_month: number;
-        topup_carryover_cents: number;
-        topup_remaining_cents_current_month: number;
-        base_remaining_cents_current_month: number;
-        available_cents_current_month: number;
-        remaining_cents_current_month: number;
+        spent_actions_current_month: number;
+        spent_cost_cents_current_month: number;
+        topup_actions_current_month: number;
+        topup_carryover_actions: number;
+        topup_remaining_actions_current_month: number;
+        base_remaining_actions_current_month: number;
+        available_actions_current_month: number;
+        remaining_actions_current_month: number;
         usage_percent_current_month: number;
         month_key: string;
         window_kind: string;
@@ -171,14 +172,15 @@ describe("GET /api/coach/ai-budget", () => {
     };
 
     expect(response.status).toBe(200);
-    expect(body.summary.spent_cents_current_month).toBe(500);
-    expect(body.summary.topup_cents_current_month).toBe(350);
-    expect(body.summary.topup_carryover_cents).toBe(0);
-    expect(body.summary.topup_remaining_cents_current_month).toBe(0);
-    expect(body.summary.base_remaining_cents_current_month).toBe(2350);
-    expect(body.summary.available_cents_current_month).toBe(2850);
-    expect(body.summary.remaining_cents_current_month).toBe(2350);
-    expect(body.summary.usage_percent_current_month).toBe(18);
+    expect(body.summary.spent_actions_current_month).toBe(2);
+    expect(body.summary.spent_cost_cents_current_month).toBe(500);
+    expect(body.summary.topup_actions_current_month).toBe(350);
+    expect(body.summary.topup_carryover_actions).toBe(399);
+    expect(body.summary.topup_remaining_actions_current_month).toBe(747);
+    expect(body.summary.base_remaining_actions_current_month).toBe(2500);
+    expect(body.summary.available_actions_current_month).toBe(3249);
+    expect(body.summary.remaining_actions_current_month).toBe(3247);
+    expect(body.summary.usage_percent_current_month).toBe(0);
     expect(body.summary.window_kind).toBe("sliding_pro");
     expect(body.summary.window_days).toBe(30);
     expect(body.summary.month_key).toBe(currentMonthKey);
@@ -272,11 +274,11 @@ describe("GET /api/coach/ai-budget", () => {
     const response = await GET(buildRequest());
     const body = (await response.json()) as {
       summary: {
-        monthly_budget_cents: number;
-        topup_remaining_cents_current_month: number;
-        base_remaining_cents_current_month: number;
-        available_cents_current_month: number;
-        remaining_cents_current_month: number;
+        monthly_budget_actions: number;
+        topup_remaining_actions_current_month: number;
+        base_remaining_actions_current_month: number;
+        available_actions_current_month: number;
+        remaining_actions_current_month: number;
         usage_percent_current_month: number;
         window_kind: string;
         window_days: number;
@@ -284,12 +286,12 @@ describe("GET /api/coach/ai-budget", () => {
     };
 
     expect(response.status).toBe(200);
-    expect(body.summary.monthly_budget_cents).toBe(30400);
-    expect(body.summary.topup_remaining_cents_current_month).toBe(0);
-    expect(body.summary.base_remaining_cents_current_month).toBe(29400);
-    expect(body.summary.available_cents_current_month).toBe(30400);
-    expect(body.summary.remaining_cents_current_month).toBe(29400);
-    expect(body.summary.usage_percent_current_month).toBe(3);
+    expect(body.summary.monthly_budget_actions).toBe(18000);
+    expect(body.summary.topup_remaining_actions_current_month).toBe(0);
+    expect(body.summary.base_remaining_actions_current_month).toBe(17999);
+    expect(body.summary.available_actions_current_month).toBe(18000);
+    expect(body.summary.remaining_actions_current_month).toBe(17999);
+    expect(body.summary.usage_percent_current_month).toBe(0);
     expect(body.summary.window_kind).toBe("sliding_pro");
     expect(body.summary.window_days).toBe(365);
   });

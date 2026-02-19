@@ -8,9 +8,14 @@ import {
   createSupabaseServerClientFromRequest,
 } from "@/lib/supabase/server";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
-import { planTierSchema } from "@/lib/plans";
+import { isPlanTierOverrideActive, planTierSchema } from "@/lib/plans";
 import { recordActivity } from "@/lib/activity-log";
 import { getAiBudgetMonthWindow, loadAiBudgetSummary } from "@/lib/ai/budget";
+import { computeAccess, resolveProQuotaPolicy } from "@/lib/billing";
+import {
+  computeAiActionCountFromUsageRow,
+  computeAiCostEurCentsFromUsageRow,
+} from "@/lib/ai/pricing";
 
 export const runtime = "nodejs";
 
@@ -23,12 +28,14 @@ type CoachUpdatePayload = {
   coaching_dynamic_enabled?: boolean;
   ai_model?: string | null;
   ai_budget_enabled?: boolean;
-  ai_budget_monthly_cents?: number | null;
-  ai_credit_topup_cents?: number;
+  ai_budget_monthly_actions?: number | null;
+  ai_credit_topup_actions?: number;
   ai_credit_topup_note?: string | null;
   plan_tier?: string;
   plan_tier_override?: string | null;
+  plan_tier_override_starts_at?: string | null;
   plan_tier_override_expires_at?: string | null;
+  plan_tier_override_unlimited?: boolean;
 };
 
 const coachUpdateSchema = z.object({
@@ -40,12 +47,14 @@ const coachUpdateSchema = z.object({
   coaching_dynamic_enabled: z.boolean().optional(),
   ai_model: z.string().nullable().optional(),
   ai_budget_enabled: z.boolean().optional(),
-  ai_budget_monthly_cents: z.number().int().positive().max(10_000_000).nullable().optional(),
-  ai_credit_topup_cents: z.number().int().positive().max(10_000_000).optional(),
+  ai_budget_monthly_actions: z.number().int().positive().max(200_000).nullable().optional(),
+  ai_credit_topup_actions: z.number().int().positive().max(200_000).optional(),
   ai_credit_topup_note: z.string().max(240).nullable().optional(),
   plan_tier: planTierSchema.optional(),
   plan_tier_override: planTierSchema.nullable().optional(),
+  plan_tier_override_starts_at: z.string().datetime().nullable().optional(),
   plan_tier_override_expires_at: z.string().datetime().nullable().optional(),
+  plan_tier_override_unlimited: z.boolean().optional(),
 });
 
 const coachDeleteSchema = z.object({
@@ -82,6 +91,26 @@ const toNumber = (value: number | string | null | undefined) => {
   return Number.isFinite(numeric) ? numeric : 0;
 };
 
+const PRO_MONTHLY_SUBSCRIPTION_CENTS = 3_990;
+const PRO_YEARLY_SUBSCRIPTION_CENTS = 43_000;
+const FALLBACK_AVERAGE_COST_CENTS_PER_ACTION = 1.6;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const parseIsoDate = (value?: string | null) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const isAnnualOverrideWindow = (startsAtIso?: string | null, endsAtIso?: string | null) => {
+  const startsAt = parseIsoDate(startsAtIso);
+  const endsAt = parseIsoDate(endsAtIso);
+  if (!startsAt || !endsAt) return false;
+  if (endsAt.getTime() <= startsAt.getTime()) return false;
+  const durationDays = (endsAt.getTime() - startsAt.getTime()) / DAY_MS;
+  return durationDays >= 360 && durationDays <= 370;
+};
+
 export async function GET(request: Request) {
   const auth = await requireAdmin(request);
   if ("error" in auth) return auth.error;
@@ -89,7 +118,7 @@ export async function GET(request: Request) {
   const { data: organizations, error: orgError } = await auth.admin
     .from("organizations")
     .select(
-      "id, name, workspace_type, owner_profile_id, plan_tier, plan_tier_override, plan_tier_override_expires_at, ai_enabled, tpi_enabled, radar_enabled, coaching_dynamic_enabled, ai_model"
+      "id, name, workspace_type, owner_profile_id, plan_tier, plan_tier_override, plan_tier_override_starts_at, plan_tier_override_expires_at, plan_tier_override_unlimited, ai_enabled, tpi_enabled, radar_enabled, coaching_dynamic_enabled, ai_model, stripe_status, stripe_current_period_end, stripe_cancel_at_period_end, stripe_price_id"
     );
 
   if (orgError) {
@@ -114,12 +143,18 @@ export async function GET(request: Request) {
         owner_profile_id: org.owner_profile_id ?? null,
         plan_tier: org.plan_tier ?? "free",
         plan_tier_override: org.plan_tier_override ?? null,
+        plan_tier_override_starts_at: org.plan_tier_override_starts_at ?? null,
         plan_tier_override_expires_at: org.plan_tier_override_expires_at ?? null,
+        plan_tier_override_unlimited: org.plan_tier_override_unlimited ?? false,
         ai_enabled: org.ai_enabled ?? false,
         tpi_enabled: org.tpi_enabled ?? false,
         radar_enabled: org.radar_enabled ?? false,
         coaching_dynamic_enabled: org.coaching_dynamic_enabled ?? false,
         ai_model: org.ai_model ?? "gpt-5-mini",
+        stripe_status: org.stripe_status ?? null,
+        stripe_current_period_end: org.stripe_current_period_end ?? null,
+        stripe_cancel_at_period_end: org.stripe_cancel_at_period_end ?? null,
+        stripe_price_id: org.stripe_price_id ?? null,
       },
     ])
   );
@@ -139,10 +174,11 @@ export async function GET(request: Request) {
     }
   >();
   const budgetEnabledByProfile = new Map<string, boolean>();
-  const budgetAmountByProfile = new Map<string, number | null>();
-  const budgetTopupByProfile = new Map<string, number>();
-  const budgetSpentByProfile = new Map<string, number>();
-  const budgetRemainingByProfile = new Map<string, number | null>();
+  const budgetActionsByProfile = new Map<string, number | null>();
+  const budgetTopupActionsByProfile = new Map<string, number>();
+  const budgetSpentActionsByProfile = new Map<string, number>();
+  const budgetSpentCostCentsByProfile = new Map<string, number>();
+  const budgetRemainingActionsByProfile = new Map<string, number | null>();
 
   if (uniqueCoachIds.length > 0) {
     const { data: profilesData, error: profilesError } = await auth.admin
@@ -184,11 +220,105 @@ export async function GET(request: Request) {
 
     summaries.forEach(([coachId, summary]) => {
       budgetEnabledByProfile.set(coachId, summary.enabled);
-      budgetAmountByProfile.set(coachId, summary.monthlyBudgetCents ?? null);
-      budgetTopupByProfile.set(coachId, summary.monthTopupCents);
-      budgetSpentByProfile.set(coachId, summary.monthSpentCents);
-      budgetRemainingByProfile.set(coachId, summary.monthRemainingCents);
+      budgetActionsByProfile.set(coachId, summary.monthlyBudgetActions ?? null);
+      budgetTopupActionsByProfile.set(coachId, summary.monthTopupActions);
+      budgetSpentActionsByProfile.set(coachId, summary.monthSpentActions);
+      budgetSpentCostCentsByProfile.set(coachId, summary.monthSpentCostCents);
+      budgetRemainingActionsByProfile.set(coachId, summary.monthRemainingActions);
     });
+  }
+
+  const now = new Date();
+  const proContextByCoach = new Map<
+    string,
+    {
+      activePro: boolean;
+      interval: "month" | "year" | null;
+      subscriptionAmountCents: number | null;
+    }
+  >();
+  const activeProCoachIds = new Set<string>();
+
+  Array.from(orgById.values()).forEach((workspace) => {
+    if (workspace.workspace_type !== "personal") return;
+    const coachId = workspace.owner_profile_id ?? null;
+    if (!coachId) return;
+    const access = computeAccess(
+      {
+        stripe_status: workspace.stripe_status ?? null,
+        stripe_current_period_end: workspace.stripe_current_period_end ?? null,
+        stripe_cancel_at_period_end: workspace.stripe_cancel_at_period_end ?? null,
+        stripe_price_id: workspace.stripe_price_id ?? null,
+      },
+      now
+    );
+    const policy = resolveProQuotaPolicy(workspace.stripe_price_id ?? null);
+    const stripeInterval = policy?.interval ?? null;
+    const stripeActivePro = access.planTier === "pro" && stripeInterval !== null;
+    const overrideActive = isPlanTierOverrideActive({
+      overrideTier: workspace.plan_tier_override ?? null,
+      overrideStartsAt: workspace.plan_tier_override_starts_at ?? null,
+      overrideExpiresAt: workspace.plan_tier_override_expires_at ?? null,
+      overrideUnlimited: workspace.plan_tier_override_unlimited ?? false,
+      now,
+    });
+    const overrideProActive = overrideActive && workspace.plan_tier_override === "pro";
+    const overrideIsAnnual = isAnnualOverrideWindow(
+      workspace.plan_tier_override_starts_at ?? null,
+      workspace.plan_tier_override_expires_at ?? null
+    );
+
+    const interval =
+      overrideProActive && overrideIsAnnual
+        ? "year"
+        : overrideProActive
+          ? "month"
+          : stripeInterval;
+    const activePro = overrideProActive || stripeActivePro;
+    const subscriptionAmountCents = activePro
+      ? interval === "year"
+        ? PRO_YEARLY_SUBSCRIPTION_CENTS
+        : PRO_MONTHLY_SUBSCRIPTION_CENTS
+      : null;
+
+    const existing = proContextByCoach.get(coachId);
+    if (!existing || (activePro && !existing.activePro)) {
+      proContextByCoach.set(coachId, {
+        activePro,
+        interval,
+        subscriptionAmountCents,
+      });
+    }
+    if (activePro) {
+      activeProCoachIds.add(coachId);
+    }
+  });
+
+  let proAverageCostCentsPerAction = FALLBACK_AVERAGE_COST_CENTS_PER_ACTION;
+  let proAverageActionSampleSize = 0;
+  if (activeProCoachIds.size > 0) {
+    const { data: proUsageRows, error: proUsageError } = await auth.admin
+      .from("ai_usage")
+      .select("user_id, model, input_tokens, output_tokens, total_tokens, cost_eur_cents")
+      .in("user_id", Array.from(activeProCoachIds));
+
+    if (proUsageError) {
+      return NextResponse.json({ error: proUsageError.message }, { status: 500 });
+    }
+
+    let totalCostCents = 0;
+    let totalActions = 0;
+    (proUsageRows ?? []).forEach((row) => {
+      const actionCount = computeAiActionCountFromUsageRow(row);
+      if (actionCount <= 0) return;
+      totalActions += actionCount;
+      totalCostCents += computeAiCostEurCentsFromUsageRow(row);
+    });
+
+    if (totalActions > 0) {
+      proAverageCostCentsPerAction = Number((totalCostCents / totalActions).toFixed(4));
+      proAverageActionSampleSize = totalActions;
+    }
   }
 
   const coachEntries = await Promise.all(
@@ -228,6 +358,11 @@ export async function GET(request: Request) {
         email: null,
       };
       const profile = profilesById.get(membership.user_id) ?? null;
+      const proContext = proContextByCoach.get(membership.user_id) ?? {
+        activePro: false,
+        interval: null,
+        subscriptionAmountCents: null,
+      };
       if (profile?.role === "student") return [];
 
       return [
@@ -243,16 +378,21 @@ export async function GET(request: Request) {
               budgetEnabledByProfile.get(membership.user_id) ??
               profile?.ai_budget_enabled ??
               false,
-            ai_budget_monthly_cents:
-              budgetAmountByProfile.get(membership.user_id) ??
+            ai_budget_monthly_actions:
+              budgetActionsByProfile.get(membership.user_id) ??
               profile?.ai_budget_monthly_cents ??
               null,
-            ai_budget_spent_cents_current_month:
-              budgetSpentByProfile.get(membership.user_id) ?? 0,
-            ai_budget_topup_cents_current_month:
-              budgetTopupByProfile.get(membership.user_id) ?? 0,
-            ai_budget_remaining_cents_current_month:
-              budgetRemainingByProfile.get(membership.user_id) ?? null,
+            ai_budget_spent_actions_current_period:
+              budgetSpentActionsByProfile.get(membership.user_id) ?? 0,
+            ai_budget_spent_cost_cents_current_period:
+              budgetSpentCostCentsByProfile.get(membership.user_id) ?? 0,
+            ai_budget_topup_actions_current_period:
+              budgetTopupActionsByProfile.get(membership.user_id) ?? 0,
+            ai_budget_remaining_actions_current_period:
+              budgetRemainingActionsByProfile.get(membership.user_id) ?? null,
+            pro_interval: proContext.interval,
+            pro_subscription_amount_cents: proContext.subscriptionAmountCents,
+            pro_active: proContext.activePro,
           },
         },
       ];
@@ -275,7 +415,15 @@ export async function GET(request: Request) {
       coach: null,
     }));
 
-  return NextResponse.json({ workspaces: [...rows, ...orphanedRows] });
+  return NextResponse.json({
+    workspaces: [...rows, ...orphanedRows],
+    metrics: {
+      pro_average_cost_cents_per_action: proAverageCostCentsPerAction,
+      pro_average_cost_eur_per_action: Number((proAverageCostCentsPerAction / 100).toFixed(4)),
+      pro_average_action_sample_size: proAverageActionSampleSize,
+      active_pro_coaches_count: activeProCoachIds.size,
+    },
+  });
 }
 
 export async function PATCH(request: Request) {
@@ -330,18 +478,26 @@ export async function PATCH(request: Request) {
         ? payload.plan_tier_override
         : null;
   }
+  if (Object.prototype.hasOwnProperty.call(payload, "plan_tier_override_starts_at")) {
+    orgUpdates.plan_tier_override_starts_at =
+      payload.plan_tier_override_starts_at ?? null;
+  }
   if (Object.prototype.hasOwnProperty.call(payload, "plan_tier_override_expires_at")) {
     orgUpdates.plan_tier_override_expires_at =
       payload.plan_tier_override_expires_at ?? null;
   }
+  if (Object.prototype.hasOwnProperty.call(payload, "plan_tier_override_unlimited")) {
+    orgUpdates.plan_tier_override_unlimited =
+      payload.plan_tier_override_unlimited ?? false;
+  }
 
   const hasBudgetAmountUpdate = Object.prototype.hasOwnProperty.call(
     payload,
-    "ai_budget_monthly_cents"
+    "ai_budget_monthly_actions"
   );
   const wantsCoachBudgetUpdate =
     typeof payload.ai_budget_enabled === "boolean" || hasBudgetAmountUpdate;
-  const hasTopup = typeof payload.ai_credit_topup_cents === "number";
+  const hasTopup = typeof payload.ai_credit_topup_actions === "number";
   const hasOrgUpdates = Object.keys(orgUpdates).length > 0;
 
   if (!hasOrgUpdates && !wantsCoachBudgetUpdate && !hasTopup) {
@@ -360,13 +516,24 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "orgId requis." }, { status: 422 });
   }
 
-  let orgData: { id: string; workspace_type: string; owner_profile_id: string | null } | null =
-    null;
+  let orgData:
+    | {
+        id: string;
+        workspace_type: string;
+        owner_profile_id: string | null;
+        plan_tier_override: string | null;
+        plan_tier_override_starts_at: string | null;
+        plan_tier_override_expires_at: string | null;
+        plan_tier_override_unlimited: boolean | null;
+      }
+    | null = null;
 
   if (hasOrgUpdates && orgId) {
     const { data: fetchedOrgData, error: orgDataError } = await auth.admin
       .from("organizations")
-      .select("id, workspace_type, owner_profile_id")
+      .select(
+        "id, workspace_type, owner_profile_id, plan_tier_override, plan_tier_override_starts_at, plan_tier_override_expires_at, plan_tier_override_unlimited"
+      )
       .eq("id", orgId)
       .single();
 
@@ -382,6 +549,62 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Organisation introuvable." }, { status: 404 });
     }
     orgData = fetchedOrgData;
+
+    const hasOverrideTierPatch = Object.prototype.hasOwnProperty.call(
+      payload,
+      "plan_tier_override"
+    );
+    const hasOverrideStartPatch = Object.prototype.hasOwnProperty.call(
+      payload,
+      "plan_tier_override_starts_at"
+    );
+    const hasOverrideEndPatch = Object.prototype.hasOwnProperty.call(
+      payload,
+      "plan_tier_override_expires_at"
+    );
+    const hasOverrideUnlimitedPatch = Object.prototype.hasOwnProperty.call(
+      payload,
+      "plan_tier_override_unlimited"
+    );
+
+    const nextOverrideTier = hasOverrideTierPatch
+      ? (orgUpdates.plan_tier_override as string | null)
+      : orgData.plan_tier_override ?? null;
+    const nextOverrideStartsAt = hasOverrideStartPatch
+      ? (orgUpdates.plan_tier_override_starts_at as string | null)
+      : orgData.plan_tier_override_starts_at ?? null;
+    const nextOverrideExpiresAt = hasOverrideEndPatch
+      ? (orgUpdates.plan_tier_override_expires_at as string | null)
+      : orgData.plan_tier_override_expires_at ?? null;
+    const nextOverrideUnlimited = hasOverrideUnlimitedPatch
+      ? Boolean(orgUpdates.plan_tier_override_unlimited)
+      : Boolean(orgData.plan_tier_override_unlimited);
+
+    if (nextOverrideTier === null) {
+      orgUpdates.plan_tier_override = null;
+      orgUpdates.plan_tier_override_starts_at = null;
+      orgUpdates.plan_tier_override_expires_at = null;
+      orgUpdates.plan_tier_override_unlimited = false;
+    } else if (nextOverrideUnlimited) {
+      orgUpdates.plan_tier_override_unlimited = true;
+      orgUpdates.plan_tier_override_starts_at = null;
+      orgUpdates.plan_tier_override_expires_at = null;
+    } else {
+      orgUpdates.plan_tier_override_unlimited = false;
+      if (nextOverrideStartsAt && nextOverrideExpiresAt) {
+        const startTs = new Date(nextOverrideStartsAt).getTime();
+        const endTs = new Date(nextOverrideExpiresAt).getTime();
+        if (Number.isFinite(startTs) && Number.isFinite(endTs) && startTs > endTs) {
+          return NextResponse.json(
+            {
+              error:
+                "Periode override invalide: la date de debut doit etre avant la date de fin.",
+            },
+            { status: 422 }
+          );
+        }
+      }
+    }
 
     const { error: updateError } = await auth.admin
       .from("organizations")
@@ -462,22 +685,22 @@ export async function PATCH(request: Request) {
       budgetUpdates.ai_budget_enabled = payload.ai_budget_enabled;
     }
     if (hasBudgetAmountUpdate) {
-      budgetUpdates.ai_budget_monthly_cents = payload.ai_budget_monthly_cents ?? null;
+      budgetUpdates.ai_budget_monthly_cents = payload.ai_budget_monthly_actions ?? null;
     }
 
     const nextBudgetEnabled =
       typeof payload.ai_budget_enabled === "boolean"
         ? payload.ai_budget_enabled
         : (coachProfile.ai_budget_enabled ?? false);
-    const nextBudgetCents = hasBudgetAmountUpdate
-      ? payload.ai_budget_monthly_cents ?? null
+    const nextBudgetActions = hasBudgetAmountUpdate
+      ? payload.ai_budget_monthly_actions ?? null
       : (coachProfile.ai_budget_monthly_cents ?? null);
 
-    if (nextBudgetEnabled && (!nextBudgetCents || nextBudgetCents < 1)) {
+    if (nextBudgetEnabled && (!nextBudgetActions || nextBudgetActions < 1)) {
       return NextResponse.json(
         {
           error:
-            "Le budget IA est actif: renseigne un montant mensuel strictement positif.",
+            "Le quota IA est actif: renseigne un quota d actions strictement positif.",
         },
         { status: 422 }
       );
@@ -503,8 +726,8 @@ export async function PATCH(request: Request) {
     }
 
     if (hasTopup) {
-      const topupCents = toNumber(payload.ai_credit_topup_cents);
-      if (topupCents < 1) {
+      const topupActions = toNumber(payload.ai_credit_topup_actions);
+      if (topupActions < 1) {
         return NextResponse.json(
           { error: "Montant de recharge invalide." },
           { status: 422 }
@@ -514,7 +737,7 @@ export async function PATCH(request: Request) {
       const { error: topupError } = await auth.admin.from("ai_credit_topups").insert([
         {
           profile_id: coachId,
-          amount_cents: topupCents,
+          amount_cents: Math.round(topupActions),
           month_key: monthKey,
           note: payload.ai_credit_topup_note?.trim() || null,
           created_by: auth.userId ?? null,

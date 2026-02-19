@@ -105,24 +105,61 @@ export const resolvePlanTier = (value?: string | null): PlanTier => {
   return PLAN_TIERS.includes(value as PlanTier) ? (value as PlanTier) : "free";
 };
 
+const parseIsoDate = (value?: string | null) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+export const isPlanTierOverrideActive = (params: {
+  overrideTier?: string | null;
+  overrideStartsAt?: string | null;
+  overrideExpiresAt?: string | null;
+  overrideUnlimited?: boolean | null;
+  now?: Date;
+}) => {
+  if (!params.overrideTier) {
+    return false;
+  }
+
+  if (params.overrideUnlimited) {
+    return true;
+  }
+
+  const now = params.now ?? new Date();
+  const startsAt = parseIsoDate(params.overrideStartsAt);
+  if (startsAt && startsAt > now) {
+    return false;
+  }
+
+  const expiresAt = parseIsoDate(params.overrideExpiresAt);
+  if (expiresAt && expiresAt <= now) {
+    return false;
+  }
+
+  return true;
+};
+
 export const resolveEffectivePlanTier = (
   planTier: string | null | undefined,
   overrideTier: string | null | undefined,
   overrideExpiresAt: string | null | undefined,
-  now: Date = new Date()
+  now: Date = new Date(),
+  overrideStartsAt?: string | null,
+  overrideUnlimited?: boolean | null
 ): { tier: PlanTier; isOverrideActive: boolean } => {
   const baseTier = resolvePlanTier(planTier);
-  if (!overrideTier) {
+  const isOverrideActive = isPlanTierOverrideActive({
+    overrideTier,
+    overrideStartsAt: overrideStartsAt ?? null,
+    overrideExpiresAt,
+    overrideUnlimited: overrideUnlimited ?? false,
+    now,
+  });
+  if (!overrideTier || !isOverrideActive) {
     return { tier: baseTier, isOverrideActive: false };
   }
-  const override = resolvePlanTier(overrideTier);
-  if (overrideExpiresAt) {
-    const expires = new Date(overrideExpiresAt);
-    if (!Number.isNaN(expires.valueOf()) && expires <= now) {
-      return { tier: baseTier, isOverrideActive: false };
-    }
-  }
-  return { tier: override, isOverrideActive: true };
+  return { tier: resolvePlanTier(overrideTier), isOverrideActive: true };
 };
 
 export const getWorkspaceEntitlements = (

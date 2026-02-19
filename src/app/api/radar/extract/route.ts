@@ -14,7 +14,7 @@ import { PLAN_ENTITLEMENTS } from "@/lib/plans";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
 import { recordActivity } from "@/lib/activity-log";
 import { isAiBudgetBlocked, loadAiBudgetSummary } from "@/lib/ai/budget";
-import { computeAiCostEurCents, formatEurCents } from "@/lib/ai/pricing";
+import { computeAiCostEurCents } from "@/lib/ai/pricing";
 import {
   buildSmart2MoveAiContext,
   normalizeSmart2MoveImpactMarkerX,
@@ -1042,9 +1042,7 @@ export async function POST(req: Request) {
     });
     return Response.json(
       {
-        error: `Budget IA mensuel atteint (${formatEurCents(
-          aiBudget.monthSpentCents
-        )} / ${formatEurCents(aiBudget.monthAvailableCents ?? 0)}). Recharge des credits pour continuer.`,
+        error: `Quota IA atteint (${aiBudget.monthSpentActions.toLocaleString("fr-FR")} / ${(aiBudget.monthAvailableActions ?? 0).toLocaleString("fr-FR")} actions). Recharge des credits pour continuer.`,
       },
       { status: 403 }
     );

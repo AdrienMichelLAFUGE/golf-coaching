@@ -43,7 +43,10 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
   const orgPlanTier = resolveEffectivePlanTier(
     organization?.plan_tier,
     organization?.plan_tier_override,
-    organization?.plan_tier_override_expires_at
+    organization?.plan_tier_override_expires_at,
+    new Date(),
+    organization?.plan_tier_override_starts_at,
+    organization?.plan_tier_override_unlimited
   ).tier;
   const effectiveOrgMessagingTier =
     orgPlanTier === "free" && planTier !== "free" ? planTier : orgPlanTier;

@@ -153,7 +153,7 @@ describe("POST /api/billing/webhook", () => {
     expect(insertedTopup).toEqual(
       expect.objectContaining({
         profile_id: "coach-1",
-        amount_cents: 1000,
+        amount_cents: 350,
         created_by: "admin-1",
       })
     );

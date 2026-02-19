@@ -65,7 +65,7 @@ export async function POST(request: Request) {
   const { data: org, error: orgError } = await admin
     .from("organizations")
     .select(
-      "id, plan_tier, plan_tier_override, plan_tier_override_expires_at, workspace_type, owner_profile_id, stripe_customer_id"
+      "id, plan_tier, plan_tier_override, plan_tier_override_starts_at, plan_tier_override_expires_at, plan_tier_override_unlimited, workspace_type, owner_profile_id, stripe_customer_id"
     )
     .eq("workspace_type", "personal")
     .eq("owner_profile_id", profile.id)
@@ -97,7 +97,10 @@ export async function POST(request: Request) {
   const { tier: planTier, isOverrideActive } = resolveEffectivePlanTier(
     org.plan_tier,
     org.plan_tier_override,
-    org.plan_tier_override_expires_at
+    org.plan_tier_override_expires_at,
+    new Date(),
+    org.plan_tier_override_starts_at,
+    org.plan_tier_override_unlimited
   );
   if (planTier === "enterprise") {
     await recordActivity({

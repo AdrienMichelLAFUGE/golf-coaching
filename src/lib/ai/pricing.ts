@@ -70,6 +70,18 @@ export const computeAiCostEurCentsFromUsageRow = (row: {
   return computeAiCostEurCents(inputTokens, outputTokens, row.model ?? null);
 };
 
+export const computeAiActionCountFromUsageRow = (row: {
+  input_tokens?: number | string | null;
+  output_tokens?: number | string | null;
+  total_tokens?: number | string | null;
+  cost_eur_cents?: number | string | null;
+}) => {
+  const { totalTokens } = resolveAiUsageTokens(row);
+  const storedCost = toNumber(row.cost_eur_cents);
+  if (storedCost > 0 || totalTokens > 0) return 1;
+  return 0;
+};
+
 export const formatEurCents = (value: number) =>
   new Intl.NumberFormat("fr-FR", {
     style: "currency",

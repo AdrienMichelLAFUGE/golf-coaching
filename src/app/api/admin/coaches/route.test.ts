@@ -354,11 +354,18 @@ describe("GET /api/admin/coaches", () => {
           id: "coach-1",
           email: "coach@example.com",
           ai_budget_enabled: true,
-          ai_budget_monthly_cents: 2500,
-          ai_budget_spent_cents_current_month: 145,
-          ai_budget_topup_cents_current_month: 400,
-          ai_budget_remaining_cents_current_month: 2755,
+          ai_budget_monthly_actions: 2500,
+          ai_budget_spent_actions_current_period: 1,
+          ai_budget_spent_cost_cents_current_period: 145,
+          ai_budget_topup_actions_current_period: 400,
+          ai_budget_remaining_actions_current_period: 2899,
         }),
+      })
+    );
+    expect(body.metrics).toEqual(
+      expect.objectContaining({
+        pro_average_cost_cents_per_action: expect.any(Number),
+        active_pro_coaches_count: expect.any(Number),
       })
     );
   });
@@ -455,7 +462,12 @@ describe("PATCH /api/admin/coaches", () => {
       throw new Error("Missing response");
     }
     expect(response.status).toBe(200);
-    expect(update).toHaveBeenCalledWith({ plan_tier_override: "pro" });
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        plan_tier_override: "pro",
+        plan_tier_override_unlimited: false,
+      })
+    );
     expect(updateEq).toHaveBeenCalledWith("id", "org-personal");
   });
 
@@ -498,7 +510,7 @@ describe("PATCH /api/admin/coaches", () => {
       buildRequest({
         coachId: "coach-1",
         ai_budget_enabled: true,
-        ai_budget_monthly_cents: 2500,
+        ai_budget_monthly_actions: 2500,
       })
     );
 
@@ -558,7 +570,7 @@ describe("PATCH /api/admin/coaches", () => {
     const response = await PATCH(
       buildRequest({
         coachId: "coach-1",
-        ai_credit_topup_cents: 1000,
+        ai_credit_topup_actions: 1000,
       })
     );
 
