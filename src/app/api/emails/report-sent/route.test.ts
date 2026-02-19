@@ -1,6 +1,12 @@
 import { POST } from "./route";
 
 jest.mock("server-only", () => ({}));
+jest.mock("@/lib/supabase/server", () => ({
+  createSupabaseAdminClient: jest.fn(() => ({})),
+}));
+jest.mock("@/lib/activity-log", () => ({
+  recordActivity: jest.fn().mockResolvedValue(undefined),
+}));
 
 const sendTransacEmail = jest.fn().mockResolvedValue({});
 const setApiKey = jest.fn();

@@ -92,6 +92,7 @@ export default function CoachStudentsPage() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [tpiFilter, setTpiFilter] = useState<TpiFilter>("all");
+  const [mainGroupFilter, setMainGroupFilter] = useState("all");
   const [pageSize, setPageSize] = useState<25 | 50 | 100>(25);
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
@@ -178,6 +179,27 @@ export default function CoachStudentsPage() {
     );
   }, [pendingStudentRequests, students]);
 
+  const mainGroupFilterOptions = useMemo(() => {
+    const byId = new Map<string, StudentGroupBadge>();
+    Object.values(studentGroupBadgesByStudentId).forEach((badges) => {
+      badges.forEach((badge) => {
+        if (!byId.has(badge.id)) {
+          byId.set(badge.id, badge);
+        }
+      });
+    });
+    return Array.from(byId.values()).sort((left, right) =>
+      left.label.localeCompare(right.label, "fr", { sensitivity: "base" })
+    );
+  }, [studentGroupBadgesByStudentId]);
+
+  const effectiveMainGroupFilter = useMemo(() => {
+    if (currentWorkspaceType !== "org") return "all";
+    if (mainGroupFilter === "all") return "all";
+    const exists = mainGroupFilterOptions.some((option) => option.id === mainGroupFilter);
+    return exists ? mainGroupFilter : "all";
+  }, [currentWorkspaceType, mainGroupFilter, mainGroupFilterOptions]);
+
   const filteredStudents = useMemo(() => {
     const search = query.trim().toLowerCase();
     const searched = studentsWithPending.filter((student) => {
@@ -200,7 +222,7 @@ export default function CoachStudentsPage() {
       return true;
     });
 
-    return filteredByStatus.filter((student) => {
+    const filteredByTpi = filteredByStatus.filter((student) => {
       if (student.kind === "pending") return tpiFilter === "all";
       const tpiActive = tpiActiveById[student.id] ?? Boolean(student.tpi_report_id);
       if (tpiFilter === "all") return true;
@@ -208,7 +230,27 @@ export default function CoachStudentsPage() {
       if (tpiFilter === "inactive") return !tpiActive;
       return true;
     });
-  }, [query, studentsWithPending, statusFilter, tpiFilter, sharedStudentSet, tpiActiveById]);
+
+    if (currentWorkspaceType !== "org" || effectiveMainGroupFilter === "all") {
+      return filteredByTpi;
+    }
+
+    return filteredByTpi.filter((student) => {
+      if (student.kind !== "student") return false;
+      const badges = studentGroupBadgesByStudentId[student.id] ?? [];
+      return badges.some((badge) => badge.id === effectiveMainGroupFilter);
+    });
+  }, [
+    query,
+    studentsWithPending,
+    statusFilter,
+    tpiFilter,
+    currentWorkspaceType,
+    effectiveMainGroupFilter,
+    sharedStudentSet,
+    tpiActiveById,
+    studentGroupBadgesByStudentId,
+  ]);
 
   const totalPages = Math.max(1, Math.ceil(filteredStudents.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -763,6 +805,26 @@ export default function CoachStudentsPage() {
                   <option value="active">TPI: Actif</option>
                   <option value="inactive">TPI: Inactif</option>
                 </select>
+
+                {currentWorkspaceType === "org" ? (
+                  <select
+                    value={effectiveMainGroupFilter}
+                    onChange={(event) => {
+                      setMainGroupFilter(event.target.value);
+                      setPage(1);
+                    }}
+                    disabled={mainGroupFilterOptions.length === 0}
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label="Filtre groupe principal"
+                  >
+                    <option value="all">Groupe: Tous</option>
+                    {mainGroupFilterOptions.map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
               </div>
             </div>
 

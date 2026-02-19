@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import LoginClient from "./LoginClient";
 
 jest.mock("@/lib/supabase/client", () => ({
@@ -28,6 +28,12 @@ jest.mock("next/navigation", () => ({
 }));
 
 describe("LoginClient parent option", () => {
+  const waitForSessionCheckToFinish = async () => {
+    await waitFor(() => {
+      expect(screen.queryByText("Verification de la session...")).not.toBeInTheDocument();
+    });
+  };
+
   beforeEach(() => {
     replaceMock.mockReset();
   });
@@ -41,6 +47,7 @@ describe("LoginClient parent option", () => {
         initialAccountType={null}
       />
     );
+    await waitForSessionCheckToFinish();
 
     fireEvent.click(screen.getByRole("button", { name: /Parent/i }));
 
@@ -62,6 +69,7 @@ describe("LoginClient parent option", () => {
         requireRoleSelection
       />
     );
+    await waitForSessionCheckToFinish();
 
     expect(
       screen.getByText("Choisis d abord ton profil pour acceder au bon espace.")
