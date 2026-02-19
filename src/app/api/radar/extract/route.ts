@@ -355,6 +355,65 @@ const parseCellValue = (value: string | number | null) => {
   return trimmed;
 };
 
+export const isShotLikeLabel = (label: string) => {
+  const trimmed = label.trim();
+  if (!trimmed) return false;
+  if (trimmed === "#") return true;
+  const token = normalizeToken(trimmed);
+  return (
+    token === "shot" ||
+    token === "shot no" ||
+    token === "shot number" ||
+    token === "shot num" ||
+    token === "shot n"
+  );
+};
+
+export const selectTabularDataColumnIndexes = (
+  columns: Array<{ label: string }>
+) =>
+  columns.reduce<number[]>((acc, column, index) => {
+    if (!isShotLikeLabel(column.label)) {
+      acc.push(index);
+    }
+    return acc;
+  }, []);
+
+const parseShotIndexCandidate = (value: unknown) => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed.replace(/[^\d-]/g, ""));
+  if (!Number.isFinite(parsed)) return null;
+  return parsed;
+};
+
+export const deriveTabularRowPrefixCount = (params: {
+  values: Array<string | number | null>;
+  dataColumnCount: number;
+  rowShot: string | number | null;
+  rowCount: number;
+}) => {
+  const { values, dataColumnCount, rowShot, rowCount } = params;
+  const extraCount = values.length - dataColumnCount;
+  if (extraCount <= 0) return 0;
+  const maxPrefix = Math.min(2, extraCount);
+  const firstValueShot = parseShotIndexCandidate(values[0] ?? null);
+  const rowShotValue = parseShotIndexCandidate(rowShot);
+  if (firstValueShot !== null) {
+    if (rowShotValue === null) return maxPrefix;
+    if (Math.abs(firstValueShot - rowShotValue) <= 1) return maxPrefix;
+    if (firstValueShot >= 1 && firstValueShot <= Math.max(rowCount * 3, 50)) {
+      return maxPrefix;
+    }
+  }
+  if (rowShotValue === null && extraCount === 1) return 1;
+  return 0;
+};
+
 const normalizeUnit = (value?: string | null) =>
   (value ?? "")
     .toLowerCase()
@@ -504,6 +563,73 @@ const computeStats = (shots: Array<Record<string, unknown>>) => {
   });
 
   return { avg, dev };
+};
+
+export const computeTabularReviewReasons = (params: {
+  dataColumnKeys: string[];
+  shots: Array<Record<string, unknown>>;
+}) => {
+  const { dataColumnKeys, shots } = params;
+  const reasons: string[] = [];
+
+  if (dataColumnKeys.length === 0) {
+    reasons.push("Aucune colonne de donnees detectee.");
+  }
+
+  if (shots.length === 0) {
+    reasons.push("Aucune ligne de donnees detectee.");
+  }
+
+  if (dataColumnKeys.length === 0 || shots.length === 0) {
+    return reasons;
+  }
+
+  let numericValueCount = 0;
+  let rowsWithNumericValue = 0;
+
+  shots.forEach((shot) => {
+    let rowHasNumericValue = false;
+    dataColumnKeys.forEach((key) => {
+      const value = shot[key];
+      if (typeof value === "number" && Number.isFinite(value)) {
+        numericValueCount += 1;
+        rowHasNumericValue = true;
+      }
+    });
+    if (rowHasNumericValue) {
+      rowsWithNumericValue += 1;
+    }
+  });
+
+  if (numericValueCount === 0) {
+    reasons.push("Aucune valeur numerique fiable detectee.");
+  }
+
+  if (shots.length >= 4 && rowsWithNumericValue < Math.ceil(shots.length * 0.5)) {
+    reasons.push("Trop peu de lignes exploitables apres extraction.");
+  }
+
+  const seenShotIndexes = new Set<number>();
+  let duplicateShotIndexCount = 0;
+  shots.forEach((shot) => {
+    const rawShotIndex = shot.shot_index;
+    const shotIndex =
+      typeof rawShotIndex === "number"
+        ? rawShotIndex
+        : Number(String(rawShotIndex ?? "").replace(/[^\d-]/g, ""));
+    if (!Number.isFinite(shotIndex) || shotIndex <= 0) return;
+    if (seenShotIndexes.has(shotIndex)) {
+      duplicateShotIndexCount += 1;
+      return;
+    }
+    seenShotIndexes.add(shotIndex);
+  });
+
+  if (shots.length >= 4 && duplicateShotIndexCount >= Math.ceil(shots.length * 0.35)) {
+    reasons.push("Indices de shots dupliques, controle manuel recommande.");
+  }
+
+  return reasons;
 };
 
 const extractOutputText = (response: {
@@ -1279,94 +1405,32 @@ Le champ analysis doit suivre EXACTEMENT 4 sections numerotees:
 
   await recordUsage("radar_extract", usageTotal, Date.now() - startedAt, 200);
 
-  try {
-    const verifyPromptTemplate = await loadPromptSection(promptConfig.verifySystemSection);
-    const fallbackVerifyPromptTemplate =
-      promptConfig.verifyFallbackSection
-        ? await loadPromptSection(promptConfig.verifyFallbackSection)
-        : "";
-    const verifyPrompt = verifyPromptTemplate || fallbackVerifyPromptTemplate;
-    if (isSmart2MoveGraph) {
-      const smart2MoveSnapshot = {
-        graph_type: smart2MoveExtracted?.graph_type ?? null,
-        impact_marker_x: normalizedImpactMarkerX ?? null,
-        transition_start_x: normalizedTransitionStartX ?? null,
-        peak_window_x: smart2MovePeakWindow
-          ? { start: smart2MovePeakWindow.start, end: smart2MovePeakWindow.end }
-          : null,
-        annotations: smart2MoveExtracted?.annotations ?? [],
-        analysis: smart2MoveExtracted?.analysis ?? null,
-        summary: smart2MoveExtracted?.summary ?? null,
-      };
-      const baseVerifyText =
-        "Voici l extraction Smart2Move a verifier. Compare a l image source.\n" +
-        `Type selectionne par le coach: ${promptConfig.smart2MoveGraphLabel ?? "Smart2Move"} (${promptConfig.smart2MoveGraphType ?? "unknown"}).\n` +
-        JSON.stringify(smart2MoveSnapshot, null, 2);
-      const verifyResponse = await openai.responses.create({
-        model: "gpt-5.2",
-        input: [
-          {
-            role: "system",
-            content: [{ type: "input_text", text: verifyPrompt }],
-          },
-          {
-            role: "user",
-            content: [
-              {
-                type: "input_text",
-                text: baseVerifyText,
-              },
-              {
-                type: "input_image",
-                image_url: `data:${radarFile.file_mime || "image/png"};base64,${buffer.toString(
-                  "base64"
-                )}`,
-                detail: "high",
-              },
-            ],
-          },
-        ],
-        max_output_tokens: 900,
-        text: {
-          format: {
-            type: "json_schema",
-            name: "radar_extract_smart2move_verify",
-            description: promptConfig.verifySchemaDescription,
-            schema: buildSmart2MoveVerifySchema(),
-            strict: true,
-          },
-        },
-      });
-
-      verifyUsageTotal = mergeUsageMetrics(
-        verifyUsageTotal,
-        verifyResponse.usage ?? null
-      );
-      const verifyText = extractOutputText(verifyResponse);
-      if (!verifyText) {
-        throw new Error("Verification vide.");
-      }
-      const verification = JSON.parse(verifyText) as Smart2MoveGraphVerification;
-      if (!verification.is_valid) {
-        const issueText = verification.issues?.slice(0, 3).join(" | ");
-        verificationWarning = issueText
-          ? `Verification extraction Smart2Move echouee: ${issueText}`
-          : "Verification extraction Smart2Move echouee.";
-      }
-      if (!verification.matches_selected_graph_type) {
-        verificationWarning = verificationWarning
-          ? `${verificationWarning} | Le graphe extrait ne correspond pas au type selectionne par le coach.`
-          : "Le graphe extrait ne correspond pas au type selectionne par le coach.";
-      }
-    } else {
-      const verificationSnapshot = buildVerificationSnapshot(extracted ?? { columns: [], rows: [] });
-      const baseVerifyText =
-        `Voici l extraction ${promptConfig.sourceLabel} a verifier. ` +
-        "Compare a l image source et signale toute incoherence.\n" +
-        JSON.stringify(verificationSnapshot, null, 2);
-
-      const callVerify = async (extraHint?: string) =>
-        openai.responses.create({
+  const shouldRunVerification = false;
+  if (shouldRunVerification) {
+    try {
+      const verifyPromptTemplate = await loadPromptSection(promptConfig.verifySystemSection);
+      const fallbackVerifyPromptTemplate =
+        promptConfig.verifyFallbackSection
+          ? await loadPromptSection(promptConfig.verifyFallbackSection)
+          : "";
+      const verifyPrompt = verifyPromptTemplate || fallbackVerifyPromptTemplate;
+      if (isSmart2MoveGraph) {
+        const smart2MoveSnapshot = {
+          graph_type: smart2MoveExtracted?.graph_type ?? null,
+          impact_marker_x: normalizedImpactMarkerX ?? null,
+          transition_start_x: normalizedTransitionStartX ?? null,
+          peak_window_x: smart2MovePeakWindow
+            ? { start: smart2MovePeakWindow.start, end: smart2MovePeakWindow.end }
+            : null,
+          annotations: smart2MoveExtracted?.annotations ?? [],
+          analysis: smart2MoveExtracted?.analysis ?? null,
+          summary: smart2MoveExtracted?.summary ?? null,
+        };
+        const baseVerifyText =
+          "Voici l extraction Smart2Move a verifier. Compare a l image source.\n" +
+          `Type selectionne par le coach: ${promptConfig.smart2MoveGraphLabel ?? "Smart2Move"} (${promptConfig.smart2MoveGraphType ?? "unknown"}).\n` +
+          JSON.stringify(smart2MoveSnapshot, null, 2);
+        const verifyResponse = await openai.responses.create({
           model: "gpt-5.2",
           input: [
             {
@@ -1378,7 +1442,7 @@ Le champ analysis doit suivre EXACTEMENT 4 sections numerotees:
               content: [
                 {
                   type: "input_text",
-                  text: extraHint ? `${baseVerifyText}\n\n${extraHint}` : baseVerifyText,
+                  text: baseVerifyText,
                 },
                 {
                   type: "input_image",
@@ -1394,63 +1458,130 @@ Le champ analysis doit suivre EXACTEMENT 4 sections numerotees:
           text: {
             format: {
               type: "json_schema",
-              name: "radar_extract_verify",
+              name: "radar_extract_smart2move_verify",
               description: promptConfig.verifySchemaDescription,
-              schema: buildRadarVerifySchema(),
+              schema: buildSmart2MoveVerifySchema(),
               strict: true,
             },
           },
         });
 
-      let verifyResponse = await callVerify();
-      verifyUsageTotal = mergeUsageMetrics(
-        verifyUsageTotal,
-        verifyResponse.usage ?? null
-      );
-      let verifyText = extractOutputText(verifyResponse);
-      if (!verifyText) {
-        throw new Error("Verification vide.");
-      }
-
-      let verification = JSON.parse(verifyText) as RadarVerification;
-      if (!verification.is_valid && (verification.confidence ?? 0) < 0.6) {
-        verifyResponse = await callVerify(
-          "Si tu as un doute, retourne is_valid=true avec une confidence basse et liste les points a verifier."
-        );
         verifyUsageTotal = mergeUsageMetrics(
           verifyUsageTotal,
           verifyResponse.usage ?? null
         );
-        verifyText = extractOutputText(verifyResponse);
-        if (verifyText) {
-          verification = JSON.parse(verifyText) as RadarVerification;
+        const verifyText = extractOutputText(verifyResponse);
+        if (!verifyText) {
+          throw new Error("Verification vide.");
+        }
+        const verification = JSON.parse(verifyText) as Smart2MoveGraphVerification;
+        if (!verification.is_valid) {
+          const issueText = verification.issues?.slice(0, 3).join(" | ");
+          verificationWarning = issueText
+            ? `Verification extraction Smart2Move echouee: ${issueText}`
+            : "Verification extraction Smart2Move echouee.";
+        }
+        if (!verification.matches_selected_graph_type) {
+          verificationWarning = verificationWarning
+            ? `${verificationWarning} | Le graphe extrait ne correspond pas au type selectionne par le coach.`
+            : "Le graphe extrait ne correspond pas au type selectionne par le coach.";
+        }
+      } else {
+        const verificationSnapshot = buildVerificationSnapshot(
+          extracted ?? { columns: [], rows: [] }
+        );
+        const baseVerifyText =
+          `Voici l extraction ${promptConfig.sourceLabel} a verifier. ` +
+          "Compare a l image source et signale toute incoherence.\n" +
+          JSON.stringify(verificationSnapshot, null, 2);
+
+        const callVerify = async (extraHint?: string) =>
+          openai.responses.create({
+            model: "gpt-5.2",
+            input: [
+              {
+                role: "system",
+                content: [{ type: "input_text", text: verifyPrompt }],
+              },
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "input_text",
+                    text: extraHint ? `${baseVerifyText}\n\n${extraHint}` : baseVerifyText,
+                  },
+                  {
+                    type: "input_image",
+                    image_url: `data:${radarFile.file_mime || "image/png"};base64,${buffer.toString(
+                      "base64"
+                    )}`,
+                    detail: "high",
+                  },
+                ],
+              },
+            ],
+            max_output_tokens: 900,
+            text: {
+              format: {
+                type: "json_schema",
+                name: "radar_extract_verify",
+                description: promptConfig.verifySchemaDescription,
+                schema: buildRadarVerifySchema(),
+                strict: true,
+              },
+            },
+          });
+
+        let verifyResponse = await callVerify();
+        verifyUsageTotal = mergeUsageMetrics(
+          verifyUsageTotal,
+          verifyResponse.usage ?? null
+        );
+        let verifyText = extractOutputText(verifyResponse);
+        if (!verifyText) {
+          throw new Error("Verification vide.");
+        }
+
+        let verification = JSON.parse(verifyText) as RadarVerification;
+        if (!verification.is_valid && (verification.confidence ?? 0) < 0.6) {
+          verifyResponse = await callVerify(
+            "Si tu as un doute, retourne is_valid=true avec une confidence basse et liste les points a verifier."
+          );
+          verifyUsageTotal = mergeUsageMetrics(
+            verifyUsageTotal,
+            verifyResponse.usage ?? null
+          );
+          verifyText = extractOutputText(verifyResponse);
+          if (verifyText) {
+            verification = JSON.parse(verifyText) as RadarVerification;
+          }
+        }
+
+        if (!verification.is_valid) {
+          const issueText = verification.issues?.slice(0, 3).join(" | ");
+          const message = issueText
+            ? `Verification extraction echouee: ${issueText}`
+            : "Verification extraction echouee.";
+          verificationWarning = message;
         }
       }
 
-      if (!verification.is_valid) {
-        const issueText = verification.issues?.slice(0, 3).join(" | ");
-        const message = issueText
-          ? `Verification extraction echouee: ${issueText}`
-          : "Verification extraction echouee.";
-        verificationWarning = message;
-      }
+      await recordUsage(
+        "radar_extract_verify",
+        verifyUsageTotal,
+        Date.now() - verifyStartedAt,
+        200
+      );
+    } catch (error) {
+      verificationWarning =
+        (error as Error).message ?? "Verification extraction impossible.";
+      await recordUsage(
+        "radar_extract_verify",
+        verifyUsageTotal,
+        Date.now() - verifyStartedAt,
+        200
+      );
     }
-
-    await recordUsage(
-      "radar_extract_verify",
-      verifyUsageTotal,
-      Date.now() - verifyStartedAt,
-      200
-    );
-  } catch (error) {
-    verificationWarning =
-      (error as Error).message ?? "Verification extraction impossible.";
-    await recordUsage(
-      "radar_extract_verify",
-      verifyUsageTotal,
-      Date.now() - verifyStartedAt,
-      200
-    );
   }
 
   if (isSmart2MoveGraph) {
@@ -1538,27 +1669,28 @@ Le champ analysis doit suivre EXACTEMENT 4 sections numerotees:
   }));
   const rawRows = extracted.rows ?? [];
 
-  const isShotColumn = (column: { label: string }) => {
-    const label = column.label.trim();
-    if (label === "#") return true;
-    const token = normalizeToken(label);
-    return (
-      token === "shot" ||
-      token === "shot no" ||
-      token === "shot number" ||
-      token === "shot num" ||
-      token === "shot n"
-    );
-  };
+  const rawDataColumnIndexes = selectTabularDataColumnIndexes(rawColumns).filter((index) => {
+    const column = rawColumns[index];
+    return !buildKey(column.group, column.label).startsWith("shot_index");
+  });
 
-  const isHashColumn = (column: { label: string }) => column.label.trim() === "#";
+  const dataColumnSourceIndexes =
+    rawDataColumnIndexes.length > 0
+      ? rawDataColumnIndexes
+      : rawColumns.map((_column, index) => index);
+  const dataColumns = dataColumnSourceIndexes.map((index) => rawColumns[index]);
+  const columns: RadarColumn[] = [{ group: "Shot", label: "#", unit: null }, ...dataColumns];
 
-  const shouldDropShotTitle =
-    rawColumns.length >= 2 && isHashColumn(rawColumns[0]) && isShotColumn(rawColumns[1]);
+  const shotColumnSourceIndexes = rawColumns.reduce<number[]>((acc, column, index) => {
+    if (
+      isShotLikeLabel(column.label) ||
+      buildKey(column.group, column.label).startsWith("shot_index")
+    ) {
+      acc.push(index);
+    }
+    return acc;
+  }, []);
 
-  const columns = shouldDropShotTitle
-    ? rawColumns.filter((_column, index) => index !== 1)
-    : rawColumns;
   const keyCount = new Map<string, number>();
   const normalizedColumns = columns.map((column) => {
     const baseKey = buildKey(column.group, column.label);
@@ -1568,61 +1700,79 @@ Le champ analysis doit suivre EXACTEMENT 4 sections numerotees:
     return { ...column, key };
   });
 
-  const dataColumnCount = normalizedColumns.filter(
-    (column) => !column.key.startsWith("shot_index")
-  ).length;
+  const dataColumnsWithKeys = normalizedColumns.filter((column) => column.key !== "shot_index");
+  const dataColumnCount = dataColumnsWithKeys.length;
 
   const shots = rawRows.map((row, rowIndex) => {
     const values = Array.isArray(row.values) ? row.values : [];
-    let valueIndex = 0;
-    let shotValue = row.shot ?? null;
-    const valuesIncludeShot = values.length === dataColumnCount + 1;
-    if (valuesIncludeShot) {
-      if (shotValue === null || shotValue === undefined || shotValue === "") {
+    const rowShot = row.shot ?? null;
+    const usesSourceIndexes =
+      values.length >= rawColumns.length &&
+      dataColumnSourceIndexes.every((columnIndex) => columnIndex < values.length);
+    const prefixCount = deriveTabularRowPrefixCount({
+      values,
+      dataColumnCount,
+      rowShot,
+      rowCount: rawRows.length,
+    });
+
+    let shotValue = rowShot;
+    if (shotValue === null || shotValue === undefined || shotValue === "") {
+      if (usesSourceIndexes) {
+        const firstShotSourceIndex = shotColumnSourceIndexes.find(
+          (columnIndex) => columnIndex < values.length
+        );
+        if (firstShotSourceIndex !== undefined) {
+          shotValue = values[firstShotSourceIndex] ?? null;
+        }
+      }
+      if (
+        (shotValue === null || shotValue === undefined || shotValue === "") &&
+        prefixCount > 0
+      ) {
         shotValue = values[0] ?? null;
       }
-      valueIndex = 1;
     }
 
-    const shotIndexRaw = shotValue ?? rowIndex + 1;
+    const parsedShotIndex = parseShotIndexCandidate(shotValue);
     const shotIndex =
-      typeof shotIndexRaw === "number"
-        ? shotIndexRaw
-        : Number(String(shotIndexRaw).replace(/[^\d-]/g, "")) || rowIndex + 1;
+      parsedShotIndex !== null && parsedShotIndex > 0 ? parsedShotIndex : rowIndex + 1;
     const shot: Record<string, unknown> = { shot_index: shotIndex };
-    normalizedColumns.forEach((column) => {
-      if (column.key.startsWith("shot_index")) {
-        return;
-      }
-      const value = values[valueIndex];
+
+    dataColumnsWithKeys.forEach((column, dataIndex) => {
+      const sourceIndex = dataColumnSourceIndexes[dataIndex];
+      const valueIndex = usesSourceIndexes ? sourceIndex : prefixCount + dataIndex;
+      const value =
+        valueIndex >= 0 && valueIndex < values.length ? values[valueIndex] ?? null : null;
       shot[column.key] = parseCellValue(value);
-      valueIndex += 1;
     });
+
     return shot;
   });
 
-  const rawAvg = Array.isArray(extracted.avg) ? extracted.avg : null;
-  const rawDev = Array.isArray(extracted.dev) ? extracted.dev : null;
-  const alignedAvg =
-    shouldDropShotTitle && rawAvg && rawAvg.length === rawColumns.length
-      ? rawAvg.filter((_value, index) => index !== 1)
-      : rawAvg;
-  const alignedDev =
-    shouldDropShotTitle && rawDev && rawDev.length === rawColumns.length
-      ? rawDev.filter((_value, index) => index !== 1)
-      : rawDev;
+  const alignStatsVector = (stats: Array<string | number | null> | null | undefined) => {
+    if (!Array.isArray(stats)) return null;
+    if (dataColumnSourceIndexes.every((columnIndex) => columnIndex < stats.length)) {
+      return dataColumnSourceIndexes.map((columnIndex) => stats[columnIndex] ?? null);
+    }
+    if (stats.length >= dataColumnCount) {
+      const prefixCount = Math.min(Math.max(stats.length - dataColumnCount, 0), 2);
+      return stats.slice(prefixCount, prefixCount + dataColumnCount);
+    }
+    return stats;
+  };
 
   const statsFromModel = {
-    avg: alignedAvg ?? null,
-    dev: alignedDev ?? null,
+    avg: alignStatsVector(extracted.avg),
+    dev: alignStatsVector(extracted.dev),
   };
 
   const statsFromRows = computeStats(shots);
 
-  const avg: Record<string, number | null> = {};
-  const dev: Record<string, number | null> = {};
+  const avg: Record<string, number | null> = { shot_index: null };
+  const dev: Record<string, number | null> = { shot_index: null };
 
-  normalizedColumns.forEach((column, index) => {
+  dataColumnsWithKeys.forEach((column, index) => {
     const avgValue = statsFromModel.avg?.[index] ?? null;
     const devValue = statsFromModel.dev?.[index] ?? null;
     const parsedAvg = parseCellValue(avgValue) as number | string | null;
@@ -1648,10 +1798,23 @@ Le champ analysis doit suivre EXACTEMENT 4 sections numerotees:
   });
   analytics.meta.club = resolveClubFromAnalytics(metadataForAnalytics.club, analytics);
 
+  const tabularReviewReasons = computeTabularReviewReasons({
+    dataColumnKeys: dataColumnsWithKeys.map((column) => column.key),
+    shots,
+  });
+  const qualityWarning =
+    tabularReviewReasons.length > 0
+      ? `Controle manuel recommande: ${tabularReviewReasons.join(" | ")}`
+      : null;
+  const persistedWarning =
+    [verificationWarning, qualityWarning].filter((entry) => Boolean(entry && entry.trim())).join(" | ") ||
+    null;
+  const extractionStatus = persistedWarning ? "review" : "ready";
+
   const { error: updateError } = await admin
     .from("radar_files")
     .update({
-      status: "review",
+      status: extractionStatus,
       columns: normalizedColumns,
       shots,
       stats: { avg, dev },
@@ -1659,7 +1822,7 @@ Le champ analysis doit suivre EXACTEMENT 4 sections numerotees:
       config,
       analytics,
       extracted_at: new Date().toISOString(),
-      error: verificationWarning,
+      error: persistedWarning,
     })
     .eq("id", radarFileId);
 
@@ -1684,11 +1847,14 @@ Le champ analysis doit suivre EXACTEMENT 4 sections numerotees:
     orgId: radarFile.org_id,
     entityType: "radar_file",
     entityId: radarFile.id,
-    message: verificationWarning
-      ? "Import datas termine avec avertissement."
-      : "Import datas termine.",
+    message:
+      extractionStatus === "review"
+        ? "Import datas termine, verification manuelle recommandee."
+        : "Import datas termine.",
     metadata: {
-      hasWarning: Boolean(verificationWarning),
+      hasWarning: Boolean(persistedWarning),
+      status: extractionStatus,
+      reviewReasonCount: tabularReviewReasons.length,
     },
   });
 

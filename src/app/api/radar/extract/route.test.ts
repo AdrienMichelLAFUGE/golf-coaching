@@ -1,4 +1,9 @@
-import { POST } from "./route";
+import {
+  POST,
+  computeTabularReviewReasons,
+  deriveTabularRowPrefixCount,
+  selectTabularDataColumnIndexes,
+} from "./route";
 
 jest.mock("server-only", () => ({}));
 
@@ -199,5 +204,74 @@ describe("POST /api/radar/extract", () => {
     expect(body.error).toBe("Acces refuse.");
     expect(admin.from).toHaveBeenCalledWith("app_activity_logs");
     expect(admin.storage.from).not.toHaveBeenCalled();
+  });
+});
+
+describe("radar tabular normalization helpers", () => {
+  it("keeps only data columns when shot-like headers are duplicated", () => {
+    const indexes = selectTabularDataColumnIndexes([
+      { label: "#" },
+      { label: "Shot" },
+      { label: "Ball Speed" },
+      { label: "Spin" },
+    ]);
+
+    expect(indexes).toEqual([2, 3]);
+  });
+
+  it("detects two shot-prefix values when row includes # and shot", () => {
+    const prefix = deriveTabularRowPrefixCount({
+      values: [1, 1, 167.2, 2450],
+      dataColumnCount: 2,
+      rowShot: 1,
+      rowCount: 12,
+    });
+
+    expect(prefix).toBe(2);
+  });
+
+  it("falls back to one prefix when row shot is missing", () => {
+    const prefix = deriveTabularRowPrefixCount({
+      values: ["12", 165.1, 2380],
+      dataColumnCount: 2,
+      rowShot: null,
+      rowCount: 20,
+    });
+
+    expect(prefix).toBe(1);
+  });
+
+  it("flags review when there are no data columns", () => {
+    const reasons = computeTabularReviewReasons({
+      dataColumnKeys: [],
+      shots: [{ shot_index: 1 }],
+    });
+
+    expect(reasons).toContain("Aucune colonne de donnees detectee.");
+  });
+
+  it("flags review when numeric payload is empty", () => {
+    const reasons = computeTabularReviewReasons({
+      dataColumnKeys: ["shot_type"],
+      shots: [
+        { shot_index: 1, shot_type: "draw" },
+        { shot_index: 2, shot_type: "fade" },
+      ],
+    });
+
+    expect(reasons).toContain("Aucune valeur numerique fiable detectee.");
+  });
+
+  it("does not flag review on coherent numeric rows", () => {
+    const reasons = computeTabularReviewReasons({
+      dataColumnKeys: ["speed_ball", "spin_rpm"],
+      shots: [
+        { shot_index: 1, speed_ball: 158.3, spin_rpm: 2420 },
+        { shot_index: 2, speed_ball: 159.1, spin_rpm: 2380 },
+        { shot_index: 3, speed_ball: 157.8, spin_rpm: 2490 },
+      ],
+    });
+
+    expect(reasons).toHaveLength(0);
   });
 });

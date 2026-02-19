@@ -161,6 +161,12 @@ type AiPreview = {
   mode: "improve" | "propagate" | "finalize";
 };
 
+type AiFinalizeDraft = {
+  runSummary: boolean;
+  runPlan: boolean;
+  runAutoDetectDatas: boolean;
+};
+
 type PropagationPayload = {
   sectionTitle: string;
   sectionContent: string;
@@ -324,6 +330,23 @@ const isSummaryTitle = (title: string) => /resume|synthese|bilan/i.test(title);
 
 const isPlanTitle = (title: string) =>
   /plan|planning|programme|routine|semaine/i.test(title);
+
+const mergeRadarConfigWithDefaults = (base?: RadarConfig | null): RadarConfig => ({
+  ...defaultRadarConfig,
+  ...(base ?? {}),
+  charts: {
+    ...defaultRadarConfig.charts,
+    ...(base?.charts ?? {}),
+  },
+  thresholds: {
+    ...defaultRadarConfig.thresholds,
+    ...(base?.thresholds ?? {}),
+  },
+  options: {
+    ...defaultRadarConfig.options,
+    ...(base?.options ?? {}),
+  },
+});
 
 const normalizeSectionType = (value?: string | null): SectionType =>
   value === "image"
@@ -638,9 +661,18 @@ export default function CoachReportBuilderPage() {
   const sectionCreateTitleId = useId();
   const aiAssistantTitleId = useId();
   const aiSettingsTitleId = useId();
+  const aiFinalizeTitleId = useId();
+  const publishFinalizeHintTitleId = useId();
   const studentPickerTitleId = useId();
   const [aiAssistantModalOpen, setAiAssistantModalOpen] = useState(false);
   const [aiSettingsModalOpen, setAiSettingsModalOpen] = useState(false);
+  const [aiFinalizeModalOpen, setAiFinalizeModalOpen] = useState(false);
+  const [publishFinalizeHintOpen, setPublishFinalizeHintOpen] = useState(false);
+  const [aiFinalizeDraft, setAiFinalizeDraft] = useState<AiFinalizeDraft>({
+    runSummary: false,
+    runPlan: false,
+    runAutoDetectDatas: false,
+  });
   const [stickyActionsExpanded, setStickyActionsExpanded] = useState(false);
   const [studentPickerOpen, setStudentPickerOpen] = useState(false);
   const [studentPickerQuery, setStudentPickerQuery] = useState("");
@@ -654,6 +686,7 @@ export default function CoachReportBuilderPage() {
     radarTechRef.current = radarTech;
   }, [radarTech]);
   const radarImportTitleId = useId();
+  const radarAutoDetectConfirmTitleId = useId();
   const [radarImportOpen, setRadarImportOpen] = useState(false);
   const [radarImportSectionId, setRadarImportSectionId] = useState<string | null>(
     null
@@ -714,6 +747,7 @@ export default function CoachReportBuilderPage() {
   const [radarConfigSectionId, setRadarConfigSectionId] = useState<string | null>(null);
   const [radarConfigSaving, setRadarConfigSaving] = useState(false);
   const [radarConfigError, setRadarConfigError] = useState("");
+  const [radarAutoDetectConfirmOpen, setRadarAutoDetectConfirmOpen] = useState(false);
   const [tpiContext, setTpiContext] = useState("");
   const [tpiContextLoading, setTpiContextLoading] = useState(false);
   const [studentId, setStudentId] = useState("");
@@ -1031,6 +1065,43 @@ export default function CoachReportBuilderPage() {
     if (radarShowAllFiles) return radarFiles;
     return radarFiles.filter((file) => radarActiveFileIds.has(file.id));
   }, [radarFiles, radarActiveFileIds, radarShowAllFiles]);
+
+  const finalizeSummaryTargets = useMemo(
+    () =>
+      reportSections.filter(
+        (section) => section.type === "text" && isSummaryTitle(section.title)
+      ),
+    [reportSections]
+  );
+  const finalizePlanTargets = useMemo(
+    () =>
+      reportSections.filter((section) => section.type === "text" && isPlanTitle(section.title)),
+    [reportSections]
+  );
+  const finalizeRadarSections = useMemo(
+    () =>
+      reportSections
+        .filter((section) => section.type === "radar" && section.radarFileId)
+        .map((section) => {
+          const radarFileId = section.radarFileId as string;
+          const fileConfig = radarFileMap.get(radarFileId)?.config ?? null;
+          const baseConfig = section.radarConfig ?? fileConfig ?? defaultRadarConfig;
+          return {
+            sectionId: section.id,
+            baseConfig,
+          };
+        }),
+    [radarFileMap, reportSections]
+  );
+  const canFinalizeWithAutoDetect = finalizeRadarSections.some(
+    (section) => section.baseConfig.mode === "ai"
+  );
+  const guidedRadarConfigSectionId =
+    finalizeRadarSections.find((section) => section.baseConfig.mode !== "ai")?.sectionId ?? null;
+  const hasFinalizeActions =
+    finalizeSummaryTargets.length > 0 ||
+    finalizePlanTargets.length > 0 ||
+    finalizeRadarSections.length > 0;
 
   const selectedLayout = useMemo(
     () => layouts.find((layout) => layout.id === selectedLayoutId) ?? null,
@@ -2326,7 +2397,8 @@ export default function CoachReportBuilderPage() {
 
   const processRadarFile = async (
     file: File,
-    manualMarkers: Smart2MoveManualMarkers | null = null
+    manualMarkers: Smart2MoveManualMarkers | null = null,
+    targetSectionId: string | null = null
   ) => {
     if (!radarAddonEnabled) {
       setRadarError("Plan Pro requis pour importer un fichier datas.");
@@ -2469,6 +2541,19 @@ export default function CoachReportBuilderPage() {
     const refreshed = await loadRadarFiles();
     stopRadarUploadProgress();
     setRadarUploadProgress(100);
+    const importedFile = refreshed.find((entry) => entry.id === radarRow.id) ?? null;
+    if (targetSectionId) {
+      setReportSections((prev) =>
+        prev.map((section) => {
+          if (section.id !== targetSectionId || section.type !== "radar") return section;
+          return {
+            ...section,
+            radarFileId: radarRow.id,
+            radarConfig: mergeRadarConfigWithDefaults(importedFile?.config ?? null),
+          };
+        })
+      );
+    }
     const reviewFile = refreshed.find((file) => file.id === radarRow.id);
     if (reviewFile?.status === "review") {
       setRadarReview(reviewFile);
@@ -2538,7 +2623,7 @@ export default function CoachReportBuilderPage() {
     setRadarReview(null);
   };
 
-  const handleRadarUploadBatch = async (files: File[]) => {
+  const handleRadarUploadBatch = async (files: File[], targetSectionId: string | null = null) => {
     if (!files.length) return;
     setRadarUploading(radarTechRef.current !== "smart2move");
     setRadarUploadBatch({ current: 0, total: files.length });
@@ -2557,7 +2642,7 @@ export default function CoachReportBuilderPage() {
         }
       }
       setRadarUploading(true);
-      const ok = await processRadarFile(file, markers);
+      const ok = await processRadarFile(file, markers, targetSectionId);
       if (!ok) break;
     }
     setRadarUploading(false);
@@ -3464,6 +3549,14 @@ export default function CoachReportBuilderPage() {
     setStatusMessage("");
     setStatusType("idle");
     setPendingSectionDeletion(null);
+    setAiFinalizeModalOpen(false);
+    setPublishFinalizeHintOpen(false);
+    setAiFinalizeDraft({
+      runSummary: false,
+      runPlan: false,
+      runAutoDetectDatas: false,
+    });
+    setRadarAutoDetectConfirmOpen(false);
   }, [clearReportUndoHistory, setReportSections]);
 
   const handleResumeLocalDraft = () => {
@@ -3564,6 +3657,7 @@ export default function CoachReportBuilderPage() {
     if (radarConfigSaving) return;
     setRadarConfigOpen(false);
     setRadarConfigSectionId(null);
+    setRadarAutoDetectConfirmOpen(false);
   };
 
   const buildRadarAiContext = () => {
@@ -3651,7 +3745,10 @@ export default function CoachReportBuilderPage() {
     }
   };
 
-  const handleAutoDetectRadarGraphs = async (answers: Record<string, string> = {}) => {
+  const handleAutoDetectRadarGraphs = async (
+    answers: Record<string, string> = {},
+    sectionsOverride?: ReportSection[]
+  ) => {
     if (aiFullLocked) {
       openPremiumModal();
       return;
@@ -3660,12 +3757,13 @@ export default function CoachReportBuilderPage() {
     setRadarAiAutoBusy(true);
     setRadarAiQaError("");
 
+    const sectionsSource = sectionsOverride ?? reportSections;
     const context = buildRadarAiContext();
     const enrichedAnswers = {
       ...answers,
       ...(workingClub && !answers.club ? { club: workingClub } : null),
     };
-    const radarSections = reportSections.filter((section) => section.type === "radar");
+    const radarSections = sectionsSource.filter((section) => section.type === "radar");
     const aiSections = radarSections
       .map((section) => {
         const baseConfig =
@@ -3777,7 +3875,7 @@ export default function CoachReportBuilderPage() {
       let matchedSections = 0;
       let totalSelected = 0;
       let totalValidSelected = 0;
-      const updatedSections = reportSections.map((section) => {
+      const updatedSections = sectionsSource.map((section) => {
         if (section.type !== "radar") return section;
         const baseConfig =
           section.radarConfig ??
@@ -3894,6 +3992,50 @@ export default function CoachReportBuilderPage() {
     setRadarConfigSaving(false);
     setRadarConfigOpen(false);
     setRadarConfigSectionId(null);
+    setRadarAutoDetectConfirmOpen(false);
+  };
+
+  const handleOpenRadarAutoDetectConfirm = () => {
+    if (aiFullLocked) {
+      openPremiumModal();
+      return;
+    }
+    if (radarAiAutoBusy) return;
+    if (!radarConfigSectionId) {
+      setRadarConfigError("Section datas introuvable.");
+      return;
+    }
+    if (radarConfigDraft.mode !== "ai") {
+      setRadarConfigError("Passe la section en mode IA avant l auto detection.");
+      return;
+    }
+    const currentSection = reportSections.find((section) => section.id === radarConfigSectionId);
+    if (!currentSection || currentSection.type !== "radar") {
+      setRadarConfigError("Section datas introuvable.");
+      return;
+    }
+    if (!currentSection.radarFileId) {
+      setRadarConfigError("Selectionne un fichier datas avant de lancer l auto detection.");
+      return;
+    }
+    setRadarConfigError("");
+    setRadarAutoDetectConfirmOpen(true);
+  };
+
+  const handleRunRadarAutoDetectFromConfig = async () => {
+    if (aiFullLocked) {
+      openPremiumModal();
+      return;
+    }
+    if (!radarConfigSectionId) return;
+    const nextSections = reportSections.map((section) =>
+      section.id === radarConfigSectionId ? { ...section, radarConfig: radarConfigDraft } : section
+    );
+    setReportSections(nextSections);
+    setRadarAutoDetectConfirmOpen(false);
+    setRadarConfigOpen(false);
+    setRadarConfigSectionId(null);
+    await handleAutoDetectRadarGraphs({}, nextSections);
   };
 
   const handleSaveReport = async (send: boolean) => {
@@ -4145,6 +4287,27 @@ export default function CoachReportBuilderPage() {
     if (typeof window !== "undefined" && isNewReport) {
       window.localStorage.removeItem(draftKey);
     }
+  };
+
+  const shouldSuggestFinalizeBeforePublish =
+    canUseAiFull && !aiFullLocked && hasFinalizeActions;
+
+  const handlePublishWithHint = () => {
+    if (!shouldSuggestFinalizeBeforePublish) {
+      void handleSaveReport(true);
+      return;
+    }
+    setPublishFinalizeHintOpen(true);
+  };
+
+  const handleContinuePublishFromHint = () => {
+    setPublishFinalizeHintOpen(false);
+    void handleSaveReport(true);
+  };
+
+  const handleOpenFinalizeFromPublishHint = () => {
+    setPublishFinalizeHintOpen(false);
+    openAiFinalizeModal();
   };
 
   const getAiDefaults = () => ({
@@ -4806,86 +4969,127 @@ export default function CoachReportBuilderPage() {
     setClarifyOpen(true);
   };
 
-  const handleAiFinalize = async () => {
+  const buildAiFinalizeDefaults = (): AiFinalizeDraft => ({
+    runSummary: finalizeSummaryTargets.length > 0,
+    runPlan: finalizePlanTargets.length > 0,
+    runAutoDetectDatas: canFinalizeWithAutoDetect,
+  });
+
+  const openAiFinalizeModal = () => {
+    if (aiFullLocked) {
+      openPremiumModal();
+      return;
+    }
+    if (!hasFinalizeActions) {
+      setAiError("Aucune action disponible: ajoute une section Resume, Plan ou Datas.");
+      return;
+    }
+    setAiError("");
+    setAiFinalizeDraft(buildAiFinalizeDefaults());
+    setAiFinalizeModalOpen(true);
+  };
+
+  const handleAiFinalize = async (draft: AiFinalizeDraft) => {
     if (!canUseAiFull) return;
-    const summaryTargets = reportSections.filter(
-      (item) => item.type === "text" && isSummaryTitle(item.title)
-    );
-    const planTargets = reportSections.filter(
-      (item) => item.type === "text" && isPlanTitle(item.title)
-    );
-    if (summaryTargets.length === 0 && planTargets.length === 0) {
-      setAiError("Aucune section Resume ou Plan detectee.");
+    const shouldRunSummary = draft.runSummary && finalizeSummaryTargets.length > 0;
+    const shouldRunPlan = draft.runPlan && finalizePlanTargets.length > 0;
+    const shouldRunAutoDetect = draft.runAutoDetectDatas && canFinalizeWithAutoDetect;
+
+    if (!shouldRunSummary && !shouldRunPlan && !shouldRunAutoDetect) {
+      if (finalizeRadarSections.length > 0 && !canFinalizeWithAutoDetect) {
+        setAiError("Passe une section Datas en mode IA avant l auto detect.");
+      } else {
+        setAiError("Selectionne au moins une action de finalisation.");
+      }
       return;
     }
 
-    const contextSections = reportSections
-      .filter((item) => item.type === "text")
-      .filter((item) => !isSummaryTitle(item.title))
-      .filter((item) => !isPlanTitle(item.title))
-      .filter((item) => item.content.trim())
-      .map((item) => ({ title: item.title, content: item.content }));
-    if (workingObservations.trim()) {
+    const summaryTargets = shouldRunSummary ? finalizeSummaryTargets : [];
+    const planTargets = shouldRunPlan ? finalizePlanTargets : [];
+    const needsTextContext = summaryTargets.length > 0 || planTargets.length > 0;
+    const contextSections = needsTextContext
+      ? reportSections
+          .filter((item) => item.type === "text")
+          .filter((item) => !isSummaryTitle(item.title))
+          .filter((item) => !isPlanTitle(item.title))
+          .filter((item) => item.content.trim())
+          .map((item) => ({ title: item.title, content: item.content }))
+      : [];
+    if (needsTextContext && workingObservations.trim()) {
       contextSections.push({
         title: "Constats",
         content: workingObservations.trim(),
       });
     }
 
-    if (contextSections.length === 0) {
+    if (needsTextContext && contextSections.length === 0) {
       setAiError("Ajoute du contenu avant de finaliser.");
       return;
     }
 
     setAiBusyId("finalize");
-    const summaryMap = new Map<string, string>();
-    for (const target of summaryTargets) {
-      const summaryText = await callAi({
-        action: "summary",
-        sectionTitle: target.title,
-        allSections: contextSections,
-      });
-      if (summaryText) {
-        summaryMap.set(target.id, summaryText);
+    try {
+      if (needsTextContext) {
+        const summaryMap = new Map<string, string>();
+        for (const target of summaryTargets) {
+          const summaryText = await callAi({
+            action: "summary",
+            sectionTitle: target.title,
+            allSections: contextSections,
+          });
+          if (summaryText) {
+            summaryMap.set(target.id, summaryText);
+          }
+        }
+
+        const planMap = new Map<string, string>();
+        for (const target of planTargets) {
+          const planText = await callAi({
+            action: "plan",
+            sectionTitle: target.title,
+            allSections: contextSections,
+          });
+          if (planText) {
+            planMap.set(target.id, planText);
+          }
+        }
+
+        setAiPreviews((prev) => {
+          const next = { ...prev };
+          summaryTargets.forEach((target) => {
+            const text = summaryMap.get(target.id);
+            if (!text) return;
+            next[target.id] = {
+              original: target.content,
+              suggestion: text,
+              mode: "finalize",
+            };
+          });
+          planTargets.forEach((target) => {
+            const text = planMap.get(target.id);
+            if (!text) return;
+            next[target.id] = {
+              original: target.content,
+              suggestion: text,
+              mode: "finalize",
+            };
+          });
+          return next;
+        });
       }
-    }
 
-    const planMap = new Map<string, string>();
-    for (const target of planTargets) {
-      const planText = await callAi({
-        action: "plan",
-        sectionTitle: target.title,
-        allSections: contextSections,
-      });
-      if (planText) {
-        planMap.set(target.id, planText);
+      if (shouldRunAutoDetect) {
+        await handleAutoDetectRadarGraphs();
       }
+    } finally {
+      setAiBusyId(null);
     }
+  };
 
-    setAiPreviews((prev) => {
-      const next = { ...prev };
-      summaryTargets.forEach((target) => {
-        const text = summaryMap.get(target.id);
-        if (!text) return;
-        next[target.id] = {
-          original: target.content,
-          suggestion: text,
-          mode: "finalize",
-        };
-      });
-      planTargets.forEach((target) => {
-        const text = planMap.get(target.id);
-        if (!text) return;
-        next[target.id] = {
-          original: target.content,
-          suggestion: text,
-          mode: "finalize",
-        };
-      });
-      return next;
-    });
-
-    setAiBusyId(null);
+  const handleAiFinalizeSubmit = async () => {
+    const draft = aiFinalizeDraft;
+    setAiFinalizeModalOpen(false);
+    await handleAiFinalize(draft);
   };
 
   const handleAiSummary = async () => {
@@ -5325,7 +5529,10 @@ export default function CoachReportBuilderPage() {
     layoutEditorOpen ||
     aiLayoutOpen ||
     radarConfigOpen ||
+    radarAutoDetectConfirmOpen ||
     radarAiQaOpen ||
+    aiFinalizeModalOpen ||
+    publishFinalizeHintOpen ||
     premiumModalOpen ||
     aiAssistantModalOpen ||
     aiSettingsModalOpen ||
@@ -5378,6 +5585,17 @@ export default function CoachReportBuilderPage() {
     const revealOffsetMs = stickyActionsExpanded ? 80 : 0;
     return `${orderIndex * stepMs + revealOffsetMs}ms`;
   };
+  const shouldHighlightRadarConfigure =
+    Boolean(guidedRadarConfigSectionId) && !radarConfigOpen;
+  const shouldHighlightRadarAiMode =
+    radarConfigOpen &&
+    radarConfigDraft.mode !== "ai" &&
+    Boolean(radarConfigSectionId) &&
+    guidedRadarConfigSectionId === radarConfigSectionId;
+  const hasSelectedFinalizeAction =
+    aiFinalizeDraft.runSummary ||
+    aiFinalizeDraft.runPlan ||
+    aiFinalizeDraft.runAutoDetectDatas;
 
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
@@ -5491,6 +5709,57 @@ export default function CoachReportBuilderPage() {
             transition: stroke-dasharray 220ms ease-out;
             filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.35));
           }
+          .report-guide-attention {
+            --guide-color: 14, 165, 233;
+            position: relative;
+            isolation: isolate;
+            animation: reportGuidePulse 1.1s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+            box-shadow:
+              0 0 0 0 rgba(var(--guide-color), 0.5),
+              0 0 0 1px rgba(var(--guide-color), 0.55),
+              0 10px 24px rgba(var(--guide-color), 0.32);
+          }
+          .report-guide-attention.report-guide-attention-config {
+            --guide-color: 14, 165, 233;
+          }
+          .report-guide-attention.report-guide-attention-ai {
+            --guide-color: 192, 38, 211;
+          }
+          .report-guide-attention::before {
+            content: "";
+            position: absolute;
+            right: -2px;
+            top: -2px;
+            width: 9px;
+            height: 9px;
+            pointer-events: none;
+            border-radius: 9999px;
+            background: rgba(var(--guide-color), 0.98);
+            box-shadow:
+              0 0 0 2px rgba(255, 255, 255, 0.92),
+              0 0 0 0 rgba(var(--guide-color), 0.42),
+              0 0 14px rgba(var(--guide-color), 0.75);
+            animation: reportGuideBeacon 1s ease-in-out infinite;
+          }
+          .report-guide-attention::after {
+            content: "";
+            position: absolute;
+            inset: -6px;
+            pointer-events: none;
+            border-radius: inherit;
+            border: 2px solid rgba(var(--guide-color), 0.78);
+            box-shadow:
+              0 0 0 1px rgba(var(--guide-color), 0.4),
+              inset 0 0 16px rgba(var(--guide-color), 0.16);
+            animation: reportGuideHalo 1.1s ease-in-out infinite;
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .report-guide-attention,
+            .report-guide-attention::before,
+            .report-guide-attention::after {
+              animation: none;
+            }
+          }
           @keyframes globalLoaderSpin {
             from {
               transform: rotate(0deg);
@@ -5516,6 +5785,54 @@ export default function CoachReportBuilderPage() {
             50% {
               opacity: 0.9;
               transform: translateY(-1px);
+            }
+          }
+          @keyframes reportGuidePulse {
+            0%,
+            100% {
+              transform: translateY(0) scale(1);
+              box-shadow:
+                0 0 0 0 rgba(var(--guide-color), 0.48),
+                0 0 0 1px rgba(var(--guide-color), 0.55),
+                0 10px 24px rgba(var(--guide-color), 0.28);
+            }
+            40% {
+              transform: translateY(-1px) scale(1.035);
+              box-shadow:
+                0 0 0 10px rgba(var(--guide-color), 0),
+                0 0 0 2px rgba(var(--guide-color), 0.62),
+                0 14px 30px rgba(var(--guide-color), 0.36);
+            }
+            75% {
+              transform: translateY(0) scale(0.995);
+            }
+          }
+          @keyframes reportGuideBeacon {
+            0%,
+            100% {
+              transform: scale(0.9);
+              box-shadow:
+                0 0 0 2px rgba(255, 255, 255, 0.92),
+                0 0 0 0 rgba(var(--guide-color), 0.42),
+                0 0 10px rgba(var(--guide-color), 0.55);
+            }
+            50% {
+              transform: scale(1.18);
+              box-shadow:
+                0 0 0 2px rgba(255, 255, 255, 0.95),
+                0 0 0 6px rgba(var(--guide-color), 0),
+                0 0 18px rgba(var(--guide-color), 0.82);
+            }
+          }
+          @keyframes reportGuideHalo {
+            0%,
+            100% {
+              opacity: 0.55;
+              transform: scale(1);
+            }
+            50% {
+              opacity: 1;
+              transform: scale(1.05);
             }
           }
         `}</style>
@@ -7145,7 +7462,7 @@ export default function CoachReportBuilderPage() {
                       <button
                         type="button"
                         disabled={saving || loadingReport || isReportWriteLocked}
-                        onClick={() => handleSaveReport(true)}
+                        onClick={handlePublishWithHint}
                         className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
                       >
                         {saving ? "Envoi..." : sendLabel}
@@ -7370,7 +7687,7 @@ export default function CoachReportBuilderPage() {
                             openPremiumModal();
                             return;
                           }
-                          handleAiFinalize();
+                          openAiFinalizeModal();
                         }}
                         className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
                           aiFullLocked
@@ -7928,7 +8245,7 @@ export default function CoachReportBuilderPage() {
                           openPremiumModal();
                           return;
                         }
-                        handleAiFinalize();
+                        openAiFinalizeModal();
                       }}
                       className={`flex h-11 items-center overflow-hidden rounded-full border shadow-[0_10px_24px_rgba(0,0,0,0.28)] transition-all duration-300 ease-in-out disabled:opacity-60 lg:h-12 ${stickyActionShapeClass} ${
                         aiFullLocked
@@ -8092,7 +8409,7 @@ export default function CoachReportBuilderPage() {
                                               event.target.files ?? []
                                             );
                                             if (files.length) {
-                                              void handleRadarUploadBatch(files);
+                                              void handleRadarUploadBatch(files, section.id);
                                             }
                                             event.target.value = "";
                                           }}
@@ -8493,26 +8810,8 @@ export default function CoachReportBuilderPage() {
                                     value={section.radarFileId ?? ""}
                                     onChange={(event) => {
                                       const nextId = event.target.value || null;
-                                      const picked = nextId
-                                        ? radarFileMap.get(nextId)
-                                        : null;
-                                      const base = picked?.config ?? defaultRadarConfig;
-                                      const merged: RadarConfig = {
-                                        ...defaultRadarConfig,
-                                        ...(base ?? {}),
-                                        charts: {
-                                          ...defaultRadarConfig.charts,
-                                          ...(base?.charts ?? {}),
-                                        },
-                                        thresholds: {
-                                          ...defaultRadarConfig.thresholds,
-                                          ...(base?.thresholds ?? {}),
-                                        },
-                                        options: {
-                                          ...defaultRadarConfig.options,
-                                          ...(base?.options ?? {}),
-                                        },
-                                      };
+                                      const picked = nextId ? radarFileMap.get(nextId) : null;
+                                      const merged = mergeRadarConfigWithDefaults(picked?.config ?? null);
                                       setReportSections((prev) =>
                                         prev.map((entry) =>
                                           entry.id === section.id
@@ -8559,11 +8858,22 @@ export default function CoachReportBuilderPage() {
                                       section.radarFileId && !radarLocked && radarFileReady
                                         ? "border-white/10 bg-white/5 text-[var(--text)] hover:bg-white/10"
                                         : "cursor-not-allowed border-white/5 bg-white/5 text-[var(--muted)]"
+                                    } ${
+                                      shouldHighlightRadarConfigure &&
+                                      guidedRadarConfigSectionId === section.id
+                                        ? "border-sky-500/80 bg-sky-100 text-sky-950 hover:bg-sky-200 report-guide-attention report-guide-attention-config"
+                                        : ""
                                     }`}
                                   >
                                     Configurer
                                   </button>
                                 </div>
+                                {shouldHighlightRadarConfigure &&
+                                guidedRadarConfigSectionId === section.id ? (
+                                  <p className="text-[0.7rem] text-[var(--text)]">
+                                    Astuce IA: clique sur Configurer puis passe en mode IA.
+                                  </p>
+                                ) : null}
                                 <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-[var(--muted)]">
                                   <label className="flex items-center gap-2">
                                     <input
@@ -8893,7 +9203,7 @@ export default function CoachReportBuilderPage() {
                       <button
                         type="button"
                         disabled={saving || loadingReport || isReportWriteLocked}
-                        onClick={() => handleSaveReport(true)}
+                        onClick={handlePublishWithHint}
                         className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
                       >
                         {saving ? "Envoi..." : sendLabel}
@@ -9796,6 +10106,10 @@ export default function CoachReportBuilderPage() {
                           radarConfigDraft.mode === option.id
                             ? "border-violet-300/40 bg-violet-400/10 text-violet-100"
                             : "border-white/10 bg-white/5 text-[var(--muted)] hover:text-[var(--text)]"
+                        } ${
+                          option.id === "ai" && shouldHighlightRadarAiMode
+                            ? "border-fuchsia-500/80 bg-fuchsia-100 text-fuchsia-950 hover:bg-fuchsia-200 report-guide-attention report-guide-attention-ai"
+                            : ""
                         }`}
                       >
                         {option.label}
@@ -9805,6 +10119,11 @@ export default function CoachReportBuilderPage() {
                   <p className="mt-2 text-[0.65rem] text-[var(--muted)]">
                     En mode defaut, la selection des graphes est bloquee.
                   </p>
+                  {shouldHighlightRadarAiMode ? (
+                    <p className="mt-2 text-[0.7rem] text-[var(--text)]">
+                      Astuce: active le mode IA pour utiliser Auto detect datas graph.
+                    </p>
+                  ) : null}
                   {radarConfigDraft.mode === "ai" ? (
                     <div className="mt-3 rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-3 text-[0.7rem] text-emerald-100">
                       <p className="text-[0.55rem] uppercase tracking-wide text-emerald-200/80">
@@ -9906,6 +10225,19 @@ export default function CoachReportBuilderPage() {
                       <p className="mt-3 text-[0.65rem] text-emerald-100/70">
                         Le bouton Auto detect datas graph utilisera ces reglages.
                       </p>
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-[0.65rem] text-emerald-100/80">
+                          Recommande en fin de rapport, quand le contenu est complet.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleOpenRadarAutoDetectConfirm}
+                          disabled={radarAiAutoBusy}
+                          className="rounded-full bg-emerald-500/30 px-3 py-1 text-[0.6rem] font-semibold uppercase tracking-wide text-emerald-50 transition hover:bg-emerald-500/40 disabled:opacity-60"
+                        >
+                          {radarAiAutoBusy ? "IA..." : "Auto Detection"}
+                        </button>
+                      </div>
                     </div>
                   ) : null}
                 </div>
@@ -10156,6 +10488,57 @@ export default function CoachReportBuilderPage() {
                   className="rounded-full bg-gradient-to-r from-violet-300 via-violet-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
                 >
                   {radarConfigSaving ? "Sauvegarde..." : "Sauvegarder"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {radarAutoDetectConfirmOpen ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={radarAutoDetectConfirmTitleId}
+          >
+            <button
+              type="button"
+              aria-label="Fermer"
+              className="absolute inset-0 bg-black/35 backdrop-blur-sm"
+              onClick={() => setRadarAutoDetectConfirmOpen(false)}
+            />
+            <div className="relative w-full max-w-md rounded-2xl bg-[var(--bg-elevated)] p-6 shadow-[var(--shadow-strong)]">
+              <p className="text-[0.65rem] uppercase tracking-[0.22em] text-[var(--muted)]">
+                Auto Detection
+              </p>
+              <h3
+                id={radarAutoDetectConfirmTitleId}
+                className="mt-1 text-lg font-semibold text-[var(--text)]"
+              >
+                Rapport termine et complet ?
+              </h3>
+              <p className="mt-2 text-sm text-[var(--muted)]">
+                L auto detection IA se base sur le contenu du rapport pour choisir les graphes.
+                Pour un meilleur resultat, lance-la plutot en dernier.
+              </p>
+              <p className="mt-2 text-sm text-[var(--text)]">
+                Tu peux aussi le faire a la fin via le bouton violet Datas ou le bouton vert
+                Finaliser.
+              </p>
+              <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRadarAutoDetectConfirmOpen(false)}
+                  className="rounded-full bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                >
+                  Pas maintenant
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleRunRadarAutoDetectFromConfig()}
+                  disabled={radarAiAutoBusy}
+                  className="rounded-full bg-gradient-to-r from-violet-300 via-violet-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
+                >
+                  {radarAiAutoBusy ? "IA..." : "Lancer maintenant"}
                 </button>
               </div>
             </div>
@@ -10780,6 +11163,206 @@ export default function CoachReportBuilderPage() {
                     </select>
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {aiFinalizeModalOpen ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={aiFinalizeTitleId}
+          >
+            <button
+              type="button"
+              aria-label="Fermer"
+              className="absolute inset-0 bg-black/35 backdrop-blur-sm"
+              onClick={() => setAiFinalizeModalOpen(false)}
+            />
+            <div className="relative w-full max-w-lg rounded-2xl bg-[var(--bg-elevated)] p-6 shadow-[var(--shadow-strong)]">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[0.65rem] uppercase tracking-[0.22em] text-[var(--muted)]">
+                    Finalisation
+                  </p>
+                  <h3 id={aiFinalizeTitleId} className="mt-1 text-lg font-semibold text-[var(--text)]">
+                    Choisir les actions IA
+                  </h3>
+                  <p className="mt-2 text-sm text-[var(--muted)]">
+                    Lance les actions de fin de rapport avant publication.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAiFinalizeModalOpen(false)}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                  aria-label="Fermer"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M18 6L6 18" />
+                    <path d="M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="mt-5 space-y-3">
+                <label className="flex items-start gap-3 rounded-xl bg-white/5 px-4 py-3 text-sm text-[var(--text)]">
+                  <input
+                    type="checkbox"
+                    checked={aiFinalizeDraft.runSummary}
+                    disabled={finalizeSummaryTargets.length === 0}
+                    onChange={(event) =>
+                      setAiFinalizeDraft((prev) => ({
+                        ...prev,
+                        runSummary: event.target.checked,
+                      }))
+                    }
+                    className="mt-0.5 h-4 w-4 rounded border-white/20 bg-[var(--bg-elevated)]"
+                  />
+                  <span>
+                    <span className="font-medium">Remplir les sections Resume</span>
+                    <span className="mt-1 block text-xs text-[var(--muted)]">
+                      {finalizeSummaryTargets.length > 0
+                        ? `${finalizeSummaryTargets.length} section(s) detectee(s).`
+                        : "Aucune section Resume detectee dans ce rapport."}
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-3 rounded-xl bg-white/5 px-4 py-3 text-sm text-[var(--text)]">
+                  <input
+                    type="checkbox"
+                    checked={aiFinalizeDraft.runPlan}
+                    disabled={finalizePlanTargets.length === 0}
+                    onChange={(event) =>
+                      setAiFinalizeDraft((prev) => ({
+                        ...prev,
+                        runPlan: event.target.checked,
+                      }))
+                    }
+                    className="mt-0.5 h-4 w-4 rounded border-white/20 bg-[var(--bg-elevated)]"
+                  />
+                  <span>
+                    <span className="font-medium">Remplir les sections Planification</span>
+                    <span className="mt-1 block text-xs text-[var(--muted)]">
+                      {finalizePlanTargets.length > 0
+                        ? `${finalizePlanTargets.length} section(s) detectee(s).`
+                        : "Aucune section Planification detectee dans ce rapport."}
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-3 rounded-xl bg-white/5 px-4 py-3 text-sm text-[var(--text)]">
+                  <input
+                    type="checkbox"
+                    checked={aiFinalizeDraft.runAutoDetectDatas}
+                    disabled={!canFinalizeWithAutoDetect}
+                    onChange={(event) =>
+                      setAiFinalizeDraft((prev) => ({
+                        ...prev,
+                        runAutoDetectDatas: event.target.checked,
+                      }))
+                    }
+                    className="mt-0.5 h-4 w-4 rounded border-white/20 bg-[var(--bg-elevated)]"
+                  />
+                  <span>
+                    <span className="font-medium">Lancer Auto detect datas graph</span>
+                    <span className="mt-1 block text-xs text-[var(--muted)]">
+                      {canFinalizeWithAutoDetect
+                        ? "Les sections Datas en mode IA seront traitees."
+                        : finalizeRadarSections.length > 0
+                          ? "Passe d abord une section Datas en mode IA."
+                          : "Ajoute un fichier Datas pour activer cette action."}
+                    </span>
+                  </span>
+                </label>
+                {finalizeRadarSections.length > 0 && !canFinalizeWithAutoDetect ? (
+                  <div className="rounded-xl bg-violet-500/10 px-4 py-3 text-xs text-[var(--text)]">
+                    <p>Le mode IA n est pas encore configure pour tes blocs Datas.</p>
+                    {guidedRadarConfigSectionId ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAiFinalizeModalOpen(false);
+                          handleOpenRadarSectionConfig(guidedRadarConfigSectionId);
+                        }}
+                        className="mt-2 rounded-full bg-violet-500/20 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-violet-500/30"
+                      >
+                        Configurer une section datas en mode IA
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+              <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAiFinalizeModalOpen(false)}
+                  className="rounded-full bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleAiFinalizeSubmit()}
+                  disabled={!hasSelectedFinalizeAction || !!aiBusyId || radarAiAutoBusy}
+                  className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
+                >
+                  {aiBusyId === "finalize" ? "IA..." : "Lancer la finalisation"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {publishFinalizeHintOpen ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={publishFinalizeHintTitleId}
+          >
+            <button
+              type="button"
+              aria-label="Fermer"
+              className="absolute inset-0 bg-black/35 backdrop-blur-sm"
+              onClick={() => setPublishFinalizeHintOpen(false)}
+            />
+            <div className="relative w-full max-w-md rounded-2xl bg-[var(--bg-elevated)] p-6 shadow-[var(--shadow-strong)]">
+              <p className="text-[0.65rem] uppercase tracking-[0.22em] text-[var(--muted)]">
+                Astuce
+              </p>
+              <h3
+                id={publishFinalizeHintTitleId}
+                className="mt-1 text-lg font-semibold text-[var(--text)]"
+              >
+                Utiliser &quot;Finaliser&quot; avant publier
+              </h3>
+              <p className="mt-2 text-sm text-[var(--muted)]">
+                Le bouton Finaliser peut remplir automatiquement les sections Resume, Planification
+                et Datas IA.
+              </p>
+              <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleContinuePublishFromHint}
+                  className="rounded-full bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                >
+                  Publier maintenant
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenFinalizeFromPublishHint}
+                  className="rounded-full bg-gradient-to-r from-violet-300 via-violet-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90"
+                >
+                  Ouvrir Finaliser
+                </button>
               </div>
             </div>
           </div>
