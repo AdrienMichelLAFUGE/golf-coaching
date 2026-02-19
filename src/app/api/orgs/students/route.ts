@@ -4,7 +4,6 @@ import {
   createSupabaseAdminClient,
   createSupabaseServerClientFromRequest,
 } from "@/lib/supabase/server";
-import { generateParentSecretCode, hashParentSecretCode } from "@/lib/parent/secret-code";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
 import { createOrgNotifications } from "@/lib/org-notifications";
@@ -228,8 +227,6 @@ export async function POST(request: Request) {
     }
   }
 
-  const parentSecretCode = generateParentSecretCode();
-  const parentSecretCodeHash = hashParentSecretCode(parentSecretCode);
   const { data: student, error: insertError } = await admin
     .from("students")
     .insert([
@@ -240,8 +237,8 @@ export async function POST(request: Request) {
         email: normalizedEmail || null,
         playing_hand: parsed.data.playing_hand || null,
         parent_secret_code_plain: null,
-        parent_secret_code_hash: parentSecretCodeHash,
-        parent_secret_code_rotated_at: new Date().toISOString(),
+        parent_secret_code_hash: null,
+        parent_secret_code_rotated_at: null,
       },
     ])
     .select("id")

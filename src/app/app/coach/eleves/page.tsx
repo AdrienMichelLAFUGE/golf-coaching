@@ -640,9 +640,17 @@ export default function CoachStudentsPage() {
     const previousEmail = (editingStudent.email ?? "").trim().toLowerCase();
     const nextEmail = email.toLowerCase();
     const emailChanged = previousEmail !== nextEmail;
+    const studentIsActive = Boolean(editingStudent.activated_at);
 
     if (!firstName) {
       setEditError("Le prenom est obligatoire.");
+      return;
+    }
+
+    if (emailChanged && studentIsActive) {
+      setEditError(
+        "Email verrouille: un eleve actif doit modifier son adresse depuis ses parametres."
+      );
       return;
     }
 
@@ -656,7 +664,7 @@ export default function CoachStudentsPage() {
         last_name: lastName || null,
         email: email || null,
         playing_hand: playingHand,
-        ...(emailChanged ? { invited_at: null, activated_at: null } : {}),
+        ...(emailChanged ? { invited_at: null } : {}),
       })
       .eq("id", editingStudent.id);
 
@@ -1317,6 +1325,15 @@ export default function CoachStudentsPage() {
                   <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
                     Email
                   </label>
+                  {editingStudent.activated_at ? (
+                    <p className="mt-2 text-xs text-[var(--muted)]">
+                      Eleve actif: email verrouille (modifiable par l eleve uniquement).
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-xs text-[var(--muted)]">
+                      Tu peux corriger l email tant que l eleve n est pas actif.
+                    </p>
+                  )}
                   <input
                     type="email"
                     value={editForm.email}
@@ -1326,8 +1343,12 @@ export default function CoachStudentsPage() {
                         email: event.target.value,
                       }))
                     }
-                    disabled={editSaving || isOrgReadOnly}
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                    disabled={editSaving || isOrgReadOnly || Boolean(editingStudent.activated_at)}
+                    className={`mt-2 w-full rounded-xl border border-white/10 px-3 py-2 text-sm ${
+                      editingStudent.activated_at
+                        ? "bg-[var(--bg-elevated)] text-[var(--muted)]"
+                        : "bg-[var(--bg-elevated)] text-[var(--text)]"
+                    }`}
                   />
                 </div>
                 <div>

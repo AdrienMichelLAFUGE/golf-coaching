@@ -130,10 +130,8 @@ describe("POST /api/students/personal", () => {
         email: "camille@example.com",
         playing_hand: "right",
         parent_secret_code_plain: null,
-        parent_secret_code_hash: expect.stringMatching(
-          /^sha256\$[0-9a-f]{32}\$[0-9a-f]{64}$/
-        ),
-        parent_secret_code_rotated_at: expect.any(String),
+        parent_secret_code_hash: null,
+        parent_secret_code_rotated_at: null,
       }),
     ]);
   });

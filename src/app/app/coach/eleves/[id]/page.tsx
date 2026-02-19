@@ -181,6 +181,7 @@ type OrgCoachOption = {
 type StudentEditForm = {
   first_name: string;
   last_name: string;
+  email: string;
   playing_hand: "" | "right" | "left";
 };
 
@@ -600,6 +601,7 @@ export default function CoachStudentDetailPage() {
   const [editForm, setEditForm] = useState<StudentEditForm>({
     first_name: "",
     last_name: "",
+    email: "",
     playing_hand: "",
   });
   const [editSaving, setEditSaving] = useState(false);
@@ -2187,6 +2189,7 @@ export default function CoachStudentDetailPage() {
     setEditForm({
       first_name: student.first_name ?? "",
       last_name: student.last_name ?? "",
+      email: student.email ?? "",
       playing_hand: student.playing_hand ?? "",
     });
     setEditOpen(true);
@@ -2203,10 +2206,22 @@ export default function CoachStudentDetailPage() {
     if (!student) return;
     const firstName = editForm.first_name.trim();
     const lastName = editForm.last_name.trim();
+    const email = editForm.email.trim();
     const playingHand = editForm.playing_hand || null;
+    const previousEmail = (student.email ?? "").trim().toLowerCase();
+    const nextEmail = email.toLowerCase();
+    const emailChanged = previousEmail !== nextEmail;
+    const studentIsActive = Boolean(student.activated_at);
 
     if (!firstName) {
       setEditError("Le prenom est obligatoire.");
+      return;
+    }
+
+    if (emailChanged && studentIsActive) {
+      setEditError(
+        "Email verrouille: un eleve actif doit modifier son adresse depuis ses parametres."
+      );
       return;
     }
 
@@ -2218,7 +2233,9 @@ export default function CoachStudentDetailPage() {
       .update({
         first_name: firstName,
         last_name: lastName || null,
+        email: email || null,
         playing_hand: playingHand,
+        ...(emailChanged ? { invited_at: null } : {}),
       })
       .eq("id", student.id);
 
@@ -2234,6 +2251,8 @@ export default function CoachStudentDetailPage() {
             ...prev,
             first_name: firstName,
             last_name: lastName || null,
+            email: email || null,
+            invited_at: emailChanged ? null : prev.invited_at,
             playing_hand: playingHand,
           }
         : prev
@@ -5367,15 +5386,31 @@ export default function CoachStudentDetailPage() {
                     <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
                       Email
                     </label>
+                    {student?.activated_at ? (
+                      <p className="mt-2 text-xs text-[var(--muted)]">
+                        Eleve actif: email verrouille (modifiable par l eleve uniquement).
+                      </p>
+                    ) : (
+                      <p className="mt-2 text-xs text-[var(--muted)]">
+                        Tu peux corriger l email tant que l eleve n est pas actif.
+                      </p>
+                    )}
                     <input
                       type="email"
-                      value={student?.email ?? ""}
-                      readOnly
-                      className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--muted)]"
+                      value={editForm.email}
+                      onChange={(event) =>
+                        setEditForm((prev) => ({
+                          ...prev,
+                          email: event.target.value,
+                        }))
+                      }
+                      disabled={editSaving || isReadOnly || Boolean(student?.activated_at)}
+                      className={`mt-2 w-full rounded-xl border border-white/10 px-3 py-2 text-sm ${
+                        student?.activated_at
+                          ? "bg-[var(--bg-elevated)] text-[var(--muted)]"
+                          : "bg-[var(--bg-elevated)] text-[var(--text)]"
+                      }`}
                     />
-                    <p className="mt-2 text-xs text-[var(--muted)]">
-                      Modifiable uniquement par l eleve dans ses parametres.
-                    </p>
                   </div>
                   <div>
                     <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
