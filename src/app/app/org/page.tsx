@@ -40,7 +40,7 @@ export default function OrgOverviewPage() {
   const [createError, setCreateError] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [parentGroupId, setParentGroupId] = useState("");
+  const [createParentGroupId, setCreateParentGroupId] = useState<string | null>(null);
   const [colorToken, setColorToken] = useState<OrgGroupColorToken>("mint");
   const canEdit = isWorkspaceAdmin || isWorkspacePremium;
   const isOrgReadOnly = workspaceType === "org" && !canEdit;
@@ -137,18 +137,6 @@ export default function OrgOverviewPage() {
     return roots;
   }, [groups]);
 
-  const parentOptions = useMemo(() => {
-    const output: Array<{ id: string; label: string; depth: number }> = [];
-    const walk = (nodes: GroupTreeNode[], depth: number) => {
-      nodes.forEach((node) => {
-        output.push({ id: node.id, label: node.name, depth });
-        walk(node.children, depth + 1);
-      });
-    };
-    walk(groupTree, 0);
-    return output;
-  }, [groupTree]);
-
   const rootAggregates = useMemo(() => {
     const aggregates = new Map<
       string,
@@ -232,6 +220,29 @@ export default function OrgOverviewPage() {
       </div>
     ));
 
+  const createParentGroup = useMemo(
+    () => groups.find((group) => group.id === createParentGroupId) ?? null,
+    [groups, createParentGroupId]
+  );
+
+  const openCreateRootModal = () => {
+    setCreateError("");
+    setName("");
+    setDescription("");
+    setCreateParentGroupId(null);
+    setColorToken("mint");
+    setCreateOpen(true);
+  };
+
+  const openCreateSubgroupModal = (parentId: string) => {
+    setCreateError("");
+    setName("");
+    setDescription("");
+    setCreateParentGroupId(parentId);
+    setColorToken("mint");
+    setCreateOpen(true);
+  };
+
   const handleCreate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!name.trim()) return;
@@ -253,8 +264,8 @@ export default function OrgOverviewPage() {
       body: JSON.stringify({
         name,
         description,
-        parentGroupId: parentGroupId || null,
-        colorToken: parentGroupId ? null : colorToken,
+        parentGroupId: createParentGroupId,
+        colorToken: createParentGroupId ? null : colorToken,
       }),
     });
     const payload = (await response.json()) as { error?: string };
@@ -265,7 +276,7 @@ export default function OrgOverviewPage() {
     }
     setName("");
     setDescription("");
-    setParentGroupId("");
+    setCreateParentGroupId(null);
     setColorToken("mint");
     setCreateOpen(false);
     await loadGroups();
@@ -299,14 +310,7 @@ export default function OrgOverviewPage() {
           <div className="mt-4">
             <button
               type="button"
-              onClick={() => {
-                setCreateError("");
-                setName("");
-                setDescription("");
-                setParentGroupId("");
-                setColorToken("mint");
-                setCreateOpen(true);
-              }}
+              onClick={openCreateRootModal}
               disabled={!canEdit}
               className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -424,10 +428,35 @@ export default function OrgOverviewPage() {
                         open={rootGroup.children.length > 0}
                         className="mt-4 rounded-xl border border-white/25 bg-black/15 backdrop-blur-[2px]"
                       >
-                        <summary className="cursor-pointer list-none px-3 py-2 text-xs font-medium text-white/90">
-                          Sous-groupes ({totalSubgroups})
+                        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 border-b border-white/20 px-3 py-2 text-xs font-medium text-white/90">
+                          <span>Sous-groupes ({totalSubgroups})</span>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              openCreateSubgroupModal(rootGroup.id);
+                            }}
+                            disabled={!canEdit}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-white/30 bg-white/15 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-white transition hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <svg
+                              viewBox="0 0 24 24"
+                              className="h-3.5 w-3.5"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <path d="M12 5v14" />
+                              <path d="M5 12h14" />
+                            </svg>
+                            Ajouter
+                          </button>
                         </summary>
-                        <div className="border-t border-white/20 px-3 py-2">
+                        <div className="px-3 py-2">
                           {rootGroup.children.length === 0 ? (
                             <p className="text-xs text-white/80">Aucun sous-groupe.</p>
                           ) : (
@@ -465,7 +494,7 @@ export default function OrgOverviewPage() {
                   id="create-group-title"
                   className="text-center text-base font-semibold text-[var(--text)]"
                 >
-                  Creer un groupe
+                  {createParentGroupId ? "Creer un sous-groupe" : "Creer un groupe principal"}
                 </h3>
                 <button
                   type="button"
@@ -494,7 +523,7 @@ export default function OrgOverviewPage() {
                 <div className="space-y-4 px-6 py-5">
                   <div>
                     <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                      Nom du groupe
+                      {createParentGroupId ? "Nom du sous-groupe" : "Nom du groupe"}
                     </label>
                     <input
                       value={name}
@@ -505,6 +534,16 @@ export default function OrgOverviewPage() {
                       autoFocus
                     />
                   </div>
+                  {createParentGroupId ? (
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                        Groupe parent
+                      </p>
+                      <p className="mt-1 text-sm text-[var(--text)]">
+                        {createParentGroup?.name ?? "Groupe principal"}
+                      </p>
+                    </div>
+                  ) : null}
                   <div>
                     <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
                       Description
@@ -517,69 +556,52 @@ export default function OrgOverviewPage() {
                       placeholder="Optionnel"
                     />
                   </div>
-                  <div>
-                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                      Groupe parent
-                    </label>
-                    <select
-                      value={parentGroupId}
-                      onChange={(event) => setParentGroupId(event.target.value)}
-                      disabled={!canEdit || creating}
-                      className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none disabled:opacity-60"
-                    >
-                      <option value="">Aucun (groupe principal)</option>
-                      {parentOptions.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {`${"\u00A0".repeat(option.depth * 2)}${option.depth > 0 ? "-> " : ""}${option.label}`}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                      Couleur pastel (groupe principal)
-                    </label>
-                    <div
-                      role="radiogroup"
-                      aria-label="Couleur du groupe"
-                      className="mt-2 grid grid-cols-2 gap-2"
-                    >
-                      {ORG_GROUP_COLOR_TOKENS.map((token) => {
-                        const selected = colorToken === token;
-                        const dotClass = getOrgGroupColorTheme(token).dotClass;
-                        return (
-                          <label
-                            key={token}
-                            className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition ${
-                              selected
-                                ? "border-emerald-300/40 bg-emerald-400/10 text-[var(--text)]"
-                                : "border-white/10 bg-white/5 text-[var(--muted)]"
-                            } ${!canEdit || creating || Boolean(parentGroupId) ? "opacity-60" : "cursor-pointer hover:border-white/20 hover:text-[var(--text)]"}`}
-                          >
-                            <input
-                              type="radio"
-                              name="group-color-token"
-                              value={token}
-                              checked={selected}
-                              onChange={() => setColorToken(token)}
-                              disabled={!canEdit || creating || Boolean(parentGroupId)}
-                              className="sr-only"
-                            />
-                            <span
-                              className={`h-2.5 w-2.5 rounded-full ${dotClass}`}
-                              aria-hidden="true"
-                            />
-                            <span>{ORG_GROUP_COLOR_LABELS[token]}</span>
-                          </label>
-                        );
-                      })}
+                  {createParentGroupId ? (
+                    <p className="text-xs text-[var(--muted)]">
+                      Les sous-groupes utilisent automatiquement la couleur du groupe parent.
+                    </p>
+                  ) : (
+                    <div>
+                      <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                        Couleur pastel (groupe principal)
+                      </label>
+                      <div
+                        role="radiogroup"
+                        aria-label="Couleur du groupe"
+                        className="mt-2 grid grid-cols-2 gap-2"
+                      >
+                        {ORG_GROUP_COLOR_TOKENS.map((token) => {
+                          const selected = colorToken === token;
+                          const dotClass = getOrgGroupColorTheme(token).dotClass;
+                          return (
+                            <label
+                              key={token}
+                              className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition ${
+                                selected
+                                  ? "border-emerald-300/40 bg-emerald-400/10 text-[var(--text)]"
+                                  : "border-white/10 bg-white/5 text-[var(--muted)]"
+                              } ${!canEdit || creating ? "opacity-60" : "cursor-pointer hover:border-white/20 hover:text-[var(--text)]"}`}
+                            >
+                              <input
+                                type="radio"
+                                name="group-color-token"
+                                value={token}
+                                checked={selected}
+                                onChange={() => setColorToken(token)}
+                                disabled={!canEdit || creating}
+                                className="sr-only"
+                              />
+                              <span
+                                className={`h-2.5 w-2.5 rounded-full ${dotClass}`}
+                                aria-hidden="true"
+                              />
+                              <span>{ORG_GROUP_COLOR_LABELS[token]}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
                     </div>
-                    {parentGroupId ? (
-                      <p className="mt-1 text-xs text-[var(--muted)]">
-                        Les sous-groupes utilisent la couleur du groupe parent.
-                      </p>
-                    ) : null}
-                  </div>
+                  )}
                   {isOrgReadOnly ? (
                     <p className="text-sm text-amber-300">
                       Lecture seule: plan Free en organisation.
@@ -601,7 +623,11 @@ export default function OrgOverviewPage() {
                     disabled={!canEdit || creating || !name.trim()}
                     className="rounded-xl bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-5 py-2 text-sm font-semibold text-zinc-900 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {creating ? "Creation..." : "Creer"}
+                    {creating
+                      ? "Creation..."
+                      : createParentGroupId
+                        ? "Creer le sous-groupe"
+                        : "Creer le groupe"}
                   </button>
                 </div>
               </form>
