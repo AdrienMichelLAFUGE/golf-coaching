@@ -10,28 +10,39 @@ import {
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { planTierSchema } from "@/lib/plans";
 import { recordActivity } from "@/lib/activity-log";
+import { getAiBudgetMonthWindow, loadAiBudgetSummary } from "@/lib/ai/budget";
 
 export const runtime = "nodejs";
 
 type CoachUpdatePayload = {
   orgId?: string;
+  coachId?: string;
   ai_enabled?: boolean;
   tpi_enabled?: boolean;
   radar_enabled?: boolean;
   coaching_dynamic_enabled?: boolean;
   ai_model?: string | null;
+  ai_budget_enabled?: boolean;
+  ai_budget_monthly_cents?: number | null;
+  ai_credit_topup_cents?: number;
+  ai_credit_topup_note?: string | null;
   plan_tier?: string;
   plan_tier_override?: string | null;
   plan_tier_override_expires_at?: string | null;
 };
 
 const coachUpdateSchema = z.object({
-  orgId: z.string().min(1),
+  orgId: z.string().min(1).optional(),
+  coachId: z.string().min(1).optional(),
   ai_enabled: z.boolean().optional(),
   tpi_enabled: z.boolean().optional(),
   radar_enabled: z.boolean().optional(),
   coaching_dynamic_enabled: z.boolean().optional(),
   ai_model: z.string().nullable().optional(),
+  ai_budget_enabled: z.boolean().optional(),
+  ai_budget_monthly_cents: z.number().int().positive().max(10_000_000).nullable().optional(),
+  ai_credit_topup_cents: z.number().int().positive().max(10_000_000).optional(),
+  ai_credit_topup_note: z.string().max(240).nullable().optional(),
   plan_tier: planTierSchema.optional(),
   plan_tier_override: planTierSchema.nullable().optional(),
   plan_tier_override_expires_at: z.string().datetime().nullable().optional(),
@@ -64,6 +75,11 @@ const requireAdmin = async (request: Request) => {
     admin: createSupabaseAdminClient(),
     userId,
   };
+};
+
+const toNumber = (value: number | string | null | undefined) => {
+  const numeric = typeof value === "number" ? value : Number(value ?? 0);
+  return Number.isFinite(numeric) ? numeric : 0;
 };
 
 export async function GET(request: Request) {
@@ -114,12 +130,24 @@ export async function GET(request: Request) {
 
   let profilesById = new Map<
     string,
-    { id: string; full_name: string | null; role: string | null }
+    {
+      id: string;
+      full_name: string | null;
+      role: string | null;
+      ai_budget_enabled: boolean;
+      ai_budget_monthly_cents: number | null;
+    }
   >();
+  const budgetEnabledByProfile = new Map<string, boolean>();
+  const budgetAmountByProfile = new Map<string, number | null>();
+  const budgetTopupByProfile = new Map<string, number>();
+  const budgetSpentByProfile = new Map<string, number>();
+  const budgetRemainingByProfile = new Map<string, number | null>();
+
   if (uniqueCoachIds.length > 0) {
     const { data: profilesData, error: profilesError } = await auth.admin
       .from("profiles")
-      .select("id, full_name, role")
+      .select("id, full_name, role, ai_budget_enabled, ai_budget_monthly_cents")
       .in("id", uniqueCoachIds);
     if (profilesError) {
       return NextResponse.json({ error: profilesError.message }, { status: 500 });
@@ -131,9 +159,36 @@ export async function GET(request: Request) {
           id: profile.id,
           full_name: profile.full_name ?? null,
           role: profile.role ?? null,
+          ai_budget_enabled: profile.ai_budget_enabled ?? false,
+          ai_budget_monthly_cents: profile.ai_budget_monthly_cents ?? null,
         },
       ])
     );
+
+    const summaries = await Promise.all(
+      uniqueCoachIds.map(async (coachId) => {
+        const profile = profilesById.get(coachId);
+        const summary = await loadAiBudgetSummary({
+          admin: auth.admin,
+          userId: coachId,
+          profileBudget: profile
+            ? {
+                ai_budget_enabled: profile.ai_budget_enabled,
+                ai_budget_monthly_cents: profile.ai_budget_monthly_cents,
+              }
+            : null,
+        });
+        return [coachId, summary] as const;
+      })
+    );
+
+    summaries.forEach(([coachId, summary]) => {
+      budgetEnabledByProfile.set(coachId, summary.enabled);
+      budgetAmountByProfile.set(coachId, summary.monthlyBudgetCents ?? null);
+      budgetTopupByProfile.set(coachId, summary.monthTopupCents);
+      budgetSpentByProfile.set(coachId, summary.monthSpentCents);
+      budgetRemainingByProfile.set(coachId, summary.monthRemainingCents);
+    });
   }
 
   const coachEntries = await Promise.all(
@@ -184,6 +239,20 @@ export async function GET(request: Request) {
           coach: {
             ...coach,
             full_name: profile?.full_name ?? coach.full_name ?? null,
+            ai_budget_enabled:
+              budgetEnabledByProfile.get(membership.user_id) ??
+              profile?.ai_budget_enabled ??
+              false,
+            ai_budget_monthly_cents:
+              budgetAmountByProfile.get(membership.user_id) ??
+              profile?.ai_budget_monthly_cents ??
+              null,
+            ai_budget_spent_cents_current_month:
+              budgetSpentByProfile.get(membership.user_id) ?? 0,
+            ai_budget_topup_cents_current_month:
+              budgetTopupByProfile.get(membership.user_id) ?? 0,
+            ai_budget_remaining_cents_current_month:
+              budgetRemainingByProfile.get(membership.user_id) ?? null,
           },
         },
       ];
@@ -222,9 +291,10 @@ export async function PATCH(request: Request) {
   }
 
   const payload = parsed.data as CoachUpdatePayload;
-  const orgId = payload.orgId?.trim();
+  const orgId = payload.orgId?.trim() ?? null;
+  const coachId = payload.coachId?.trim() ?? null;
 
-  const updates: Record<string, unknown> = {};
+  const orgUpdates: Record<string, unknown> = {};
   if (typeof payload.plan_tier === "string") {
     await recordActivity({
       admin: auth.admin,
@@ -240,32 +310,41 @@ export async function PATCH(request: Request) {
     );
   }
   if (typeof payload.ai_enabled === "boolean") {
-    updates.ai_enabled = payload.ai_enabled;
+    orgUpdates.ai_enabled = payload.ai_enabled;
   }
   if (typeof payload.tpi_enabled === "boolean") {
-    updates.tpi_enabled = payload.tpi_enabled;
+    orgUpdates.tpi_enabled = payload.tpi_enabled;
   }
   if (typeof payload.radar_enabled === "boolean") {
-    updates.radar_enabled = payload.radar_enabled;
+    orgUpdates.radar_enabled = payload.radar_enabled;
   }
   if (typeof payload.coaching_dynamic_enabled === "boolean") {
-    updates.coaching_dynamic_enabled = payload.coaching_dynamic_enabled;
+    orgUpdates.coaching_dynamic_enabled = payload.coaching_dynamic_enabled;
   }
   if (typeof payload.ai_model === "string") {
-    updates.ai_model = payload.ai_model.trim() || null;
+    orgUpdates.ai_model = payload.ai_model.trim() || null;
   }
   if (Object.prototype.hasOwnProperty.call(payload, "plan_tier_override")) {
-    updates.plan_tier_override =
+    orgUpdates.plan_tier_override =
       typeof payload.plan_tier_override === "string"
         ? payload.plan_tier_override
         : null;
   }
   if (Object.prototype.hasOwnProperty.call(payload, "plan_tier_override_expires_at")) {
-    updates.plan_tier_override_expires_at =
+    orgUpdates.plan_tier_override_expires_at =
       payload.plan_tier_override_expires_at ?? null;
   }
 
-  if (Object.keys(updates).length === 0) {
+  const hasBudgetAmountUpdate = Object.prototype.hasOwnProperty.call(
+    payload,
+    "ai_budget_monthly_cents"
+  );
+  const wantsCoachBudgetUpdate =
+    typeof payload.ai_budget_enabled === "boolean" || hasBudgetAmountUpdate;
+  const hasTopup = typeof payload.ai_credit_topup_cents === "number";
+  const hasOrgUpdates = Object.keys(orgUpdates).length > 0;
+
+  if (!hasOrgUpdates && !wantsCoachBudgetUpdate && !hasTopup) {
     await recordActivity({
       admin: auth.admin,
       level: "warn",
@@ -277,58 +356,180 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "No updates." }, { status: 400 });
   }
 
-  const { data: orgData, error: orgDataError } = await auth.admin
-    .from("organizations")
-    .select("id, workspace_type, owner_profile_id")
-    .eq("id", orgId)
-    .single();
-
-  if (orgDataError || !orgData) {
-    await recordActivity({
-      admin: auth.admin,
-      level: "warn",
-      action: "admin.coach.update.denied",
-      actorUserId: auth.userId ?? null,
-      orgId: orgId ?? null,
-      message: "Modification coach refusee: organisation introuvable.",
-    });
-    return NextResponse.json({ error: "Organisation introuvable." }, { status: 404 });
+  if (hasOrgUpdates && !orgId) {
+    return NextResponse.json({ error: "orgId requis." }, { status: 422 });
   }
 
-  const { error: updateError } = await auth.admin
-    .from("organizations")
-    .update(updates)
-    .eq("id", orgId);
+  let orgData: { id: string; workspace_type: string; owner_profile_id: string | null } | null =
+    null;
 
-  if (updateError) {
-    await recordActivity({
-      admin: auth.admin,
-      level: "error",
-      action: "admin.coach.update.failed",
-      actorUserId: auth.userId ?? null,
-      orgId,
-      message: updateError.message ?? "Modification coach impossible.",
-    });
-    return NextResponse.json({ error: updateError.message }, { status: 500 });
+  if (hasOrgUpdates && orgId) {
+    const { data: fetchedOrgData, error: orgDataError } = await auth.admin
+      .from("organizations")
+      .select("id, workspace_type, owner_profile_id")
+      .eq("id", orgId)
+      .single();
+
+    if (orgDataError || !fetchedOrgData) {
+      await recordActivity({
+        admin: auth.admin,
+        level: "warn",
+        action: "admin.coach.update.denied",
+        actorUserId: auth.userId ?? null,
+        orgId: orgId ?? null,
+        message: "Modification coach refusee: organisation introuvable.",
+      });
+      return NextResponse.json({ error: "Organisation introuvable." }, { status: 404 });
+    }
+    orgData = fetchedOrgData;
+
+    const { error: updateError } = await auth.admin
+      .from("organizations")
+      .update(orgUpdates)
+      .eq("id", orgId);
+
+    if (updateError) {
+      await recordActivity({
+        admin: auth.admin,
+        level: "error",
+        action: "admin.coach.update.failed",
+        actorUserId: auth.userId ?? null,
+        orgId,
+        message: updateError.message ?? "Modification coach impossible.",
+      });
+      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
+
+    if (orgData.workspace_type === "personal" && orgData.owner_profile_id) {
+      if (typeof payload.ai_enabled === "boolean") {
+        const { error: premiumError } = await auth.admin
+          .from("profiles")
+          .update({ premium_active: payload.ai_enabled })
+          .eq("id", orgData.owner_profile_id);
+
+        if (premiumError) {
+          await recordActivity({
+            admin: auth.admin,
+            level: "error",
+            action: "admin.coach.update.failed",
+            actorUserId: auth.userId ?? null,
+            orgId,
+            message: premiumError.message ?? "Synchronisation premium profil impossible.",
+          });
+      return NextResponse.json({ error: premiumError.message }, { status: 500 });
+        }
+      }
+    }
   }
 
-  if (orgData.workspace_type === "personal" && orgData.owner_profile_id) {
-    if (typeof payload.ai_enabled === "boolean") {
-      const { error: premiumError } = await auth.admin
+  if (wantsCoachBudgetUpdate || hasTopup) {
+    if (!coachId) {
+      return NextResponse.json({ error: "coachId requis." }, { status: 422 });
+    }
+
+    const { data: coachProfile, error: coachProfileError } = await auth.admin
+      .from("profiles")
+      .select("id, ai_budget_enabled, ai_budget_monthly_cents")
+      .eq("id", coachId)
+      .maybeSingle();
+
+    if (coachProfileError) {
+      await recordActivity({
+        admin: auth.admin,
+        level: "error",
+        action: "admin.coach.update.failed",
+        actorUserId: auth.userId ?? null,
+        orgId,
+        message: coachProfileError.message ?? "Lecture quota IA coach impossible.",
+      });
+      return NextResponse.json({ error: coachProfileError.message }, { status: 500 });
+    }
+
+    if (!coachProfile) {
+      await recordActivity({
+        admin: auth.admin,
+        level: "warn",
+        action: "admin.coach.update.denied",
+        actorUserId: auth.userId ?? null,
+        orgId,
+        message: "Modification coach refusee: profil coach introuvable.",
+      });
+      return NextResponse.json({ error: "Coach introuvable." }, { status: 404 });
+    }
+
+    const budgetUpdates: Record<string, unknown> = {};
+    if (typeof payload.ai_budget_enabled === "boolean") {
+      budgetUpdates.ai_budget_enabled = payload.ai_budget_enabled;
+    }
+    if (hasBudgetAmountUpdate) {
+      budgetUpdates.ai_budget_monthly_cents = payload.ai_budget_monthly_cents ?? null;
+    }
+
+    const nextBudgetEnabled =
+      typeof payload.ai_budget_enabled === "boolean"
+        ? payload.ai_budget_enabled
+        : (coachProfile.ai_budget_enabled ?? false);
+    const nextBudgetCents = hasBudgetAmountUpdate
+      ? payload.ai_budget_monthly_cents ?? null
+      : (coachProfile.ai_budget_monthly_cents ?? null);
+
+    if (nextBudgetEnabled && (!nextBudgetCents || nextBudgetCents < 1)) {
+      return NextResponse.json(
+        {
+          error:
+            "Le budget IA est actif: renseigne un montant mensuel strictement positif.",
+        },
+        { status: 422 }
+      );
+    }
+
+    if (Object.keys(budgetUpdates).length > 0) {
+      const { error: budgetUpdateError } = await auth.admin
         .from("profiles")
-        .update({ premium_active: payload.ai_enabled })
-        .eq("id", orgData.owner_profile_id);
+        .update(budgetUpdates)
+        .eq("id", coachId);
 
-      if (premiumError) {
+      if (budgetUpdateError) {
         await recordActivity({
           admin: auth.admin,
           level: "error",
           action: "admin.coach.update.failed",
           actorUserId: auth.userId ?? null,
           orgId,
-          message: premiumError.message ?? "Synchronisation premium profil impossible.",
+          message: budgetUpdateError.message ?? "Mise a jour budget IA coach impossible.",
         });
-        return NextResponse.json({ error: premiumError.message }, { status: 500 });
+        return NextResponse.json({ error: budgetUpdateError.message }, { status: 500 });
+      }
+    }
+
+    if (hasTopup) {
+      const topupCents = toNumber(payload.ai_credit_topup_cents);
+      if (topupCents < 1) {
+        return NextResponse.json(
+          { error: "Montant de recharge invalide." },
+          { status: 422 }
+        );
+      }
+      const { monthKey } = getAiBudgetMonthWindow();
+      const { error: topupError } = await auth.admin.from("ai_credit_topups").insert([
+        {
+          profile_id: coachId,
+          amount_cents: topupCents,
+          month_key: monthKey,
+          note: payload.ai_credit_topup_note?.trim() || null,
+          created_by: auth.userId ?? null,
+        },
+      ]);
+      if (topupError) {
+        await recordActivity({
+          admin: auth.admin,
+          level: "error",
+          action: "admin.coach.update.failed",
+          actorUserId: auth.userId ?? null,
+          orgId,
+          message: topupError.message ?? "Recharge credits IA impossible.",
+        });
+        return NextResponse.json({ error: topupError.message }, { status: 500 });
       }
     }
   }
@@ -337,9 +538,9 @@ export async function PATCH(request: Request) {
     admin: auth.admin,
     action: "admin.coach.update.success",
     actorUserId: auth.userId ?? null,
-    orgId,
-    entityType: "organization",
-    entityId: orgId,
+    orgId: orgId ?? null,
+    entityType: orgId ? "organization" : "profile",
+    entityId: orgId ?? coachId ?? null,
     message: "Parametres coach/orga modifies par admin.",
   });
 

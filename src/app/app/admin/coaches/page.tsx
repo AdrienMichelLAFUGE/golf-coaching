@@ -21,7 +21,16 @@ type WorkspaceRow = {
   membership_id: string | null;
   membership_role: "admin" | "coach" | null;
   membership_status: "invited" | "active" | "disabled" | null;
-  coach: { id: string; full_name: string | null; email: string | null } | null;
+  coach: {
+    id: string;
+    full_name: string | null;
+    email: string | null;
+    ai_budget_enabled: boolean;
+    ai_budget_monthly_cents: number | null;
+    ai_budget_spent_cents_current_month: number;
+    ai_budget_topup_cents_current_month: number;
+    ai_budget_remaining_cents_current_month: number | null;
+  } | null;
 };
 
 type DisplayWorkspace = WorkspaceRow & { isPlaceholder?: boolean };
@@ -44,11 +53,32 @@ export default function AdminCoachesPage() {
   const [workspaces, setWorkspaces] = useState<WorkspaceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [savingCoachId, setSavingCoachId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
   const [showOrphaned, setShowOrphaned] = useState(false);
+  const [budgetDrafts, setBudgetDrafts] = useState<Record<string, string>>({});
+
+  const formatEuro = (cents: number) =>
+    new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: "EUR",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(cents / 100);
+
+  const centsToInput = (cents: number | null | undefined) =>
+    cents && cents > 0 ? (cents / 100).toFixed(2) : "";
+
+  const parseEuroInputToCents = (raw: string) => {
+    const normalized = raw.trim().replace(",", ".");
+    if (!normalized) return null;
+    const parsed = Number(normalized);
+    if (!Number.isFinite(parsed) || parsed <= 0) return null;
+    return Math.round(parsed * 100);
+  };
 
   const loadWorkspaces = async () => {
     setLoading(true);
@@ -303,6 +333,94 @@ export default function AdminCoachesPage() {
     setSavingId(null);
   };
 
+  const handleCoachBudgetUpdate = async (
+    orgId: string,
+    coachId: string,
+    patch: { ai_budget_enabled?: boolean; ai_budget_monthly_cents?: number | null }
+  ) => {
+    setSavingCoachId(coachId);
+    setError("");
+    setMessage("");
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+
+    if (!token) {
+      setError("Session invalide. Reconnecte toi.");
+      setSavingCoachId(null);
+      return;
+    }
+
+    const response = await fetch("/api/admin/coaches", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        orgId,
+        coachId,
+        ai_budget_enabled: patch.ai_budget_enabled,
+        ai_budget_monthly_cents: patch.ai_budget_monthly_cents,
+      }),
+    });
+
+    const payload = (await response.json()) as { error?: string };
+    if (!response.ok) {
+      setError(payload.error ?? "Mise a jour budget IA impossible.");
+      setSavingCoachId(null);
+      return;
+    }
+
+    const hasEnabledPatch = typeof patch.ai_budget_enabled === "boolean";
+    const hasBudgetPatch = Object.prototype.hasOwnProperty.call(
+      patch,
+      "ai_budget_monthly_cents"
+    );
+    setWorkspaces((prev) =>
+      prev.map((workspace) => {
+        if (workspace.coach?.id !== coachId || !workspace.coach) return workspace;
+        const nextBudgetEnabled = hasEnabledPatch
+          ? Boolean(patch.ai_budget_enabled)
+          : workspace.coach.ai_budget_enabled;
+        const nextBudgetCents = hasBudgetPatch
+          ? (patch.ai_budget_monthly_cents ?? null)
+          : workspace.coach.ai_budget_monthly_cents;
+        const availableCents = nextBudgetEnabled
+          ? Math.max(
+              0,
+              (nextBudgetCents ?? 0) + workspace.coach.ai_budget_topup_cents_current_month
+            )
+          : null;
+        const remainingCents =
+          availableCents === null
+            ? null
+            : availableCents - workspace.coach.ai_budget_spent_cents_current_month;
+        return {
+          ...workspace,
+          coach: {
+            ...workspace.coach,
+            ai_budget_enabled: nextBudgetEnabled,
+            ai_budget_monthly_cents: nextBudgetCents,
+            ai_budget_remaining_cents_current_month: remainingCents,
+          },
+        };
+      })
+    );
+
+    if (hasBudgetPatch) {
+      setBudgetDrafts((prev) => ({
+        ...prev,
+        [coachId]: patch.ai_budget_monthly_cents
+          ? centsToInput(patch.ai_budget_monthly_cents)
+          : "",
+      }));
+    }
+
+    setMessage("Budget IA mis a jour.");
+    setSavingCoachId(null);
+  };
+
   return (
     <AdminGuard>
       <div className="space-y-6">
@@ -372,6 +490,7 @@ export default function AdminCoachesPage() {
                 >
                   {group.items.map((workspace, index) => {
                     const isPlaceholder = workspace.isPlaceholder === true;
+                    const coach = workspace.coach;
                     return (
                       <div
                         key={workspace.id}
@@ -402,10 +521,133 @@ export default function AdminCoachesPage() {
                             </>
                           ) : (
                             <>
-                              <p>{workspace.coach?.full_name ?? "Coach"}</p>
+                              <p>{coach?.full_name ?? "Coach"}</p>
                               <p className="mt-1 text-xs text-[var(--muted)]">
-                                {workspace.coach?.email ?? "Email indisponible"}
+                                {coach?.email ?? "Email indisponible"}
                               </p>
+                              {index === 0 && coach ? (
+                                <div className="mt-3 rounded-xl border border-white/10 bg-[var(--bg-elevated)] p-3">
+                                  <p className="text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                                    Budget IA (compte)
+                                  </p>
+                                  <label className="mt-2 flex items-center gap-2 text-xs text-[var(--text)]">
+                                    <input
+                                      type="checkbox"
+                                      checked={coach.ai_budget_enabled}
+                                      disabled={savingCoachId === coach.id}
+                                      onChange={async (event) => {
+                                        const enabled = event.target.checked;
+                                        if (enabled) {
+                                          const fromDraft = parseEuroInputToCents(
+                                            budgetDrafts[coach.id] ?? ""
+                                          );
+                                          const defaultBudget = fromDraft ?? 2500;
+                                          setBudgetDrafts((prev) => ({
+                                            ...prev,
+                                            [coach.id]: centsToInput(defaultBudget),
+                                          }));
+                                          await handleCoachBudgetUpdate(
+                                            workspace.id,
+                                            coach.id,
+                                            {
+                                              ai_budget_enabled: true,
+                                              ai_budget_monthly_cents: defaultBudget,
+                                            }
+                                          );
+                                          return;
+                                        }
+                                        await handleCoachBudgetUpdate(
+                                          workspace.id,
+                                          coach.id,
+                                          { ai_budget_enabled: false }
+                                        );
+                                      }}
+                                      className="h-4 w-4 rounded border border-white/10 bg-[var(--bg-elevated)]"
+                                    />
+                                    <span>Activer le budget IA</span>
+                                  </label>
+                                  <div className="mt-2">
+                                    <label className="text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
+                                      Budget mensuel (EUR)
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={
+                                        budgetDrafts[coach.id] ??
+                                        centsToInput(coach.ai_budget_monthly_cents)
+                                      }
+                                      disabled={
+                                        savingCoachId === coach.id ||
+                                        !coach.ai_budget_enabled
+                                      }
+                                      onChange={(event) =>
+                                        setBudgetDrafts((prev) => ({
+                                          ...prev,
+                                          [coach.id]: event.target.value,
+                                        }))
+                                      }
+                                      onBlur={async () => {
+                                        const cents = parseEuroInputToCents(
+                                          budgetDrafts[coach.id] ?? ""
+                                        );
+
+                                        if (!cents) {
+                                          setError(
+                                            "Le budget IA doit etre un montant strictement positif."
+                                          );
+                                          setBudgetDrafts((prev) => ({
+                                            ...prev,
+                                            [coach.id]: centsToInput(
+                                              coach.ai_budget_monthly_cents
+                                            ),
+                                          }));
+                                          return;
+                                        }
+
+                                        await handleCoachBudgetUpdate(
+                                          workspace.id,
+                                          coach.id,
+                                          { ai_budget_monthly_cents: cents }
+                                        );
+                                      }}
+                                      className="mt-1 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text)]"
+                                      placeholder="Ex: 25.00"
+                                    />
+                                  </div>
+                                  <p className="mt-2 text-[11px] text-[var(--muted)]">
+                                    Consomme (periode active):{" "}
+                                    <span className="text-[var(--text)]">
+                                      {formatEuro(coach.ai_budget_spent_cents_current_month)}
+                                    </span>
+                                  </p>
+                                  <p className="mt-1 text-[11px] text-[var(--muted)]">
+                                    Recharges (periode active):{" "}
+                                    <span className="text-[var(--text)]">
+                                      {formatEuro(coach.ai_budget_topup_cents_current_month)}
+                                    </span>
+                                  </p>
+                                  <p className="mt-1 text-[11px] text-[var(--muted)]">
+                                    Reste (periode active):{" "}
+                                    <span
+                                      className={
+                                        coach.ai_budget_remaining_cents_current_month !== null &&
+                                        coach.ai_budget_remaining_cents_current_month <= 0
+                                          ? "text-rose-300"
+                                          : "text-[var(--text)]"
+                                      }
+                                    >
+                                      {coach.ai_budget_remaining_cents_current_month === null
+                                        ? "Illimite"
+                                        : formatEuro(
+                                            Math.max(
+                                              0,
+                                              coach.ai_budget_remaining_cents_current_month
+                                            )
+                                          )}
+                                    </span>
+                                  </p>
+                                </div>
+                              ) : null}
                             </>
                           )}
                         </div>

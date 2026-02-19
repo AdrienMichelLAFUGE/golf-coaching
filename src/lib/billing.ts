@@ -15,6 +15,17 @@ export type StripeAccessResult = {
   paymentIssue: boolean;
 };
 
+export type ProQuotaPolicy = {
+  interval: "month" | "year";
+  windowDays: number;
+  budgetCents: number;
+};
+
+export const PRO_MONTHLY_AI_BUDGET_CENTS = 2500;
+export const PRO_YEARLY_AI_BUDGET_CENTS = 30400;
+export const PRO_MONTHLY_AI_WINDOW_DAYS = 30;
+export const PRO_YEARLY_AI_WINDOW_DAYS = 365;
+
 export const isProPriceId = (priceId?: string | null) =>
   Boolean(
     priceId &&
@@ -24,6 +35,39 @@ export const isProPriceId = (priceId?: string | null) =>
 
 export const resolveProPriceId = (interval: "month" | "year") =>
   interval === "month" ? env.STRIPE_PRO_PRICE_MONTH_ID : env.STRIPE_PRO_PRICE_YEAR_ID;
+
+export const resolveProQuotaPolicy = (
+  stripePriceId?: string | null
+): ProQuotaPolicy | null => {
+  if (!stripePriceId) return null;
+  if (stripePriceId === env.STRIPE_PRO_PRICE_MONTH_ID) {
+    return {
+      interval: "month",
+      windowDays: PRO_MONTHLY_AI_WINDOW_DAYS,
+      budgetCents: PRO_MONTHLY_AI_BUDGET_CENTS,
+    };
+  }
+  if (stripePriceId === env.STRIPE_PRO_PRICE_YEAR_ID) {
+    return {
+      interval: "year",
+      windowDays: PRO_YEARLY_AI_WINDOW_DAYS,
+      budgetCents: PRO_YEARLY_AI_BUDGET_CENTS,
+    };
+  }
+  return null;
+};
+
+export const AI_CREDIT_TOPUP_OPTIONS_CENTS = [500, 1000, 2000] as const;
+export type AiCreditTopupAmountCents = (typeof AI_CREDIT_TOPUP_OPTIONS_CENTS)[number];
+
+export const resolveAiCreditTopupPriceId = (
+  amountCents: number
+): string | null => {
+  if (amountCents === 500) return env.STRIPE_AI_CREDIT_PRICE_5_ID ?? null;
+  if (amountCents === 1000) return env.STRIPE_AI_CREDIT_PRICE_10_ID ?? null;
+  if (amountCents === 2000) return env.STRIPE_AI_CREDIT_PRICE_20_ID ?? null;
+  return null;
+};
 
 const toTimestamp = (value?: string | null) => {
   if (!value) return null;

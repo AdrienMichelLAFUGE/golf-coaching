@@ -82,6 +82,86 @@ describe("POST /api/billing/webhook", () => {
     expect(stripeEventsInsert).not.toHaveBeenCalled();
   });
 
+  it("credits ai topup on checkout payment flow", async () => {
+    const session = {
+      id: "cs_topup_1",
+      mode: "payment",
+      payment_status: "paid",
+      customer: "cus_123",
+      subscription: null,
+      metadata: {
+        flow: "ai_credit_topup",
+        org_id: "org-1",
+        coach_id: "coach-1",
+        actor_user_id: "admin-1",
+        topup_cents: "1000",
+      },
+    };
+
+    const event = {
+      id: "evt_topup_1",
+      type: "checkout.session.completed",
+      created: 1700000000,
+      data: { object: session },
+    };
+    stripeMocks.webhooks.constructEvent.mockReturnValue(event);
+
+    const stripeEventsSelect = jest.fn(async () => ({ data: null, error: null }));
+    const stripeEventsInsert = jest.fn(async () => ({ error: null }));
+    const topupInsert = jest.fn(async () => ({ error: null }));
+    const topupMaybeSingle = jest.fn(async () => ({ data: null, error: null }));
+
+    const admin = {
+      from: jest.fn((table: string) => {
+        if (table === "stripe_events") {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: stripeEventsSelect,
+              }),
+            }),
+            insert: stripeEventsInsert,
+            delete: () => ({ eq: jest.fn() }),
+          };
+        }
+        if (table === "ai_credit_topups") {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  maybeSingle: topupMaybeSingle,
+                }),
+              }),
+            }),
+            insert: topupInsert,
+          };
+        }
+        return {};
+      }),
+    };
+
+    serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
+
+    const response = await POST(buildRequest("{}"));
+
+    expect(response.status).toBe(200);
+    expect(topupInsert).toHaveBeenCalledTimes(1);
+    const firstTopupInsertCall = (topupInsert as jest.Mock).mock.calls[0] as
+      | [Array<Record<string, unknown>>]
+      | undefined;
+    const insertedTopup = firstTopupInsertCall?.[0]?.[0];
+    expect(insertedTopup).toEqual(
+      expect.objectContaining({
+        profile_id: "coach-1",
+        amount_cents: 1000,
+        created_by: "admin-1",
+      })
+    );
+    expect(String(insertedTopup?.month_key ?? "")).toMatch(/^\d{4}-\d{2}$/);
+    expect(stripeMocks.customers.update).not.toHaveBeenCalled();
+    expect(stripeMocks.subscriptions.retrieve).not.toHaveBeenCalled();
+  });
+
   it("syncs subscription updates to organization", async () => {
     const subscription = {
       id: "sub_1",

@@ -5,6 +5,7 @@ import { env } from "@/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { stripe } from "@/lib/stripe";
 import { computeAccess, isProPriceId } from "@/lib/billing";
+import { getAiBudgetMonthWindow } from "@/lib/ai/budget";
 import { recordActivity } from "@/lib/activity-log";
 
 export const runtime = "nodejs";
@@ -224,6 +225,117 @@ export async function POST(request: Request) {
       case "checkout.session.completed":
       case "checkout.session.async_payment_succeeded": {
         const session = event.data.object as Stripe.Checkout.Session;
+        const flow = session.metadata?.flow ?? null;
+        if (flow === "ai_credit_topup") {
+          const coachId = session.metadata?.coach_id ?? null;
+          const orgId = session.metadata?.org_id ?? null;
+          const actorUserId = session.metadata?.actor_user_id ?? null;
+          const topupCents = Number(session.metadata?.topup_cents ?? 0);
+          const isPaid =
+            event.type === "checkout.session.async_payment_succeeded" ||
+            session.payment_status === "paid";
+
+          if (!coachId || !Number.isFinite(topupCents) || topupCents <= 0) {
+            await recordActivity({
+              admin,
+              level: "warn",
+              action: "payment.topup.failed",
+              source: "stripe_webhook",
+              orgId,
+              entityType: "profile",
+              entityId: coachId,
+              message: "Recharge IA ignoree: metadata invalide.",
+              metadata: {
+                eventId: event.id,
+                eventType: event.type,
+                checkoutSessionId: session.id ?? null,
+              },
+            });
+            break;
+          }
+
+          if (!isPaid) {
+            await recordActivity({
+              admin,
+              level: "warn",
+              action: "payment.topup.pending",
+              source: "stripe_webhook",
+              orgId,
+              entityType: "profile",
+              entityId: coachId,
+              message: "Recharge IA en attente de paiement.",
+              metadata: {
+                eventId: event.id,
+                eventType: event.type,
+                checkoutSessionId: session.id ?? null,
+                paymentStatus: session.payment_status ?? null,
+              },
+            });
+            break;
+          }
+
+          const topupReference = `stripe_session:${session.id ?? event.id}`;
+          const { data: existingTopup } = await admin
+            .from("ai_credit_topups")
+            .select("id")
+            .eq("profile_id", coachId)
+            .eq("note", topupReference)
+            .maybeSingle();
+          if (existingTopup) {
+            await recordActivity({
+              admin,
+              action: "payment.topup.duplicate",
+              source: "stripe_webhook",
+              orgId,
+              actorUserId: actorUserId || null,
+              entityType: "profile",
+              entityId: coachId,
+              message: "Recharge IA deja creditee pour cette session.",
+              metadata: {
+                eventId: event.id,
+                eventType: event.type,
+                checkoutSessionId: session.id ?? null,
+                amountCents: Math.round(topupCents),
+              },
+            });
+            break;
+          }
+
+          const { monthKey } = getAiBudgetMonthWindow();
+          const { error: topupError } = await admin.from("ai_credit_topups").insert([
+            {
+              profile_id: coachId,
+              amount_cents: Math.round(topupCents),
+              month_key: monthKey,
+              note: topupReference,
+              created_by: actorUserId || null,
+            },
+          ]);
+
+          if (topupError) {
+            throw new Error(topupError.message);
+          }
+
+          await recordActivity({
+            admin,
+            action: "payment.topup.success",
+            source: "stripe_webhook",
+            orgId,
+            actorUserId: actorUserId || null,
+            entityType: "profile",
+            entityId: coachId,
+            message: "Recharge IA creditee.",
+            metadata: {
+              eventId: event.id,
+              eventType: event.type,
+              checkoutSessionId: session.id ?? null,
+              amountCents: Math.round(topupCents),
+            },
+          });
+          logStripeEvent(event.id, event.type, orgId);
+          break;
+        }
+
         const customerId = getCustomerId(session.customer);
         const orgId = session.metadata?.org_id ?? null;
         const subscriptionId = getSubscriptionId(session.subscription);

@@ -10,6 +10,7 @@ import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
 import { loadPromptSection } from "@/lib/promptLoader";
 import { generateReportKpisForPublishedReport } from "@/lib/ai/report-kpis";
+import { computeAiCostEurCents } from "@/lib/ai/pricing";
 import { recordActivity } from "@/lib/activity-log";
 
 export const runtime = "nodejs";
@@ -312,6 +313,54 @@ export async function POST(req: Request) {
         { status: 500 }
       );
     }
+    const endpoint = "report_publish";
+    const action = "report_publish_format";
+    const model = "gpt-5.2";
+    const recordUsage = async (
+      usage:
+        | {
+            input_tokens?: number;
+            output_tokens?: number;
+            total_tokens?: number;
+          }
+        | null
+        | undefined,
+      startedAtMs: number,
+      statusCode: number,
+      errorType?: "timeout" | "exception"
+    ) => {
+      const shouldRecord = Boolean(usage) || statusCode >= 400;
+      if (!shouldRecord) return;
+      const inputTokens =
+        typeof usage?.input_tokens === "number" ? usage.input_tokens : 0;
+      const outputTokens =
+        typeof usage?.output_tokens === "number" ? usage.output_tokens : 0;
+      const totalTokens =
+        typeof usage?.total_tokens === "number"
+          ? usage.total_tokens
+          : inputTokens + outputTokens;
+      const costEurCents = computeAiCostEurCents(inputTokens, outputTokens, model);
+      try {
+        await admin.from("ai_usage").insert([
+          {
+            user_id: userId,
+            org_id: profileData.org_id,
+            action,
+            model,
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+            total_tokens: totalTokens,
+            cost_eur_cents: costEurCents,
+            duration_ms: Date.now() - startedAtMs,
+            endpoint,
+            status_code: statusCode,
+            error_type: errorType ?? null,
+          },
+        ]);
+      } catch (error) {
+        console.error("report.publish usage logging failed:", error);
+      }
+    };
     const updates: Array<{
       id: string;
       content_formatted: string;
@@ -319,29 +368,65 @@ export async function POST(req: Request) {
     }> = [];
 
     for (const section of toFormat) {
-      const response = await openai.responses.create({
-        model: "gpt-5.2",
-        temperature: 0.2,
-        max_output_tokens: 900,
-        input: [
-          {
-            role: "system",
-            content: [{ type: "input_text", text: systemPrompt }],
+      const sectionStartedAt = Date.now();
+      let response:
+        | {
+            usage?: {
+              input_tokens?: number;
+              output_tokens?: number;
+              total_tokens?: number;
+            } | null;
+            output_text?: string | null;
+            output?: Array<unknown>;
+          }
+        | null = null;
+      try {
+        response = await openai.responses.create({
+          model,
+          temperature: 0.2,
+          max_output_tokens: 900,
+          input: [
+            {
+              role: "system",
+              content: [{ type: "input_text", text: systemPrompt }],
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: buildUserPrompt(section.title, section.content),
+                },
+              ],
+            },
+          ],
+        });
+      } catch (error) {
+        await recordUsage(null, sectionStartedAt, 502, "exception");
+        await recordActivity({
+          admin,
+          level: "error",
+          action: "report.publish.format_failed",
+          actorUserId: userId,
+          orgId: profileData.org_id,
+          entityType: "report",
+          entityId: report.id,
+          message: "Echec de reformattage d une section.",
+          metadata: {
+            sectionId: section.id,
+            sectionTitle: section.title,
+            reason: error instanceof Error ? error.message : "openai_error",
           },
-          {
-            role: "user",
-            content: [
-              {
-                type: "input_text",
-                text: buildUserPrompt(section.title, section.content),
-              },
-            ],
-          },
-        ],
-      });
+        });
+        return Response.json(
+          { error: "Echec de reformattage du rapport." },
+          { status: 502 }
+        );
+      }
 
       const formatted = extractOutputText(response);
       if (!formatted) {
+        await recordUsage(response.usage ?? null, sectionStartedAt, 502, "exception");
         await recordActivity({
           admin,
           level: "error",
@@ -361,6 +446,7 @@ export async function POST(req: Request) {
           { status: 502 }
         );
       }
+      await recordUsage(response.usage ?? null, sectionStartedAt, 200);
 
       updates.push({
         id: section.id,

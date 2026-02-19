@@ -197,6 +197,13 @@ describe("GET /api/admin/coaches", () => {
         }),
       },
     } as SupabaseClient;
+    const now = new Date();
+    const currentDateIso = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 10)
+    ).toISOString();
+    const currentTopupDateIso = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 9)
+    ).toISOString();
 
     const admin = {
       auth: {
@@ -277,10 +284,49 @@ describe("GET /api/admin/coaches", () => {
             select: jest.fn().mockReturnValue({
               in: jest.fn().mockResolvedValue({
                 data: [
-                  { id: "coach-1", full_name: "Coach A", role: "coach" },
+                  {
+                    id: "coach-1",
+                    full_name: "Coach A",
+                    role: "coach",
+                    ai_budget_enabled: true,
+                    ai_budget_monthly_cents: 2500,
+                  },
                   { id: "student-1", full_name: "Eleve", role: "student" },
                 ],
                 error: null,
+              }),
+            }),
+          };
+        }
+        if (table === "ai_credit_topups") {
+          return {
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                lt: jest.fn().mockResolvedValue({
+                  data: [{ amount_cents: 400, created_at: currentTopupDateIso }],
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === "ai_usage") {
+          return {
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                lt: jest.fn().mockResolvedValue({
+                  data: [
+                    {
+                      created_at: currentDateIso,
+                      model: "gpt-5.2",
+                      input_tokens: 100000,
+                      output_tokens: 100000,
+                      total_tokens: 200000,
+                      cost_eur_cents: 145,
+                    },
+                  ],
+                  error: null,
+                }),
               }),
             }),
           };
@@ -307,6 +353,11 @@ describe("GET /api/admin/coaches", () => {
         coach: expect.objectContaining({
           id: "coach-1",
           email: "coach@example.com",
+          ai_budget_enabled: true,
+          ai_budget_monthly_cents: 2500,
+          ai_budget_spent_cents_current_month: 145,
+          ai_budget_topup_cents_current_month: 400,
+          ai_budget_remaining_cents_current_month: 2755,
         }),
       })
     );
@@ -406,5 +457,122 @@ describe("PATCH /api/admin/coaches", () => {
     expect(response.status).toBe(200);
     expect(update).toHaveBeenCalledWith({ plan_tier_override: "pro" });
     expect(updateEq).toHaveBeenCalledWith("id", "org-personal");
+  });
+
+  it("updates coach IA budget settings", async () => {
+    const supabase = {
+      auth: {
+        getUser: async () => ({
+          data: { user: { id: "admin-1", email: "adrien.lafuge@outlook.fr" } },
+          error: null,
+        }),
+      },
+    } as SupabaseClient;
+
+    const profileUpdateEq = jest.fn().mockResolvedValue({ error: null });
+    const profileUpdate = jest.fn().mockReturnValue({ eq: profileUpdateEq });
+    const profileMaybeSingle = jest.fn().mockResolvedValue({
+      data: { id: "coach-1", ai_budget_enabled: false, ai_budget_monthly_cents: null },
+      error: null,
+    });
+    const profileSelectEq = jest.fn().mockReturnValue({ maybeSingle: profileMaybeSingle });
+    const profileSelect = jest.fn().mockReturnValue({ eq: profileSelectEq });
+
+    const admin = {
+      auth: { admin: { updateUserById: jest.fn() } },
+      from: jest.fn((table: string) => {
+        if (table === "profiles") {
+          return {
+            select: profileSelect,
+            update: profileUpdate,
+          };
+        }
+        return {};
+      }),
+    } as AdminClient;
+
+    serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
+    serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
+
+    const response = await PATCH(
+      buildRequest({
+        coachId: "coach-1",
+        ai_budget_enabled: true,
+        ai_budget_monthly_cents: 2500,
+      })
+    );
+
+    if (!response) {
+      throw new Error("Missing response");
+    }
+    expect(response.status).toBe(200);
+    expect(profileSelect).toHaveBeenCalledWith(
+      "id, ai_budget_enabled, ai_budget_monthly_cents"
+    );
+    expect(profileSelectEq).toHaveBeenCalledWith("id", "coach-1");
+    expect(profileUpdate).toHaveBeenCalledWith({
+      ai_budget_enabled: true,
+      ai_budget_monthly_cents: 2500,
+    });
+    expect(profileUpdateEq).toHaveBeenCalledWith("id", "coach-1");
+  });
+
+  it("adds IA credits topup for current month", async () => {
+    const supabase = {
+      auth: {
+        getUser: async () => ({
+          data: { user: { id: "admin-1", email: "adrien.lafuge@outlook.fr" } },
+          error: null,
+        }),
+      },
+    } as SupabaseClient;
+
+    const profileMaybeSingle = jest.fn().mockResolvedValue({
+      data: { id: "coach-1", ai_budget_enabled: true, ai_budget_monthly_cents: 2500 },
+      error: null,
+    });
+    const profileSelectEq = jest.fn().mockReturnValue({ maybeSingle: profileMaybeSingle });
+    const profileSelect = jest.fn().mockReturnValue({ eq: profileSelectEq });
+    const insertTopup = jest.fn().mockResolvedValue({ error: null });
+
+    const admin = {
+      auth: { admin: { updateUserById: jest.fn() } },
+      from: jest.fn((table: string) => {
+        if (table === "profiles") {
+          return {
+            select: profileSelect,
+          };
+        }
+        if (table === "ai_credit_topups") {
+          return {
+            insert: insertTopup,
+          };
+        }
+        return {};
+      }),
+    } as AdminClient;
+
+    serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
+    serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
+
+    const response = await PATCH(
+      buildRequest({
+        coachId: "coach-1",
+        ai_credit_topup_cents: 1000,
+      })
+    );
+
+    if (!response) {
+      throw new Error("Missing response");
+    }
+    expect(response.status).toBe(200);
+    expect(insertTopup).toHaveBeenCalledTimes(1);
+    expect(insertTopup.mock.calls[0]?.[0]?.[0]).toEqual(
+      expect.objectContaining({
+        profile_id: "coach-1",
+        amount_cents: 1000,
+        created_by: "admin-1",
+      })
+    );
   });
 });

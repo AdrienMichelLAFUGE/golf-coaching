@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { PLAN_ENTITLEMENTS } from "@/lib/plans";
 import Badge from "../../_components/badge";
@@ -49,7 +49,35 @@ type OrganizationSettings = {
   stripe_customer_id?: string | null;
 };
 
+type AiBudgetSummary = {
+  enabled: boolean;
+  monthly_budget_cents: number | null;
+  spent_cents_current_month: number;
+  topup_cents_current_month: number;
+  topup_carryover_cents?: number;
+  topup_remaining_cents_current_month?: number;
+  base_remaining_cents_current_month?: number;
+  available_cents_current_month: number | null;
+  remaining_cents_current_month: number | null;
+  usage_percent_current_month: number | null;
+  month_key: string;
+  window_kind?: "calendar_month" | "sliding_pro";
+  window_days?: number | null;
+  window_start_iso?: string;
+  window_end_iso?: string;
+  quota_reset_at_iso?: string;
+};
+
 const STORAGE_BUCKET = "coach-assets";
+const AI_TOPUP_OPTIONS_CENTS = [500, 1000, 2000] as const;
+const AI_TOPUP_FIXED_ACTIONS_BY_CENTS: Record<number, number> = {
+  500: 150,
+  1000: 350,
+  2000: 800,
+};
+const AVERAGE_AI_ACTION_COST_USD = 0.017;
+
+type TopupValidationState = "idle" | "validating" | "pending" | "success";
 
 const normalizeSections = (value: string) => {
   const seen = new Set<string>();
@@ -78,6 +106,15 @@ export default function CoachSettingsPage() {
   const [premiumModalOpen, setPremiumModalOpen] = useState(false);
   const [billingLoading, setBillingLoading] = useState(false);
   const [billingError, setBillingError] = useState("");
+  const [aiBudgetSummary, setAiBudgetSummary] = useState<AiBudgetSummary | null>(null);
+  const [aiBudgetLoading, setAiBudgetLoading] = useState(false);
+  const [aiBudgetError, setAiBudgetError] = useState("");
+  const [topupLoadingCents, setTopupLoadingCents] = useState<number | null>(null);
+  const [topupValidationState, setTopupValidationState] =
+    useState<TopupValidationState>("idle");
+  const [topupValidationActions, setTopupValidationActions] = useState<number | null>(
+    null
+  );
 
   const [fullName, setFullName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
@@ -130,6 +167,131 @@ export default function CoachSettingsPage() {
       timeZone: timezone,
     }).format(parsed);
   })();
+  const formatEuro = (cents: number) =>
+    new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: "EUR",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(cents / 100);
+  const usageWindowLabel = useMemo(() => {
+    const windowDays = aiBudgetSummary?.window_days ?? null;
+    const windowStartRaw = aiBudgetSummary?.window_start_iso ?? null;
+    const windowEndRaw = aiBudgetSummary?.window_end_iso ?? null;
+    if (windowDays && windowDays > 0 && windowStartRaw && windowEndRaw) {
+      const start = new Date(windowStartRaw);
+      const end = new Date(windowEndRaw);
+      if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+        const formatDate = new Intl.DateTimeFormat(locale, {
+          dateStyle: "short",
+          timeZone: "UTC",
+        });
+        return `periode active (${formatDate.format(start)} - ${formatDate.format(end)})`;
+      }
+      return "periode active";
+    }
+
+    const monthKey = aiBudgetSummary?.month_key;
+    if (!monthKey) {
+      return new Date().toLocaleDateString("fr-FR", {
+        month: "long",
+        year: "numeric",
+      });
+    }
+    const [yearRaw, monthRaw] = monthKey.split("-");
+    const year = Number(yearRaw);
+    const month = Number(monthRaw);
+    if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+      return monthKey;
+    }
+    return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("fr-FR", {
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+  }, [
+    aiBudgetSummary?.month_key,
+    aiBudgetSummary?.window_days,
+    aiBudgetSummary?.window_start_iso,
+    aiBudgetSummary?.window_end_iso,
+    locale,
+  ]);
+  const usagePercent = aiBudgetSummary?.usage_percent_current_month ?? null;
+  const quotaResetLabel = useMemo(() => {
+    const resetRaw =
+      aiBudgetSummary?.quota_reset_at_iso ?? aiBudgetSummary?.window_end_iso ?? null;
+    if (!resetRaw) return null;
+    const parsed = new Date(resetRaw);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return new Intl.DateTimeFormat(locale, {
+      dateStyle: "medium",
+      timeZone: timezone,
+    }).format(parsed);
+  }, [
+    aiBudgetSummary?.quota_reset_at_iso,
+    aiBudgetSummary?.window_end_iso,
+    locale,
+    timezone,
+  ]);
+  const estimateActions = (amountCents: number) => {
+    if (amountCents <= 0) return 0;
+    const amountUsdEstimate = amountCents / 100;
+    return Math.max(1, Math.round(amountUsdEstimate / AVERAGE_AI_ACTION_COST_USD));
+  };
+  const estimateTopupActions = (amountCents: number) => {
+    if (amountCents <= 0) return 0;
+    const fixed = AI_TOPUP_FIXED_ACTIONS_BY_CENTS[amountCents];
+    if (typeof fixed === "number") return fixed;
+    return Math.max(0, Math.round((amountCents * 150) / 500));
+  };
+  const formatActions = (count: number) => `${count.toLocaleString("fr-FR")} actions`;
+  const confettiPieces = useMemo(
+    () =>
+      Array.from({ length: 30 }, (_, index) => ({
+        id: index,
+        left: `${((index * 17) % 100) + 1}%`,
+        delay: `${(index % 10) * 0.08}s`,
+        duration: `${2.8 + (index % 5) * 0.25}s`,
+        rotate: `${(index * 29) % 360}deg`,
+        color:
+          index % 4 === 0
+            ? "#34d399"
+            : index % 4 === 1
+              ? "#facc15"
+              : index % 4 === 2
+                ? "#60a5fa"
+                : "#fb7185",
+      })),
+    []
+  );
+  const showTopupValidationModal =
+    topupValidationState === "validating" ||
+    topupValidationState === "success" ||
+    topupValidationState === "pending";
+  const creditedActionsLabel =
+    topupValidationActions && topupValidationActions > 0
+      ? `${topupValidationActions.toLocaleString("fr-FR")} credits`
+      : "nouveaux credits";
+  const loadAiBudgetSummary = useCallback(async (token: string) => {
+    setAiBudgetLoading(true);
+    setAiBudgetError("");
+    const response = await fetch("/api/coach/ai-budget", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const payload = (await response.json()) as {
+      summary?: AiBudgetSummary;
+      error?: string;
+    };
+
+    if (!response.ok || !payload.summary) {
+      setAiBudgetError(payload.error ?? "Chargement du quota IA impossible.");
+      setAiBudgetLoading(false);
+      return;
+    }
+
+    setAiBudgetSummary(payload.summary);
+    setAiBudgetLoading(false);
+  }, []);
 
   const handleOpenPortal = async () => {
     setBillingLoading(true);
@@ -158,10 +320,64 @@ export default function CoachSettingsPage() {
     window.location.assign(payload.url);
   };
 
+  const handleAiTopupCheckout = async (amountCents: number) => {
+    if (!aiBudgetSummary?.enabled) {
+      setAiBudgetError("Quota IA desactive. Contacte ton administrateur.");
+      return;
+    }
+
+    const accepted = window.confirm(`Confirmer une recharge de ${formatEuro(amountCents)} ?`);
+    if (!accepted) return;
+
+    setTopupLoadingCents(amountCents);
+    setTopupValidationState("idle");
+    setTopupValidationActions(null);
+    setAiBudgetError("");
+    setSuccess("");
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        setAiBudgetError("Session invalide. Reconnecte toi.");
+        return;
+      }
+
+      const response = await fetch("/api/coach/ai-budget/topup-checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          amount_cents: amountCents,
+        }),
+      });
+
+      const payload = (await response.json()) as { error?: string; url?: string };
+      if (!response.ok) {
+        setAiBudgetError(payload.error ?? "Creation checkout recharge impossible.");
+        return;
+      }
+      if (!payload.url) {
+        setAiBudgetError("URL checkout Stripe manquante.");
+        return;
+      }
+
+      window.location.assign(payload.url);
+    } finally {
+      setTopupLoadingCents(null);
+    }
+  };
+
   useEffect(() => {
     const loadSettings = async () => {
       setLoading(true);
       setError("");
+      setAiBudgetError("");
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token ?? null;
 
       const { data: userData, error: userError } = await supabase.auth.getUser();
       const userId = userData.user?.id;
@@ -222,11 +438,117 @@ export default function CoachSettingsPage() {
       setAiImagery(orgData.ai_imagery ?? "equilibre");
       setAiFocus(orgData.ai_focus ?? "mix");
 
+      if (token) {
+        await loadAiBudgetSummary(token);
+      } else {
+        setAiBudgetSummary(null);
+        setAiBudgetError("Session invalide. Reconnecte toi.");
+      }
+
       setLoading(false);
     };
 
     loadSettings();
-  }, []);
+  }, [loadAiBudgetSummary]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const topup = params.get("topup");
+    const checkoutSessionId = params.get("session_id");
+    if (topup !== "success" && topup !== "cancel") {
+      return;
+    }
+
+    const notify = async () => {
+      if (topup === "success") {
+        setTopupValidationState("validating");
+        setTopupValidationActions(null);
+        const validationStartedAt = Date.now();
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token ?? null;
+        setAiBudgetError("");
+        if (!token) {
+          setAiBudgetError("Session invalide. Reconnecte toi.");
+          setTopupValidationState("idle");
+          return;
+        }
+
+        if (checkoutSessionId) {
+          const confirmResponse = await fetch("/api/coach/ai-budget/topup-confirm", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              session_id: checkoutSessionId,
+            }),
+          });
+          const confirmPayload = (await confirmResponse.json()) as {
+            status?: "credited" | "already_credited" | "pending";
+            error?: string;
+            amount_cents?: number;
+          };
+          const elapsedMs = Date.now() - validationStartedAt;
+          if (elapsedMs < 1200) {
+            await new Promise((resolve) => window.setTimeout(resolve, 1200 - elapsedMs));
+          }
+
+          if (!confirmResponse.ok && confirmPayload.status !== "pending") {
+            setAiBudgetError(
+              confirmPayload.error ?? "Confirmation recharge impossible."
+            );
+            setTopupValidationState("idle");
+          } else if (confirmPayload.status === "pending") {
+            setSuccess("Paiement confirme. Recharge en attente de validation.");
+            setTopupValidationState("pending");
+          } else if (confirmPayload.status === "already_credited") {
+            setSuccess("Recharge IA deja prise en compte.");
+            const creditedActions = estimateTopupActions(
+              Number(confirmPayload.amount_cents ?? 0)
+            );
+            setTopupValidationActions(creditedActions > 0 ? creditedActions : null);
+            setTopupValidationState("success");
+          } else {
+            setSuccess("Recharge IA creditee.");
+            const creditedActions = estimateTopupActions(
+              Number(confirmPayload.amount_cents ?? 0)
+            );
+            setTopupValidationActions(creditedActions > 0 ? creditedActions : null);
+            setTopupValidationState("success");
+          }
+        } else {
+          setSuccess("Paiement recharge confirme.");
+          setTopupValidationState("success");
+        }
+
+        if (token) {
+          await loadAiBudgetSummary(token);
+        }
+      } else {
+        setAiBudgetError("Paiement recharge annule.");
+        setTopupValidationState("idle");
+      }
+    };
+    void notify();
+
+    params.delete("topup");
+    params.delete("session_id");
+    const queryString = params.toString();
+    const nextUrl = queryString
+      ? `${window.location.pathname}?${queryString}`
+      : window.location.pathname;
+    window.history.replaceState({}, "", nextUrl);
+  }, [loadAiBudgetSummary]);
+
+  useEffect(() => {
+    if (topupValidationState !== "success" && topupValidationState !== "pending") return;
+    const timer = window.setTimeout(() => {
+      setTopupValidationState("idle");
+      setTopupValidationActions(null);
+    }, topupValidationState === "success" ? 7000 : 5000);
+    return () => window.clearTimeout(timer);
+  }, [topupValidationState]);
 
   const uploadAsset = async (file: File, kind: "avatar" | "logo") => {
     if (!profile || !organization) return;
@@ -461,6 +783,173 @@ export default function CoachSettingsPage() {
             </div>
             {billingError ? (
               <p className="mt-3 text-xs text-amber-200">{billingError}</p>
+            ) : null}
+          </section>
+
+          <section className="panel rounded-2xl p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                  Credits IA
+                </p>
+                <h3 className="mt-2 text-lg font-semibold text-[var(--text)]">
+                  Consommation IA
+                </h3>
+                <p className="mt-1 text-xs text-[var(--muted)]">
+                  Suivi de {usageWindowLabel} et recharge du compte.
+                </p>
+              </div>
+              <Badge tone={aiBudgetSummary?.enabled ? "emerald" : "muted"}>
+                {aiBudgetSummary?.enabled ? "Quota actif" : "Quota inactif"}
+              </Badge>
+            </div>
+            {aiBudgetLoading ? (
+              <p className="mt-3 text-xs text-[var(--muted)]">
+                Chargement du quota IA...
+              </p>
+            ) : aiBudgetSummary ? (
+              <div className="mt-4 space-y-3">
+                {usagePercent !== null ? (
+                  <div>
+                    <div className="mb-1 flex items-center justify-between text-xs text-[var(--muted)]">
+                      <span>Utilisation</span>
+                      <span className="text-[var(--text)]">{usagePercent}%</span>
+                    </div>
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          usagePercent >= 90
+                            ? "bg-rose-300"
+                            : usagePercent >= 70
+                              ? "bg-amber-300"
+                              : "bg-emerald-300"
+                        }`}
+                        style={{
+                          width: `${Math.max(0, Math.min(100, usagePercent))}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-[var(--muted)]">
+                    Le quota est desactive: consommation non bloquee.
+                  </p>
+                )}
+                {(() => {
+                  const spentActions = estimateActions(
+                    aiBudgetSummary.spent_cents_current_month
+                  );
+                  const quotaActions =
+                    aiBudgetSummary.monthly_budget_cents === null
+                      ? null
+                      : estimateActions(aiBudgetSummary.monthly_budget_cents);
+                  const topupActions = estimateTopupActions(
+                    aiBudgetSummary.topup_cents_current_month
+                  );
+                  const topupRemainingCents = Math.max(
+                    0,
+                    aiBudgetSummary.topup_remaining_cents_current_month ??
+                      (aiBudgetSummary.topup_cents_current_month +
+                        (aiBudgetSummary.topup_carryover_cents ?? 0) -
+                        aiBudgetSummary.spent_cents_current_month)
+                  );
+                  const topupRemainingActions = estimateTopupActions(topupRemainingCents);
+                  const remainingActions =
+                    aiBudgetSummary.remaining_cents_current_month === null
+                      ? null
+                      : estimateActions(
+                          Math.max(0, aiBudgetSummary.remaining_cents_current_month)
+                        );
+
+                  return (
+                    <div className="grid gap-2 text-xs text-[var(--muted)] sm:grid-cols-2">
+                      <p>
+                        Quota ({usageWindowLabel}):{" "}
+                        <span className="text-[var(--text)]">
+                          {quotaActions === null ? "Illimite" : formatActions(quotaActions)}
+                        </span>
+                      </p>
+                      <p>
+                        Consomme:{" "}
+                        <span className="text-[var(--text)]">
+                          {formatActions(spentActions)}
+                        </span>
+                      </p>
+                      <p>
+                        Restant:{" "}
+                        <span
+                          className={
+                            aiBudgetSummary.remaining_cents_current_month !== null &&
+                            aiBudgetSummary.remaining_cents_current_month <= 0
+                              ? "text-rose-300"
+                              : "text-[var(--text)]"
+                          }
+                        >
+                          {remainingActions === null
+                            ? "Illimite"
+                            : formatActions(remainingActions)}
+                        </span>
+                        {remainingActions !== null && topupRemainingActions > 0 ? (
+                          <span className="text-emerald-200">
+                            {" "}
+                            (+{topupRemainingActions.toLocaleString("fr-FR")} actions de
+                            recharge)
+                          </span>
+                        ) : null}
+                      </p>
+                      <p>
+                        Recharges:{" "}
+                        <span className="text-[var(--text)]">
+                          {formatActions(topupActions)}
+                        </span>
+                      </p>
+                    </div>
+                  );
+                })()}
+                {quotaResetLabel ? (
+                  <p className="text-[11px] text-[var(--muted)]">
+                    Le quota principal sera reinitialise le {quotaResetLabel}.
+                  </p>
+                ) : null}
+                <div className="rounded-xl border border-white/10 bg-[var(--bg-elevated)] p-3">
+                  <p className="text-xs text-[var(--muted)]">Recharger</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {AI_TOPUP_OPTIONS_CENTS.map((amountCents) => {
+                      const actions = estimateTopupActions(amountCents);
+                      const isLoading = topupLoadingCents === amountCents;
+                      return (
+                        <button
+                          key={amountCents}
+                          type="button"
+                          disabled={!aiBudgetSummary.enabled || topupLoadingCents !== null}
+                          onClick={() => void handleAiTopupCheckout(amountCents)}
+                          className="rounded-xl border border-emerald-300/30 bg-emerald-400/10 px-3 py-2 text-[11px] font-semibold text-emerald-100 transition hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {isLoading ? "Ouverture..." : formatEuro(amountCents)}{" "}
+                          {!isLoading ? (
+                            <span className="text-emerald-200/80">
+                              ({actions.toLocaleString("fr-FR")} actions)
+                            </span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {!aiBudgetSummary.enabled ? (
+                    <p className="mt-2 text-[11px] text-[var(--muted)]">
+                      Demande a l admin d activer le quota IA pour autoriser les
+                      recharges.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-[var(--muted)]">
+                Donnees de quota indisponibles.
+              </p>
+            )}
+            {aiBudgetError ? (
+              <p className="mt-3 text-xs text-amber-200">{aiBudgetError}</p>
             ) : null}
           </section>
 
@@ -1011,6 +1500,184 @@ export default function CoachSettingsPage() {
               {error ? <span className="text-sm text-red-400">{error}</span> : null}
             </div>
           </section>
+          {showTopupValidationModal ? (
+            <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/80 px-4 backdrop-blur-sm">
+              {topupValidationState === "success" ? (
+                <div className="pointer-events-none absolute inset-0 overflow-hidden">
+                  {confettiPieces.map((piece) => (
+                    <span
+                      key={piece.id}
+                      className="absolute top-[-12%] h-4 w-2 rounded-sm opacity-95"
+                      style={{
+                        left: piece.left,
+                        backgroundColor: piece.color,
+                        transform: `rotate(${piece.rotate})`,
+                        animation: `topup-confetti-fall ${piece.duration} linear ${piece.delay} forwards`,
+                      }}
+                    />
+                  ))}
+                </div>
+              ) : null}
+              <div className="topup-modal-pop relative w-full max-w-lg overflow-hidden rounded-3xl border border-slate-700/80 bg-slate-950/95 p-8 text-center text-slate-100 shadow-[0_30px_120px_rgba(2,6,23,0.75)]">
+                {topupValidationState === "validating" ? (
+                  <>
+                    <div className="relative mx-auto mb-6 h-24 w-24">
+                      <span className="topup-loader-ring absolute inset-0 rounded-full border-4 border-emerald-400/30 border-t-emerald-200" />
+                      <span className="topup-loader-core absolute inset-[30%] rounded-full bg-emerald-200" />
+                    </div>
+                    <p className="text-xs uppercase tracking-[0.24em] text-emerald-200">
+                      Validation en cours
+                    </p>
+                    <h3 className="mt-3 text-2xl font-semibold text-white">
+                      Confirmation du paiement
+                    </h3>
+                    <p className="mt-2 text-sm text-slate-200">
+                      Un instant, nous finalisons votre recharge IA.
+                    </p>
+                  </>
+                ) : topupValidationState === "pending" ? (
+                  <>
+                    <div className="topup-loader-pulse mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full border border-amber-300/70 bg-amber-500/25 text-amber-100">
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-12 w-12"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <circle cx="12" cy="12" r="9" />
+                        <path d="M12 7v5l3 2" />
+                      </svg>
+                    </div>
+                    <p className="text-xs uppercase tracking-[0.24em] text-amber-200">
+                      Paiement confirme
+                    </p>
+                    <h3 className="mt-3 text-2xl font-semibold text-white">
+                      Recharge en cours
+                    </h3>
+                    <p className="mt-2 text-sm text-slate-200">
+                      Le paiement est valide. Les credits seront visibles d ici quelques
+                      instants.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setTopupValidationState("idle")}
+                      className="mt-6 rounded-full border border-amber-300/70 bg-amber-500/35 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-amber-500/50"
+                    >
+                      Fermer
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="topup-check-bounce mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full border border-emerald-300/70 bg-emerald-500/30 text-white">
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-12 w-12"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M6 12.5 10.2 16.5 18 8.5" />
+                      </svg>
+                    </div>
+                    <p className="text-xs uppercase tracking-[0.24em] text-emerald-200">
+                      Achat valide
+                    </p>
+                    <h3 className="mt-3 text-3xl font-semibold text-white">
+                      Felicitations !
+                    </h3>
+                    <p className="mt-2 text-base text-white">
+                      Votre compte a ete credite de {creditedActionsLabel}.
+                    </p>
+                    <p className="mt-1 text-sm text-slate-200">
+                      Les credits sont deja disponibles dans votre quota.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTopupValidationState("idle");
+                        setTopupValidationActions(null);
+                      }}
+                      className="mt-6 rounded-full border border-emerald-300/70 bg-emerald-500/35 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-emerald-500/50"
+                    >
+                      Continuer
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : null}
+          <style jsx global>{`
+            @keyframes topup-loader-spin {
+              to {
+                transform: rotate(360deg);
+              }
+            }
+            @keyframes topup-loader-pulse {
+              0%,
+              100% {
+                transform: scale(1);
+                opacity: 1;
+              }
+              50% {
+                transform: scale(1.08);
+                opacity: 0.85;
+              }
+            }
+            @keyframes topup-modal-pop {
+              0% {
+                transform: translateY(12px) scale(0.94);
+                opacity: 0;
+              }
+              100% {
+                transform: translateY(0) scale(1);
+                opacity: 1;
+              }
+            }
+            @keyframes topup-check-bounce {
+              0% {
+                transform: scale(0.75);
+              }
+              55% {
+                transform: scale(1.12);
+              }
+              100% {
+                transform: scale(1);
+              }
+            }
+            @keyframes topup-confetti-fall {
+              0% {
+                transform: translate3d(0, -8vh, 0) rotate(0deg);
+                opacity: 0;
+              }
+              10% {
+                opacity: 1;
+              }
+              100% {
+                transform: translate3d(0, 115vh, 0) rotate(560deg);
+                opacity: 0;
+              }
+            }
+            .topup-loader-ring {
+              animation: topup-loader-spin 1s linear infinite;
+            }
+            .topup-loader-core {
+              animation: topup-loader-pulse 1.1s ease-in-out infinite;
+            }
+            .topup-loader-pulse {
+              animation: topup-loader-pulse 1.4s ease-in-out infinite;
+            }
+            .topup-modal-pop {
+              animation: topup-modal-pop 260ms ease-out;
+            }
+            .topup-check-bounce {
+              animation: topup-check-bounce 480ms ease-out;
+            }
+          `}</style>
           <PremiumOfferModal open={premiumModalOpen} onClose={closePremiumModal} />
         </div>
       )}

@@ -11,6 +11,8 @@ import { PLAN_ENTITLEMENTS } from "@/lib/plans";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
 import { applyTemplate, loadPromptSection } from "@/lib/promptLoader";
 import { recordActivity } from "@/lib/activity-log";
+import { isAiBudgetBlocked, loadAiBudgetSummary } from "@/lib/ai/budget";
+import { computeAiCostEurCents, formatEurCents } from "@/lib/ai/pricing";
 
 export const runtime = "nodejs";
 
@@ -292,6 +294,60 @@ const normalizeJsonText = (raw: string) => {
 };
 
 type ErrorType = "timeout" | "exception";
+
+type UsageMetrics =
+  | {
+      input_tokens?: number;
+      output_tokens?: number;
+      total_tokens?: number;
+    }
+  | null
+  | undefined;
+
+const toUsageNumber = (value: number | null | undefined) =>
+  typeof value === "number" && Number.isFinite(value) ? value : 0;
+
+const normalizeUsageMetrics = (
+  usage: UsageMetrics
+): {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+} | null => {
+  if (!usage) return null;
+  const inputTokens = toUsageNumber(usage.input_tokens);
+  const outputTokens = toUsageNumber(usage.output_tokens);
+  const totalTokens = Math.max(
+    toUsageNumber(usage.total_tokens),
+    inputTokens + outputTokens
+  );
+  return {
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    total_tokens: totalTokens,
+  };
+};
+
+const mergeUsageMetrics = (
+  left: UsageMetrics,
+  right: UsageMetrics
+): {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+} | null => {
+  const leftNormalized = normalizeUsageMetrics(left);
+  const rightNormalized = normalizeUsageMetrics(right);
+  if (!leftNormalized && !rightNormalized) return null;
+  return {
+    input_tokens:
+      (leftNormalized?.input_tokens ?? 0) + (rightNormalized?.input_tokens ?? 0),
+    output_tokens:
+      (leftNormalized?.output_tokens ?? 0) + (rightNormalized?.output_tokens ?? 0),
+    total_tokens:
+      (leftNormalized?.total_tokens ?? 0) + (rightNormalized?.total_tokens ?? 0),
+  };
+};
 
 const resolveErrorType = (error: unknown): ErrorType => {
   const message = error instanceof Error ? error.message.toLowerCase() : "";
@@ -623,6 +679,26 @@ export async function POST(request: Request) {
       );
     }
 
+    const aiBudget = await loadAiBudgetSummary({ admin, userId });
+    if (isAiBudgetBlocked(aiBudget)) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "ai.denied",
+        actorUserId: userId,
+        orgId: org.id,
+        message: "Action IA refusee: budget mensuel atteint.",
+      });
+      return NextResponse.json(
+        {
+          error: `Budget IA mensuel atteint (${formatEurCents(
+            aiBudget.monthSpentCents
+          )} / ${formatEurCents(aiBudget.monthAvailableCents ?? 0)}). Recharge des credits pour continuer.`,
+        },
+        { status: 403 }
+      );
+    }
+
     if (
       payload.action === "improve" &&
       (!payload.sectionTitle || !payload.sectionContent)
@@ -691,20 +767,24 @@ export async function POST(request: Request) {
     const startedAt = Date.now();
     const endpoint = "ai";
     const orgId = profile.org_id;
+    let accumulatedUsage: UsageMetrics = null;
     const recordUsage = async (
-      usage?: {
-        input_tokens?: number;
-        output_tokens?: number;
-        total_tokens?: number;
-      } | null,
+      usage?: UsageMetrics,
       statusCode = 200,
       errorType?: ErrorType
     ) => {
-      const shouldRecord = Boolean(usage) || statusCode >= 400;
+      const normalizedUsage = normalizeUsageMetrics(usage);
+      const shouldRecord = Boolean(normalizedUsage) || statusCode >= 400;
       if (!admin || !shouldRecord) return;
-      const inputTokens = usage?.input_tokens ?? 0;
-      const outputTokens = usage?.output_tokens ?? 0;
-      const totalTokens = usage?.total_tokens ?? inputTokens + outputTokens;
+      const inputTokens = normalizedUsage?.input_tokens ?? 0;
+      const outputTokens = normalizedUsage?.output_tokens ?? 0;
+      const totalTokens =
+        normalizedUsage?.total_tokens ?? inputTokens + outputTokens;
+      const costEurCents = computeAiCostEurCents(
+        inputTokens,
+        outputTokens,
+        org.ai_model ?? "gpt-5-mini"
+      );
 
       await admin.from("ai_usage").insert([
         {
@@ -715,6 +795,7 @@ export async function POST(request: Request) {
           input_tokens: inputTokens,
           output_tokens: outputTokens,
           total_tokens: totalTokens,
+          cost_eur_cents: costEurCents,
           duration_ms: Date.now() - startedAt,
           endpoint,
           status_code: statusCode,
@@ -723,7 +804,7 @@ export async function POST(request: Request) {
       ]);
     };
     recordFailure = (statusCode: number, errorType: ErrorType) =>
-      recordUsage(null, statusCode, errorType);
+      recordUsage(accumulatedUsage, statusCode, errorType);
 
     if (payload.action === "propagate") {
       if (!payload.sectionTitle || !payload.sectionContent?.trim()) {
@@ -1020,7 +1101,8 @@ export async function POST(request: Request) {
         : {}),
       ...(reasoning ? { reasoning } : {}),
     });
-    let usage = response.usage;
+    let usage = response.usage ?? null;
+    accumulatedUsage = mergeUsageMetrics(accumulatedUsage, usage);
 
     if (payload.action === "clarify") {
       const clarified = extractClarify(response);
@@ -1028,7 +1110,7 @@ export async function POST(request: Request) {
         const confidence = Number.isFinite(clarified.confidence)
           ? Math.min(1, Math.max(0, clarified.confidence))
           : 0.5;
-        await recordUsage(usage, 200);
+        await recordUsage(accumulatedUsage, 200);
         await recordActivity({
           admin,
           action: "ai.clarify.success",
@@ -1041,7 +1123,7 @@ export async function POST(request: Request) {
           questions: clarified.questions ?? [],
         });
       }
-      await recordUsage(usage, 502, "exception");
+      await recordUsage(accumulatedUsage, 502, "exception");
       await recordActivity({
         admin,
         level: "error",
@@ -1056,7 +1138,7 @@ export async function POST(request: Request) {
     if (payload.action === "axes") {
       const axes = extractAxes(response);
       if (axes) {
-        await recordUsage(usage, 200);
+        await recordUsage(accumulatedUsage, 200);
         await recordActivity({
           admin,
           action: "ai.axes.success",
@@ -1090,11 +1172,13 @@ export async function POST(request: Request) {
         text: textConfig,
         ...(reasoning ? { reasoning } : {}),
       });
+      const retryUsage = retry.usage ?? null;
+      accumulatedUsage = mergeUsageMetrics(accumulatedUsage, retryUsage);
 
       const retryAxes = extractAxes(retry);
       if (retryAxes) {
-        usage = retry.usage ?? usage;
-        await recordUsage(usage, 200);
+        usage = retryUsage ?? usage;
+        await recordUsage(accumulatedUsage, 200);
         await recordActivity({
           admin,
           action: "ai.axes.success",
@@ -1115,7 +1199,7 @@ export async function POST(request: Request) {
         outputDebug,
       });
 
-      await recordUsage(usage, 502, "exception");
+      await recordUsage(accumulatedUsage, 502, "exception");
       await recordActivity({
         admin,
         level: "error",
@@ -1130,7 +1214,7 @@ export async function POST(request: Request) {
     if (payload.action === "propagate") {
       const suggestions = extractSuggestions(response);
       if (suggestions) {
-        await recordUsage(usage, 200);
+        await recordUsage(accumulatedUsage, 200);
         await recordActivity({
           admin,
           action: "ai.propagate.success",
@@ -1156,11 +1240,13 @@ export async function POST(request: Request) {
           : {}),
         ...(reasoning ? { reasoning } : {}),
       });
+      const retryUsage = retry.usage ?? null;
+      accumulatedUsage = mergeUsageMetrics(accumulatedUsage, retryUsage);
 
       const retrySuggestions = extractSuggestions(retry);
       if (retrySuggestions) {
-        usage = retry.usage ?? usage;
-        await recordUsage(usage, 200);
+        usage = retryUsage ?? usage;
+        await recordUsage(accumulatedUsage, 200);
         await recordActivity({
           admin,
           action: "ai.propagate.success",
@@ -1182,7 +1268,7 @@ export async function POST(request: Request) {
         outputDebug,
       });
 
-      await recordUsage(usage, 502, "exception");
+      await recordUsage(accumulatedUsage, 502, "exception");
       await recordActivity({
         admin,
         level: "error",
@@ -1252,6 +1338,8 @@ export async function POST(request: Request) {
           : {}),
         ...(reasoning ? { reasoning } : {}),
       });
+      const retryUsage = retry.usage ?? null;
+      accumulatedUsage = mergeUsageMetrics(accumulatedUsage, retryUsage);
 
       const retryParts: string[] = [];
       const retryOutput = retry.output ?? [];
@@ -1298,7 +1386,7 @@ export async function POST(request: Request) {
 
       text = retryText;
       if (text) {
-        usage = retry.usage ?? usage;
+        usage = retryUsage ?? usage;
       }
       if (!text) {
         const outputDebug = (response.output ?? []).map((item) => {
@@ -1324,7 +1412,7 @@ export async function POST(request: Request) {
     }
 
     if (!text) {
-      await recordUsage(usage, 502, "exception");
+      await recordUsage(accumulatedUsage, 502, "exception");
       await recordActivity({
         admin,
         level: "error",
@@ -1337,6 +1425,7 @@ export async function POST(request: Request) {
     }
 
     if (text.startsWith("Refus:")) {
+      await recordUsage(accumulatedUsage, 403);
       await recordActivity({
         admin,
         level: "warn",
@@ -1348,7 +1437,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: text }, { status: 403 });
     }
 
-    await recordUsage(usage, 200);
+    await recordUsage(accumulatedUsage, 200);
     await recordActivity({
       admin,
       action: "ai.success",

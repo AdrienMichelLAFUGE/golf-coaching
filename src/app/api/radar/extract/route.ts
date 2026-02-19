@@ -13,6 +13,8 @@ import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { PLAN_ENTITLEMENTS } from "@/lib/plans";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
 import { recordActivity } from "@/lib/activity-log";
+import { isAiBudgetBlocked, loadAiBudgetSummary } from "@/lib/ai/budget";
+import { computeAiCostEurCents, formatEurCents } from "@/lib/ai/pricing";
 import {
   buildSmart2MoveAiContext,
   normalizeSmart2MoveImpactMarkerX,
@@ -544,6 +546,36 @@ const extractOutputText = (response: {
   return parts.join("\n").trim();
 };
 
+type UsageMetrics =
+  | {
+      input_tokens?: number;
+      output_tokens?: number;
+      total_tokens?: number;
+    }
+  | null
+  | undefined;
+
+const toUsageNumber = (value: number | null | undefined) =>
+  typeof value === "number" && Number.isFinite(value) ? value : 0;
+
+const mergeUsageMetrics = (
+  left: UsageMetrics,
+  right: UsageMetrics
+): UsageMetrics => {
+  if (!left && !right) return null;
+  const leftInput = toUsageNumber(left?.input_tokens);
+  const leftOutput = toUsageNumber(left?.output_tokens);
+  const rightInput = toUsageNumber(right?.input_tokens);
+  const rightOutput = toUsageNumber(right?.output_tokens);
+  return {
+    input_tokens: leftInput + rightInput,
+    output_tokens: leftOutput + rightOutput,
+    total_tokens:
+      Math.max(toUsageNumber(left?.total_tokens), leftInput + leftOutput) +
+      Math.max(toUsageNumber(right?.total_tokens), rightInput + rightOutput),
+  };
+};
+
 const ensureSmart2MoveTitle = (
   analysis?: string | null,
   graphLabel = "Smart2Move"
@@ -996,6 +1028,28 @@ export async function POST(req: Request) {
     }
   }
 
+  const aiBudget = await loadAiBudgetSummary({ admin, userId });
+  if (!isAdmin && isAiBudgetBlocked(aiBudget)) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "radar.import.denied",
+      actorUserId: userId,
+      orgId: radarFile.org_id,
+      entityType: "radar_file",
+      entityId: radarFile.id,
+      message: "Import datas refuse: budget mensuel atteint.",
+    });
+    return Response.json(
+      {
+        error: `Budget IA mensuel atteint (${formatEurCents(
+          aiBudget.monthSpentCents
+        )} / ${formatEurCents(aiBudget.monthAvailableCents ?? 0)}). Recharge des credits pour continuer.`,
+      },
+      { status: 403 }
+    );
+  }
+
   const { data: fileData, error: fileError } = await admin.storage
     .from("radar-files")
     .download(radarFile.file_url);
@@ -1057,20 +1111,12 @@ export async function POST(req: Request) {
 
   const startedAt = Date.now();
   const endpoint = `radar_extract:${normalizeRadarSource(radarFile.source)}:${origin}`;
-  let usage: {
-    input_tokens?: number;
-    output_tokens?: number;
-    total_tokens?: number;
-  } | null = null;
-  let verifyUsage: {
-    input_tokens?: number;
-    output_tokens?: number;
-    total_tokens?: number;
-  } | null = null;
+  let usageTotal: UsageMetrics = null;
+  let verifyUsageTotal: UsageMetrics = null;
 
   const recordUsage = async (
     action: string,
-    usagePayload: typeof usage,
+    usagePayload: UsageMetrics,
     durationMs: number,
     statusCode = 200,
     errorType?: "timeout" | "exception"
@@ -1080,6 +1126,7 @@ export async function POST(req: Request) {
     const inputTokens = usagePayload?.input_tokens ?? 0;
     const outputTokens = usagePayload?.output_tokens ?? 0;
     const totalTokens = usagePayload?.total_tokens ?? inputTokens + outputTokens;
+    const costEurCents = computeAiCostEurCents(inputTokens, outputTokens, "gpt-5.2");
     await admin.from("ai_usage").insert([
       {
         user_id: userId,
@@ -1089,6 +1136,7 @@ export async function POST(req: Request) {
         input_tokens: inputTokens,
         output_tokens: outputTokens,
         total_tokens: totalTokens,
+        cost_eur_cents: costEurCents,
         duration_ms: durationMs,
         endpoint,
         status_code: statusCode,
@@ -1183,7 +1231,7 @@ Le champ analysis doit suivre EXACTEMENT 4 sections numerotees:
       },
     });
 
-    usage = response.usage ?? usage;
+    usageTotal = mergeUsageMetrics(usageTotal, response.usage ?? null);
     const outputText = extractOutputText(response);
     if (!outputText) {
       throw new Error("Reponse OCR vide.");
@@ -1218,14 +1266,20 @@ Le champ analysis doit suivre EXACTEMENT 4 sections numerotees:
       .from("radar_files")
       .update({ status: "error", error: (error as Error).message ?? "OCR error." })
       .eq("id", radarFileId);
-    await recordUsage("radar_extract", usage, Date.now() - startedAt, 500, "exception");
+    await recordUsage(
+      "radar_extract",
+      usageTotal,
+      Date.now() - startedAt,
+      500,
+      "exception"
+    );
     return Response.json(
       { error: (error as Error).message ?? "Extraction datas impossible." },
       { status: 500 }
     );
   }
 
-  await recordUsage("radar_extract", usage, Date.now() - startedAt, 200);
+  await recordUsage("radar_extract", usageTotal, Date.now() - startedAt, 200);
 
   try {
     const verifyPromptTemplate = await loadPromptSection(promptConfig.verifySystemSection);
@@ -1286,7 +1340,10 @@ Le champ analysis doit suivre EXACTEMENT 4 sections numerotees:
         },
       });
 
-      verifyUsage = verifyResponse.usage ?? verifyUsage;
+      verifyUsageTotal = mergeUsageMetrics(
+        verifyUsageTotal,
+        verifyResponse.usage ?? null
+      );
       const verifyText = extractOutputText(verifyResponse);
       if (!verifyText) {
         throw new Error("Verification vide.");
@@ -1348,7 +1405,10 @@ Le champ analysis doit suivre EXACTEMENT 4 sections numerotees:
         });
 
       let verifyResponse = await callVerify();
-      verifyUsage = verifyResponse.usage ?? verifyUsage;
+      verifyUsageTotal = mergeUsageMetrics(
+        verifyUsageTotal,
+        verifyResponse.usage ?? null
+      );
       let verifyText = extractOutputText(verifyResponse);
       if (!verifyText) {
         throw new Error("Verification vide.");
@@ -1359,7 +1419,10 @@ Le champ analysis doit suivre EXACTEMENT 4 sections numerotees:
         verifyResponse = await callVerify(
           "Si tu as un doute, retourne is_valid=true avec une confidence basse et liste les points a verifier."
         );
-        verifyUsage = verifyResponse.usage ?? verifyUsage;
+        verifyUsageTotal = mergeUsageMetrics(
+          verifyUsageTotal,
+          verifyResponse.usage ?? null
+        );
         verifyText = extractOutputText(verifyResponse);
         if (verifyText) {
           verification = JSON.parse(verifyText) as RadarVerification;
@@ -1377,7 +1440,7 @@ Le champ analysis doit suivre EXACTEMENT 4 sections numerotees:
 
     await recordUsage(
       "radar_extract_verify",
-      verifyUsage,
+      verifyUsageTotal,
       Date.now() - verifyStartedAt,
       200
     );
@@ -1386,7 +1449,7 @@ Le champ analysis doit suivre EXACTEMENT 4 sections numerotees:
       (error as Error).message ?? "Verification extraction impossible.";
     await recordUsage(
       "radar_extract_verify",
-      verifyUsage,
+      verifyUsageTotal,
       Date.now() - verifyStartedAt,
       200
     );

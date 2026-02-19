@@ -5,6 +5,8 @@ import OpenAI from "openai";
 import { z } from "zod";
 import { env } from "@/env";
 import { loadPromptSection, applyTemplate } from "@/lib/promptLoader";
+import { isAiBudgetBlocked, loadAiBudgetSummary } from "@/lib/ai/budget";
+import { computeAiCostEurCents } from "@/lib/ai/pricing";
 import {
   ReportKpisPayloadSchema,
   type ReportKpisPayload,
@@ -255,6 +257,11 @@ export const generateReportKpisForPublishedReport = async (params: {
     const inputTokens = usage?.input_tokens ?? 0;
     const outputTokens = usage?.output_tokens ?? 0;
     const totalTokens = usage?.total_tokens ?? inputTokens + outputTokens;
+    const costEurCents = computeAiCostEurCents(
+      inputTokens,
+      outputTokens,
+      model ?? null
+    );
 
     await admin.from("ai_usage").insert([
       {
@@ -265,6 +272,7 @@ export const generateReportKpisForPublishedReport = async (params: {
         input_tokens: inputTokens,
         output_tokens: outputTokens,
         total_tokens: totalTokens,
+        cost_eur_cents: costEurCents,
         duration_ms: Date.now() - startedAt,
         endpoint,
         status_code: statusCode,
@@ -309,6 +317,11 @@ export const generateReportKpisForPublishedReport = async (params: {
     );
   const orgAi: OrgAiSettings = { ai_model: orgParsed.success ? orgParsed.data.ai_model ?? null : null };
   const model = orgAi.ai_model ?? "gpt-5-mini";
+
+  const aiBudget = await loadAiBudgetSummary({ admin, userId: actorUserId });
+  if (isAiBudgetBlocked(aiBudget)) {
+    return fail("Budget IA mensuel atteint. Recharge des credits pour continuer.", "exception");
+  }
 
   const { data: targetReport, error: targetError } = await admin
     .from("reports")

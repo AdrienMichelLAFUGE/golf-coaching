@@ -14,6 +14,8 @@ import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { PLAN_ENTITLEMENTS } from "@/lib/plans";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
 import { recordActivity } from "@/lib/activity-log";
+import { isAiBudgetBlocked, loadAiBudgetSummary } from "@/lib/ai/budget";
+import { computeAiCostEurCents, formatEurCents } from "@/lib/ai/pricing";
 
 export const runtime = "nodejs";
 
@@ -459,6 +461,26 @@ export async function POST(req: Request) {
     );
   }
 
+  const aiBudget = await loadAiBudgetSummary({ admin, userId });
+  if (isAiBudgetBlocked(aiBudget)) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "radar_ai.denied",
+      actorUserId: userId,
+      orgId: orgData.id,
+      message: "IA radar refusee: budget mensuel atteint.",
+    });
+    return Response.json(
+      {
+        error: `Budget IA mensuel atteint (${formatEurCents(
+          aiBudget.monthSpentCents
+        )} / ${formatEurCents(aiBudget.monthAvailableCents ?? 0)}). Recharge des credits pour continuer.`,
+      },
+      { status: 403 }
+    );
+  }
+
   const settings = resolveSettings(orgData);
   const imageryHint = await resolveImageryHint(settings.imagery);
   const focusHint = await resolveFocusHint(settings.focus);
@@ -489,6 +511,11 @@ export async function POST(req: Request) {
     const inputTokens = usagePayload?.input_tokens ?? 0;
     const outputTokens = usagePayload?.output_tokens ?? 0;
     const totalTokens = usagePayload?.total_tokens ?? inputTokens + outputTokens;
+    const costEurCents = computeAiCostEurCents(
+      inputTokens,
+      outputTokens,
+      orgData.ai_model ?? "gpt-5-mini"
+    );
     await admin.from("ai_usage").insert([
       {
         user_id: userId,
@@ -498,6 +525,7 @@ export async function POST(req: Request) {
         input_tokens: inputTokens,
         output_tokens: outputTokens,
         total_tokens: totalTokens,
+        cost_eur_cents: costEurCents,
         duration_ms: durationMs,
         endpoint,
         status_code: statusCode,

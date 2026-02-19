@@ -10,6 +10,8 @@ import { formatZodError, parseRequestJson } from "@/lib/validation";
 import { PLAN_ENTITLEMENTS } from "@/lib/plans";
 import { loadPersonalPlanTier } from "@/lib/plan-access";
 import { recordActivity } from "@/lib/activity-log";
+import { isAiBudgetBlocked, loadAiBudgetSummary } from "@/lib/ai/budget";
+import { computeAiCostEurCents, formatEurCents } from "@/lib/ai/pricing";
 
 type ExtractedTest = {
   test_name: string;
@@ -141,6 +143,36 @@ const extractOutputText = (response: {
   return parts.join("\n").trim();
 };
 
+type UsageMetrics =
+  | {
+      input_tokens?: number;
+      output_tokens?: number;
+      total_tokens?: number;
+    }
+  | null
+  | undefined;
+
+const toUsageNumber = (value: number | null | undefined) =>
+  typeof value === "number" && Number.isFinite(value) ? value : 0;
+
+const mergeUsageMetrics = (
+  left: UsageMetrics,
+  right: UsageMetrics
+): UsageMetrics => {
+  if (!left && !right) return null;
+  const leftInput = toUsageNumber(left?.input_tokens);
+  const leftOutput = toUsageNumber(left?.output_tokens);
+  const rightInput = toUsageNumber(right?.input_tokens);
+  const rightOutput = toUsageNumber(right?.output_tokens);
+  return {
+    input_tokens: leftInput + rightInput,
+    output_tokens: leftOutput + rightOutput,
+    total_tokens:
+      Math.max(toUsageNumber(left?.total_tokens), leftInput + leftOutput) +
+      Math.max(toUsageNumber(right?.total_tokens), rightInput + rightOutput),
+  };
+};
+
 export async function POST(req: Request) {
   const parsed = await parseRequestJson(req, tpiExtractSchema);
   if (!parsed.success) {
@@ -227,6 +259,28 @@ export async function POST(req: Request) {
     );
   }
 
+  const aiBudget = await loadAiBudgetSummary({ admin, userId });
+  if (!isAdmin && isAiBudgetBlocked(aiBudget)) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "tpi.import.denied",
+      actorUserId: userId,
+      orgId: report.org_id,
+      entityType: "tpi_report",
+      entityId: reportId,
+      message: "Import TPI refuse: budget mensuel atteint.",
+    });
+    return Response.json(
+      {
+        error: `Budget IA mensuel atteint (${formatEurCents(
+          aiBudget.monthSpentCents
+        )} / ${formatEurCents(aiBudget.monthAvailableCents ?? 0)}). Recharge des credits pour continuer.`,
+      },
+      { status: 403 }
+    );
+  }
+
   const { data: fileData, error: fileError } = await admin.storage
     .from("tpi-reports")
     .download(report.file_url);
@@ -271,25 +325,13 @@ export async function POST(req: Request) {
 
   let extractedTests: ExtractedTest[] = [];
   let pdfFileId: string | null = null;
-  let usage: {
-    input_tokens?: number;
-    output_tokens?: number;
-    total_tokens?: number;
-  } | null = null;
-  let verifyUsage: {
-    input_tokens?: number;
-    output_tokens?: number;
-    total_tokens?: number;
-  } | null = null;
+  let usageTotal: UsageMetrics = null;
+  let verifyUsageTotal: UsageMetrics = null;
 
   const endpoint = "tpi_extract";
   const recordUsage = async (
     action: string,
-    usagePayload: {
-      input_tokens?: number;
-      output_tokens?: number;
-      total_tokens?: number;
-    } | null,
+    usagePayload: UsageMetrics,
     durationMs: number,
     statusCode = 200,
     errorType?: "timeout" | "exception"
@@ -299,6 +341,7 @@ export async function POST(req: Request) {
     const inputTokens = usagePayload?.input_tokens ?? 0;
     const outputTokens = usagePayload?.output_tokens ?? 0;
     const totalTokens = usagePayload?.total_tokens ?? inputTokens + outputTokens;
+    const costEurCents = computeAiCostEurCents(inputTokens, outputTokens, "gpt-5.2");
 
     try {
       await admin.from("ai_usage").insert([
@@ -310,6 +353,7 @@ export async function POST(req: Request) {
           input_tokens: inputTokens,
           output_tokens: outputTokens,
           total_tokens: totalTokens,
+          cost_eur_cents: costEurCents,
           duration_ms: durationMs,
           endpoint,
           status_code: statusCode,
@@ -387,7 +431,10 @@ export async function POST(req: Request) {
         },
       });
 
-      verifyUsage = verifyResponse.usage ?? null;
+      verifyUsageTotal = mergeUsageMetrics(
+        verifyUsageTotal,
+        verifyResponse.usage ?? null
+      );
       const verifyText = extractOutputText(verifyResponse);
       if (!verifyText) {
         throw new Error("Verification TPI vide.");
@@ -398,7 +445,12 @@ export async function POST(req: Request) {
         reason: string;
       };
 
-      await recordUsage("tpi_verify", verifyUsage, Date.now() - verifyStartedAt, 200);
+      await recordUsage(
+        "tpi_verify",
+        verifyUsageTotal,
+        Date.now() - verifyStartedAt,
+        200
+      );
 
       if (!verifyParsed.is_tpi) {
         await admin.from("tpi_reports").update({ status: "error" }).eq("id", reportId);
@@ -418,7 +470,7 @@ export async function POST(req: Request) {
     await cleanupOpenAiFile();
     await recordUsage(
       "tpi_verify",
-      verifyUsage,
+      verifyUsageTotal,
       Date.now() - verifyStartedAt,
       500,
       "exception"
@@ -502,7 +554,7 @@ export async function POST(req: Request) {
       });
 
     const response = await callExtract(8000);
-    usage = response.usage ?? usage;
+    usageTotal = mergeUsageMetrics(usageTotal, response.usage ?? null);
     let outputText = extractOutputText(response);
     if (!outputText) {
       const outputDebug = (response.output ?? []).map((item) => ({
@@ -523,7 +575,7 @@ export async function POST(req: Request) {
       parsed = JSON.parse(outputText) as { tests: ExtractedTest[] };
     } catch {
       const retry = await callExtract(12000);
-      usage = retry.usage ?? usage;
+      usageTotal = mergeUsageMetrics(usageTotal, retry.usage ?? null);
       outputText = extractOutputText(retry);
       if (!outputText) {
         throw new Error("Reponse TPI vide.");
@@ -561,12 +613,18 @@ export async function POST(req: Request) {
       seenTests.add(key);
       return true;
     });
-    await recordUsage("tpi_extract", usage, Date.now() - startedAt, 200);
+    await recordUsage("tpi_extract", usageTotal, Date.now() - startedAt, 200);
     await cleanupOpenAiFile();
   } catch (error) {
     await cleanupOpenAiFile();
     await admin.from("tpi_reports").update({ status: "error" }).eq("id", reportId);
-    await recordUsage("tpi_extract", usage, Date.now() - startedAt, 500, "exception");
+    await recordUsage(
+      "tpi_extract",
+      usageTotal,
+      Date.now() - startedAt,
+      500,
+      "exception"
+    );
     await recordActivity({
       admin,
       level: "error",

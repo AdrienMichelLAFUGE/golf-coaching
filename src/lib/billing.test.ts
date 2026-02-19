@@ -1,4 +1,9 @@
-import { computeAccess } from "./billing";
+import {
+  computeAccess,
+  resolveProQuotaPolicy,
+  PRO_MONTHLY_AI_BUDGET_CENTS,
+  PRO_YEARLY_AI_BUDGET_CENTS,
+} from "./billing";
 
 describe("computeAccess", () => {
   const future = new Date(Date.now() + 1000 * 60 * 60).toISOString();
@@ -52,5 +57,29 @@ describe("computeAccess", () => {
       stripe_current_period_end: past,
     });
     expect(result.planTier).toBe("free");
+  });
+});
+
+describe("resolveProQuotaPolicy", () => {
+  it("returns monthly policy for monthly Pro price", () => {
+    const policy = resolveProQuotaPolicy("price_month_test");
+    expect(policy).toEqual({
+      interval: "month",
+      windowDays: 30,
+      budgetCents: PRO_MONTHLY_AI_BUDGET_CENTS,
+    });
+  });
+
+  it("returns yearly policy for yearly Pro price", () => {
+    const policy = resolveProQuotaPolicy("price_year_test");
+    expect(policy).toEqual({
+      interval: "year",
+      windowDays: 365,
+      budgetCents: PRO_YEARLY_AI_BUDGET_CENTS,
+    });
+  });
+
+  it("returns null for unknown price", () => {
+    expect(resolveProQuotaPolicy("price_unknown")).toBeNull();
   });
 });
