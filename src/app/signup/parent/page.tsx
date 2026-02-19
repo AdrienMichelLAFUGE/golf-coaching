@@ -1,14 +1,29 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, type ReactNode, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 
 type Status = "idle" | "sending" | "error";
 
-export default function ParentSignupPage() {
+const parseSafeNextPath = (value: string | null) => {
+  if (!value) return null;
+  if (!value.startsWith("/") || value.startsWith("//")) return null;
+  if (value.includes("\\")) return null;
+  return value;
+};
+
+const ParentSignupFallback = ({ children }: { children?: ReactNode }) => (
+  <main className="flex min-h-screen items-center justify-center px-6 text-[var(--text)]">
+    <div className="w-full max-w-md">{children}</div>
+  </main>
+);
+
+function ParentSignupContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextPath = parseSafeNextPath(searchParams.get("next"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState<Status>("idle");
@@ -49,16 +64,18 @@ export default function ParentSignupPage() {
       return;
     }
 
+    const nextQuery = nextPath ? `&next=${encodeURIComponent(nextPath)}` : "";
+
     if (!data.session) {
-      router.replace("/auth/account?flow=parent&state=verify");
+      router.replace(`/auth/account?flow=parent&state=verify${nextQuery}`);
       return;
     }
 
-    router.replace("/auth/account?flow=parent&state=ready");
+    router.replace(`/auth/account?flow=parent&state=ready${nextQuery}`);
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-6 text-[var(--text)]">
+    <ParentSignupFallback>
       <div className="w-full max-w-md space-y-6">
         <div className="panel rounded-3xl px-6 py-8">
           <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
@@ -119,11 +136,22 @@ export default function ParentSignupPage() {
         </div>
 
         <div className="panel-outline rounded-2xl px-5 py-4 text-xs text-[var(--muted)]">
-          <Link href="/login" className="uppercase tracking-wide hover:text-[var(--text)]">
+          <Link
+            href={nextPath ? `/login/parent?next=${encodeURIComponent(nextPath)}` : "/login/parent"}
+            className="uppercase tracking-wide hover:text-[var(--text)]"
+          >
             Retour a la connexion
           </Link>
         </div>
       </div>
-    </main>
+    </ParentSignupFallback>
+  );
+}
+
+export default function ParentSignupPage() {
+  return (
+    <Suspense fallback={<ParentSignupFallback />}>
+      <ParentSignupContent />
+    </Suspense>
   );
 }

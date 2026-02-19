@@ -103,7 +103,13 @@ function AccountStatusContent() {
               type="button"
               onClick={() => {
                 const next = nextPath ? `?next=${encodeURIComponent(nextPath)}` : "";
-                router.replace(`/login${next}`);
+                const loginPath =
+                  flow === "parent"
+                    ? "/login/parent"
+                    : flow === "student"
+                      ? "/login/eleve"
+                      : "/login/coach";
+                router.replace(`${loginPath}${next}`);
               }}
               className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--text)]"
             >

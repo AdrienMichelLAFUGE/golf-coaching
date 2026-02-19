@@ -38,19 +38,21 @@ describe("GET /api/parent/children", () => {
         return {
           select: () => ({
             eq: () => ({
-              order: async () => ({
-                data: [
-                  {
-                    student_id: "student-1",
-                    students: {
-                      id: "student-1",
-                      first_name: "Leo",
-                      last_name: "Martin",
-                      email: "leo@example.com",
+              eq: () => ({
+                order: async () => ({
+                  data: [
+                    {
+                      student_id: "student-1",
+                      students: {
+                        id: "student-1",
+                        first_name: "Leo",
+                        last_name: "Martin",
+                        email: "leo@example.com",
+                      },
                     },
-                  },
-                ],
-                error: null,
+                  ],
+                  error: null,
+                }),
               }),
             }),
           }),

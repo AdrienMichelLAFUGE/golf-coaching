@@ -316,6 +316,11 @@ export default function StudentDashboardPage() {
         organization?.id
           ? studentRows.find((row) => row.org_id === organization.id) ?? null
           : null;
+      if (organization?.id && !workspaceStudent) {
+        setError("Profil eleve introuvable pour le workspace actif.");
+        setLoading(false);
+        return;
+      }
       const primaryStudent = workspaceStudent ?? studentRows[0];
       if (!primaryStudent) {
         setNoStudent(true);

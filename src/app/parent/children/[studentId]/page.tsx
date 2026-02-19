@@ -67,7 +67,11 @@ export default function ParentChildDashboardPage({
       };
 
       if (!response.ok) {
-        setError(nextPayload.error ?? "Chargement impossible.");
+        setError(
+          response.status === 403
+            ? "Acces non autorise pour ce module."
+            : nextPayload.error ?? "Chargement impossible."
+        );
         setPayload(null);
         setLoading(false);
         return;

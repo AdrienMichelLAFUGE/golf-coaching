@@ -295,7 +295,8 @@ export async function POST(request: Request) {
     const { data: parentsData, error: parentsError } = await admin
       .from("parent_child_links")
       .select("parent_email")
-      .eq("student_id", reportRow.student_id);
+      .eq("student_id", reportRow.student_id)
+      .eq("status", "active");
 
     if (parentsError) {
       return NextResponse.json(

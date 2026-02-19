@@ -119,6 +119,43 @@ export async function POST(request: Request) {
     );
   }
 
+  const { data: existingStudentAccount, error: studentAccountLookupError } = await admin
+    .from("student_accounts")
+    .select("user_id")
+    .eq("student_id", student.id)
+    .maybeSingle();
+
+  if (studentAccountLookupError) {
+    return NextResponse.json({ error: studentAccountLookupError.message }, { status: 400 });
+  }
+
+  const linkedUserId =
+    (existingStudentAccount as { user_id: string } | null)?.user_id ?? null;
+  if (linkedUserId && linkedUserId !== userId) {
+    await recordActivity({
+      admin,
+      level: "warn",
+      action: "student.invite.blocked",
+      actorUserId: userData.user.id,
+      orgId: profile.org_id,
+      entityType: "student",
+      entityId: student.id,
+      message: "Invitation bloquee: eleve deja lie a un autre compte.",
+      metadata: {
+        studentEmail: student.email,
+        linkedUserId,
+        targetUserId: userId,
+      },
+    });
+    return NextResponse.json(
+      {
+        error:
+          "Conflit de liaison: cet eleve est deja relie a un autre compte. L email doit etre modifie par l eleve depuis ses parametres.",
+      },
+      { status: 409 }
+    );
+  }
+
   const { data: existingProfile } = await admin
     .from("profiles")
     .select("id, role, org_id")
@@ -164,18 +201,20 @@ export async function POST(request: Request) {
     }
   }
 
-  const { error: linkError } = await admin.from("student_accounts").upsert(
-    [
-      {
-        student_id: student.id,
-        user_id: userId,
-      },
-    ],
-    { onConflict: "student_id" }
-  );
+  if (!linkedUserId) {
+    const { error: linkError } = await admin.from("student_accounts").upsert(
+      [
+        {
+          student_id: student.id,
+          user_id: userId,
+        },
+      ],
+      { onConflict: "student_id" }
+    );
 
-  if (linkError) {
-    return NextResponse.json({ error: linkError.message }, { status: 400 });
+    if (linkError) {
+      return NextResponse.json({ error: linkError.message }, { status: 400 });
+    }
   }
 
   await admin

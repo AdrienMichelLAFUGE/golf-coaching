@@ -4,6 +4,11 @@ import {
   createSupabaseAdminClient,
   createSupabaseServerClientFromRequest,
 } from "@/lib/supabase/server";
+import {
+  type ParentLinkPermissions,
+  type ParentPermissionModule,
+  normalizeParentLinkPermissions,
+} from "@/lib/parent/permissions";
 
 type ParentRole = "parent";
 
@@ -15,6 +20,7 @@ type ParentProfileRow = {
 
 type ParentChildLinkRow = {
   id: string;
+  permissions?: unknown;
 };
 
 type StudentRow = {
@@ -34,6 +40,8 @@ export type ParentAuthContext = {
 };
 
 export type ParentLinkedStudentContext = ParentAuthContext & {
+  parentChildLinkId: string;
+  parentPermissions: ParentLinkPermissions;
   studentId: string;
   studentOrgId: string;
   studentFirstName: string;
@@ -46,9 +54,18 @@ export type ParentAccessFailure = {
   error: string;
 };
 
+type LoadParentLinkedStudentOptions = {
+  requiredPermission?: ParentPermissionModule;
+};
+
 const forbiddenFailure = (): ParentAccessFailure => ({
   status: 403,
   error: "Acces refuse.",
+});
+
+const moduleForbiddenFailure = (): ParentAccessFailure => ({
+  status: 403,
+  error: "Acces non autorise pour ce module.",
 });
 
 export const isParentRole = (role: string | null | undefined): role is ParentRole =>
@@ -116,6 +133,7 @@ export const hasParentChildLink = async (
     .select("id")
     .eq("parent_user_id", parentUserId)
     .eq("student_id", studentId)
+    .eq("status", "active")
     .maybeSingle();
 
   if (error) return false;
@@ -167,7 +185,8 @@ export const loadParentLinkedStudentIds = async (
 
 export const loadParentLinkedStudentContext = async (
   request: Request,
-  studentId: string
+  studentId: string,
+  options?: LoadParentLinkedStudentOptions
 ): Promise<
   | { context: ParentLinkedStudentContext; failure: null }
   | { context: null; failure: ParentAccessFailure }
@@ -181,15 +200,27 @@ export const loadParentLinkedStudentContext = async (
   }
 
   const { context: authContext } = authContextResult;
-  const linked = await hasParentChildLink(
-    authContext.admin,
-    authContext.parentUserId,
-    studentId
-  );
-  if (!linked) {
+  const { data: linkData, error: linkError } = await authContext.admin
+    .from("parent_child_links")
+    .select("id, permissions")
+    .eq("parent_user_id", authContext.parentUserId)
+    .eq("student_id", studentId)
+    .eq("status", "active")
+    .maybeSingle();
+
+  const link = (linkData as ParentChildLinkRow | null) ?? null;
+  if (linkError || !link) {
     return {
       context: null,
       failure: forbiddenFailure(),
+    };
+  }
+
+  const parentPermissions = normalizeParentLinkPermissions(link.permissions);
+  if (options?.requiredPermission && !parentPermissions[options.requiredPermission]) {
+    return {
+      context: null,
+      failure: moduleForbiddenFailure(),
     };
   }
 
@@ -210,6 +241,8 @@ export const loadParentLinkedStudentContext = async (
   return {
     context: {
       ...authContext,
+      parentChildLinkId: link.id,
+      parentPermissions,
       studentId: student.id,
       studentOrgId: student.org_id,
       studentFirstName: student.first_name,

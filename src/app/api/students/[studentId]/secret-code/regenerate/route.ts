@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { canCoachLikeAccessStudent } from "@/lib/parent/coach-student-access";
+import { recordActivity } from "@/lib/activity-log";
+import { loadParentInvitationActor } from "@/lib/parent/invitation-access";
 import { regenerateStudentParentSecretCode } from "@/lib/parent/student-secret-code-service";
 import {
   createSupabaseAdminClient,
@@ -32,12 +33,12 @@ export async function POST(request: Request, { params }: Params) {
   }
 
   const admin = createSupabaseAdminClient();
-  const canAccess = await canCoachLikeAccessStudent(
+  const access = await loadParentInvitationActor(
     admin,
     userData.user.id,
     parsedParams.data.studentId
   );
-  if (!canAccess) {
+  if (!access.allowed) {
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
@@ -52,8 +53,23 @@ export async function POST(request: Request, { params }: Params) {
     );
   }
 
+  await recordActivity({
+    admin,
+    action: "parent.secret_code.regenerated",
+    actorUserId: userData.user.id,
+    entityType: "student",
+    entityId: parsedParams.data.studentId,
+    message: "Code secret parent regenere (one-shot).",
+    metadata: {
+      studentId: parsedParams.data.studentId,
+      actorRole: access.actorRole,
+      rotatedAt: secret.rotatedAt,
+    },
+  });
+
   return NextResponse.json({
     ok: true,
+    oneShot: true,
     secretCode: secret.secretCode,
     rotatedAt: secret.rotatedAt,
   });

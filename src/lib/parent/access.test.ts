@@ -132,6 +132,62 @@ describe("parent access helpers", () => {
     expect(result.failure).toEqual({ status: 403, error: "Acces refuse." });
   });
 
+  it("denies access when the required module is disabled", async () => {
+    const supabase = {
+      auth: {
+        getUser: async () => ({
+          data: { user: { id: "parent-2", email: "parent2@example.com" } },
+          error: null,
+        }),
+      },
+    };
+
+    const admin = {
+      from: jest.fn((table: string) => {
+        if (table === "profiles") {
+          return buildSelectMaybeSingle({
+            data: { id: "parent-2", role: "parent", full_name: "Parent Two" },
+            error: null,
+          });
+        }
+        if (table === "parent_child_links") {
+          return buildSelectMaybeSingle({
+            data: { id: "link-1", permissions: { dashboard: false } },
+            error: null,
+          });
+        }
+        if (table === "students") {
+          return buildSelectMaybeSingle({
+            data: {
+              id: "student-1",
+              org_id: "org-1",
+              first_name: "Leo",
+              last_name: "Martin",
+              email: "leo@example.com",
+            },
+            error: null,
+          });
+        }
+        return buildSelectMaybeSingle({ data: null, error: null });
+      }),
+    };
+
+    serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
+    serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
+
+    const result = await loadParentLinkedStudentContext(
+      {} as Request,
+      "student-1",
+      { requiredPermission: "dashboard" }
+    );
+
+    expect(result.context).toBeNull();
+    expect(result.failure).toEqual({
+      status: 403,
+      error: "Acces non autorise pour ce module.",
+    });
+  });
+
   it("returns false for hasParentChildLink when lookup misses", async () => {
     const admin = {
       from: jest.fn(() =>

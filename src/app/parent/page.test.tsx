@@ -44,14 +44,11 @@ describe("/parent", () => {
   it("shows onboarding CTA when no child is linked", async () => {
     render(<ParentHomePage />);
 
-    await screen.findByText("Aucun enfant rattache. Redirection vers le formulaire de rattachement...");
+    await screen.findByText("Aucun enfant rattache. Redirection vers l acceptation d invitation...");
     expect(
-      screen.getByRole("link", { name: "Ajouter un enfant" })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "Rattacher un enfant" })
-    ).toBeInTheDocument();
-    expect(replaceMock).toHaveBeenCalledWith("/parent/link-child");
+      screen.getAllByRole("link", { name: "Accepter une invitation" })
+    ).toHaveLength(2);
+    expect(replaceMock).toHaveBeenCalledWith("/parent/invitations/accept");
   });
 
   it("keeps add-child CTA visible when parent already has linked children", async () => {
@@ -76,7 +73,7 @@ describe("/parent", () => {
 
     await screen.findByText("Leo Martin");
     expect(
-      screen.getByRole("link", { name: "Ajouter un enfant" })
+      screen.getByRole("link", { name: "Accepter une invitation" })
     ).toBeInTheDocument();
     expect(replaceMock).not.toHaveBeenCalled();
   });

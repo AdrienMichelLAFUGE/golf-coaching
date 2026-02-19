@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import LoginRoleSelectorButton from "@/components/marketing/LoginRoleSelectorButton";
 import {
   useCallback,
   useEffect,
@@ -1184,9 +1185,15 @@ export default function DemoPage() {
                 </p>
               </header>
               <div className="flex flex-wrap gap-3">
-                <Link href="/signup" className={PRIMARY_BUTTON_CLASS}>
-                  Créer mon compte
+                <Link href="/login/coach?mode=signup" className={PRIMARY_BUTTON_CLASS}>
+                  Créer mon compte coach
                 </Link>
+                <LoginRoleSelectorButton
+                  location="demo_final_cta"
+                  className={SECONDARY_BUTTON_CLASS}
+                  label="Se connecter"
+                  menuDirection="up"
+                />
                 <Link href="/#contact" className={SECONDARY_BUTTON_CLASS}>
                   Demander une démo
                 </Link>
@@ -1201,3 +1208,5 @@ export default function DemoPage() {
     </main>
   );
 }
+
+

@@ -33,7 +33,7 @@ export default function ParentShell({ children }: ParentShellProps) {
       if (!active) return;
 
       if (!session) {
-        router.replace(`/login?next=${encodeURIComponent(safeNextPath)}`);
+        router.replace(`/login/parent?next=${encodeURIComponent(safeNextPath)}`);
         return;
       }
 
@@ -71,7 +71,7 @@ export default function ParentShell({ children }: ParentShellProps) {
       }).catch(() => null);
     }
     await supabase.auth.signOut();
-    router.replace("/login");
+    router.replace("/login/parent");
   };
 
   if (authState !== "ready") {

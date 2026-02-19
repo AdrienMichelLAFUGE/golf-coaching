@@ -30,10 +30,16 @@ export default function LoginClient({
   resetSuccess,
   nextPath,
   initialCoachFlow,
+  initialAccountType,
+  forcedAccountType,
+  requireRoleSelection,
 }: {
   resetSuccess: boolean;
   nextPath: string | null;
   initialCoachFlow: CoachFlow | null;
+  initialAccountType: AccountType | null;
+  forcedAccountType?: AccountType;
+  requireRoleSelection?: boolean;
 }) {
   const router = useRouter();
   const [sessionChecking, setSessionChecking] = useState(true);
@@ -45,7 +51,10 @@ export default function LoginClient({
     return window.sessionStorage.getItem(rememberStorageKey) !== "false";
   });
   const [acceptTerms, setAcceptTerms] = useState(false);
-  const [accountType, setAccountType] = useState<AccountType>("coach");
+  const [selectedAccountType, setSelectedAccountType] = useState<AccountType>(
+    initialAccountType ?? forcedAccountType ?? "coach"
+  );
+  const accountType = forcedAccountType ?? selectedAccountType;
   const [coachFlow, setCoachFlow] = useState<CoachFlow>(initialCoachFlow ?? "signin");
   const [status, setStatus] = useState<Status>(() => (resetSuccess ? "sent" : "idle"));
   const [message, setMessage] = useState(() =>
@@ -56,6 +65,14 @@ export default function LoginClient({
   const [resetEmail, setResetEmail] = useState("");
   const [resetStatus, setResetStatus] = useState<ResetStatus>("idle");
   const [resetMessage, setResetMessage] = useState("");
+  const isAccountTypeLocked = Boolean(forcedAccountType);
+  const startsWithRoleSelection =
+    Boolean(requireRoleSelection) && !isAccountTypeLocked && !initialAccountType;
+  const [roleSelected, setRoleSelected] = useState(!startsWithRoleSelection);
+  const showRoleStep = !isAccountTypeLocked && !roleSelected;
+  const parentSignupHref = nextPath
+    ? `/signup/parent?next=${encodeURIComponent(nextPath)}`
+    : "/signup/parent";
 
   async function ensureProfile() {
     const { data: sessionData } = await supabase.auth.getSession();
@@ -78,6 +95,25 @@ export default function LoginClient({
   const resolveLoginTarget = useCallback(
     () => nextPath ?? resolveStoredAppPath(),
     [nextPath]
+  );
+
+  const buildRoleLoginHref = useCallback(
+    (nextType: AccountType) => {
+      const basePath =
+        nextType === "coach"
+          ? "/login/coach"
+          : nextType === "student"
+            ? "/login/eleve"
+            : "/login/parent";
+      const params = new URLSearchParams();
+      if (nextPath) params.set("next", nextPath);
+      if (nextType === "coach" && initialCoachFlow) {
+        params.set("mode", initialCoachFlow);
+      }
+      const query = params.toString();
+      return query ? `${basePath}?${query}` : basePath;
+    },
+    [initialCoachFlow, nextPath]
   );
 
   useEffect(() => {
@@ -118,7 +154,13 @@ export default function LoginClient({
   }, [resolveLoginTarget, router]);
 
   const handleAccountTypeChange = (nextType: AccountType) => {
-    setAccountType(nextType);
+    if (isAccountTypeLocked) return;
+    if (showRoleStep) {
+      router.replace(buildRoleLoginHref(nextType));
+      return;
+    }
+    setSelectedAccountType(nextType);
+    setRoleSelected(true);
     if (nextType !== "coach") {
       setCoachFlow("signin");
       setAcceptTerms(false);
@@ -315,48 +357,92 @@ export default function LoginClient({
               : "Connexion"}
           </h1>
           <p className="mt-2 text-sm text-[var(--muted)]">
-            {accountType === "student"
-              ? "Acces eleve uniquement sur invitation."
-              : accountType === "parent"
-                ? "Acces parent en lecture seule pour suivre vos enfants."
-              : "Choisis ton mode d acces."}
+            {showRoleStep
+              ? "Choisis d abord ton profil pour acceder au bon espace."
+              : accountType === "student"
+                ? "Acces eleve uniquement sur invitation."
+                : accountType === "parent"
+                  ? "Acces parent en lecture seule pour suivre vos enfants."
+                  : "Choisis ton mode d acces."}
           </p>
-          <div className="mt-6 grid grid-cols-3 gap-2 rounded-2xl border border-white/10 bg-white/5 p-1 text-xs uppercase tracking-wide text-[var(--muted)]">
-            <button
-              type="button"
-              onClick={() => handleAccountTypeChange("coach")}
-              className={`rounded-xl px-3 py-2 transition ${
-                accountType === "coach"
-                  ? "bg-white/15 text-[var(--text)]"
-                  : "hover:text-[var(--text)]"
-              }`}
-            >
-              Coach
-            </button>
-            <button
-              type="button"
-              onClick={() => handleAccountTypeChange("student")}
-              className={`rounded-xl px-3 py-2 transition ${
-                accountType === "student"
-                  ? "bg-white/15 text-[var(--text)]"
-                  : "hover:text-[var(--text)]"
-              }`}
-            >
-              Eleve
-            </button>
-            <button
-              type="button"
-              onClick={() => handleAccountTypeChange("parent")}
-              className={`rounded-xl px-3 py-2 transition ${
-                accountType === "parent"
-                  ? "bg-white/15 text-[var(--text)]"
-                  : "hover:text-[var(--text)]"
-              }`}
-            >
-              Parent
-            </button>
-          </div>
-          {accountType === "coach" ? (
+          {showRoleStep ? (
+            <div className="mt-6 grid gap-2">
+              <button
+                type="button"
+                onClick={() => handleAccountTypeChange("coach")}
+                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left transition hover:border-white/25 hover:bg-white/10"
+              >
+                <span className="block text-sm font-semibold text-[var(--text)]">
+                  Coach / Structure
+                </span>
+                <span className="mt-1 block text-xs text-[var(--muted)]">
+                  Gestion du workspace coaching et des eleves.
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAccountTypeChange("student")}
+                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left transition hover:border-white/25 hover:bg-white/10"
+              >
+                <span className="block text-sm font-semibold text-[var(--text)]">
+                  Eleve
+                </span>
+                <span className="mt-1 block text-xs text-[var(--muted)]">
+                  Acces eleve par invitation du coach.
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAccountTypeChange("parent")}
+                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left transition hover:border-white/25 hover:bg-white/10"
+              >
+                <span className="block text-sm font-semibold text-[var(--text)]">
+                  Parent
+                </span>
+                <span className="mt-1 block text-xs text-[var(--muted)]">
+                  Suivi parent en lecture seule.
+                </span>
+              </button>
+            </div>
+          ) : null}
+          {!isAccountTypeLocked && roleSelected ? (
+            <div className="mt-6 grid grid-cols-3 gap-2 rounded-2xl border border-white/10 bg-white/5 p-1 text-xs uppercase tracking-wide text-[var(--muted)]">
+              <button
+                type="button"
+                onClick={() => handleAccountTypeChange("coach")}
+                className={`rounded-xl px-3 py-2 transition ${
+                  accountType === "coach"
+                    ? "bg-white/15 text-[var(--text)]"
+                    : "hover:text-[var(--text)]"
+                }`}
+              >
+                Coach
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAccountTypeChange("student")}
+                className={`rounded-xl px-3 py-2 transition ${
+                  accountType === "student"
+                    ? "bg-white/15 text-[var(--text)]"
+                    : "hover:text-[var(--text)]"
+                }`}
+              >
+                Eleve
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAccountTypeChange("parent")}
+                className={`rounded-xl px-3 py-2 transition ${
+                  accountType === "parent"
+                    ? "bg-white/15 text-[var(--text)]"
+                    : "hover:text-[var(--text)]"
+                }`}
+              >
+                Parent
+              </button>
+            </div>
+          ) : null}
+          {accountType === "coach" && roleSelected ? (
             <div className="mt-4 grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/5 p-1 text-xs uppercase tracking-wide text-[var(--muted)]">
               <button
                 type="button"
@@ -387,133 +473,137 @@ export default function LoginClient({
               </button>
             </div>
           ) : null}
-          <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
-            {accountType === "coach" && coachFlow === "signup" ? (
-              <div>
-                <label
-                  className="block text-xs uppercase tracking-wide text-[var(--muted)]"
-                  htmlFor="fullName"
-                >
-                  Nom et prenom
-                </label>
-                <input
-                  id="fullName"
-                  name="fullName"
-                  type="text"
-                  autoComplete="name"
-                  placeholder="Prenom Nom"
-                  value={fullName}
-                  onChange={(event) => setFullName(event.target.value)}
-                  className="mt-1 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-3 text-sm text-[var(--text)] placeholder:text-zinc-500 focus:border-[var(--accent)] focus:outline-none"
-                />
-              </div>
-            ) : null}
-            <label
-              className="block text-xs uppercase tracking-wide text-[var(--muted)]"
-              htmlFor="email"
-            >
-              Email
-            </label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              placeholder="toi@email.com"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              className="mt-1 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-3 text-sm text-[var(--text)] placeholder:text-zinc-500 focus:border-[var(--accent)] focus:outline-none"
-            />
-            <label
-              className="block text-xs uppercase tracking-wide text-[var(--muted)]"
-              htmlFor="password"
-            >
-              Mot de passe
-            </label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              placeholder="Votre mot de passe"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="mt-1 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-3 text-sm text-[var(--text)] placeholder:text-zinc-500 focus:border-[var(--accent)] focus:outline-none"
-            />
-            <label className="mt-3 flex items-center gap-2 text-xs text-[var(--muted)]">
-              <input
-                type="checkbox"
-                checked={rememberMe}
-                onChange={(event) => setRememberMe(event.target.checked)}
-                className="h-4 w-4 rounded border-white/10 bg-[var(--bg-elevated)]"
-              />
-              Se souvenir de moi
-            </label>
-            {accountType === "coach" && coachFlow === "signup" ? (
-              <label className="block text-xs text-[var(--muted)]">
-                <span className="flex items-start gap-2">
+          {roleSelected ? (
+            <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+              {accountType === "coach" && coachFlow === "signup" ? (
+                <div>
+                  <label
+                    className="block text-xs uppercase tracking-wide text-[var(--muted)]"
+                    htmlFor="fullName"
+                  >
+                    Nom et prenom
+                  </label>
                   <input
-                    type="checkbox"
-                    checked={acceptTerms}
-                    onChange={(event) => setAcceptTerms(event.target.checked)}
-                    required
-                    className="mt-0.5 h-4 w-4 rounded border-white/10 bg-[var(--bg-elevated)]"
+                    id="fullName"
+                    name="fullName"
+                    type="text"
+                    autoComplete="name"
+                    placeholder="Prenom Nom"
+                    value={fullName}
+                    onChange={(event) => setFullName(event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-3 text-sm text-[var(--text)] placeholder:text-zinc-500 focus:border-[var(--accent)] focus:outline-none"
                   />
-                  <span>
-                    J accepte les{" "}
-                    <a
-                      href="/cgu"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-semibold text-[var(--text)] underline decoration-white/30 underline-offset-2 hover:decoration-white/70"
-                    >
-                      CGU
-                    </a>{" "}
-                    et les{" "}
-                    <a
-                      href="/cgv"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-semibold text-[var(--text)] underline decoration-white/30 underline-offset-2 hover:decoration-white/70"
-                    >
-                      CGV
-                    </a>
-                    .
-                  </span>
-                </span>
-              </label>
-            ) : null}
-            <button
-              type="submit"
-              disabled={status === "sending" || sessionChecking}
-              className="w-full rounded-xl bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-3 text-sm font-semibold text-zinc-900 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              {status === "sending" || sessionChecking
-                ? "Traitement..."
-                : accountType === "coach" && coachFlow === "signup"
-                  ? "Creer un compte coach"
-                  : accountType === "student"
-                    ? "Connexion eleve"
-                    : accountType === "parent"
-                      ? "Connexion parent"
-                    : "Se connecter"}
-            </button>
-            {accountType === "parent" ? (
-              <a
-                href="/signup/parent"
-                className="block text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                </div>
+              ) : null}
+              <label
+                className="block text-xs uppercase tracking-wide text-[var(--muted)]"
+                htmlFor="email"
               >
-                Creer un compte parent
-              </a>
-            ) : null}
-          </form>
-          <button
-            type="button"
-            onClick={openResetModal}
-            className="mt-3 text-left text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
-          >
-            Mot de passe oublie ?
-          </button>
+                Email
+              </label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                placeholder="toi@email.com"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                className="mt-1 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-3 text-sm text-[var(--text)] placeholder:text-zinc-500 focus:border-[var(--accent)] focus:outline-none"
+              />
+              <label
+                className="block text-xs uppercase tracking-wide text-[var(--muted)]"
+                htmlFor="password"
+              >
+                Mot de passe
+              </label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                placeholder="Votre mot de passe"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                className="mt-1 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-3 text-sm text-[var(--text)] placeholder:text-zinc-500 focus:border-[var(--accent)] focus:outline-none"
+              />
+              <label className="mt-3 flex items-center gap-2 text-xs text-[var(--muted)]">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(event) => setRememberMe(event.target.checked)}
+                  className="h-4 w-4 rounded border-white/10 bg-[var(--bg-elevated)]"
+                />
+                Se souvenir de moi
+              </label>
+              {accountType === "coach" && coachFlow === "signup" ? (
+                <label className="block text-xs text-[var(--muted)]">
+                  <span className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      checked={acceptTerms}
+                      onChange={(event) => setAcceptTerms(event.target.checked)}
+                      required
+                      className="mt-0.5 h-4 w-4 rounded border-white/10 bg-[var(--bg-elevated)]"
+                    />
+                    <span>
+                      J accepte les{" "}
+                      <a
+                        href="/cgu"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-semibold text-[var(--text)] underline decoration-white/30 underline-offset-2 hover:decoration-white/70"
+                      >
+                        CGU
+                      </a>{" "}
+                      et les{" "}
+                      <a
+                        href="/cgv"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-semibold text-[var(--text)] underline decoration-white/30 underline-offset-2 hover:decoration-white/70"
+                      >
+                        CGV
+                      </a>
+                      .
+                    </span>
+                  </span>
+                </label>
+              ) : null}
+              <button
+                type="submit"
+                disabled={status === "sending" || sessionChecking}
+                className="w-full rounded-xl bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-3 text-sm font-semibold text-zinc-900 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {status === "sending" || sessionChecking
+                  ? "Traitement..."
+                  : accountType === "coach" && coachFlow === "signup"
+                    ? "Creer un compte coach"
+                    : accountType === "student"
+                      ? "Connexion eleve"
+                      : accountType === "parent"
+                        ? "Connexion parent"
+                      : "Se connecter"}
+              </button>
+              {accountType === "parent" ? (
+                <a
+                  href={parentSignupHref}
+                  className="block text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                >
+                  Creer un compte parent
+                </a>
+              ) : null}
+            </form>
+          ) : null}
+          {roleSelected ? (
+            <button
+              type="button"
+              onClick={openResetModal}
+              className="mt-3 text-left text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+            >
+              Mot de passe oublie ?
+            </button>
+          ) : null}
           {message ? (
             <p
               className={`mt-4 text-sm ${
@@ -525,11 +615,13 @@ export default function LoginClient({
           ) : null}
         </div>
         <div className="panel-outline rounded-2xl px-5 py-4 text-xs text-[var(--muted)]">
-          {accountType === "student"
-            ? "Un compte eleve est cree uniquement via une invitation coach."
-            : accountType === "parent"
-              ? "Un compte parent permet de consulter les espaces enfants en lecture seule."
-            : "Creer un compte coach pour demarrer en freemium."}
+          {showRoleStep
+            ? "Selectionne ton profil pour acceder au bon parcours de connexion."
+            : accountType === "student"
+              ? "Un compte eleve est cree uniquement via une invitation coach."
+              : accountType === "parent"
+                ? "Un compte parent permet de consulter les espaces enfants en lecture seule."
+                : "Creer un compte coach pour demarrer en freemium."}
         </div>
       </div>
 

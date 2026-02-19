@@ -349,13 +349,15 @@ describe("POST /api/reports/notify-student", () => {
         if (table === "parent_child_links") {
           return {
             select: () => ({
-              eq: async () => ({
-                data: [
-                  { parent_email: "parent1@example.com" },
-                  { parent_email: "parent2@example.com" },
-                  { parent_email: "camille@example.com" },
-                ],
-                error: null,
+              eq: () => ({
+                eq: async () => ({
+                  data: [
+                    { parent_email: "parent1@example.com" },
+                    { parent_email: "parent2@example.com" },
+                    { parent_email: "camille@example.com" },
+                  ],
+                  error: null,
+                }),
               }),
             }),
           };

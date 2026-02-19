@@ -24,7 +24,9 @@ export const loadParentLinkedStudentContext = async (
       response: Response;
     }
 > => {
-  const loaded = await loadParentLinkedStudentBaseContext(request, studentId);
+  const loaded = await loadParentLinkedStudentBaseContext(request, studentId, {
+    requiredPermission: "messages",
+  });
   if (!loaded.context) {
     return {
       context: null,

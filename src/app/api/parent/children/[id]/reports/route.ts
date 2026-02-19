@@ -29,7 +29,9 @@ export async function GET(request: Request, { params }: Params) {
     );
   }
 
-  const loaded = await loadParentLinkedStudentContext(request, parsedParams.data.id);
+  const loaded = await loadParentLinkedStudentContext(request, parsedParams.data.id, {
+    requiredPermission: "rapports",
+  });
   if (!loaded.context) {
     return NextResponse.json(
       { error: loaded.failure?.error ?? "Acces refuse." },

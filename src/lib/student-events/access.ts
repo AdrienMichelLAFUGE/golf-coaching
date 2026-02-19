@@ -88,6 +88,8 @@ const isParentLinked = async (
     .select("id")
     .eq("parent_user_id", userId)
     .eq("student_id", studentId)
+    .eq("status", "active")
+    .contains("permissions", { calendrier: true })
     .maybeSingle();
 
   return Boolean(data);

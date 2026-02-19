@@ -91,6 +91,13 @@ export default function StudentCalendarPage() {
         organization?.id
           ? studentRows.find((row) => row.org_id === organization.id) ?? null
           : null;
+      if (organization?.id && !workspaceStudent) {
+        if (!cancelled) {
+          setError("Profil eleve introuvable pour le workspace actif.");
+          setLoading(false);
+        }
+        return;
+      }
       const firstStudent = workspaceStudent ?? studentRows[0] ?? null;
       if (!firstStudent) {
         if (!cancelled) {

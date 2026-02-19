@@ -12,16 +12,14 @@ jest.mock("framer-motion", () => ({
           children,
           ...props
         }: HTMLAttributes<HTMLElement> & Record<string, unknown>) => {
-          const {
-            whileTap: _whileTap,
-            whileHover: _whileHover,
-            initial: _initial,
-            animate: _animate,
-            exit: _exit,
-            transition: _transition,
-            layout: _layout,
-            ...domProps
-          } = props;
+          const domProps = { ...props };
+          delete domProps.whileTap;
+          delete domProps.whileHover;
+          delete domProps.initial;
+          delete domProps.animate;
+          delete domProps.exit;
+          delete domProps.transition;
+          delete domProps.layout;
           return <div {...domProps}>{children}</div>;
         },
     }

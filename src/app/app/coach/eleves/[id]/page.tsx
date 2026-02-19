@@ -43,6 +43,7 @@ import {
 } from "@/lib/radar/smart2move-graph-types";
 import { normalizeSmart2MoveImpactMarkerX } from "@/lib/radar/smart2move-annotations";
 import type { RadarAnalytics } from "@/lib/radar/types";
+import { type ParentLinkPermissions } from "@/lib/parent/permissions";
 import { getViewerShareAccess, type ShareStatus } from "@/lib/student-share";
 import { z } from "zod";
 import {
@@ -180,9 +181,29 @@ type OrgCoachOption = {
 type StudentEditForm = {
   first_name: string;
   last_name: string;
-  email: string;
   playing_hand: "" | "right" | "left";
 };
+
+type StudentParentLink = {
+  parentUserId: string;
+  parentEmail: string | null;
+  parentName: string | null;
+  createdAt: string;
+  permissions: ParentLinkPermissions;
+};
+
+type ParentInvitation = {
+  id: string;
+  parentEmail: string | null;
+  createdByRole: "owner" | "coach" | "staff" | "student";
+  status: "pending" | "accepted" | "revoked";
+  createdAt: string;
+  expiresAt: string;
+  acceptedAt: string | null;
+  revokedAt: string | null;
+};
+
+type ParentPermissionModule = keyof ParentLinkPermissions;
 
 const tpiColorRank: Record<TpiTest["result_color"], number> = {
   red: 0,
@@ -206,6 +227,58 @@ const tpiStatusLabel = (color: TpiTest["result_color"]) => {
   if (color === "orange") return "A surveiller";
   return "Bloquant";
 };
+
+const StepOneStatusIcon = ({ done }: { done: boolean }) => (
+  <span
+    className="relative inline-flex h-16 w-16 shrink-0 items-center justify-center"
+    aria-hidden="true"
+  >
+    <span
+      className={`absolute h-[4px] rounded-full transition-all duration-500 ${
+        done
+          ? "left-[18px] top-[37px] w-[16px] rotate-45 bg-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.55)]"
+          : "left-[14px] top-[30px] w-[34px] rotate-45 bg-rose-300"
+      }`}
+    />
+    <span
+      className={`absolute h-[4px] rounded-full transition-all duration-500 ${
+        done
+          ? "left-[26px] top-[29px] w-[30px] -rotate-45 bg-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.55)]"
+          : "left-[14px] top-[30px] w-[34px] -rotate-45 bg-rose-300"
+      }`}
+    />
+  </span>
+);
+
+const StepTwoStatusIcon = ({
+  status,
+}: {
+  status: "locked" | "ready" | "done";
+}) => (
+  <span
+    className="relative inline-flex h-16 w-16 shrink-0 items-center justify-center"
+    aria-hidden="true"
+  >
+    <span
+      className={`absolute transition-all duration-500 ${
+        status === "done"
+          ? "left-[18px] top-[37px] h-[4px] w-[16px] rotate-45 rounded-full bg-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.55)]"
+          : status === "ready"
+            ? "left-[30px] top-[13px] h-[28px] w-[4px] rounded-full bg-amber-300 motion-safe:animate-bounce [animation-duration:1.4s]"
+            : "left-[14px] top-[30px] h-[4px] w-[34px] rotate-45 rounded-full bg-rose-300"
+      }`}
+    />
+    <span
+      className={`absolute transition-all duration-500 ${
+        status === "done"
+          ? "left-[26px] top-[29px] h-[4px] w-[30px] -rotate-45 rounded-full bg-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.55)]"
+          : status === "ready"
+            ? "left-[30px] top-[45px] h-[6px] w-[6px] rounded-full bg-amber-300 motion-safe:animate-bounce [animation-duration:1.4s]"
+            : "left-[14px] top-[30px] h-[4px] w-[34px] -rotate-45 rounded-full bg-rose-300"
+      }`}
+    />
+  </span>
+);
 
 const formatDate = (
   value?: string | null,
@@ -235,6 +308,16 @@ const radarTechTone = {
   smart2move: "border-amber-300/30 bg-amber-400/10 text-amber-100",
   unknown: "border-white/10 bg-white/5 text-[var(--muted)]",
 } as const;
+
+const PARENT_PERMISSION_LABELS: Record<ParentPermissionModule, string> = {
+  dashboard: "Dashboard",
+  rapports: "Rapports",
+  tests: "Tests",
+  calendrier: "Calendrier",
+  messages: "Messages",
+};
+
+const PARENT_PERMISSION_MODULES = Object.keys(PARENT_PERMISSION_LABELS) as ParentPermissionModule[];
 
 const LoadingDots = () => (
   <span className="ml-1 inline-flex items-center gap-0.5">
@@ -517,7 +600,6 @@ export default function CoachStudentDetailPage() {
   const [editForm, setEditForm] = useState<StudentEditForm>({
     first_name: "",
     last_name: "",
-    email: "",
     playing_hand: "",
   });
   const [editSaving, setEditSaving] = useState(false);
@@ -537,11 +619,33 @@ export default function CoachStudentDetailPage() {
   const [parentSecretCodeRotatedAt, setParentSecretCodeRotatedAt] = useState<string | null>(
     null
   );
-  const [parentSecretCodeVisible, setParentSecretCodeVisible] = useState(false);
+  const [hasParentSecretCode, setHasParentSecretCode] = useState(false);
   const [parentSecretCodeLoading, setParentSecretCodeLoading] = useState(false);
   const [parentSecretCodeRegenerating, setParentSecretCodeRegenerating] = useState(false);
   const [parentSecretCodeError, setParentSecretCodeError] = useState("");
   const [parentSecretCodeMessage, setParentSecretCodeMessage] = useState("");
+  const [linkedParents, setLinkedParents] = useState<StudentParentLink[]>([]);
+  const [linkedParentsLoading, setLinkedParentsLoading] = useState(false);
+  const [linkedParentsError, setLinkedParentsError] = useState("");
+  const [parentPermissionsPanelId, setParentPermissionsPanelId] = useState<string | null>(null);
+  const [parentLinkActionLoadingId, setParentLinkActionLoadingId] = useState<string | null>(
+    null
+  );
+  const [parentLinkActionError, setParentLinkActionError] = useState("");
+  const [parentLinkActionMessage, setParentLinkActionMessage] = useState("");
+  const [parentModalOpen, setParentModalOpen] = useState(false);
+  const [parentInvitationEmail, setParentInvitationEmail] = useState("");
+  const [parentInvitationLoading, setParentInvitationLoading] = useState(false);
+  const [parentInvitationError, setParentInvitationError] = useState("");
+  const [parentInvitationMessage, setParentInvitationMessage] = useState("");
+  const [parentInvitations, setParentInvitations] = useState<ParentInvitation[]>([]);
+  const [parentInvitationsLoading, setParentInvitationsLoading] = useState(false);
+  const [parentInvitationsError, setParentInvitationsError] = useState("");
+  const [parentInvitationsExpanded, setParentInvitationsExpanded] = useState(false);
+  const [parentInvitationRevokingId, setParentInvitationRevokingId] = useState<string | null>(
+    null
+  );
+  const parentInvitationHasEmail = parentInvitationEmail.trim().length > 0;
   const [messageActionError, setMessageActionError] = useState("");
   const [messageActionLoading, setMessageActionLoading] = useState(false);
   const [shareStatus, setShareStatus] = useState<ShareStatus | null>(null);
@@ -571,6 +675,14 @@ export default function CoachStudentDetailPage() {
   const canProposeInOrg = workspaceType === "org" && isWorkspacePremium && !isAssigned;
   const shareAccess = getViewerShareAccess(shareStatus);
   const canManageParentCode = !shareAccess.canRead && Boolean(studentId);
+  const hasSentParentInvitation = parentInvitations.some(
+    (invitation) => invitation.status === "pending" || invitation.status === "accepted"
+  );
+  const stepTwoStatus: "locked" | "ready" | "done" = !hasParentSecretCode
+    ? "locked"
+    : hasSentParentInvitation
+      ? "done"
+      : "ready";
   const getOrgName = useCallback((value?: OrganizationRef) => {
     if (!value) return null;
     if (Array.isArray(value)) return value[0]?.name ?? null;
@@ -2075,7 +2187,6 @@ export default function CoachStudentDetailPage() {
     setEditForm({
       first_name: student.first_name ?? "",
       last_name: student.last_name ?? "",
-      email: student.email ?? "",
       playing_hand: student.playing_hand ?? "",
     });
     setEditOpen(true);
@@ -2092,11 +2203,7 @@ export default function CoachStudentDetailPage() {
     if (!student) return;
     const firstName = editForm.first_name.trim();
     const lastName = editForm.last_name.trim();
-    const email = editForm.email.trim();
     const playingHand = editForm.playing_hand || null;
-    const previousEmail = (student.email ?? "").trim().toLowerCase();
-    const nextEmail = email.toLowerCase();
-    const emailChanged = previousEmail !== nextEmail;
 
     if (!firstName) {
       setEditError("Le prenom est obligatoire.");
@@ -2111,9 +2218,7 @@ export default function CoachStudentDetailPage() {
       .update({
         first_name: firstName,
         last_name: lastName || null,
-        email: email || null,
         playing_hand: playingHand,
-        ...(emailChanged ? { invited_at: null, activated_at: null } : {}),
       })
       .eq("id", student.id);
 
@@ -2129,9 +2234,7 @@ export default function CoachStudentDetailPage() {
             ...prev,
             first_name: firstName,
             last_name: lastName || null,
-            email: email || null,
             playing_hand: playingHand,
-            ...(emailChanged ? { invited_at: null, activated_at: null } : {}),
           }
         : prev
     );
@@ -2249,7 +2352,7 @@ export default function CoachStudentDetailPage() {
     if (!studentId || !canManageParentCode) {
       setParentSecretCode(null);
       setParentSecretCodeRotatedAt(null);
-      setParentSecretCodeVisible(false);
+      setHasParentSecretCode(false);
       setParentSecretCodeError("");
       setParentSecretCodeMessage("");
       return;
@@ -2275,23 +2378,115 @@ export default function CoachStudentDetailPage() {
     });
     const payload = (await response.json().catch(() => ({}))) as {
       error?: string;
-      secretCode?: string;
+      hasSecretCode?: boolean;
       rotatedAt?: string | null;
     };
 
-    if (!response.ok || !payload.secretCode) {
+    if (!response.ok) {
       setParentSecretCodeError(
         payload.error ?? "Chargement du code parent impossible."
       );
       setParentSecretCode(null);
       setParentSecretCodeRotatedAt(null);
+      setHasParentSecretCode(false);
       setParentSecretCodeLoading(false);
       return;
     }
 
-    setParentSecretCode(payload.secretCode);
+    setParentSecretCode(null);
+    setHasParentSecretCode(Boolean(payload.hasSecretCode));
     setParentSecretCodeRotatedAt(payload.rotatedAt ?? null);
+    setParentSecretCodeMessage(
+      payload.hasSecretCode
+        ? ""
+        : "Aucun code actif. Regenerer pour obtenir un code parent one-shot."
+    );
     setParentSecretCodeLoading(false);
+  }, [studentId, canManageParentCode]);
+
+  const loadLinkedParents = useCallback(async () => {
+    if (!studentId || !canManageParentCode) {
+      setLinkedParents([]);
+      setLinkedParentsError("");
+      setParentPermissionsPanelId(null);
+      return;
+    }
+
+    setLinkedParentsLoading(true);
+    setLinkedParentsError("");
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setLinkedParents([]);
+      setLinkedParentsError("Session invalide. Reconnecte toi.");
+      setLinkedParentsLoading(false);
+      return;
+    }
+
+    const response = await fetch(`/api/students/${studentId}/parents`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const payload = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      parents?: StudentParentLink[];
+    };
+
+    if (!response.ok) {
+      setLinkedParents([]);
+      setLinkedParentsError(payload.error ?? "Chargement des parents impossible.");
+      setLinkedParentsLoading(false);
+      return;
+    }
+
+    setLinkedParents(payload.parents ?? []);
+    setLinkedParentsLoading(false);
+  }, [studentId, canManageParentCode]);
+
+  const loadParentInvitations = useCallback(async () => {
+    if (!studentId || !canManageParentCode) {
+      setParentInvitations([]);
+      setParentInvitationsError("");
+      return;
+    }
+
+    setParentInvitationsLoading(true);
+    setParentInvitationsError("");
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setParentInvitations([]);
+      setParentInvitationsError("Session invalide. Reconnecte toi.");
+      setParentInvitationsLoading(false);
+      return;
+    }
+
+    const response = await fetch(`/api/students/${studentId}/parent-invitations`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const payload = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      invitations?: ParentInvitation[];
+    };
+
+    if (!response.ok) {
+      setParentInvitations([]);
+      setParentInvitationsError(payload.error ?? "Chargement des invitations impossible.");
+      setParentInvitationsLoading(false);
+      return;
+    }
+
+    setParentInvitations(payload.invitations ?? []);
+    setParentInvitationsLoading(false);
   }, [studentId, canManageParentCode]);
 
   const handleCopyParentSecretCode = async () => {
@@ -2307,7 +2502,7 @@ export default function CoachStudentDetailPage() {
   };
 
   const handleRegenerateParentSecretCode = async () => {
-    if (!studentId || !parentSecretCode || !canManageParentCode) return;
+    if (!studentId || !canManageParentCode) return;
 
     const confirmed = window.confirm(
       "Regenerer le code parent ? L ancien code ne fonctionnera plus."
@@ -2348,15 +2543,272 @@ export default function CoachStudentDetailPage() {
     }
 
     setParentSecretCode(payload.secretCode);
+    setHasParentSecretCode(true);
     setParentSecretCodeRotatedAt(payload.rotatedAt ?? null);
-    setParentSecretCodeVisible(true);
-    setParentSecretCodeMessage("Code parent regenere.");
+    setParentSecretCodeMessage("Code parent regenere (affichage one-shot).");
     setParentSecretCodeRegenerating(false);
+  };
+
+  const handleUnlinkParent = async (parentUserId: string) => {
+    if (!studentId || !canManageParentCode) return;
+
+    const confirmed = window.confirm(
+      "Dissocier ce parent de l eleve ?"
+    );
+    if (!confirmed) return;
+
+    setParentLinkActionLoadingId(parentUserId);
+    setParentLinkActionError("");
+    setParentLinkActionMessage("");
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setParentLinkActionError("Session invalide. Reconnecte toi.");
+      setParentLinkActionLoadingId(null);
+      return;
+    }
+
+    const response = await fetch(
+      `/api/students/${studentId}/parents/${parentUserId}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+    const payload = (await response.json().catch(() => ({}))) as {
+      error?: string;
+    };
+
+    if (!response.ok) {
+      setParentLinkActionError(payload.error ?? "Dissociation parent impossible.");
+      setParentLinkActionLoadingId(null);
+      return;
+    }
+
+    setLinkedParents((prev) => prev.filter((entry) => entry.parentUserId !== parentUserId));
+    setParentPermissionsPanelId((prev) => (prev === parentUserId ? null : prev));
+    setParentLinkActionMessage("Parent dissocie.");
+    setParentLinkActionLoadingId(null);
+  };
+
+  const handleUpdateParentPermission = async (
+    parentUserId: string,
+    module: ParentPermissionModule,
+    nextValue: boolean
+  ) => {
+    if (!studentId || !canManageParentCode) return;
+
+    const target = linkedParents.find((entry) => entry.parentUserId === parentUserId);
+    if (!target) return;
+
+    const nextPermissions: ParentLinkPermissions = {
+      ...target.permissions,
+      [module]: nextValue,
+    };
+
+    setParentLinkActionLoadingId(parentUserId);
+    setParentLinkActionError("");
+    setParentLinkActionMessage("");
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setParentLinkActionError("Session invalide. Reconnecte toi.");
+      setParentLinkActionLoadingId(null);
+      return;
+    }
+
+    const response = await fetch(
+      `/api/students/${studentId}/parents/${parentUserId}/permissions`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ permissions: nextPermissions }),
+      }
+    );
+    const payload = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      permissions?: ParentLinkPermissions;
+    };
+
+    if (!response.ok || !payload.permissions) {
+      setParentLinkActionError(
+        payload.error ?? "Mise a jour des permissions impossible."
+      );
+      setParentLinkActionLoadingId(null);
+      return;
+    }
+
+    setLinkedParents((prev) =>
+      prev.map((entry) =>
+        entry.parentUserId === parentUserId
+          ? { ...entry, permissions: payload.permissions as ParentLinkPermissions }
+          : entry
+      )
+    );
+    setParentLinkActionMessage("Permissions parent mises a jour.");
+    setParentLinkActionLoadingId(null);
+  };
+
+  const handleCreateParentInvitation = async () => {
+    if (!studentId || !canManageParentCode) return;
+    if (!hasParentSecretCode) {
+      setParentInvitationError("Genere d abord un code secret eleve.");
+      setParentInvitationMessage("");
+      return;
+    }
+    const normalizedParentEmail = parentInvitationEmail.trim();
+    if (!normalizedParentEmail) {
+      setParentInvitationError("Renseigne l email du parent.");
+      setParentInvitationMessage("");
+      return;
+    }
+
+    setParentInvitationLoading(true);
+    setParentInvitationError("");
+    setParentInvitationMessage("");
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setParentInvitationError("Session invalide. Reconnecte toi.");
+      setParentInvitationLoading(false);
+      return;
+    }
+
+    const response = await fetch(`/api/students/${studentId}/parent-invitations`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        parentEmail: normalizedParentEmail,
+      }),
+    });
+
+    const payload = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      invitationId?: string;
+      expiresAt?: string;
+    };
+
+    if (
+      !response.ok ||
+      typeof payload.invitationId !== "string" ||
+      typeof payload.expiresAt !== "string"
+    ) {
+      setParentInvitationError(payload.error ?? "Creation invitation impossible.");
+      setParentInvitationLoading(false);
+      return;
+    }
+    const invitationId = payload.invitationId;
+    const expiresAt = payload.expiresAt;
+
+    const createdByRole: ParentInvitation["createdByRole"] =
+      profile?.role === "owner" ||
+      profile?.role === "coach" ||
+      profile?.role === "staff" ||
+      profile?.role === "student"
+        ? profile.role
+        : "coach";
+
+    setParentInvitations((prev) => [
+      {
+        id: invitationId,
+        parentEmail: normalizedParentEmail.toLowerCase(),
+        createdByRole,
+        status: "pending",
+        createdAt: new Date().toISOString(),
+        expiresAt,
+        acceptedAt: null,
+        revokedAt: null,
+      },
+      ...prev.filter((item) => item.id !== invitationId),
+    ]);
+    setParentInvitationMessage("Invitation parent envoyee par email.");
+    setParentInvitationEmail("");
+    setParentInvitationLoading(false);
+    await loadParentInvitations();
+  };
+
+  const handleRevokeParentInvitation = async (invitationId: string) => {
+    if (!studentId || !canManageParentCode) return;
+
+    const confirmed = window.confirm("Revoquer cette invitation parent ?");
+    if (!confirmed) return;
+
+    setParentInvitationRevokingId(invitationId);
+    setParentInvitationsError("");
+    setParentInvitationError("");
+    setParentInvitationMessage("");
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setParentInvitationsError("Session invalide. Reconnecte toi.");
+      setParentInvitationRevokingId(null);
+      return;
+    }
+
+    const response = await fetch(
+      `/api/students/${studentId}/parent-invitations/${invitationId}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
+
+    if (!response.ok) {
+      setParentInvitationsError(payload.error ?? "Revocation invitation impossible.");
+      setParentInvitationRevokingId(null);
+      return;
+    }
+
+    setParentInvitations((prev) => prev.filter((item) => item.id !== invitationId));
+    setParentInvitationMessage("Invitation revoquee.");
+    setParentInvitationRevokingId(null);
   };
 
   useEffect(() => {
     void loadParentSecretCode();
   }, [loadParentSecretCode]);
+
+  useEffect(() => {
+    void loadLinkedParents();
+  }, [loadLinkedParents]);
+
+  useEffect(() => {
+    void loadParentInvitations();
+  }, [loadParentInvitations]);
+
+  useEffect(() => {
+    if (canManageParentCode) return;
+    setParentModalOpen(false);
+  }, [canManageParentCode]);
+
+  useEffect(() => {
+    if (!parentModalOpen) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setParentModalOpen(false);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [parentModalOpen]);
 
   const handleOpenMessageThread = async () => {
     if (!student?.id) return;
@@ -2600,6 +3052,33 @@ export default function CoachStudentDetailPage() {
                     <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
                   </svg>
                 </button>
+                {canManageParentCode ? (
+                  <button
+                    type="button"
+                    onClick={() => setParentModalOpen(true)}
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                    aria-label="Ouvrir la gestion parent"
+                    title="Gestion parent"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M16 19v-1a3 3 0 0 0-3-3h-2a3 3 0 0 0-3 3v1" />
+                      <circle cx="12" cy="10" r="2.5" />
+                      <path d="M21 19v-1a3 3 0 0 0-2-2.82" />
+                      <path d="M3 19v-1a3 3 0 0 1 2-2.82" />
+                      <path d="M18.5 8.4a2.2 2.2 0 1 1 .01-4.4" />
+                      <path d="M5.5 8.4a2.2 2.2 0 1 0-.01-4.4" />
+                    </svg>
+                  </button>
+                ) : null}
                 {isOwner ? (
                   <button
                     type="button"
@@ -2685,78 +3164,6 @@ export default function CoachStudentDetailPage() {
             ) : null}
             {messageActionError ? (
               <p className="mt-3 text-xs text-red-300">{messageActionError}</p>
-            ) : null}
-            {canManageParentCode ? (
-              <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                      Code parent
-                    </p>
-                    <p className="mt-1 text-xs text-[var(--muted)]">
-                      Utilise pour rattacher un compte parent (nom, prenom, email, code).
-                    </p>
-                  </div>
-                  {parentSecretCodeRotatedAt ? (
-                    <p className="text-[0.65rem] text-[var(--muted)]">
-                      Maj: {formatDate(parentSecretCodeRotatedAt, locale, timezone)}
-                    </p>
-                  ) : null}
-                </div>
-
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <code className="rounded-lg border border-white/15 bg-[var(--bg-elevated)] px-3 py-1.5 text-xs tracking-[0.2em] text-[var(--text)]">
-                    {parentSecretCodeLoading
-                      ? "Chargement..."
-                      : parentSecretCodeVisible
-                        ? parentSecretCode ?? "--------"
-                        : "********"}
-                  </code>
-                  <button
-                    type="button"
-                    onClick={() => setParentSecretCodeVisible((prev) => !prev)}
-                    disabled={parentSecretCodeLoading || !parentSecretCode}
-                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[0.62rem] uppercase tracking-[0.14em] text-[var(--text)] transition hover:border-white/25 disabled:cursor-not-allowed disabled:opacity-50"
-                    title="Afficher ou masquer le code parent"
-                  >
-                    {parentSecretCodeVisible ? "Masquer" : "Afficher"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleCopyParentSecretCode()}
-                    disabled={parentSecretCodeLoading || !parentSecretCode}
-                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[0.62rem] uppercase tracking-[0.14em] text-[var(--text)] transition hover:border-white/25 disabled:cursor-not-allowed disabled:opacity-50"
-                    title="Copier le code parent"
-                  >
-                    Copier
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleRegenerateParentSecretCode()}
-                    disabled={
-                      parentSecretCodeLoading ||
-                      parentSecretCodeRegenerating ||
-                      !parentSecretCode ||
-                      isReadOnly
-                    }
-                    className="rounded-full border border-amber-300/40 bg-amber-400/10 px-3 py-1.5 text-[0.62rem] uppercase tracking-[0.14em] text-amber-100 transition hover:bg-amber-400/20 disabled:cursor-not-allowed disabled:opacity-50"
-                    title={
-                      isReadOnly
-                        ? "Lecture seule: regeneration indisponible."
-                        : "Regenerer le code parent"
-                    }
-                  >
-                    {parentSecretCodeRegenerating ? "Regeneration..." : "Regenerer"}
-                  </button>
-                </div>
-
-                {parentSecretCodeMessage ? (
-                  <p className="mt-2 text-xs text-emerald-200">{parentSecretCodeMessage}</p>
-                ) : null}
-                {parentSecretCodeError ? (
-                  <p className="mt-2 text-xs text-red-300">{parentSecretCodeError}</p>
-                ) : null}
-              </div>
             ) : null}
             {isReadOnly ? (
               <div className="mt-4 rounded-xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-xs uppercase tracking-wide text-amber-100">
@@ -4962,15 +5369,13 @@ export default function CoachStudentDetailPage() {
                     </label>
                     <input
                       type="email"
-                      value={editForm.email}
-                      onChange={(event) =>
-                        setEditForm((prev) => ({
-                          ...prev,
-                          email: event.target.value,
-                        }))
-                      }
-                      className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)]"
+                      value={student?.email ?? ""}
+                      readOnly
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--muted)]"
                     />
+                    <p className="mt-2 text-xs text-[var(--muted)]">
+                      Modifiable uniquement par l eleve dans ses parametres.
+                    </p>
                   </div>
                   <div>
                     <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
@@ -5012,6 +5417,368 @@ export default function CoachStudentDetailPage() {
                   >
                     {editSaving ? "Enregistrement..." : "Enregistrer"}
                   </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          {parentModalOpen && canManageParentCode ? (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+              onClick={() => setParentModalOpen(false)}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Gestion parent"
+            >
+              <div
+                className="max-h-[88vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-white/10 bg-[var(--bg-elevated)] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)]"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                      Parent
+                    </p>
+                    <h3 className="mt-2 text-lg font-semibold text-[var(--text)]">
+                      Gestion parent
+                    </h3>
+                    <p className="mt-2 text-sm text-[var(--muted)]">
+                      Parcours recommande : 1) genere le code secret, 2) envoie l invitation,
+                      3) le parent se connecte puis valide avec le code secret.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setParentModalOpen(false)}
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                    aria-label="Fermer"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M18 6L6 18" />
+                      <path d="M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="mt-5 space-y-4">
+                  <section className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
+                          Etape 1 - Code secret eleve
+                        </p>
+                        <p className="mt-2 text-xs text-[var(--muted)]">
+                          Obligatoire pour valider le rattachement parent.
+                        </p>
+                      </div>
+                      <StepOneStatusIcon done={hasParentSecretCode} />
+                    </div>
+                    {parentSecretCodeRotatedAt ? (
+                      <p className="mt-2 text-xs text-[var(--muted)]">
+                        Mis a jour le {formatDate(parentSecretCodeRotatedAt, locale, timezone)}
+                      </p>
+                    ) : null}
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <code className="rounded-lg border border-white/10 bg-[var(--bg-elevated)] px-3 py-1.5 text-sm font-semibold tracking-[0.22em] text-[var(--text)]">
+                        {parentSecretCodeLoading ? "Chargement..." : parentSecretCode ?? "--------"}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => void handleCopyParentSecretCode()}
+                        disabled={parentSecretCodeLoading || !parentSecretCode}
+                        className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[0.65rem] uppercase tracking-[0.14em] text-[var(--text)] transition hover:border-white/25 disabled:opacity-60"
+                        title="Copier le code secret"
+                      >
+                        Copier
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleRegenerateParentSecretCode()}
+                        disabled={parentSecretCodeLoading || parentSecretCodeRegenerating || isReadOnly}
+                        className="rounded-full border border-amber-300/35 bg-amber-400/10 px-3 py-1.5 text-[0.65rem] uppercase tracking-[0.14em] text-amber-500 transition hover:text-amber-800 disabled:opacity-60"
+                        title={
+                          isReadOnly
+                            ? "Lecture seule: regeneration indisponible."
+                            : "Generer ou regenerer le code secret"
+                        }
+                      >
+                        {parentSecretCodeRegenerating
+                          ? "Generation..."
+                          : hasParentSecretCode
+                            ? "Regenerer le code"
+                            : "Generer le code"}
+                      </button>
+                    </div>
+                    {hasParentSecretCode ? (
+                      <p className="mt-2 text-xs text-emerald-200">
+                        Code secret actif. Passe a l etape 2.
+                      </p>
+                    ) : (
+                      <p className="mt-2 text-xs text-amber-200">
+                        Genere ce code pour debloquer l invitation email.
+                      </p>
+                    )}
+                    {parentSecretCodeMessage ? (
+                      <p className="mt-2 text-sm text-emerald-200">{parentSecretCodeMessage}</p>
+                    ) : null}
+                    {parentSecretCodeError ? (
+                      <p className="mt-2 text-sm text-red-300">{parentSecretCodeError}</p>
+                    ) : null}
+                  </section>
+
+                  <section
+                    className={`rounded-2xl border p-4 ${
+                      hasParentSecretCode
+                        ? "border-white/10 bg-white/5"
+                        : "border-amber-300/30 bg-amber-400/10"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
+                          Etape 2 - Invitation parent par email
+                        </p>
+                        <p className="mt-2 text-xs text-[var(--muted)]">
+                          Renseigne l email du parent puis envoie l invitation.
+                        </p>
+                      </div>
+                      <StepTwoStatusIcon status={stepTwoStatus} />
+                    </div>
+
+                    <div className="mt-3 grid gap-4 md:grid-cols-[1fr_auto]">
+                      <div>
+                        <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                          Email parent
+                        </label>
+                        <input
+                          type="email"
+                          value={parentInvitationEmail}
+                          onChange={(event) => setParentInvitationEmail(event.target.value)}
+                          disabled={!hasParentSecretCode || parentSecretCodeLoading || parentInvitationLoading}
+                          placeholder={
+                            hasParentSecretCode
+                              ? "parent@email.com"
+                              : "Genere d abord le code secret"
+                          }
+                          className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
+                        />
+                        <p className="mt-2 text-xs text-[var(--muted)]">
+                          Le parent recevra un email et devra utiliser cette meme adresse pour
+                          accepter.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void handleCreateParentInvitation()}
+                        disabled={
+                          parentInvitationLoading ||
+                          parentSecretCodeLoading ||
+                          !hasParentSecretCode ||
+                          !parentInvitationHasEmail
+                        }
+                        className="self-end rounded-full border border-emerald-300/30 bg-emerald-400/10 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-200 transition hover:bg-emerald-400/20 disabled:opacity-60"
+                      >
+                        {parentInvitationLoading ? "Envoi..." : "Envoyer l invitation"}
+                      </button>
+                    </div>
+
+                    {parentInvitationMessage ? (
+                      <p className="mt-3 text-sm text-emerald-200">{parentInvitationMessage}</p>
+                    ) : null}
+                    {parentInvitationError ? (
+                      <p className="mt-3 text-sm text-red-300">{parentInvitationError}</p>
+                    ) : null}
+                  </section>
+
+                  <section className="rounded-2xl border border-white/10 bg-white/5">
+                    <button
+                      type="button"
+                      onClick={() => setParentInvitationsExpanded((prev) => !prev)}
+                      className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                      aria-expanded={parentInvitationsExpanded}
+                    >
+                      <div>
+                        <p className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                          Invitations recentes
+                        </p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">
+                          {parentInvitations.length} invitation
+                          {parentInvitations.length > 1 ? "s" : ""}
+                        </p>
+                      </div>
+                      <svg
+                        viewBox="0 0 24 24"
+                        className={`h-4 w-4 text-[var(--muted)] transition-transform duration-300 ${
+                          parentInvitationsExpanded ? "rotate-180" : ""
+                        }`}
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="m6 9 6 6 6-6" />
+                      </svg>
+                    </button>
+
+                    {parentInvitationsExpanded ? (
+                      <div className="border-t border-white/10 px-4 pb-4 pt-3">
+                        {parentInvitationsLoading ? (
+                          <p className="text-sm text-[var(--muted)]">Chargement...</p>
+                        ) : parentInvitationsError ? (
+                          <p className="text-sm text-red-300">{parentInvitationsError}</p>
+                        ) : parentInvitations.length === 0 ? (
+                          <p className="text-sm text-[var(--muted)]">Aucune invitation recente.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {parentInvitations.map((invitation) => (
+                              <article
+                                key={invitation.id}
+                                className="rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2"
+                              >
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                  <div>
+                                    <p className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--text)]">
+                                      {invitation.parentEmail ?? "Email libre"}
+                                    </p>
+                                    <p className="mt-1 text-xs text-[var(--muted)]">
+                                      Cree le {formatDate(invitation.createdAt, locale, timezone)} -
+                                      expire le {formatDate(invitation.expiresAt, locale, timezone)}
+                                    </p>
+                                    <p className="mt-1 text-xs text-[var(--muted)]">
+                                      Statut: {invitation.status}
+                                    </p>
+                                  </div>
+                                  {invitation.status === "pending" ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleRevokeParentInvitation(invitation.id)}
+                                      disabled={parentInvitationRevokingId === invitation.id}
+                                      className="rounded-full border border-rose-300/35 bg-rose-400/10 px-3 py-1 text-[0.62rem] uppercase tracking-[0.14em] text-rose-100 transition hover:bg-rose-400/20 disabled:opacity-60"
+                                    >
+                                      {parentInvitationRevokingId === invitation.id
+                                        ? "..."
+                                        : "Revoquer"}
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </article>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+                  </section>
+
+                  <section className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                          Parents rattaches
+                        </p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">
+                          Etape 3. Controle les comptes rattaches et les modules autorises.
+                        </p>
+                      </div>
+                    </div>
+
+                    {linkedParentsLoading ? (
+                      <p className="mt-3 text-xs text-[var(--muted)]">Chargement...</p>
+                    ) : linkedParentsError ? (
+                      <p className="mt-3 text-xs text-red-300">{linkedParentsError}</p>
+                    ) : linkedParents.length === 0 ? (
+                      <p className="mt-3 text-xs text-[var(--muted)]">
+                        Aucun parent rattache. Commence par generer une invitation.
+                      </p>
+                    ) : (
+                      <div className="mt-3 space-y-2">
+                        {linkedParents.map((entry) => (
+                          <article
+                            key={entry.parentUserId}
+                            className="rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2"
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div>
+                                <p className="text-sm font-medium text-[var(--text)]">
+                                  {entry.parentName?.trim() || "Parent"}
+                                </p>
+                                <p className="text-xs text-[var(--muted)]">
+                                  {entry.parentEmail ?? "-"}
+                                </p>
+                                <p className="mt-1 text-[0.65rem] text-[var(--muted)]">
+                                  Lie le {formatDate(entry.createdAt, locale, timezone)}
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setParentPermissionsPanelId((prev) =>
+                                      prev === entry.parentUserId ? null : entry.parentUserId
+                                    )
+                                  }
+                                  className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[0.6rem] uppercase tracking-[0.14em] text-[var(--text)] transition hover:border-white/25"
+                                >
+                                  Permissions
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleUnlinkParent(entry.parentUserId)}
+                                  disabled={parentLinkActionLoadingId === entry.parentUserId}
+                                  className="rounded-full border border-rose-300/35 bg-rose-400/10 px-2.5 py-1 text-[0.6rem] uppercase tracking-[0.14em] text-rose-100 transition hover:bg-rose-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {parentLinkActionLoadingId === entry.parentUserId
+                                    ? "..."
+                                    : "Dissocier"}
+                                </button>
+                              </div>
+                            </div>
+
+                            {parentPermissionsPanelId === entry.parentUserId ? (
+                              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                {PARENT_PERMISSION_MODULES.map((module) => (
+                                  <label
+                                    key={`${entry.parentUserId}-${module}`}
+                                    className="flex items-center justify-between rounded-lg border border-white/10 px-2.5 py-2 text-xs text-[var(--text)]"
+                                  >
+                                    <span>{PARENT_PERMISSION_LABELS[module]}</span>
+                                    <input
+                                      type="checkbox"
+                                      checked={entry.permissions[module]}
+                                      disabled={parentLinkActionLoadingId === entry.parentUserId}
+                                      onChange={(event) =>
+                                        void handleUpdateParentPermission(
+                                          entry.parentUserId,
+                                          module,
+                                          event.target.checked
+                                        )
+                                      }
+                                      className="h-4 w-4 accent-emerald-400"
+                                    />
+                                  </label>
+                                ))}
+                              </div>
+                            ) : null}
+                          </article>
+                        ))}
+                      </div>
+                    )}
+
+                    {parentLinkActionMessage ? (
+                      <p className="mt-2 text-xs text-emerald-200">{parentLinkActionMessage}</p>
+                    ) : null}
+                    {parentLinkActionError ? (
+                      <p className="mt-2 text-xs text-red-300">{parentLinkActionError}</p>
+                    ) : null}
+                  </section>
                 </div>
               </div>
             </div>
@@ -5147,3 +5914,4 @@ export default function CoachStudentDetailPage() {
     </RoleGuard>
   );
 }
+

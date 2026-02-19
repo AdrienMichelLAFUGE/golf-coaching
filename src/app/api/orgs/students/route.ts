@@ -239,7 +239,7 @@ export async function POST(request: Request) {
         last_name: parsed.data.last_name?.trim() || null,
         email: normalizedEmail || null,
         playing_hand: parsed.data.playing_hand || null,
-        parent_secret_code_plain: parentSecretCode,
+        parent_secret_code_plain: null,
         parent_secret_code_hash: parentSecretCodeHash,
         parent_secret_code_rotated_at: new Date().toISOString(),
       },

@@ -68,7 +68,11 @@ export default function ParentChildTestsPage({
       };
 
       if (!childResponse.ok || !testsResponse.ok) {
-        setError(childPayload.error ?? testsPayload.error ?? "Chargement impossible.");
+        setError(
+          testsResponse.status === 403
+            ? "Acces non autorise pour ce module."
+            : childPayload.error ?? testsPayload.error ?? "Chargement impossible."
+        );
         setChild(null);
         setAssignments([]);
         setLoading(false);

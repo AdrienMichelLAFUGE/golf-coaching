@@ -8,6 +8,7 @@ import styles from "./hero.module.css";
 import OrbitScene from "./OrbitScene";
 import { smoothstep } from "./orbitMath";
 import { MORPH_END, MORPH_START } from "./timings";
+import LoginRoleSelectorButton from "@/components/marketing/LoginRoleSelectorButton";
 
 export default function Hero() {
   const heroRef = useRef<HTMLElement>(null);
@@ -90,12 +91,13 @@ export default function Hero() {
                   Centralisez eleves, tests et donnees (TPI, Trackman...) pour un coaching plus clair et plus constant.
                 </p>
                 <div className={styles.ctaRow}>
-                  <Link href="/login?mode=signup" className={styles.ctaPrimary}>
+                  <Link href="/login/coach?mode=signup" className={styles.ctaPrimary}>
                     Creer un compte coach
                   </Link>
-                  <Link href="/login?mode=signin" className={styles.ctaSecondary}>
-                    Se connecter
-                  </Link>
+                  <LoginRoleSelectorButton
+                    location="landing_hero_static"
+                    className={styles.ctaSecondary}
+                  />
                 </div>
                 <p className={styles.smallLine}>
                   Le compte eleve se cree via invitation coach.
@@ -155,12 +157,13 @@ export default function Hero() {
                 Centralisez : élèves, tests, fiches d&apos;entraînement et données (TPI, Trackman...) pour un coaching plus clair et plus constant.
               </p>
               <div className={styles.ctaRow}>
-                <Link href="/login?mode=signup" className={styles.ctaPrimary}>
+                <Link href="/login/coach?mode=signup" className={styles.ctaPrimary}>
                   Creer un compte coach
                 </Link>
-                <Link href="/login?mode=signin" className={styles.ctaSecondary}>
-                  Se connecter
-                </Link>
+                <LoginRoleSelectorButton
+                  location="landing_hero_final"
+                  className={styles.ctaSecondary}
+                />
               </div>
               <p className={styles.smallLine}>
                 Le compte eleve se cree via invitation coach.

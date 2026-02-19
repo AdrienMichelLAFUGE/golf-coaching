@@ -51,7 +51,9 @@ const buildAdminForSuccess = () => ({
         select: () => ({
           eq: () => ({
             eq: () => ({
-              maybeSingle: async () => ({ data: { id: "link-1" }, error: null }),
+              eq: () => ({
+                maybeSingle: async () => ({ data: { id: "link-1" }, error: null }),
+              }),
             }),
           }),
         }),
@@ -238,7 +240,9 @@ describe("GET /api/parent/children/[id]/messages/inbox", () => {
             select: () => ({
               eq: () => ({
                 eq: () => ({
-                  maybeSingle: async () => ({ data: null, error: null }),
+                  eq: () => ({
+                    maybeSingle: async () => ({ data: null, error: null }),
+                  }),
                 }),
               }),
             }),

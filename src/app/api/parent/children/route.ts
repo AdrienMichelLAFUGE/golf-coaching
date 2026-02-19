@@ -38,6 +38,7 @@ export async function GET(request: Request) {
     .from("parent_child_links")
     .select("student_id, students(id, first_name, last_name, email)")
     .eq("parent_user_id", authContext.context.parentUserId)
+    .eq("status", "active")
     .order("created_at", { ascending: true });
 
   if (error) {

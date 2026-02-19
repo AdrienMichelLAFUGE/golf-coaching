@@ -34,10 +34,15 @@ describe("LoginClient parent option", () => {
 
   it("shows parent account option and signup link", async () => {
     render(
-      <LoginClient resetSuccess={false} nextPath={null} initialCoachFlow={null} />
+      <LoginClient
+        resetSuccess={false}
+        nextPath={null}
+        initialCoachFlow={null}
+        initialAccountType={null}
+      />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Parent" }));
+    fireEvent.click(screen.getByRole("button", { name: /Parent/i }));
 
     expect(
       await screen.findByRole("button", { name: "Connexion parent" })
@@ -45,5 +50,26 @@ describe("LoginClient parent option", () => {
     expect(
       screen.getByRole("link", { name: "Creer un compte parent" })
     ).toHaveAttribute("href", "/signup/parent");
+  });
+
+  it("shows role selection step before form when required", async () => {
+    render(
+      <LoginClient
+        resetSuccess={false}
+        nextPath={null}
+        initialCoachFlow={null}
+        initialAccountType={null}
+        requireRoleSelection
+      />
+    );
+
+    expect(
+      screen.getByText("Choisis d abord ton profil pour acceder au bon espace.")
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Email")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Parent/i }));
+
+    expect(replaceMock).toHaveBeenCalledWith("/login/parent");
   });
 });

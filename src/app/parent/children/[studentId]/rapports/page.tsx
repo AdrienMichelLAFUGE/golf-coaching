@@ -60,7 +60,11 @@ export default function ParentChildReportsPage({
       };
 
       if (!childResponse.ok || !reportsResponse.ok) {
-        setError(childPayload.error ?? reportsPayload.error ?? "Chargement impossible.");
+        setError(
+          reportsResponse.status === 403
+            ? "Acces non autorise pour ce module."
+            : childPayload.error ?? reportsPayload.error ?? "Chargement impossible."
+        );
         setChild(null);
         setReports([]);
         setLoading(false);

@@ -13,6 +13,12 @@ type ChildPayload = {
   };
 };
 
+type PermissionsPayload = {
+  permissions?: {
+    calendrier?: boolean;
+  };
+};
+
 export default function ParentChildCalendarPage({
   params,
 }: {
@@ -22,6 +28,7 @@ export default function ParentChildCalendarPage({
   const [child, setChild] = useState<ChildPayload["child"] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [moduleForbidden, setModuleForbidden] = useState(false);
 
   useEffect(() => {
     Promise.resolve(params).then((resolved) => setStudentId(resolved.studentId));
@@ -31,13 +38,30 @@ export default function ParentChildCalendarPage({
     if (!studentId) return;
     setLoading(true);
     setError("");
+    setModuleForbidden(false);
 
     try {
-      const response = await fetchParentApi(`/api/parent/children/${studentId}`);
-      const payload = (await response.json().catch(() => ({}))) as ChildPayload & {
+      const [childResponse, permissionsResponse] = await Promise.all([
+        fetchParentApi(`/api/parent/children/${studentId}`),
+        fetchParentApi(`/api/parent/children/${studentId}/permissions`),
+      ]);
+
+      const payload = (await childResponse.json().catch(() => ({}))) as ChildPayload & {
         error?: string;
       };
-      if (!response.ok) {
+      const permissionsPayload = (await permissionsResponse.json().catch(() => ({}))) as PermissionsPayload & {
+        error?: string;
+      };
+
+      const calendrierAllowed = Boolean(permissionsPayload.permissions?.calendrier);
+      if (!permissionsResponse.ok || !calendrierAllowed) {
+        setModuleForbidden(true);
+        setChild(null);
+        setLoading(false);
+        return;
+      }
+
+      if (!childResponse.ok) {
         setError(payload.error ?? "Chargement impossible.");
         setChild(null);
         setLoading(false);
@@ -88,6 +112,10 @@ export default function ParentChildCalendarPage({
         </section>
       ) : error ? (
         <section className="panel-soft rounded-2xl p-5 text-sm text-red-400">{error}</section>
+      ) : moduleForbidden ? (
+        <section className="panel-soft rounded-2xl p-5 text-sm text-[var(--muted)]">
+          Acces non autorise pour ce module.
+        </section>
       ) : !child ? (
         <section className="panel-soft rounded-2xl p-5 text-sm text-[var(--muted)]">
           Enfant introuvable.

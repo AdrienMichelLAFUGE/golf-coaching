@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { canCoachLikeAccessStudent } from "@/lib/parent/coach-student-access";
-import { ensureStudentParentSecretCode } from "@/lib/parent/student-secret-code-service";
+import { loadParentInvitationActor } from "@/lib/parent/invitation-access";
+import { loadStudentParentSecretCodeMetadata } from "@/lib/parent/student-secret-code-service";
 import {
   createSupabaseAdminClient,
   createSupabaseServerClientFromRequest,
@@ -32,17 +32,20 @@ export async function GET(request: Request, { params }: Params) {
   }
 
   const admin = createSupabaseAdminClient();
-  const canAccess = await canCoachLikeAccessStudent(
+  const access = await loadParentInvitationActor(
     admin,
     userData.user.id,
     parsedParams.data.studentId
   );
-  if (!canAccess) {
+  if (!access.allowed) {
     return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
   }
 
-  const secret = await ensureStudentParentSecretCode(admin, parsedParams.data.studentId);
-  if (!secret) {
+  const metadata = await loadStudentParentSecretCodeMetadata(
+    admin,
+    parsedParams.data.studentId
+  );
+  if (!metadata) {
     return NextResponse.json(
       { error: "Chargement du code parent impossible." },
       { status: 400 }
@@ -50,7 +53,7 @@ export async function GET(request: Request, { params }: Params) {
   }
 
   return NextResponse.json({
-    secretCode: secret.secretCode,
-    rotatedAt: secret.rotatedAt,
+    hasSecretCode: metadata.hasSecretCode,
+    rotatedAt: metadata.rotatedAt,
   });
 }

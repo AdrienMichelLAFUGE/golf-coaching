@@ -154,6 +154,15 @@ export default function ParentMessagesShell({ studentId }: ParentMessagesShellPr
     () => inbox.threads.find((thread) => thread.threadId === selectedThreadId) ?? null,
     [inbox.threads, selectedThreadId]
   );
+  const moduleForbidden = inboxError === "Acces non autorise pour ce module.";
+
+  if (moduleForbidden) {
+    return (
+      <section className="panel-soft rounded-2xl p-5 text-sm text-[var(--muted)]">
+        Acces non autorise pour ce module.
+      </section>
+    );
+  }
 
   return (
     <section className="space-y-4">
@@ -226,4 +235,3 @@ export default function ParentMessagesShell({ studentId }: ParentMessagesShellPr
     </section>
   );
 }
-

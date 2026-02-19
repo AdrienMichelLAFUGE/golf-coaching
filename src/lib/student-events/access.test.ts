@@ -7,6 +7,7 @@ type QueryResult = { data: unknown; error?: { message?: string } | null };
 const buildSelectMaybeSingle = (result: QueryResult) => {
   const chain = {
     eq: () => chain,
+    contains: () => chain,
     ilike: () => chain,
     maybeSingle: async () => result,
   };

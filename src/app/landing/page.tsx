@@ -5,6 +5,7 @@ import Link from "next/link";
 import Hero from "@/components/hero/Hero";
 import PricingOffersContent from "@/components/pricing/PricingOffersContent";
 import TrackedCtaLink from "@/components/marketing/TrackedCtaLink";
+import LoginRoleSelectorButton from "@/components/marketing/LoginRoleSelectorButton";
 import { getSiteBaseUrl } from "@/lib/env/public";
 import { pricingPlansSchema, type PricingPlan } from "@/lib/pricing/types";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
@@ -146,23 +147,16 @@ export default async function LandingPage() {
             </Link>
 
             <div className="flex flex-wrap items-center gap-2">
-              <TrackedCtaLink
-                href="/login?mode=signin"
-                tracking={{
-                  id: "landing_header_signin",
-                  location: "landing_header",
-                  target: "/login?mode=signin",
-                }}
+              <LoginRoleSelectorButton
+                location="landing_header"
                 className="rounded-full border border-white/15 bg-white/5 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10 active:scale-[0.98]"
-              >
-                Se connecter
-              </TrackedCtaLink>
+              />
               <TrackedCtaLink
-                href="/login?mode=signup"
+                href="/login/coach?mode=signup"
                 tracking={{
                   id: "landing_header_signup",
                   location: "landing_header",
-                  target: "/login?mode=signup",
+                  target: "/login/coach?mode=signup",
                 }}
                 className="inline-flex rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 active:scale-[0.98]"
               >
@@ -220,11 +214,11 @@ export default async function LandingPage() {
                   {landingCopy.calendarFeature.primaryCta}
                 </TrackedCtaLink>
                 <TrackedCtaLink
-                  href="/login?mode=signup"
+                  href="/login/coach?mode=signup"
                   tracking={{
                     id: "landing_calendar_signup",
                     location: "calendar_feature",
-                    target: "/login?mode=signup",
+                    target: "/login/coach?mode=signup",
                   }}
                   className="rounded-full border border-white/15 bg-white/5 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10 active:scale-[0.98]"
                 >
@@ -391,27 +385,21 @@ export default async function LandingPage() {
 
               <div className="mt-8 flex flex-wrap items-center gap-3">
                 <TrackedCtaLink
-                  href="/login?mode=signup"
+                  href="/login/coach?mode=signup"
                   tracking={{
                     id: "landing_solution_signup",
                     location: "solution",
-                    target: "/login?mode=signup",
+                    target: "/login/coach?mode=signup",
                   }}
                   className="inline-flex rounded-full bg-slate-900 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-slate-800 active:scale-[0.98]"
                 >
                   {landingCopy.solution.primaryCta}
                 </TrackedCtaLink>
-                <TrackedCtaLink
-                  href="/login?mode=signin"
-                  tracking={{
-                    id: "landing_solution_signin",
-                    location: "solution",
-                    target: "/login?mode=signin",
-                  }}
+                <LoginRoleSelectorButton
+                  location="landing_solution"
                   className="rounded-full border border-slate-900/20 bg-white/70 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-white active:scale-[0.98]"
-                >
-                  {landingCopy.solution.secondaryCta}
-                </TrackedCtaLink>
+                  label={landingCopy.solution.secondaryCta}
+                />
               </div>
             </div>
 
@@ -685,27 +673,23 @@ export default async function LandingPage() {
 
             <div className="mt-7 flex flex-wrap items-center gap-3">
               <TrackedCtaLink
-                href="/login?mode=signup"
+                href="/login/coach?mode=signup"
                 tracking={{
                   id: "landing_final_signup",
                   location: "final_cta",
-                  target: "/login?mode=signup",
+                  target: "/login/coach?mode=signup",
                 }}
                 className="inline-flex rounded-full bg-white px-5 py-2 text-xs font-semibold uppercase tracking-wide text-slate-900 transition hover:bg-white/90 active:scale-[0.98]"
               >
                 {landingCopy.finalCta.primaryCta}
               </TrackedCtaLink>
-              <TrackedCtaLink
-                href="/login?mode=signin"
-                tracking={{
-                  id: "landing_final_signin",
-                  location: "final_cta",
-                  target: "/login?mode=signin",
-                }}
+              <LoginRoleSelectorButton
+                location="landing_final_cta"
                 className="rounded-full border border-white/35 bg-white/10 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-white/20 active:scale-[0.98]"
-              >
-                {landingCopy.finalCta.secondaryCta}
-              </TrackedCtaLink>
+                label={landingCopy.finalCta.secondaryCta}
+                menuAlign="left"
+                menuDirection="up"
+              />
             </div>
           </div>
         </section>
