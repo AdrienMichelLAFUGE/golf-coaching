@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { useProfile } from "./_components/profile-context";
 import PageHeader from "./_components/page-header";
+import ToastStack from "./_components/toast-stack";
+import useToastStack from "./_components/use-toast-stack";
 
 type WorkspaceOption = {
   id: string;
@@ -29,7 +31,7 @@ export default function AppPage() {
   const router = useRouter();
   const [switchingId, setSwitchingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const { toasts, pushToast, dismissToast } = useToastStack();
   const [createOpen, setCreateOpen] = useState(false);
   const [invitesOpen, setInvitesOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -151,7 +153,6 @@ export default function AppPage() {
     if (workspaceId === activeWorkspaceId) return;
     setSwitchingId(workspaceId);
     setError(null);
-    setMessage(null);
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
     if (!token) {
@@ -192,7 +193,6 @@ export default function AppPage() {
 
     setCreating(true);
     setError(null);
-    setMessage(null);
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
     if (!token) {
@@ -222,13 +222,12 @@ export default function AppPage() {
     await loadInvites();
     setCreating(false);
     setCreatedOrg({ id: payload.orgId ?? "", name });
-    setMessage(`Organisation ${name} creee.`);
+    pushToast(`Organisation ${name} creee.`, "success");
   };
 
   const handleAcceptInvite = async (token: string, inviteId: string) => {
     setInviteActionId(inviteId);
     setError(null);
-    setMessage(null);
     const { data: sessionData } = await supabase.auth.getSession();
     const accessToken = sessionData.session?.access_token;
     if (!accessToken) {
@@ -253,13 +252,12 @@ export default function AppPage() {
     await refresh();
     await loadInvites();
     setInviteActionId(null);
-    setMessage("Invitation acceptee.");
+    pushToast("Invitation acceptee.", "success");
   };
 
   const handleDeclineInvite = async (token: string, inviteId: string) => {
     setInviteActionId(inviteId);
     setError(null);
-    setMessage(null);
     const { data: sessionData } = await supabase.auth.getSession();
     const accessToken = sessionData.session?.access_token;
     if (!accessToken) {
@@ -283,7 +281,7 @@ export default function AppPage() {
     }
     await loadInvites();
     setInviteActionId(null);
-    setMessage("Invitation refusee.");
+    pushToast("Invitation refusee.", "info");
   };
 
   if (!loading && (isStudent || isParent)) {
@@ -298,6 +296,7 @@ export default function AppPage() {
 
   return (
     <div className="space-y-6">
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
       <PageHeader
         title="Workspaces"
         subtitle="Selectionne ton espace de travail."
@@ -308,7 +307,6 @@ export default function AppPage() {
                 type="button"
                 onClick={() => {
                   setError(null);
-                  setMessage(null);
                   setCreatedOrg(null);
                   setCreateOpen(true);
                 }}
@@ -334,7 +332,6 @@ export default function AppPage() {
                 type="button"
                 onClick={() => {
                   setError(null);
-                  setMessage(null);
                   setInvitesOpen(true);
                 }}
                 className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
@@ -369,7 +366,6 @@ export default function AppPage() {
         <p className="text-sm text-amber-300">Invitation en attente sur un workspace.</p>
       ) : null}
       {error ? <p className="text-sm text-red-400">{error}</p> : null}
-      {message ? <p className="text-sm text-[var(--muted)]">{message}</p> : null}
 
       <section className="grid gap-6 md:grid-cols-2">
         <div className="panel rounded-2xl p-6" data-testid="workspace-personal-panel">

@@ -8,6 +8,8 @@ import PageBack from "../../_components/page-back";
 import PageHeader from "../../_components/page-header";
 import { useProfile } from "../../_components/profile-context";
 import Badge from "../../_components/badge";
+import ToastStack from "../../_components/toast-stack";
+import useToastStack from "../../_components/use-toast-stack";
 
 const OrgSettingsResponseSchema = z.object({
   organization: z.object({
@@ -26,7 +28,7 @@ export default function OrgSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const { toasts, pushToast, dismissToast } = useToastStack();
   const [settings, setSettings] = useState<OrgSettingsResponse | null>(null);
   const [orgName, setOrgName] = useState("");
 
@@ -97,7 +99,6 @@ export default function OrgSettingsPage() {
     }
     setSaving(true);
     setError("");
-    setSuccess("");
 
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
@@ -129,7 +130,7 @@ export default function OrgSettingsPage() {
       return;
     }
 
-    setSuccess("Nom de l organisation mis a jour.");
+    pushToast("Nom de l organisation mis a jour.", "success");
     await refresh();
     await loadSettings();
     setSaving(false);
@@ -138,6 +139,7 @@ export default function OrgSettingsPage() {
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       <div className="space-y-6">
+        <ToastStack toasts={toasts} onDismiss={dismissToast} />
         <PageHeader
           overline={
             <div className="flex items-center gap-2">
@@ -190,7 +192,6 @@ export default function OrgSettingsPage() {
                   </p>
                 ) : null}
                 {error ? <p className="text-sm text-red-400">{error}</p> : null}
-                {success ? <p className="text-sm text-emerald-300">{success}</p> : null}
                 <div className="pt-2">
                   <button
                     type="button"
@@ -209,4 +210,3 @@ export default function OrgSettingsPage() {
     </RoleGuard>
   );
 }
-

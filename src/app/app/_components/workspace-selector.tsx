@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { useProfile } from "./profile-context";
+import ToastStack from "./toast-stack";
+import useToastStack from "./use-toast-stack";
 
 const sanitizeName = (value: string) => value.trim().slice(0, 80);
 
@@ -12,7 +14,7 @@ export default function WorkspaceSelector() {
   const [switchingId, setSwitchingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [createName, setCreateName] = useState("");
-  const [message, setMessage] = useState<string | null>(null);
+  const { toasts, pushToast, dismissToast } = useToastStack();
   const [error, setError] = useState<string | null>(null);
   const [createdOrg, setCreatedOrg] = useState<{ id: string; name: string } | null>(null);
   const [pendingInvites, setPendingInvites] = useState<
@@ -66,7 +68,6 @@ export default function WorkspaceSelector() {
   const handleSwitch = async (workspaceId: string) => {
     setSwitchingId(workspaceId);
     setError(null);
-    setMessage(null);
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
     if (!token) {
@@ -96,7 +97,7 @@ export default function WorkspaceSelector() {
       window.location.reload();
     }
     setSwitchingId(null);
-    setMessage("Espace mis a jour.");
+    pushToast("Espace mis a jour.", "success");
   };
 
   const handleCreateOrg = async () => {
@@ -107,7 +108,6 @@ export default function WorkspaceSelector() {
     }
     setCreating(true);
     setError(null);
-    setMessage(null);
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
     if (!token) {
@@ -136,13 +136,12 @@ export default function WorkspaceSelector() {
     await refresh();
     setCreating(false);
     setCreatedOrg({ id: payload.orgId ?? "", name });
-    setMessage(`Organisation ${name} creee.`);
+    pushToast(`Organisation ${name} creee.`, "success");
   };
 
   const handleAcceptInvite = async (token: string, inviteId: string) => {
     setInviteActionId(inviteId);
     setError(null);
-    setMessage(null);
     const { data: sessionData } = await supabase.auth.getSession();
     const accessToken = sessionData.session?.access_token;
     if (!accessToken) {
@@ -167,13 +166,12 @@ export default function WorkspaceSelector() {
     await refresh();
     await loadInvites();
     setInviteActionId(null);
-    setMessage("Invitation acceptee.");
+    pushToast("Invitation acceptee.", "success");
   };
 
   const handleDeclineInvite = async (token: string, inviteId: string) => {
     setInviteActionId(inviteId);
     setError(null);
-    setMessage(null);
     const { data: sessionData } = await supabase.auth.getSession();
     const accessToken = sessionData.session?.access_token;
     if (!accessToken) {
@@ -197,13 +195,14 @@ export default function WorkspaceSelector() {
     }
     await loadInvites();
     setInviteActionId(null);
-    setMessage("Invitation refusee.");
+    pushToast("Invitation refusee.", "info");
   };
 
   if (!profile || profile.role === "student") return null;
 
   return (
     <section className="panel rounded-2xl p-6">
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
@@ -258,7 +257,6 @@ export default function WorkspaceSelector() {
       </div>
 
       {error ? <p className="mt-3 text-sm text-red-400">{error}</p> : null}
-      {message ? <p className="mt-3 text-sm text-[var(--muted)]">{message}</p> : null}
       {createdOrg?.id ? (
         <div className="mt-4 rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-4 text-sm">
           <p className="text-[var(--text)]">Organisation {createdOrg.name} creee.</p>

@@ -61,6 +61,21 @@ npm run lint
 npm run typecheck
 npm test
 
+Controle UI accessibilite (obligatoire si fichiers UI modifies):
+
+- Verifier les nouveaux textes en light mode ET dark mode.
+- Refuser les textes peu contrastes (objectif WCAG AA 4.5:1 minimum).
+- Par defaut, forcer `text-[var(--text)]` / `text-[var(--muted)]` pour le texte courant.
+- Si une couleur utilitaire est ajoutee (ex: `text-sky-100`), verifier qu'un override
+  light mode existe dans `src/app/globals.css` dans le meme commit.
+
+Controle UI densite visuelle (obligatoire si fichiers UI modifies):
+
+- Eviter la surutilisation des bordures (`border*`) sur les cartes/blocs.
+- Valider que la hierarchie repose d'abord sur fond, espacement, typo.
+- N'autoriser les bordures que pour etats interactifs (focus/selected/error) ou separation critique.
+- Si un diff ajoute des bordures partout sans besoin explicite, demander correction avant commit.
+
 Build (hors sandbox obligatoire):
 - Ne JAMAIS lancer `npm run build` dans le sandbox en premier.
 - Lancer directement `npm run build` avec execution hors sandbox (escalation / require_escalated), avec une demande d'autorisation claire si necessaire.

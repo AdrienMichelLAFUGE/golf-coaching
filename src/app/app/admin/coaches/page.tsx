@@ -5,6 +5,8 @@ import { supabase } from "@/lib/supabase/client";
 import { PLAN_ENTITLEMENTS, resolvePlanTier } from "@/lib/plans";
 import AdminGuard from "../../_components/admin-guard";
 import PageBack from "../../_components/page-back";
+import ToastStack from "../../_components/toast-stack";
+import useToastStack from "../../_components/use-toast-stack";
 
 type WorkspaceRow = {
   id: string;
@@ -70,7 +72,7 @@ export default function AdminCoachesPage() {
   const [savingCoachId, setSavingCoachId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+  const { toasts, pushToast, dismissToast } = useToastStack();
   const [query, setQuery] = useState("");
   const [showOrphaned, setShowOrphaned] = useState(false);
   const [budgetDrafts, setBudgetDrafts] = useState<Record<string, string>>({});
@@ -142,7 +144,6 @@ export default function AdminCoachesPage() {
   const loadWorkspaces = async () => {
     setLoading(true);
     setError("");
-    setMessage("");
 
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
@@ -285,7 +286,6 @@ export default function AdminCoachesPage() {
 
     setDeletingId(coachId);
     setError("");
-    setMessage("");
 
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
@@ -313,14 +313,13 @@ export default function AdminCoachesPage() {
     }
 
     setWorkspaces((prev) => prev.filter((row) => row.coach?.id !== coachId));
-    setMessage("Coach supprime.");
+    pushToast("Coach supprime.", "success");
     setDeletingId(null);
   };
 
   const handleUpdate = async (orgId: string, patch: Partial<WorkspaceRow>) => {
     setSavingId(orgId);
     setError("");
-    setMessage("");
 
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
@@ -423,7 +422,7 @@ export default function AdminCoachesPage() {
         };
       })
     );
-    setMessage("Plan mis a jour.");
+    pushToast("Plan mis a jour.", "success");
     setSavingId(null);
   };
 
@@ -434,7 +433,6 @@ export default function AdminCoachesPage() {
   ) => {
     setSavingCoachId(coachId);
     setError("");
-    setMessage("");
 
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
@@ -512,13 +510,14 @@ export default function AdminCoachesPage() {
       }));
     }
 
-    setMessage("Quota IA mis a jour.");
+    pushToast("Quota IA mis a jour.", "success");
     setSavingCoachId(null);
   };
 
   return (
     <AdminGuard>
       <div className="space-y-6">
+        <ToastStack toasts={toasts} onDismiss={dismissToast} />
         <section className="panel rounded-2xl p-6">
           <div className="flex items-center gap-2">
             <PageBack fallbackHref="/app/admin" />
@@ -571,7 +570,6 @@ export default function AdminCoachesPage() {
             </div>
           ) : null}
           {error ? <p className="mt-3 text-sm text-red-400">{error}</p> : null}
-          {message ? <p className="mt-3 text-sm text-emerald-200">{message}</p> : null}
         </section>
 
         <section className="panel rounded-2xl p-6">

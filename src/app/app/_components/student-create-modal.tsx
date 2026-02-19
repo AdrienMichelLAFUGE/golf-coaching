@@ -295,7 +295,7 @@ export default function StudentCreateModal({
               detail: {
                 message:
                   payload.message ??
-                  "Demande envoyee a l admin de l organisation proprietaire.",
+                  "Demande envoyee au coach proprietaire.",
               },
             })
           );
@@ -340,6 +340,25 @@ export default function StudentCreateModal({
       if (!response.ok) {
         setError(payload.error ?? "Creation impossible.");
         setCreating(false);
+        return;
+      }
+
+      if (payload.pendingRequest) {
+        try {
+          window.dispatchEvent(
+            new CustomEvent("gc:students-link-requested", {
+              detail: {
+                message:
+                  payload.message ??
+                  "Demande envoyee au coach proprietaire.",
+              },
+            })
+          );
+        } catch {
+          // ignore
+        }
+        setCreating(false);
+        onClose();
         return;
       }
     }

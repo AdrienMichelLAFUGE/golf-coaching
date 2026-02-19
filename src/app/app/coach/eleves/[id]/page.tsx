@@ -15,6 +15,7 @@ import PageHeader from "../../../_components/page-header";
 import PremiumOfferModal from "../../../_components/premium-offer-modal";
 import ShareStudentModal from "../../../_components/share-student-modal";
 import RadarReviewModal from "../../../_components/radar-review-modal";
+import Smart2MoveImportHintModal from "../../../_components/smart2move-import-hint-modal";
 import Badge from "../../../_components/badge";
 import RadarCharts, {
   defaultRadarConfig,
@@ -45,6 +46,11 @@ import { normalizeSmart2MoveImpactMarkerX } from "@/lib/radar/smart2move-annotat
 import type { RadarAnalytics } from "@/lib/radar/types";
 import { type ParentLinkPermissions } from "@/lib/parent/permissions";
 import { getViewerShareAccess, type ShareStatus } from "@/lib/student-share";
+import {
+  dismissDidacticHint,
+  getDidacticHintState,
+  markDidacticHintSeen,
+} from "@/lib/didactic-hints";
 import { z } from "zod";
 import {
   buildNormalizedTestsSummary,
@@ -309,6 +315,8 @@ const radarTechTone = {
   smart2move: "border-amber-300/30 bg-amber-400/10 text-amber-100",
   unknown: "border-white/10 bg-white/5 text-[var(--muted)]",
 } as const;
+const SMART2MOVE_IMPORT_TUTORIAL_HINT_ID =
+  "smart2move_import_single_graph_screenshot";
 
 const PARENT_PERMISSION_LABELS: Record<ParentPermissionModule, string> = {
   dashboard: "Dashboard",
@@ -556,6 +564,13 @@ export default function CoachStudentDetailPage() {
     useState<Smart2MovePlateType>("1d");
   const [radarSmart2MoveGraphType, setRadarSmart2MoveGraphType] =
     useState<Smart2MoveGraphType | null>(null);
+  const [smart2MoveTutorialVisible, setSmart2MoveTutorialVisible] = useState(false);
+  const [smart2MoveTutorialDismissed, setSmart2MoveTutorialDismissed] =
+    useState(false);
+  const [smart2MoveTutorialDontShowAgain, setSmart2MoveTutorialDontShowAgain] =
+    useState(false);
+  const [smart2MoveTutorialStateLoaded, setSmart2MoveTutorialStateLoaded] =
+    useState(false);
   const [smart2MoveMarkersModalOpen, setSmart2MoveMarkersModalOpen] = useState(false);
   const [smart2MoveMarkersPreviewUrl, setSmart2MoveMarkersPreviewUrl] = useState<string | null>(
     null
@@ -651,6 +666,8 @@ export default function CoachStudentDetailPage() {
   const [messageActionError, setMessageActionError] = useState("");
   const [messageActionLoading, setMessageActionLoading] = useState(false);
   const [shareStatus, setShareStatus] = useState<ShareStatus | null>(null);
+  const [viewerShareId, setViewerShareId] = useState<string | null>(null);
+  const [viewerShareLeaving, setViewerShareLeaving] = useState(false);
   const [ownerShares, setOwnerShares] = useState<ShareEntry[]>([]);
   const [ownerShareError, setOwnerShareError] = useState("");
   const [ownerShareRevokingId, setOwnerShareRevokingId] = useState<string | null>(null);
@@ -1168,6 +1185,29 @@ export default function CoachStudentDetailPage() {
     };
   }, [radarPreview]);
 
+  useEffect(() => {
+    const state = getDidacticHintState(SMART2MOVE_IMPORT_TUTORIAL_HINT_ID);
+    setSmart2MoveTutorialDismissed(Boolean(state.dismissedAt));
+    setSmart2MoveTutorialStateLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!smart2MoveTutorialStateLoaded) return;
+    if (radarTech !== "smart2move") return;
+    if (smart2MoveTutorialDismissed) return;
+    markDidacticHintSeen(SMART2MOVE_IMPORT_TUTORIAL_HINT_ID);
+    setSmart2MoveTutorialVisible(true);
+  }, [radarTech, smart2MoveTutorialDismissed, smart2MoveTutorialStateLoaded]);
+
+  const closeSmart2MoveTutorial = () => {
+    if (smart2MoveTutorialDontShowAgain && !smart2MoveTutorialDismissed) {
+      dismissDidacticHint(SMART2MOVE_IMPORT_TUTORIAL_HINT_ID);
+      setSmart2MoveTutorialDismissed(true);
+    }
+    setSmart2MoveTutorialVisible(false);
+    setSmart2MoveTutorialDontShowAgain(false);
+  };
+
   const stopTpiProgress = () => {
     if (tpiProgressTimer.current) {
       clearInterval(tpiProgressTimer.current);
@@ -1610,18 +1650,22 @@ export default function CoachStudentDetailPage() {
           .maybeSingle();
         if (shareError) {
           setShareStatus(null);
+          setViewerShareId(null);
         } else {
           setShareStatus((shareData?.status as ShareStatus) ?? null);
+          setViewerShareId((shareData?.id as string | undefined) ?? null);
         }
       } else {
         setShareStatus(null);
+        setViewerShareId(null);
       }
 
-      if (isOwner) {
+      if (isOwner && profile?.id) {
         const { data: sharesData, error: sharesError } = await supabase
           .from("student_shares")
           .select("id, viewer_email, created_at")
           .eq("student_id", studentId)
+          .eq("owner_id", profile.id)
           .eq("status", "active")
           .order("created_at", { ascending: false });
         if (sharesError) {
@@ -1661,7 +1705,7 @@ export default function CoachStudentDetailPage() {
     };
 
     loadStudent();
-  }, [studentId, loadTpi, resolveLinkedStudentIds, userEmail, isOwner, router]);
+  }, [studentId, loadTpi, resolveLinkedStudentIds, userEmail, isOwner, profile?.id, router]);
 
   const loadNormalizedTests = useCallback(
     async (targetStudentId: string, isCancelled?: () => boolean) => {
@@ -1875,6 +1919,43 @@ export default function CoachStudentDetailPage() {
 
     setOwnerShares((prev) => prev.filter((share) => share.id !== shareId));
     setOwnerShareRevokingId(null);
+  };
+
+  const handleLeaveSharedStudent = async () => {
+    if (!viewerShareId) {
+      setInviteActionError("Partage introuvable.");
+      return;
+    }
+
+    setInviteActionMessage("");
+    setInviteActionError("");
+    setMessageActionError("");
+    setViewerShareLeaving(true);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setInviteActionError("Session invalide.");
+      setViewerShareLeaving(false);
+      return;
+    }
+
+    const response = await fetch("/api/student-shares/revoke", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ shareId: viewerShareId }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setInviteActionError(payload.error ?? "Retrait du partage impossible.");
+      setViewerShareLeaving(false);
+      return;
+    }
+
+    router.replace("/app/coach/eleves");
   };
 
   const handleSaveAssignments = async () => {
@@ -3122,6 +3203,16 @@ export default function CoachStudentDetailPage() {
                     </svg>
                   </button>
                 ) : null}
+                {shareAccess.canRead ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleLeaveSharedStudent()}
+                    disabled={viewerShareLeaving || !viewerShareId}
+                    className="rounded-full border border-red-300/40 bg-red-400/15 px-4 py-2 text-xs uppercase tracking-wide text-red-500/50 transition hover:bg-red-400/25 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {viewerShareLeaving ? "Retrait..." : "Retirer de mon espace"}
+                  </button>
+                ) : null}
                 {!isReadOnly ? (
                   <div className="relative" data-student-header-menu>
                     <button
@@ -3185,7 +3276,7 @@ export default function CoachStudentDetailPage() {
               <p className="mt-3 text-xs text-red-300">{messageActionError}</p>
             ) : null}
             {isReadOnly ? (
-              <div className="mt-4 rounded-xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-xs uppercase tracking-wide text-amber-100">
+              <div className="mt-4 rounded-xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-xs uppercase tracking-wide text-amber-600">
                 Lecture seule active (eleve partage)
               </div>
             ) : null}
@@ -4309,6 +4400,8 @@ export default function CoachStudentDetailPage() {
                       if (next !== "smart2move") {
                         setRadarSmart2MovePlateType("1d");
                         setRadarSmart2MoveGraphType(null);
+                        setSmart2MoveTutorialVisible(false);
+                        setSmart2MoveTutorialDontShowAgain(false);
                       }
                     }}
                     disabled={radarLocked}
@@ -4398,54 +4491,63 @@ export default function CoachStudentDetailPage() {
                 </div>
               </div>
               {radarTech === "smart2move" ? (
-                <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
-                  <p className="text-[0.62rem] uppercase tracking-wide text-[var(--muted)]">
-                    Quel graphe importez-vous ?
-                  </p>
-                  <p className="mt-1 text-[0.65rem] text-[var(--muted)]">
-                    Les graphes non compatibles avec les plaques {radarSmart2MovePlateType.toUpperCase()} sont desactives.
-                  </p>
-                  <div className="mt-2 grid gap-2">
-                    {SMART2MOVE_GRAPH_OPTIONS.map((option) => {
-                      const compatible = isSmart2MoveGraphCompatibleWithPlate(
-                        option.id,
-                        radarSmart2MovePlateType
-                      );
-                      const selected = radarSmart2MoveGraphType === option.id;
-                      return (
-                        <button
-                          key={`s2m-graph-${option.id}`}
-                          type="button"
-                          disabled={!compatible || radarLocked}
-                          onClick={() => {
-                            if (!compatible || radarLocked) return;
-                            setRadarError("");
-                            setRadarSmart2MoveGraphType(option.id);
-                          }}
-                          className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left transition ${
-                            selected
-                              ? "border-sky-300/60 bg-sky-400/15 text-sky-100"
-                              : compatible
-                                ? "border-white/10 bg-white/5 text-[var(--text)] hover:border-sky-300/40"
-                                : "cursor-not-allowed border-white/5 bg-white/5 text-[var(--muted)] opacity-50"
-                          }`}
-                        >
-                          <span className="text-xs">{option.label}</span>
-                          <span
-                            className={`ml-2 rounded-full px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide ${
-                              option.requiredPlateType === "3d"
-                                ? "bg-emerald-400/20 text-emerald-100"
-                                : "bg-sky-400/20 text-sky-100"
+                <>
+                  <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
+                    <p className="text-[0.62rem] uppercase tracking-wide text-[var(--muted)]">
+                      Quel graphe importez-vous ?
+                    </p>
+                    <p className="mt-1 text-[0.65rem] text-[var(--muted)]">
+                      Les graphes non compatibles avec les plaques{" "}
+                      {radarSmart2MovePlateType.toUpperCase()} sont desactives.
+                    </p>
+                    <div className="mt-2 grid gap-2">
+                      {SMART2MOVE_GRAPH_OPTIONS.map((option) => {
+                        const compatible = isSmart2MoveGraphCompatibleWithPlate(
+                          option.id,
+                          radarSmart2MovePlateType
+                        );
+                        const selected = radarSmart2MoveGraphType === option.id;
+                        return (
+                          <button
+                            key={`s2m-graph-${option.id}`}
+                            type="button"
+                            disabled={!compatible || radarLocked}
+                            onClick={() => {
+                              if (!compatible || radarLocked) return;
+                              setRadarError("");
+                              setRadarSmart2MoveGraphType(option.id);
+                            }}
+                            className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left transition ${
+                              selected
+                                ? "border-sky-300/60 bg-sky-400/15 text-sky-100"
+                                : compatible
+                                  ? "border-white/10 bg-white/5 text-[var(--text)] hover:border-sky-300/40"
+                                  : "cursor-not-allowed border-white/5 bg-white/5 text-[var(--muted)] opacity-50"
                             }`}
                           >
-                            {option.requiredPlateType === "3d" ? "3D" : "1D"}
-                          </span>
-                        </button>
-                      );
-                    })}
+                            <span className="text-xs">{option.label}</span>
+                            <span
+                              className={`ml-2 rounded-full px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide ${
+                                option.requiredPlateType === "3d"
+                                  ? "bg-emerald-400/20 text-emerald-100"
+                                  : "bg-sky-400/20 text-sky-100"
+                              }`}
+                            >
+                              {option.requiredPlateType === "3d" ? "3D" : "1D"}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
+                </>
               ) : null}
+              <Smart2MoveImportHintModal
+                open={smart2MoveTutorialVisible}
+                dontShowAgain={smart2MoveTutorialDontShowAgain}
+                onDontShowAgainChange={setSmart2MoveTutorialDontShowAgain}
+                onClose={closeSmart2MoveTutorial}
+              />
               {radarLocked ? (
                 <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-violet-300/30 bg-violet-400/10 px-3 py-2 text-xs text-violet-100">
                   <span>Plan Pro requis pour importer. Lecture seule.</span>

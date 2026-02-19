@@ -8,6 +8,8 @@ import PageBack from "../../_components/page-back";
 import PageHeader from "../../_components/page-header";
 import { useProfile } from "../../_components/profile-context";
 import Badge from "../../_components/badge";
+import ToastStack from "../../_components/toast-stack";
+import useToastStack from "../../_components/use-toast-stack";
 
 type MemberRow = {
   id: string;
@@ -107,7 +109,7 @@ export default function OrgMembersPage() {
   const [inviteError, setInviteError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+  const { toasts, pushToast, dismissToast } = useToastStack();
   const [removingId, setRemovingId] = useState<string | null>(null);
 
   const loadMembers = async () => {
@@ -151,7 +153,6 @@ export default function OrgMembersPage() {
 
   const handleInvite = async () => {
     setInviteError("");
-    setMessage("");
     const trimmed = email.trim();
     if (!trimmed) {
       setInviteError("Ajoute un email.");
@@ -185,7 +186,7 @@ export default function OrgMembersPage() {
       setEmail("");
       setRole("coach");
       setInviteModalOpen(false);
-      setMessage("Invitation creee. Le coach la verra dans son compte.");
+      pushToast("Invitation creee. Le coach la verra dans son compte.", "success");
       await loadMembers();
     } catch {
       setInviteError("Invitation impossible.");
@@ -206,7 +207,6 @@ export default function OrgMembersPage() {
     const confirmed = window.confirm("Retirer ce coach de l organisation ?");
     if (!confirmed) return;
     setError("");
-    setMessage("");
     setRemovingId(member.id);
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
@@ -230,13 +230,14 @@ export default function OrgMembersPage() {
       return;
     }
     setRemovingId(null);
-    setMessage("Coach retire.");
+    pushToast("Coach retire.", "success");
     await loadMembers();
   };
 
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       <div className="space-y-6">
+        <ToastStack toasts={toasts} onDismiss={dismissToast} />
         <PageHeader
           overline={
             <div className="flex items-center gap-2">
@@ -270,7 +271,6 @@ export default function OrgMembersPage() {
         />
 
         {error ? <p className="text-sm text-red-400">{error}</p> : null}
-        {message ? <p className="text-sm text-[var(--muted)]">{message}</p> : null}
 
         <section className="panel rounded-2xl p-6">
           <h3 className="text-lg font-semibold text-[var(--text)]">Membres actifs</h3>

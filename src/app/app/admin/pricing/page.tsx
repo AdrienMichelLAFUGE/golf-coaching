@@ -5,6 +5,8 @@ import { supabase } from "@/lib/supabase/client";
 import AdminGuard from "../../_components/admin-guard";
 import PageBack from "../../_components/page-back";
 import PremiumOfferModal from "../../_components/premium-offer-modal";
+import ToastStack from "../../_components/toast-stack";
+import useToastStack from "../../_components/use-toast-stack";
 
 type PricingPlan = {
   id: string;
@@ -68,7 +70,7 @@ export default function AdminPricingPage() {
   const [savingAll, setSavingAll] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+  const { toasts, pushToast, dismissToast } = useToastStack();
   const [intervalFilter, setIntervalFilter] = useState<"all" | "month" | "year">("all");
   const [typeFilter, setTypeFilter] = useState<
     "all" | "free" | "pro" | "enterprise" | "other"
@@ -103,7 +105,6 @@ export default function AdminPricingPage() {
   const loadPlans = async () => {
     setLoading(true);
     setError("");
-    setMessage("");
 
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
@@ -188,7 +189,6 @@ export default function AdminPricingPage() {
     if (!plan.is_dirty && plan.id) return;
     setSavingId(plan.id ?? "new");
     setError("");
-    setMessage("");
 
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
@@ -232,7 +232,7 @@ export default function AdminPricingPage() {
       return;
     }
 
-    setMessage("Plan sauvegarde.");
+    pushToast("Plan sauvegarde.", "success");
     setSavingId(null);
     await loadPlans();
   };
@@ -240,7 +240,6 @@ export default function AdminPricingPage() {
   const handleSaveAll = async () => {
     setSavingAll(true);
     setError("");
-    setMessage("");
 
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
@@ -300,7 +299,7 @@ export default function AdminPricingPage() {
       return;
     }
 
-    setMessage("Plans sauvegardes.");
+    pushToast("Plans sauvegardes.", "success");
     await loadPlans();
   };
 
@@ -311,7 +310,6 @@ export default function AdminPricingPage() {
 
     setDeletingId(plan.id);
     setError("");
-    setMessage("");
 
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
@@ -338,7 +336,7 @@ export default function AdminPricingPage() {
       return;
     }
 
-    setMessage("Plan supprime.");
+    pushToast("Plan supprime.", "success");
     setDeletingId(null);
     await loadPlans();
   };
@@ -366,6 +364,7 @@ export default function AdminPricingPage() {
   return (
     <AdminGuard>
       <div className="space-y-6">
+        <ToastStack toasts={toasts} onDismiss={dismissToast} />
         <section className="panel rounded-2xl p-6">
           <div className="flex items-center gap-2">
             <PageBack fallbackHref="/app/admin" />
@@ -487,7 +486,6 @@ export default function AdminPricingPage() {
             </div>
           </div>
           {error ? <p className="mt-3 text-sm text-red-400">{error}</p> : null}
-          {message ? <p className="mt-3 text-sm text-emerald-200">{message}</p> : null}
         </section>
 
         {loading ? (

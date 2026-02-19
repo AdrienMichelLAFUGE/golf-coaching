@@ -176,3 +176,50 @@ MCP GitHub :
 lecture et analyse uniquement
 
 jamais de modification du dépôt
+
+Accessibilite UI (obligatoire)
+
+Objectif: aucun texte illisible en light mode ou dark mode.
+
+Regles de styling texte:
+
+- Par defaut, utiliser uniquement:
+  - texte principal: `text-[var(--text)]`
+  - texte secondaire: `text-[var(--muted)]`
+- Ne pas utiliser de classes `text-*-100` ou `text-*-200` pour du texte courant
+  (reservees aux badges/surfaces specifiques deja themees).
+- Eviter les opacites faibles sur le texte (`/60`, `/50`) sauf micro-labels decoratifs.
+- Pour les messages d'etat (info/success/warn/error), utiliser des styles deja
+  supportes en light mode dans `globals.css` ou ajouter explicitement l'override
+  light mode au meme commit.
+
+Regles de verification avant livraison:
+
+- Verifier visuellement les ecrans modifies en `data-theme="light"` et `data-theme="dark"`.
+- Garantir un contraste lisible (minimum WCAG AA: 4.5:1 pour texte standard).
+- Si un doute contraste existe, privilegier `var(--text)` au lieu d'une couleur custom.
+
+Definition of done UI:
+
+- Pas de texte "quasi invisible" en light mode.
+- Pas de regression de lisibilite dark mode.
+
+Densite visuelle (obligatoire)
+
+Objectif: UI legere, moderne, lisible.
+
+Regles bordures / surfaces:
+
+- Par defaut, ne pas ajouter de bordure (`border*`) sur chaque bloc.
+- Prioriser les surfaces (`bg-*`, opacite legere, elevation) dans 90% des cas.
+- Ajouter une bordure uniquement si necessaire pour:
+  - etat interactif clair (focus, selection, erreur),
+  - separation critique de zones,
+  - composant dense ou ambigu sans contour.
+- Eviter les chaines de classes du type `border ... bg ...` partout par reflexe.
+- Si un ecran devient "lourd" visuellement, supprimer d'abord les bordures avant toute autre retouche.
+
+Definition of done visuelle:
+
+- Pas de surcharge de contours.
+- Hiérarchie lisible avec fonds/espacements avant contours.

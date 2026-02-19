@@ -110,6 +110,38 @@ export async function POST(request: Request) {
   }
 
   if (!updated) {
+    const { data: latestShare, error: latestShareError } = await supabase
+      .from("student_shares")
+      .select("id, status")
+      .eq("id", shareId)
+      .maybeSingle();
+
+    if (latestShareError) {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "student_share.revoke.denied",
+        actorUserId: userId,
+        entityType: "student_share",
+        entityId: shareId,
+        message: "Revocation partage eleve refusee: verification etat impossible.",
+      });
+      return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
+    }
+
+    if (latestShare && latestShare.status === "active") {
+      await recordActivity({
+        admin,
+        level: "warn",
+        action: "student_share.revoke.denied",
+        actorUserId: userId,
+        entityType: "student_share",
+        entityId: shareId,
+        message: "Revocation partage eleve refusee: acces interdit.",
+      });
+      return NextResponse.json({ error: "Acces refuse." }, { status: 403 });
+    }
+
     await recordActivity({
       admin,
       level: "warn",

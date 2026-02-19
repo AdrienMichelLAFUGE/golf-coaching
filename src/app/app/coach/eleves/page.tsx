@@ -8,6 +8,8 @@ import RoleGuard from "../../_components/role-guard";
 import { useProfile } from "../../_components/profile-context";
 import PageHeader from "../../_components/page-header";
 import Badge from "../../_components/badge";
+import ToastStack from "../../_components/toast-stack";
+import useToastStack from "../../_components/use-toast-stack";
 import StudentCreateModal, {
   StudentCreateButton,
 } from "../../_components/student-create-modal";
@@ -36,6 +38,17 @@ type PendingStudentRequest = {
   last_name: string | null;
   email: string | null;
   playing_hand: "right" | "left" | null;
+};
+
+type IncomingPersonalLinkRequest = {
+  requestId: string;
+  createdAt: string;
+  studentId: string;
+  studentFirstName: string;
+  studentLastName: string | null;
+  studentEmail: string | null;
+  requesterUserId: string;
+  requesterEmail: string;
 };
 
 type OrgGroupWithMembers = {
@@ -97,9 +110,9 @@ export default function CoachStudentsPage() {
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
   const [invitingId, setInvitingId] = useState<string | null>(null);
-  const [inviteMessage, setInviteMessage] = useState("");
   const [inviteError, setInviteError] = useState("");
   const [messageError, setMessageError] = useState("");
+  const { toasts, pushToast, dismissToast } = useToastStack();
   const [messageOpeningId, setMessageOpeningId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
@@ -114,6 +127,9 @@ export default function CoachStudentsPage() {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
   const [sharedStudentIds, setSharedStudentIds] = useState<string[]>([]);
+  const [sharedShareIdByStudentId, setSharedShareIdByStudentId] = useState<
+    Record<string, string>
+  >({});
   const [tpiActiveById, setTpiActiveById] = useState<Record<string, boolean>>({});
   const [studentGroupBadgesByStudentId, setStudentGroupBadgesByStudentId] = useState<
     Record<string, StudentGroupBadge[]>
@@ -121,6 +137,16 @@ export default function CoachStudentsPage() {
   const [pendingStudentRequests, setPendingStudentRequests] = useState<
     PendingStudentRequest[]
   >([]);
+  const [incomingPersonalLinkRequests, setIncomingPersonalLinkRequests] = useState<
+    IncomingPersonalLinkRequest[]
+  >([]);
+  const [incomingPersonalLinkRequestsLoading, setIncomingPersonalLinkRequestsLoading] =
+    useState(false);
+  const [incomingPersonalLinkRequestsError, setIncomingPersonalLinkRequestsError] =
+    useState("");
+  const [incomingPersonalLinkDecisionId, setIncomingPersonalLinkDecisionId] = useState<
+    string | null
+  >(null);
   const isOrgReadOnly = organization?.workspace_type === "org" && !isWorkspacePremium;
   const currentWorkspaceType = workspaceType ?? "personal";
   const workspaceName = organization?.name ?? "Organisation";
@@ -139,6 +165,38 @@ export default function CoachStudentsPage() {
   };
 
   const sharedStudentSet = useMemo(() => new Set(sharedStudentIds), [sharedStudentIds]);
+
+  const loadSharedStudentIds = useCallback(async () => {
+    if (!userEmail) {
+      setSharedStudentIds([]);
+      setSharedShareIdByStudentId({});
+      return;
+    }
+
+    const { data, error: sharedError } = await supabase
+      .from("student_shares")
+      .select("id, student_id")
+      .eq("status", "active")
+      .ilike("viewer_email", userEmail);
+
+    if (sharedError) {
+      setSharedStudentIds([]);
+      setSharedShareIdByStudentId({});
+      return;
+    }
+
+    const ids: string[] = [];
+    const shareIdByStudentId: Record<string, string> = {};
+    (data ?? []).forEach((row) => {
+      const typed = row as { id?: string | null; student_id?: string | null };
+      if (!typed.student_id || !typed.id) return;
+      ids.push(typed.student_id);
+      shareIdByStudentId[typed.student_id] = typed.id;
+    });
+
+    setSharedStudentIds(ids);
+    setSharedShareIdByStudentId(shareIdByStudentId);
+  }, [userEmail]);
 
   const getStudentAccessBadge = (student: StudentListItem) => {
     if (student.kind === "pending") {
@@ -307,7 +365,7 @@ export default function CoachStudentsPage() {
   }, [loadTpiStatus]);
 
   const loadPendingStudentRequests = useCallback(async () => {
-    if (currentWorkspaceType !== "org") {
+    if (currentWorkspaceType !== "org" && currentWorkspaceType !== "personal") {
       setPendingStudentRequests([]);
       return;
     }
@@ -319,7 +377,11 @@ export default function CoachStudentsPage() {
       return;
     }
 
-    const response = await fetch("/api/orgs/students/pending-links", {
+    const pendingEndpoint =
+      currentWorkspaceType === "org"
+        ? "/api/orgs/students/pending-links"
+        : "/api/students/personal/pending-links";
+    const response = await fetch(pendingEndpoint, {
       headers: { Authorization: `Bearer ${token}` },
     });
     const payload = (await response.json().catch(() => ({}))) as {
@@ -334,6 +396,46 @@ export default function CoachStudentsPage() {
     }
 
     setPendingStudentRequests(payload.requests ?? []);
+  }, [currentWorkspaceType]);
+
+  const loadIncomingPersonalLinkRequests = useCallback(async () => {
+    if (currentWorkspaceType !== "personal") {
+      setIncomingPersonalLinkRequests([]);
+      setIncomingPersonalLinkRequestsError("");
+      return;
+    }
+
+    setIncomingPersonalLinkRequestsLoading(true);
+    setIncomingPersonalLinkRequestsError("");
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setIncomingPersonalLinkRequests([]);
+      setIncomingPersonalLinkRequestsError("Session invalide.");
+      setIncomingPersonalLinkRequestsLoading(false);
+      return;
+    }
+
+    const response = await fetch("/api/students/personal/link-requests", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const payload = (await response.json().catch(() => ({}))) as {
+      requests?: IncomingPersonalLinkRequest[];
+      error?: string;
+    };
+
+    if (!response.ok) {
+      setIncomingPersonalLinkRequests([]);
+      setIncomingPersonalLinkRequestsError(
+        payload.error ?? "Chargement des demandes entrantes impossible."
+      );
+      setIncomingPersonalLinkRequestsLoading(false);
+      return;
+    }
+
+    setIncomingPersonalLinkRequests(payload.requests ?? []);
+    setIncomingPersonalLinkRequestsLoading(false);
   }, [currentWorkspaceType]);
 
   const loadStudentGroupLabels = useCallback(async () => {
@@ -447,6 +549,17 @@ export default function CoachStudentsPage() {
     let cancelled = false;
     Promise.resolve().then(async () => {
       if (cancelled) return;
+      await loadIncomingPersonalLinkRequests();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadIncomingPersonalLinkRequests]);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.resolve().then(async () => {
+      if (cancelled) return;
       await loadStudentGroupLabels();
     });
     return () => {
@@ -458,31 +571,12 @@ export default function CoachStudentsPage() {
     let cancelled = false;
     Promise.resolve().then(async () => {
       if (cancelled) return;
-      if (!userEmail) {
-        setSharedStudentIds([]);
-        return;
-      }
-      const { data, error: sharedError } = await supabase
-        .from("student_shares")
-        .select("student_id")
-        .eq("status", "active")
-        .ilike("viewer_email", userEmail);
-      if (cancelled) return;
-
-      if (sharedError) {
-        setSharedStudentIds([]);
-        return;
-      }
-
-      const ids = (data ?? [])
-        .map((row) => (row as { student_id?: string }).student_id)
-        .filter((id): id is string => Boolean(id));
-      setSharedStudentIds(ids);
+      await loadSharedStudentIds();
     });
     return () => {
       cancelled = true;
     };
-  }, [userEmail]);
+  }, [loadSharedStudentIds]);
 
   useEffect(() => {
     if (!menuOpenId) return;
@@ -499,24 +593,27 @@ export default function CoachStudentsPage() {
     const handleLinkRequest = (event: Event) => {
       const detail = (event as CustomEvent<{ message?: string }>).detail;
       setInviteError("");
-      setInviteMessage(
+      pushToast(
         detail?.message ??
-          "Demande envoyee a l admin de l organisation proprietaire."
+          "Demande envoyee au coach proprietaire.",
+        "info"
       );
       void loadPendingStudentRequests();
     };
     window.addEventListener("gc:students-link-requested", handleLinkRequest);
     return () =>
       window.removeEventListener("gc:students-link-requested", handleLinkRequest);
-  }, [loadPendingStudentRequests]);
+  }, [loadPendingStudentRequests, pushToast]);
 
   useEffect(() => {
     const handleFocus = () => {
       void loadPendingStudentRequests();
+      void loadIncomingPersonalLinkRequests();
+      void loadSharedStudentIds();
     };
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);
-  }, [loadPendingStudentRequests]);
+  }, [loadIncomingPersonalLinkRequests, loadPendingStudentRequests, loadSharedStudentIds]);
 
   const handleInviteStudent = async (student: Student) => {
     if (isOrgReadOnly) {
@@ -528,7 +625,6 @@ export default function CoachStudentsPage() {
       return;
     }
 
-    setInviteMessage("");
     setInviteError("");
     setInvitingId(student.id);
 
@@ -558,7 +654,7 @@ export default function CoachStudentsPage() {
       return;
     }
 
-    setInviteMessage("Invitation envoyee.");
+    pushToast("Invitation envoyee.", "success");
     await loadStudents();
     setInvitingId(null);
   };
@@ -569,7 +665,6 @@ export default function CoachStudentsPage() {
       return;
     }
 
-    setInviteMessage("");
     setInviteError("");
     setDeletingId(student.id);
 
@@ -585,6 +680,7 @@ export default function CoachStudentsPage() {
     }
 
     await loadStudents();
+    pushToast("Eleve supprime.", "success");
     setDeletingId(null);
   };
 
@@ -598,6 +694,50 @@ export default function CoachStudentsPage() {
     setPendingDeleteStudent(null);
     setMenuOpenId(null);
     await handleDeleteStudent(student);
+  };
+
+  const handleLeaveSharedStudent = async (student: Student) => {
+    const shareId = sharedShareIdByStudentId[student.id];
+    if (!shareId) {
+      setInviteError("Partage introuvable.");
+      return;
+    }
+
+    setInviteError("");
+    setDeletingId(student.id);
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setInviteError("Session invalide. Reconnecte toi.");
+      setDeletingId(null);
+      return;
+    }
+
+    const response = await fetch("/api/student-shares/revoke", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ shareId }),
+    });
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
+    if (!response.ok) {
+      setInviteError(payload.error ?? "Retrait du partage impossible.");
+      setDeletingId(null);
+      return;
+    }
+
+    pushToast("Eleve partage retire de ton espace.", "success");
+    await Promise.all([loadStudents(), loadSharedStudentIds()]);
+    setDeletingId(null);
+  };
+
+  const handleMenuLeaveShared = async (student: Student) => {
+    setPendingDeleteStudent(null);
+    setMenuOpenId(null);
+    await handleLeaveSharedStudent(student);
   };
 
   const handleMenuAskDelete = (student: Student) => {
@@ -625,7 +765,6 @@ export default function CoachStudentsPage() {
     }
     setMessageError("");
     setInviteError("");
-    setInviteMessage("");
     setMenuOpenId(null);
     setMessageOpeningId(student.id);
 
@@ -723,9 +862,62 @@ export default function CoachStudentsPage() {
     await loadStudents();
   };
 
+  const handlePersonalLinkRequestDecision = async (
+    requestId: string,
+    decision: "share" | "transfer" | "reject"
+  ) => {
+    setIncomingPersonalLinkRequestsError("");
+    setIncomingPersonalLinkDecisionId(requestId);
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setIncomingPersonalLinkRequestsError("Session invalide.");
+      setIncomingPersonalLinkDecisionId(null);
+      return;
+    }
+
+    const response = await fetch("/api/students/personal/link-requests/decide", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ requestId, decision }),
+    });
+
+    const payload = (await response.json().catch(() => ({}))) as {
+      error?: string;
+    };
+
+    if (!response.ok) {
+      setIncomingPersonalLinkRequestsError(
+        payload.error ?? "Decision de demande impossible."
+      );
+      setIncomingPersonalLinkDecisionId(null);
+      return;
+    }
+
+    const decisionMessage =
+      decision === "share"
+        ? "Demande acceptee en partage."
+        : decision === "transfer"
+          ? "Demande acceptee en transfert."
+          : "Demande refusee.";
+    pushToast(decisionMessage, decision === "reject" ? "info" : "success");
+
+    await Promise.all([
+      loadStudents(),
+      loadPendingStudentRequests(),
+      loadIncomingPersonalLinkRequests(),
+    ]);
+    setIncomingPersonalLinkDecisionId(null);
+  };
+
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
       <div className="space-y-6">
+        <ToastStack toasts={toasts} onDismiss={dismissToast} />
         <PageHeader
           title="Elèves"
           subtitle="Gerez vos élèves."
@@ -913,10 +1105,111 @@ export default function CoachStudentsPage() {
             {messageError ? (
               <p className="text-sm text-red-400">{messageError}</p>
             ) : null}
-            {inviteMessage ? (
-              <p className="text-sm text-[var(--muted)]">{inviteMessage}</p>
-            ) : null}
           </div>
+
+          {currentWorkspaceType === "personal" ? (
+            <div className="px-6 pb-4">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                      Demandes entrantes
+                    </p>
+                    <p className="mt-1 text-sm text-[var(--text)]">
+                      Valide les demandes d ajout d eleves deja presents dans ton espace.
+                    </p>
+                  </div>
+                  <Badge tone="muted" size="sm">
+                    {incomingPersonalLinkRequests.length} en attente
+                  </Badge>
+                </div>
+
+                {incomingPersonalLinkRequestsLoading ? (
+                  <p className="mt-3 text-sm text-[var(--muted)]">Chargement des demandes...</p>
+                ) : incomingPersonalLinkRequests.length === 0 ? (
+                  <p className="mt-3 text-sm text-[var(--muted)]">
+                    Aucune demande entrante.
+                  </p>
+                ) : (
+                  <div className="mt-3 space-y-3">
+                    {incomingPersonalLinkRequests.map((incomingRequest) => {
+                      const isSubmitting = incomingPersonalLinkDecisionId === incomingRequest.requestId;
+                      return (
+                        <article
+                          key={incomingRequest.requestId}
+                          className="rounded-xl border border-white/10 bg-white/5 p-3"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-[var(--text)]">
+                                {incomingRequest.studentFirstName}{" "}
+                                {incomingRequest.studentLastName ?? ""}
+                              </p>
+                              <p className="mt-1 text-xs text-[var(--muted)]">
+                                {incomingRequest.studentEmail || "Email non renseigne"}
+                              </p>
+                              <p className="mt-1 text-xs text-[var(--muted)]">
+                                Demandeur: {incomingRequest.requesterEmail}
+                              </p>
+                              <p className="mt-1 text-[0.7rem] text-[var(--muted)]">
+                                Recu le{" "}
+                                {new Date(incomingRequest.createdAt).toLocaleString("fr-FR")}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void handlePersonalLinkRequestDecision(
+                                    incomingRequest.requestId,
+                                    "reject"
+                                  )
+                                }
+                                disabled={isSubmitting}
+                                className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[0.62rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)] disabled:opacity-60"
+                              >
+                                Refuser
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void handlePersonalLinkRequestDecision(
+                                    incomingRequest.requestId,
+                                    "share"
+                                  )
+                                }
+                                disabled={isSubmitting}
+                                className="rounded-full border border-sky-300/35 bg-sky-400/15 px-3 py-1.5 text-[0.62rem] uppercase tracking-wide text-sky-100 transition hover:bg-sky-400/25 disabled:opacity-60"
+                              >
+                                Accepter en partage
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void handlePersonalLinkRequestDecision(
+                                    incomingRequest.requestId,
+                                    "transfer"
+                                  )
+                                }
+                                disabled={isSubmitting}
+                                className="rounded-full border border-emerald-300/35 bg-emerald-400/15 px-3 py-1.5 text-[0.62rem] uppercase tracking-wide text-emerald-100 transition hover:bg-emerald-400/25 disabled:opacity-60"
+                              >
+                                Transferer
+                              </button>
+                            </div>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {incomingPersonalLinkRequestsError ? (
+                  <p className="mt-3 text-sm text-red-400">{incomingPersonalLinkRequestsError}</p>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
 
           <div className="hidden border-b border-white/10 bg-white/[0.02] px-6 py-3 text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--muted)] md:grid md:grid-cols-[32px_1fr_0.3fr_1fr_56px]">
             <span aria-hidden="true" />
@@ -986,6 +1279,7 @@ export default function CoachStudentsPage() {
                   : student.invited_at
                     ? "Renvoyer"
                     : "Inviter";
+                const isSharedLeaveLoading = isShared && deletingId === student.id;
                 return (
                   <div
                     key={student.id}
@@ -1065,7 +1359,7 @@ export default function CoachStudentsPage() {
                           </div>
                         ) : null}
                         {isPendingApproval ? (
-                          <p className="mt-1 text-[0.7rem] text-amber-100">
+                          <p className="mt-1 text-[0.7rem] text-amber-600">
                             En attente d approbation par le coach proprietaire.
                           </p>
                         ) : null}
@@ -1163,7 +1457,7 @@ export default function CoachStudentsPage() {
                               <div
                                 role="menu"
                                 onClick={(event) => event.stopPropagation()}
-                                className="absolute bottom-full right-0 z-50 mb-2 w-40 rounded-xl border border-white/10 bg-[var(--bg-elevated)] p-1 text-xs shadow-[0_12px_30px_rgba(0,0,0,0.35)]"
+                                className="absolute bottom-full right-0 z-50 mb-2 w-52 rounded-xl border border-white/10 bg-[var(--bg-elevated)] p-1 text-xs shadow-[0_12px_30px_rgba(0,0,0,0.35)]"
                               >
                                 <button
                                   type="button"
@@ -1230,15 +1524,29 @@ export default function CoachStudentsPage() {
                                 >
                                   {inviteLabel}
                                 </button>
-                                <button
-                                  type="button"
-                                  role="menuitem"
-                                  onClick={() => handleMenuAskDelete(student)}
-                                  disabled={isReadOnlyAction || deletingId === student.id}
-                                  className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:bg-white/10 hover:text-red-200 disabled:opacity-60"
-                                >
-                                  Supprimer
-                                </button>
+                                {isShared ? (
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => void handleMenuLeaveShared(student)}
+                                    disabled={isSharedLeaveLoading}
+                                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:bg-white/10 hover:text-red-200 disabled:opacity-60"
+                                  >
+                                    {isSharedLeaveLoading
+                                      ? "Retrait..."
+                                      : "Retirer de mon espace"}
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => handleMenuAskDelete(student)}
+                                    disabled={isReadOnlyAction || deletingId === student.id}
+                                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[0.65rem] uppercase tracking-wide text-red-300 transition hover:bg-white/10 hover:text-red-200 disabled:opacity-60"
+                                  >
+                                    Supprimer
+                                  </button>
+                                )}
                               </div>
                             ) : null}
                           </div>

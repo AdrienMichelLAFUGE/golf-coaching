@@ -150,4 +150,116 @@ describe("POST /api/student-shares/revoke", () => {
     expect(body.ok).toBe(true);
     expect(body.status).toBe("revoked");
   });
+
+  it("returns 403 when update affects zero row but share is still active", async () => {
+    let selectCallCount = 0;
+    const supabase = {
+      auth: {
+        getUser: async () => ({
+          data: { user: { id: "coach-2", email: "coach2@example.com" } },
+          error: null,
+        }),
+      },
+      from: (table: string) => {
+        if (table === "student_shares") {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => {
+                  selectCallCount += 1;
+                  if (selectCallCount === 1) {
+                    return {
+                      data: { id: "share-3", status: "active" },
+                      error: null,
+                    };
+                  }
+                  return {
+                    data: { id: "share-3", status: "active" },
+                    error: null,
+                  };
+                },
+              }),
+            }),
+            update: () => ({
+              eq: () => ({
+                eq: () => ({
+                  select: () => ({
+                    maybeSingle: async () => ({
+                      data: null,
+                      error: null,
+                    }),
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        return buildSelectMaybeSingle({ data: null, error: null });
+      },
+    } as SupabaseClient;
+
+    serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
+
+    const response = await POST(buildRequest({ shareId: "share-3" }));
+
+    expect(response.status).toBe(403);
+    const body = await response.json();
+    expect(body.error).toBe("Acces refuse.");
+  });
+
+  it("returns 409 when update affects zero row and share is already revoked", async () => {
+    let selectCallCount = 0;
+    const supabase = {
+      auth: {
+        getUser: async () => ({
+          data: { user: { id: "owner-2", email: "owner2@example.com" } },
+          error: null,
+        }),
+      },
+      from: (table: string) => {
+        if (table === "student_shares") {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => {
+                  selectCallCount += 1;
+                  if (selectCallCount === 1) {
+                    return {
+                      data: { id: "share-4", status: "active" },
+                      error: null,
+                    };
+                  }
+                  return {
+                    data: { id: "share-4", status: "revoked" },
+                    error: null,
+                  };
+                },
+              }),
+            }),
+            update: () => ({
+              eq: () => ({
+                eq: () => ({
+                  select: () => ({
+                    maybeSingle: async () => ({
+                      data: null,
+                      error: null,
+                    }),
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        return buildSelectMaybeSingle({ data: null, error: null });
+      },
+    } as SupabaseClient;
+
+    serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
+
+    const response = await POST(buildRequest({ shareId: "share-4" }));
+
+    expect(response.status).toBe(409);
+    const body = await response.json();
+    expect(body.error).toBe("Partage deja revoque.");
+  });
 });

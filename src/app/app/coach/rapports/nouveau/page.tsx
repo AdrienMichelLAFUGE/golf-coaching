@@ -25,6 +25,7 @@ import PageHeader from "../../../_components/page-header";
 import PremiumOfferModal from "../../../_components/premium-offer-modal";
 import Badge from "../../../_components/badge";
 import RadarReviewModal from "../../../_components/radar-review-modal";
+import Smart2MoveImportHintModal from "../../../_components/smart2move-import-hint-modal";
 import RadarCharts, {
   defaultRadarConfig,
   type RadarConfig,
@@ -51,6 +52,11 @@ import {
 } from "@/lib/radar/smart2move-graph-types";
 import { normalizeSmart2MoveImpactMarkerX } from "@/lib/radar/smart2move-annotations";
 import type { RadarAnalytics } from "@/lib/radar/types";
+import {
+  dismissDidacticHint,
+  getDidacticHintState,
+  markDidacticHintSeen,
+} from "@/lib/didactic-hints";
 import {
   validateVideoSections,
   VIDEO_MAX_DURATION_SECONDS as VIDEO_DURATION_LIMIT_SECONDS,
@@ -102,6 +108,8 @@ sectionTagMap.set("feedback mental", ["mental", "focus"]);
 
 const CAPTION_LIMIT = 150;
 const CLARIFY_THRESHOLD = 0.8;
+const SMART2MOVE_IMPORT_TUTORIAL_HINT_ID =
+  "smart2move_import_single_graph_screenshot";
 
 type ReportSection = {
   id: string;
@@ -655,6 +663,29 @@ export default function CoachReportBuilderPage() {
     useState<Smart2MovePlateType>("1d");
   const [radarImportSmart2MoveGraphType, setRadarImportSmart2MoveGraphType] =
     useState<Smart2MoveGraphType | null>(null);
+  const [smart2MoveTutorialVisible, setSmart2MoveTutorialVisible] = useState(false);
+  const [smart2MoveTutorialDismissed, setSmart2MoveTutorialDismissed] = useState(false);
+  const [smart2MoveTutorialDontShowAgain, setSmart2MoveTutorialDontShowAgain] =
+    useState(false);
+  const [smart2MoveTutorialStateLoaded, setSmart2MoveTutorialStateLoaded] =
+    useState(false);
+  useEffect(() => {
+    const state = getDidacticHintState(SMART2MOVE_IMPORT_TUTORIAL_HINT_ID);
+    setSmart2MoveTutorialDismissed(Boolean(state.dismissedAt));
+    setSmart2MoveTutorialStateLoaded(true);
+  }, []);
+  useEffect(() => {
+    if (!smart2MoveTutorialStateLoaded) return;
+    if (!radarImportOpen || radarImportTech !== "smart2move") return;
+    if (smart2MoveTutorialDismissed) return;
+    markDidacticHintSeen(SMART2MOVE_IMPORT_TUTORIAL_HINT_ID);
+    setSmart2MoveTutorialVisible(true);
+  }, [
+    radarImportOpen,
+    radarImportTech,
+    smart2MoveTutorialDismissed,
+    smart2MoveTutorialStateLoaded,
+  ]);
   const radarSmart2MoveGraphTypeRef = useRef<Smart2MoveGraphType | null>(null);
   const [smart2MoveMarkersModalOpen, setSmart2MoveMarkersModalOpen] = useState(false);
   const [smart2MoveMarkersPreviewUrl, setSmart2MoveMarkersPreviewUrl] = useState<string | null>(
@@ -2450,12 +2481,24 @@ export default function CoachReportBuilderPage() {
     setRadarImportTech(radarTechRef.current);
     setRadarImportSmart2MovePlateType("1d");
     setRadarImportSmart2MoveGraphType(null);
+    setSmart2MoveTutorialVisible(false);
+    setSmart2MoveTutorialDontShowAgain(false);
     radarSmart2MoveGraphTypeRef.current = null;
     setRadarImportError("");
     setRadarImportOpen(true);
   };
 
+  const closeSmart2MoveTutorial = () => {
+    if (smart2MoveTutorialDontShowAgain && !smart2MoveTutorialDismissed) {
+      dismissDidacticHint(SMART2MOVE_IMPORT_TUTORIAL_HINT_ID);
+      setSmart2MoveTutorialDismissed(true);
+    }
+    setSmart2MoveTutorialVisible(false);
+    setSmart2MoveTutorialDontShowAgain(false);
+  };
+
   const closeRadarImportModal = () => {
+    closeSmart2MoveTutorial();
     setRadarImportOpen(false);
     setRadarImportSectionId(null);
     setRadarImportSmart2MovePlateType("1d");
@@ -10553,6 +10596,12 @@ export default function CoachReportBuilderPage() {
                 </div>
               </div>
             </div>
+            <Smart2MoveImportHintModal
+              open={smart2MoveTutorialVisible}
+              dontShowAgain={smart2MoveTutorialDontShowAgain}
+              onDontShowAgainChange={setSmart2MoveTutorialDontShowAgain}
+              onClose={closeSmart2MoveTutorial}
+            />
           </div>
         ) : null}
         {aiSettingsModalOpen ? (
@@ -11294,6 +11343,8 @@ export default function CoachReportBuilderPage() {
                     if (next !== "smart2move") {
                       setRadarImportSmart2MoveGraphType(null);
                       radarSmart2MoveGraphTypeRef.current = null;
+                      setSmart2MoveTutorialVisible(false);
+                      setSmart2MoveTutorialDontShowAgain(false);
                     }
                   }}
                   className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text)]"
