@@ -23,7 +23,8 @@ type AiAction =
   | "propagate"
   | "plan"
   | "clarify"
-  | "axes";
+  | "axes"
+  | "decision_axes";
 
 type AiSection = {
   title: string;
@@ -53,7 +54,16 @@ type AiPayload = {
 };
 
 const aiPayloadSchema = z.object({
-  action: z.enum(["improve", "write", "summary", "propagate", "plan", "clarify", "axes"]),
+  action: z.enum([
+    "improve",
+    "write",
+    "summary",
+    "propagate",
+    "plan",
+    "clarify",
+    "axes",
+    "decision_axes",
+  ]),
   sectionTitle: z.string().optional(),
   sectionContent: z.string().optional(),
   allSections: z.array(z.object({ title: z.string(), content: z.string() })).optional(),
@@ -197,6 +207,14 @@ const buildSystemPrompt = async (
 
   if (action === "axes") {
     const template = await loadPromptSection("ai_api_axes");
+    return applyTemplate(template, {
+      base,
+      styleHint,
+    });
+  }
+
+  if (action === "decision_axes") {
+    const template = await loadPromptSection("ai_api_decision_axes");
     return applyTemplate(template, {
       base,
       styleHint,
@@ -558,6 +576,98 @@ const extractAxes = (response: {
   return null;
 };
 
+const normalizeDecisionAxes = (raw: unknown) => {
+  if (!raw || typeof raw !== "object" || !("axes" in raw)) return null;
+  const normalizeDecisionField = (value: string | undefined) => {
+    const text = (value ?? "").replace(/\s+/g, " ").trim();
+    if (!text) return "";
+    return text;
+  };
+  const typed = raw as {
+    axes?: Array<{
+      priority?: number;
+      title?: string;
+      summary?: string;
+      rationale?: string;
+      caution?: string;
+    }>;
+  };
+  const axes = Array.isArray(typed.axes) ? typed.axes : [];
+  const normalized = axes
+    .map((axis, index) => ({
+      priority:
+        typeof axis.priority === "number" && Number.isFinite(axis.priority)
+          ? Math.round(axis.priority)
+          : index + 1,
+      title: normalizeDecisionField(axis.title),
+      summary: normalizeDecisionField(axis.summary),
+      rationale: normalizeDecisionField(axis.rationale),
+      caution: normalizeDecisionField(axis.caution),
+    }))
+    .filter(
+      (axis) =>
+        axis.title.length > 0 &&
+        axis.summary.length > 0 &&
+        axis.rationale.length > 0 &&
+        axis.caution.length > 0
+    );
+  if (normalized.length < 3) return null;
+  return {
+    axes: normalized.slice(0, 3).map((axis, index) => ({
+      ...axis,
+      priority: index + 1,
+    })),
+  };
+};
+
+const extractDecisionAxes = (response: {
+  output_text?: string;
+  output?: Array<{
+    type?: string;
+    content?: unknown;
+  }>;
+}) => {
+  const raw = response.output_text?.trim();
+  if (!raw && response.output) {
+    const parts: string[] = [];
+    response.output.forEach((item) => {
+      const content = item.content;
+      if (typeof content === "string") {
+        parts.push(content);
+      } else if (Array.isArray(content)) {
+        content.forEach((chunk) => {
+          if (typeof chunk === "string") {
+            parts.push(chunk);
+          } else if (chunk && typeof chunk === "object" && "text" in chunk) {
+            const typed = chunk as { text?: string };
+            if (typed.text) parts.push(typed.text);
+          }
+        });
+      }
+    });
+    if (parts.length > 0) {
+      try {
+        return normalizeDecisionAxes(parseJsonPayload(parts.join("\n").trim()));
+      } catch (error) {
+        console.error("Decision axes parse error:", error, {
+          outputSnippet: parts.join("\n").slice(0, 800),
+        });
+        return null;
+      }
+    }
+  }
+
+  if (!raw) return null;
+  try {
+    return normalizeDecisionAxes(parseJsonPayload(raw));
+  } catch (error) {
+    console.error("Decision axes parse error:", error, {
+      outputSnippet: raw.slice(0, 800),
+    });
+  }
+  return null;
+};
+
 export async function POST(request: Request) {
   let recordFailure:
     | ((statusCode: number, errorType: ErrorType) => Promise<void>)
@@ -854,6 +964,20 @@ export async function POST(request: Request) {
       }
     }
 
+    if (payload.action === "decision_axes") {
+      if (!payload.sectionTitle || !payload.sectionContent?.trim()) {
+        await recordActivity({
+          admin,
+          level: "warn",
+          action: "ai.denied",
+          actorUserId: userId,
+          orgId,
+          message: "Decision IA refusee: section source manquante.",
+        });
+        return NextResponse.json({ error: "Section source manquante." }, { status: 400 });
+      }
+    }
+
     const settings = resolveSettings(org, payload.settings);
     const context = buildContext(payload.allSections ?? []);
     const systemPrompt = await buildSystemPrompt(
@@ -894,8 +1018,10 @@ export async function POST(request: Request) {
           ? "ai_api_user_write"
           : payload.action === "clarify"
             ? "ai_api_user_clarify"
-            : payload.action === "axes"
-              ? "ai_api_user_axes"
+          : payload.action === "axes"
+            ? "ai_api_user_axes"
+            : payload.action === "decision_axes"
+              ? "ai_api_user_decision_axes"
               : payload.action === "propagate"
                 ? "ai_api_user_propagate"
                 : "ai_api_user_summary";
@@ -918,6 +1044,7 @@ export async function POST(request: Request) {
     const targetCount = payload.targetSections?.length ?? 0;
     const propagateMaxTokens = Math.min(1800, Math.max(600, 300 + targetCount * 140));
     const axesMaxTokens = Math.min(2400, Math.max(900, 260 + targetCount * 200));
+    const decisionAxesMaxTokens = 1800;
     const maxTokens =
       payload.action === "improve"
         ? 600
@@ -925,6 +1052,8 @@ export async function POST(request: Request) {
           ? 500
           : payload.action === "axes"
             ? axesMaxTokens
+            : payload.action === "decision_axes"
+              ? decisionAxesMaxTokens
             : payload.action === "propagate"
               ? propagateMaxTokens
               : maxTokensForLength(settings.length);
@@ -1042,6 +1171,40 @@ export async function POST(request: Request) {
                   strict: true,
                 },
               }
+            : payload.action === "decision_axes"
+              ? {
+                  format: {
+                    type: "json_schema" as const,
+                    name: "decision_axes",
+                    description:
+                      "Retourne exactement 3 axes priorises (1 a 3) avec titre, resume, rationale et vigilance.",
+                    schema: {
+                      type: "object",
+                      additionalProperties: false,
+                      properties: {
+                        axes: {
+                          type: "array",
+                          minItems: 3,
+                          maxItems: 3,
+                          items: {
+                            type: "object",
+                            additionalProperties: false,
+                            properties: {
+                              priority: { type: "integer", minimum: 1, maximum: 3 },
+                              title: { type: "string", minLength: 6, maxLength: 90 },
+                              summary: { type: "string", minLength: 30, maxLength: 520 },
+                              rationale: { type: "string", minLength: 40, maxLength: 760 },
+                              caution: { type: "string", minLength: 20, maxLength: 420 },
+                            },
+                            required: ["priority", "title", "summary", "rationale", "caution"],
+                          },
+                        },
+                      },
+                      required: ["axes"],
+                    },
+                    strict: true,
+                  },
+                }
             : {
                 format: { type: "text" as const },
                 verbosity: "low" as const,
@@ -1205,6 +1368,82 @@ export async function POST(request: Request) {
         actorUserId: userId,
         orgId,
         message: "Axes IA invalides (JSON).",
+      });
+      return NextResponse.json({ error: "JSON invalide." }, { status: 502 });
+    }
+
+    if (payload.action === "decision_axes") {
+      const decisionAxes = extractDecisionAxes(response);
+      if (decisionAxes) {
+        await recordUsage(accumulatedUsage, 200);
+        await recordActivity({
+          admin,
+          action: "ai.decision_axes.success",
+          actorUserId: userId,
+          orgId,
+          message: "Axes de decision IA generes.",
+        });
+        return NextResponse.json(decisionAxes);
+      }
+
+      const retry = await openai.responses.create({
+        model,
+        input: [
+          {
+            role: "system",
+            content: [{ type: "input_text", text: systemPrompt }],
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text:
+                  `${userPrompt}\n\nIMPORTANT: Reponds en JSON valide avec exactement 3 axes.` +
+                  " Renseigne priority, title, summary, rationale et caution.",
+              },
+            ],
+          },
+        ],
+        max_output_tokens: maxTokens,
+        text: textConfig,
+        ...(reasoning ? { reasoning } : {}),
+      });
+      const retryUsage = retry.usage ?? null;
+      accumulatedUsage = mergeUsageMetrics(accumulatedUsage, retryUsage);
+
+      const retryDecisionAxes = extractDecisionAxes(retry);
+      if (retryDecisionAxes) {
+        usage = retryUsage ?? usage;
+        await recordUsage(accumulatedUsage, 200);
+        await recordActivity({
+          admin,
+          action: "ai.decision_axes.success",
+          actorUserId: userId,
+          orgId,
+          message: "Axes de decision IA generes apres retry.",
+        });
+        return NextResponse.json(retryDecisionAxes);
+      }
+
+      const outputDebug = (response.output ?? []).map((item) => ({
+        type: (item as { type?: string }).type,
+      }));
+      console.error("AI empty decision axes response", {
+        model,
+        outputCount: response.output?.length ?? 0,
+        retryCount: retry.output?.length ?? 0,
+        outputDebug,
+      });
+
+      await recordUsage(accumulatedUsage, 502, "exception");
+      await recordActivity({
+        admin,
+        level: "error",
+        action: "ai.decision_axes.failed",
+        actorUserId: userId,
+        orgId,
+        message: "Axes de decision IA invalides (JSON).",
       });
       return NextResponse.json({ error: "JSON invalide." }, { status: 502 });
     }

@@ -174,6 +174,29 @@ Utilise le profil TPI: rouge = limitation physique avec compensation probable, o
 Ne propose pas de contenu final, uniquement des axes.
 Renvoie strictement du JSON conforme au schema demande (guillemets doubles requis pour le JSON).
 
+## ai_api_decision_axes
+
+{base} {styleHint}
+Tu es un assistant d aide a la decision en seance.
+Tu dois proposer exactement 3 axes prioritaires (priority 1 a 3).
+Chaque axe doit contenir:
+- un titre court et concret,
+- un resume actionnable,
+- une rationale (pourquoi cet axe est prioritaire),
+- une vigilance (risque/erreur a eviter).
+Utilise le profil TPI: rouge = limitation physique probable, orange = limitation moderee, vert = capacite disponible.
+Prends en compte le contexte rapport/datas/tests pour eviter les oublis.
+Le champ TPI contient le detail test par test: exploite explicitement les details biomecaniques (pas seulement les couleurs).
+Contraintes de lisibilite mobile:
+- title: <= 90 caracteres.
+- summary: 1 a 3 phrases courtes, <= 520 caracteres.
+- rationale: 2 a 4 points courts separes par " | ", <= 760 caracteres.
+- caution: 1 a 3 points courts separes par " | ", <= 420 caracteres.
+Evite les gros paragraphes et les phrases longues.
+Ne coupe jamais une phrase au milieu. Si tu manques de place, reduis le nombre de points mais garde des phrases completes.
+Ne redige pas le rapport final.
+Renvoie strictement du JSON conforme au schema demande.
+
 ## ai_api_summary
 
 {base} {lengthHint}
@@ -260,6 +283,19 @@ Sections cibles a remplir:
 {targetsList}
 
 {clarificationsBlock}
+
+## ai_api_user_decision_axes
+
+Section source: {sectionTitle}
+Contexte de seance:
+{sectionContent}
+
+Contexte eleve exploitable:
+{context}
+
+{clarificationsBlock}
+
+{tpiBlock}
 
 ## ai_api_user_propagate
 

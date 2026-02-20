@@ -80,6 +80,7 @@ import { PELZ_PUTTING_SLUG } from "@/lib/normalized-tests/pelz-putting";
 import { PELZ_APPROCHES_SLUG } from "@/lib/normalized-tests/pelz-approches";
 import { WEDGING_DRAPEAU_LONG_SLUG } from "@/lib/normalized-tests/wedging-drapeau-long";
 import { WEDGING_DRAPEAU_COURT_SLUG } from "@/lib/normalized-tests/wedging-drapeau-court";
+import StudentTabs from "./student-tabs";
 
 type Student = {
   id: string;
@@ -753,6 +754,13 @@ export default function CoachStudentDetailPage() {
   const isOrgReadOnly = workspaceType === "org" && !isWorkspacePremium;
   const isReadOnly = shareAccess.canRead || isOrgReadOnly;
   const canWriteReports = workspaceType === "org" ? canPublishInOrg : !isReadOnly;
+  const canUseTempo =
+    !isReadOnly && (workspaceType !== "org" || isWorkspaceAdmin || isAssigned);
+  const tempoDisabledReason = shareAccess.canRead
+    ? "Tempo indisponible en partage lecture seule."
+    : workspaceType === "org" && !isWorkspaceAdmin && !isAssigned
+      ? "Tempo reserve aux coachs assignes et admins."
+      : "";
   const canManageAssignments = workspaceType === "org" && isWorkspacePremium && !isReadOnly;
   const radarTechMeta = getRadarTechMeta(radarTech);
   const mobileSectionActionShapeClass = mobileSectionsExpanded
@@ -3101,6 +3109,16 @@ export default function CoachStudentDetailPage() {
               )
             }
             subtitle={student.email || "-"}
+            meta={
+              studentId ? (
+                <StudentTabs
+                  studentId={studentId}
+                  activeTab="profile"
+                  tempoDisabled={!canUseTempo}
+                  tempoDisabledReason={tempoDisabledReason}
+                />
+              ) : null
+            }
             actions={
               <>
                 {!student.activated_at && !student.invited_at ? (
