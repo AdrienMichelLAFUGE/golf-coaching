@@ -19,6 +19,7 @@ type BugReportRow = {
   reporter_role: string | null;
   title: string;
   description: string;
+  request_type: "bug" | "question" | "billing" | "feature_request";
   severity: "low" | "medium" | "high" | "critical";
   status: "new" | "in_progress" | "fixed" | "closed";
   page_path: string;
@@ -85,6 +86,13 @@ const normalizeStatus = (value: string | null) => {
   return "all";
 };
 
+const normalizeRequestType = (value: string | null) => {
+  if (value === "bug" || value === "question" || value === "billing" || value === "feature_request") {
+    return value;
+  }
+  return "all";
+};
+
 const bugReportUpdateSchema = z.object({
   id: z.string().min(1),
   status: z.enum(["new", "in_progress", "fixed", "closed"]),
@@ -100,6 +108,7 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim().toLowerCase();
+  const requestType = normalizeRequestType(url.searchParams.get("requestType"));
   const severity = normalizeSeverity(url.searchParams.get("severity"));
   const status = normalizeStatus(url.searchParams.get("status"));
   const limit = normalizeLimit(url.searchParams.get("limit"));
@@ -109,11 +118,14 @@ export async function GET(request: Request) {
   let query = auth.admin
     .from("bug_reports")
     .select(
-      "id, created_at, reporter_user_id, workspace_org_id, reporter_role, title, description, severity, status, page_path, user_agent, context, resolved_at"
+      "id, created_at, reporter_user_id, workspace_org_id, reporter_role, title, description, request_type, severity, status, page_path, user_agent, context, resolved_at"
     )
     .gte("created_at", sinceIso)
     .order("created_at", { ascending: false });
 
+  if (requestType !== "all") {
+    query = query.eq("request_type", requestType);
+  }
   if (severity !== "all") {
     query = query.eq("severity", severity);
   }
@@ -185,6 +197,7 @@ export async function GET(request: Request) {
       reporterRole: report.reporter_role,
       title: report.title,
       description: report.description,
+      requestType: report.request_type ?? "bug",
       severity: report.severity,
       status: report.status,
       pagePath: report.page_path,
@@ -202,6 +215,7 @@ export async function GET(request: Request) {
         report.workspaceOrgName ?? "",
         report.workspaceOrgId ?? "",
         report.pagePath,
+        report.requestType,
         report.severity,
         report.status,
         JSON.stringify(report.context ?? {}),
@@ -215,6 +229,7 @@ export async function GET(request: Request) {
     reports: filteredReports,
     filters: {
       q: q || null,
+      requestType,
       severity,
       status,
       sinceDays,

@@ -81,6 +81,18 @@ describe("POST /api/bug-reports", () => {
       },
     } as SupabaseClient;
 
+    const bugReportsInsert = jest.fn(() => ({
+      select: () => ({
+        single: async () => ({
+          data: {
+            id: "report-1",
+            created_at: "2026-02-19T12:00:00.000Z",
+          },
+          error: null,
+        }),
+      }),
+    }));
+
     const admin = {
       from: jest.fn((table: string) => {
         if (table === "profiles") {
@@ -102,17 +114,7 @@ describe("POST /api/bug-reports", () => {
         }
         if (table === "bug_reports") {
           return {
-            insert: () => ({
-              select: () => ({
-                single: async () => ({
-                  data: {
-                    id: "report-1",
-                    created_at: "2026-02-19T12:00:00.000Z",
-                  },
-                  error: null,
-                }),
-              }),
-            }),
+            insert: bugReportsInsert,
           };
         }
         return {};
@@ -127,6 +129,7 @@ describe("POST /api/bug-reports", () => {
         {
           title: "Extraction incoherente",
           description: "Les deux premieres colonnes sont dupliquees et decalent le tableau.",
+          requestType: "feature_request",
           severity: "high",
           pagePath: "app/coach/eleves/123",
           context: {
@@ -144,5 +147,10 @@ describe("POST /api/bug-reports", () => {
     expect(body.reportId).toBe("report-1");
     expect(admin.from).toHaveBeenCalledWith("profiles");
     expect(admin.from).toHaveBeenCalledWith("bug_reports");
+    expect(bugReportsInsert).toHaveBeenCalledWith([
+      expect.objectContaining({
+        request_type: "feature_request",
+      }),
+    ]);
   });
 });

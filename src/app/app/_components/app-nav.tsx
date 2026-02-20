@@ -209,7 +209,7 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
         { label: "Tarifs", href: "/app/admin/pricing" },
         { label: "Coachs", href: "/app/admin/coaches" },
         { label: "Analytics", href: "/app/admin/analytics" },
-        { label: "Bugs", href: "/app/admin/bugs" },
+        { label: "Support", href: "/app/admin/bugs" },
         { label: "Logs", href: "/app/admin/logs" },
       ],
     });

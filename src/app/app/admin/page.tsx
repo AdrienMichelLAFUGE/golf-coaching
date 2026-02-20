@@ -141,10 +141,10 @@ export default function AdminDashboardPage() {
               cta: "Voir les analytics",
             },
             {
-              title: "Bugs utilisateurs",
-              description: "Centralise les incidents remontes depuis le produit.",
+              title: "Support utilisateurs",
+              description: "Centralise bugs, questions, facturation et demandes features.",
               href: "/app/admin/bugs",
-              cta: "Voir les bugs",
+              cta: "Voir le support",
             },
             {
               title: "Logs applicatifs",

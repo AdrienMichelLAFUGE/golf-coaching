@@ -8,6 +8,7 @@ import useToastStack from "./use-toast-stack";
 import { useProfile } from "./profile-context";
 
 type BugSeverity = "low" | "medium" | "high" | "critical";
+type SupportRequestType = "bug" | "question" | "billing" | "feature_request";
 
 const severityLabel: Record<BugSeverity, string> = {
   low: "Faible",
@@ -16,12 +17,20 @@ const severityLabel: Record<BugSeverity, string> = {
   critical: "Critique",
 };
 
+const requestTypeLabel: Record<SupportRequestType, string> = {
+  bug: "Bug",
+  question: "Question",
+  billing: "Facturation",
+  feature_request: "Demande de fonctionnalite",
+};
+
 export default function BugReportWidget() {
   const pathname = usePathname();
   const { profile, loading } = useProfile();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [requestType, setRequestType] = useState<SupportRequestType>("bug");
   const [severity, setSeverity] = useState<BugSeverity>("medium");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -47,6 +56,7 @@ export default function BugReportWidget() {
   const resetForm = () => {
     setTitle("");
     setDescription("");
+    setRequestType("bug");
     setSeverity("medium");
     setError("");
   };
@@ -85,6 +95,7 @@ export default function BugReportWidget() {
       body: JSON.stringify({
         title: title.trim(),
         description: description.trim(),
+        requestType,
         severity,
         pagePath: pathname ?? "/app",
         userAgent:
@@ -95,7 +106,7 @@ export default function BugReportWidget() {
 
     const payload = (await response.json().catch(() => ({}))) as { error?: string };
     if (!response.ok) {
-      setError(payload.error ?? "Signalement impossible pour le moment.");
+      setError(payload.error ?? "Demande d'aide impossible pour le moment.");
       setSubmitting(false);
       return;
     }
@@ -103,7 +114,7 @@ export default function BugReportWidget() {
     setSubmitting(false);
     setOpen(false);
     resetForm();
-    pushToast("Bug signale. Merci, on investigue rapidement.", "success");
+    pushToast("Demande envoyee. Merci, on revient vers toi rapidement.", "success");
   };
 
   return (
@@ -129,8 +140,8 @@ export default function BugReportWidget() {
             <path d="M12 17h.01" />
             <path d="M10.3 3.9L1.8 18.2A1.9 1.9 0 0 0 3.4 21h17.2a1.9 1.9 0 0 0 1.6-2.8L13.7 3.9a1.9 1.9 0 0 0-3.4 0z" />
           </svg>
-          <span className="hidden sm:inline">Signaler un bug</span>
-          <span className="sm:hidden">Bug</span>
+          <span className="hidden sm:inline">Besoin d&apos;aide ?</span>
+          <span className="sm:hidden">Aide</span>
         </button>
       </div>
 
@@ -154,10 +165,10 @@ export default function BugReportWidget() {
                   Feedback
                 </p>
                 <h3 id="bug-report-title" className="mt-1 text-lg font-semibold text-[var(--text)]">
-                  Signaler un bug
+                  Besoin d&apos;aide ?
                 </h3>
                 <p className="mt-1 text-sm text-[var(--muted)]">
-                  Decris ce que tu as constate. Le contexte de la page est ajoute automatiquement.
+                  Explique ton besoin. Le contexte de la page est ajoute automatiquement.
                 </p>
               </div>
               <button
@@ -186,13 +197,13 @@ export default function BugReportWidget() {
             <form onSubmit={handleSubmit} className="mt-4 space-y-3">
               <label className="block space-y-1">
                 <span className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                  Resume du bug
+                  Objet
                 </span>
                 <input
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
                   maxLength={160}
-                  placeholder="Ex: le tableau datas est decale apres import"
+                  placeholder="Ex: extraction data incoherente"
                   className="w-full rounded-xl bg-white/6 px-3 py-2.5 text-sm text-[var(--text)] outline-none transition focus:bg-white/10"
                 />
               </label>
@@ -213,7 +224,24 @@ export default function BugReportWidget() {
 
               <label className="block space-y-1">
                 <span className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                  Severite
+                  Type de demande
+                </span>
+                <select
+                  value={requestType}
+                  onChange={(event) => setRequestType(event.target.value as SupportRequestType)}
+                  className="w-full rounded-xl bg-white/6 px-3 py-2.5 text-sm text-[var(--text)] outline-none transition focus:bg-white/10"
+                >
+                  {(Object.keys(requestTypeLabel) as SupportRequestType[]).map((value) => (
+                    <option key={value} value={value}>
+                      {requestTypeLabel[value]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block space-y-1">
+                <span className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                  Priorite
                 </span>
                 <select
                   value={severity}

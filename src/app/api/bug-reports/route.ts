@@ -12,6 +12,7 @@ export const runtime = "nodejs";
 const bugReportSchema = z.object({
   title: z.string().trim().min(3).max(160),
   description: z.string().trim().min(10).max(6000),
+  requestType: z.enum(["bug", "question", "billing", "feature_request"]).default("bug"),
   severity: z.enum(["low", "medium", "high", "critical"]).default("medium"),
   pagePath: z.string().trim().min(1).max(400),
   userAgent: z.string().trim().max(1024).optional(),
@@ -60,6 +61,7 @@ export async function POST(request: Request) {
   }
 
   const workspaceOrgId = profile.active_workspace_id ?? profile.org_id ?? null;
+  const requestType = parsed.data.requestType ?? "bug";
   const severity = parsed.data.severity ?? "medium";
   const pagePath = normalizePagePath(parsed.data.pagePath);
   const userAgent = (parsed.data.userAgent || request.headers.get("user-agent") || "").trim();
@@ -73,6 +75,7 @@ export async function POST(request: Request) {
         reporter_role: profile.role ?? null,
         title: parsed.data.title.trim(),
         description: parsed.data.description.trim(),
+        request_type: requestType,
         severity,
         status: "new",
         page_path: pagePath,
@@ -99,6 +102,7 @@ export async function POST(request: Request) {
     entityId: inserted.id,
     message: "Signalement bug cree.",
     metadata: {
+      requestType,
       severity,
       pagePath,
     },

@@ -90,6 +90,7 @@ describe("/api/admin/bug-reports", () => {
           reporter_role: "coach",
           title: "Bug import",
           description: "Le tableau est vide apres extraction.",
+          request_type: "bug",
           severity: "high",
           status: "new",
           page_path: "/app/coach/rapports/nouveau",
@@ -143,17 +144,22 @@ describe("/api/admin/bug-reports", () => {
     serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
     serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
 
-    const response = await GET(buildRequest("status=new&severity=high"));
+    const response = await GET(buildRequest("status=new&severity=high&requestType=bug"));
     if (!response) {
       throw new Error("Missing response");
     }
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
-      reports: Array<{ reporterName: string | null; workspaceOrgName: string | null }>;
+      reports: Array<{
+        reporterName: string | null;
+        workspaceOrgName: string | null;
+        requestType: string;
+      }>;
     };
     expect(body.reports).toHaveLength(1);
     expect(body.reports[0].reporterName).toBe("Coach Test");
     expect(body.reports[0].workspaceOrgName).toBe("Org Test");
+    expect(body.reports[0].requestType).toBe("bug");
   });
 
   it("PATCH updates bug status", async () => {

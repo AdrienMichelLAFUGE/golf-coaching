@@ -15,6 +15,7 @@ type BugReport = {
   reporterRole: string | null;
   title: string;
   description: string;
+  requestType: "bug" | "question" | "billing" | "feature_request";
   severity: "low" | "medium" | "high" | "critical";
   status: "new" | "in_progress" | "fixed" | "closed";
   pagePath: string;
@@ -28,6 +29,7 @@ type BugReportsPayload = {
   error?: string;
 };
 
+type SupportTypeFilter = "all" | "bug" | "question" | "billing" | "feature_request";
 type SeverityFilter = "all" | "low" | "medium" | "high" | "critical";
 type StatusFilter = "all" | "new" | "in_progress" | "fixed" | "closed";
 
@@ -43,6 +45,20 @@ const statusBadgeClass: Record<BugReport["status"], string> = {
   in_progress: "bg-sky-100 text-sky-950",
   fixed: "bg-emerald-100 text-emerald-950",
   closed: "bg-zinc-200 text-zinc-900",
+};
+
+const requestTypeBadgeClass: Record<BugReport["requestType"], string> = {
+  bug: "bg-rose-100 text-rose-950",
+  question: "bg-sky-100 text-sky-950",
+  billing: "bg-amber-100 text-amber-950",
+  feature_request: "bg-violet-100 text-violet-950",
+};
+
+const requestTypeLabel: Record<BugReport["requestType"], string> = {
+  bug: "Bug",
+  question: "Question",
+  billing: "Facturation",
+  feature_request: "Feature",
 };
 
 const formatDate = (value: string) => {
@@ -61,6 +77,7 @@ export default function AdminBugsPage() {
   const [actionBusyId, setActionBusyId] = useState<string | null>(null);
   const [actionBusyType, setActionBusyType] = useState<"status" | "delete" | null>(null);
   const [query, setQuery] = useState("");
+  const [requestType, setRequestType] = useState<SupportTypeFilter>("all");
   const [severity, setSeverity] = useState<SeverityFilter>("all");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [sinceDays, setSinceDays] = useState(30);
@@ -68,6 +85,7 @@ export default function AdminBugsPage() {
 
   const fetchReports = async (filters: {
     query: string;
+    requestType: SupportTypeFilter;
     severity: SeverityFilter;
     status: StatusFilter;
     sinceDays: number;
@@ -81,6 +99,7 @@ export default function AdminBugsPage() {
 
     const params = new URLSearchParams();
     if (filters.query.trim()) params.set("q", filters.query.trim());
+    if (filters.requestType !== "all") params.set("requestType", filters.requestType);
     if (filters.severity !== "all") params.set("severity", filters.severity);
     if (filters.status !== "all") params.set("status", filters.status);
     params.set("sinceDays", String(Math.max(1, Math.min(180, filters.sinceDays || 30))));
@@ -107,6 +126,7 @@ export default function AdminBugsPage() {
       setError("");
       const payload = await fetchReports({
         query: "",
+        requestType: "all",
         severity: "all",
         status: "all",
         sinceDays: 30,
@@ -144,6 +164,7 @@ export default function AdminBugsPage() {
     setError("");
     const payload = await fetchReports({
       query,
+      requestType,
       severity,
       status,
       sinceDays,
@@ -207,7 +228,7 @@ export default function AdminBugsPage() {
     const confirmed =
       typeof window === "undefined"
         ? true
-        : window.confirm("Supprimer ce signalement bug ?");
+        : window.confirm("Supprimer cette demande support ?");
     if (!confirmed) return;
 
     setActionBusyId(reportId);
@@ -250,13 +271,13 @@ export default function AdminBugsPage() {
         <section className="panel rounded-2xl p-6">
           <div className="flex items-center gap-2">
             <PageBack fallbackHref="/app/admin" />
-            <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">Bugs</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">Support</p>
           </div>
           <h2 className="mt-3 text-2xl font-semibold text-[var(--text)]">
-            Signalements utilisateurs
+            Demandes support utilisateurs
           </h2>
           <p className="mt-2 text-sm text-[var(--muted)]">
-            Suivi des incidents remontes depuis le bouton de feedback.
+            Suivi des bugs, questions, demandes facturation et features.
           </p>
         </section>
 
@@ -280,15 +301,30 @@ export default function AdminBugsPage() {
         </section>
 
         <section className="panel rounded-2xl p-6">
-          <form onSubmit={handleSubmit} className="grid gap-3 xl:grid-cols-6">
+          <form onSubmit={handleSubmit} className="grid gap-3 xl:grid-cols-7">
             <label className="space-y-1 xl:col-span-2">
               <span className="text-xs uppercase tracking-wide text-[var(--muted)]">Recherche</span>
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="titre, description, page, user..."
+                placeholder="objet, description, page, user..."
                 className="w-full rounded-xl bg-white/8 px-3 py-2 text-sm text-[var(--text)] outline-none transition focus:bg-white/12"
               />
+            </label>
+
+            <label className="space-y-1">
+              <span className="text-xs uppercase tracking-wide text-[var(--muted)]">Type</span>
+              <select
+                value={requestType}
+                onChange={(event) => setRequestType(event.target.value as SupportTypeFilter)}
+                className="w-full rounded-xl bg-white/8 px-3 py-2 text-sm text-[var(--text)] outline-none transition focus:bg-white/12"
+              >
+                <option value="all">Tous</option>
+                <option value="bug">Bug</option>
+                <option value="question">Question</option>
+                <option value="billing">Facturation</option>
+                <option value="feature_request">Feature</option>
+              </select>
             </label>
 
             <label className="space-y-1">
@@ -370,6 +406,7 @@ export default function AdminBugsPage() {
                 <thead>
                   <tr className="border-b border-white/12">
                     <th className="py-2 pr-3">Date</th>
+                    <th className="py-2 pr-3">Type</th>
                     <th className="py-2 pr-3">Severite</th>
                     <th className="py-2 pr-3">Statut</th>
                     <th className="py-2 pr-3">Contributeur</th>
@@ -381,8 +418,8 @@ export default function AdminBugsPage() {
                 <tbody>
                   {reports.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-3 text-sm text-[var(--muted)]">
-                        Aucun signalement sur la periode.
+                      <td colSpan={8} className="py-3 text-sm text-[var(--muted)]">
+                        Aucune demande support sur la periode.
                       </td>
                     </tr>
                   ) : (
@@ -390,6 +427,13 @@ export default function AdminBugsPage() {
                       <tr key={report.id} className="border-b border-white/6 align-top">
                         <td className="py-3 pr-3 whitespace-nowrap">
                           {formatDate(report.createdAt)}
+                        </td>
+                        <td className="py-3 pr-3">
+                          <span
+                            className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${requestTypeBadgeClass[report.requestType]}`}
+                          >
+                            {requestTypeLabel[report.requestType]}
+                          </span>
                         </td>
                         <td className="py-3 pr-3">
                           <span
