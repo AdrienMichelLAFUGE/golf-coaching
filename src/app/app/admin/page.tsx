@@ -120,7 +120,7 @@ export default function AdminDashboardPage() {
           </section>
         ) : null}
 
-        <section className="grid gap-6 lg:grid-cols-4">
+        <section className="grid gap-6 lg:grid-cols-5">
           {[
             {
               title: "Tarifs & features",
@@ -139,6 +139,12 @@ export default function AdminDashboardPage() {
               description: "Suivi des appels IA, tokens et activite par coach.",
               href: "/app/admin/analytics",
               cta: "Voir les analytics",
+            },
+            {
+              title: "Bugs utilisateurs",
+              description: "Centralise les incidents remontes depuis le produit.",
+              href: "/app/admin/bugs",
+              cta: "Voir les bugs",
             },
             {
               title: "Logs applicatifs",

@@ -5,6 +5,7 @@ import AppHeader from "./app-header";
 import AppNav from "./app-nav";
 import ShareInvitesGate from "./share-invites-gate";
 import LastAppPathTracker from "./last-app-path-tracker";
+import BugReportWidget from "./bug-report-widget";
 
 type AppShellProps = {
   children: React.ReactNode;
@@ -54,6 +55,7 @@ export default function AppShell({ children }: AppShellProps) {
           ) : null}
         </div>
       </div>
+      <BugReportWidget />
     </div>
   );
 }

@@ -209,6 +209,7 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
         { label: "Tarifs", href: "/app/admin/pricing" },
         { label: "Coachs", href: "/app/admin/coaches" },
         { label: "Analytics", href: "/app/admin/analytics" },
+        { label: "Bugs", href: "/app/admin/bugs" },
         { label: "Logs", href: "/app/admin/logs" },
       ],
     });
@@ -488,6 +489,15 @@ export default function AppNav({ onNavigate, onCollapse, forceExpanded }: AppNav
           <path d="M6 16V9" />
           <path d="M12 16V5" />
           <path d="M18 16v-7" />
+        </svg>
+      );
+    }
+    if (href === "/app/admin/bugs") {
+      return (
+        <svg viewBox="0 0 24 24" {...sharedProps}>
+          <path d="M12 9v4" />
+          <path d="M12 17h.01" />
+          <path d="M10.3 3.9L1.8 18.2A1.9 1.9 0 0 0 3.4 21h17.2a1.9 1.9 0 0 0 1.6-2.8L13.7 3.9a1.9 1.9 0 0 0-3.4 0z" />
         </svg>
       );
     }
