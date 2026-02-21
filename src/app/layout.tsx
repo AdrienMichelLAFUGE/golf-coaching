@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 
 import { getSiteBaseUrl } from "@/lib/env/public";
@@ -51,6 +52,7 @@ export default function RootLayout({
       <body className="antialiased">
         {children}
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
