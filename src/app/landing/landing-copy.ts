@@ -129,11 +129,13 @@ export const landingCopy = {
     title: "Les retours terrain vont tous dans le même sens",
     testimonials: [
       {
-        quote: "Je passe moins de temps à reconstituer le contexte, et plus de temps à coacher.",
-        name: "Thomas",
-        role: "Coach indépendant",
-        organization: "Académie A",
-        result: "Préparation de séance plus fluide",
+        quote:
+          "Utilisateur depuis le début, la vitesse de progression du site, la capacité d'agrégation de datas et la facilité d'utilisation me bluffent chaque jour. Que ce soit pour des suivis individuels de groupe ou d'académie, je gagne un temps fou. N'hésitez pas quelque soit votre type de coaching cela va vous aider à gagner du temps et à fidéliser vos élèves.",
+        name: "Roman Lissowski",
+        role: "Coach des équipes",
+        organization: "Golf de Marcilly",
+        result:
+          "Depuis + de 10 ans (en 1ère division Hommes et U16 garçon, et 2ieme division Femmes et U16 filles)",
       },
       {
         quote:
