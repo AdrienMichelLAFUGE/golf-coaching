@@ -9,13 +9,12 @@ export const landingCopy = {
       "La progression est là, mais elle n'est pas toujours lisible pour l'élève.",
       "Quand tout repose sur la mémoire, la régularité du suivi devient fragile.",
     ],
-    proof:
-      "Plus votre stack est fragmentée, plus la qualité du suivi devient irrégulière.",
+    proof: "Plus vos outils sont dispersés, plus le suivi devient irrégulier.",
   },
   solution: {
     title: "Vous ouvrez une fiche élève, et vous savez quoi faire en 30 secondes.",
     subtitle:
-      "SwingFlow aligne historique, décisions et prochaines actions sans vous enfermer dans une méthode rigide.",
+      "SwingFlow aligne historique, décisions et prochaines actions pour que chaque séance parte du bon point.",
     bullets: [
       "Une fiche élève vivante qui garde l'historique utile, pas du bruit.",
       "Un rapport de séance propre, rapide à produire et simple à partager.",
@@ -26,27 +25,23 @@ export const landingCopy = {
     secondaryCta: "Se connecter",
   },
   features: {
-    title: "Ce que vous faites déjà, structuré pour aller plus vite",
+    title: "Votre méthode, structurée pour aller plus vite.",
     items: [
       {
         title: "Fiche élève 360°",
-        description:
-          "Profil, objectifs, historique et notes dans un seul point d'entrée.",
+        description: "Profil, objectifs, historique et notes dans un seul point d'entrée.",
       },
       {
         title: "Rapport de séance intelligent",
-        description:
-          "Vous rédigez plus vite, gardez votre ton et livrez un rendu professionnel.",
+        description: "Vous rédigez plus vite, gardez votre ton et livrez un rendu professionnel.",
       },
       {
         title: "Aide à la décision en séance",
-        description:
-          "Priorités du jour, points clés, actions suivantes : vous tranchez, l'outil vous cadre.",
+        description: "Priorités du jour, points clés, actions suivantes : vous tranchez, l'outil vous cadre.",
       },
       {
         title: "Suivi élève en continu",
-        description:
-          "Relances et statut élève restent visibles, sans changer votre façon de coacher.",
+        description: "Relances et statut élève restent visibles, sans changer votre façon de coacher.",
       },
       {
         title: "Calendrier élève et structure",
@@ -55,8 +50,7 @@ export const landingCopy = {
       },
       {
         title: "Historique exploitable",
-        description:
-          "Chaque décision de coaching reste traçable dans le temps.",
+        description: "Chaque décision de coaching reste traçable dans le temps.",
       },
       {
         title: "Mode structure multi-coachs",
@@ -66,22 +60,22 @@ export const landingCopy = {
     ],
   },
   calendarFeature: {
-    title: "Un calendrier de suivi, pensé pour les indépendants et les structures.",
+    title: "Un calendrier qui structure toute votre saison.",
     subtitle:
-      "Vous visualisez les échéances de la saison de vos élèves, vous suivez les résultats tournoi et vous gardez une lecture claire du planning, même en multi-coachs.",
+      "Visualisez les échéances, suivez les résultats et gardez une lecture claire de votre saison, même en multi-coachs.",
     bullets: [
-      "Pour l'élève : ses dates importantes, ses tours et ses résultats, sans friction.",
-      "Pour le coach : un calendrier global de suivi, avec les deadlines de chaque élève et les résultats à jour.",
-      "Pour les structures : chaque élève a son calendrier, mais vous avez aussi une vision d'ensemble pour piloter l'activité de coaching.",
-      "Saisie résultat simple : score brut, classement tour et stats optionnelles au bon moment.",
+      "Élève -> visibilité claire",
+      "Coach -> pilotage global",
+      "Structures -> coordination d'équipe",
+      "Permet un suivi de saison complet, pas juste de séance en séance.",
     ],
     structureProof:
-      "Pour une structure, c'est un vrai gain de fiabilité : moins d'oublis, plus de visibilité équipe.",
-    primaryCta: "Voir le calendrier en action",
+      "Fini les oublis de suivi et la confusion sur les échéances. Place à une saison claire et mieux préparée.",
+    primaryCta: "Voir en action",
     secondaryCta: "Créer mon compte coach",
   },
   groupManagement: {
-    title: "Gérez vos groupes en mode opérationnel",
+    title: "Une gestion de groupes pensée pour le terrain.",
     subtitle:
       "Créez vos groupes et sous-groupes selon votre organisation, puis pilotez les actions importantes sans perdre de temps.",
     bullets: [
@@ -91,7 +85,7 @@ export const landingCopy = {
       "Centralisez la gestion : chaque coach retrouve l'information utile au bon moment.",
     ],
     proof:
-      "Moins de changement de contexte, plus de temps sur le terrain et un suivi plus stable pour votre structure.",
+      "Moins de changements de contexte, plus de temps sur le terrain et un suivi plus stable pour votre structure.",
   },
   benefits: {
     title: "Ce qui change concrètement dans votre semaine",
@@ -105,7 +99,7 @@ export const landingCopy = {
         after: "Rapport livré plus rapidement",
       },
       {
-        before: "Suivi qui varie selon les semaines",
+        before: "Suivi irrégulier d'une séance à l'autre",
         after: "Continuité stable séance après séance",
       },
       {
@@ -115,7 +109,7 @@ export const landingCopy = {
     ],
   },
   useCases: {
-    title: "Indépendant ou structure : même exigence de continuité",
+    title: "Un standard commun pour coachs et structures.",
     coachIndependent: {
       title: "Coach indépendant",
       bullets: [
@@ -135,8 +129,7 @@ export const landingCopy = {
     title: "Les retours terrain vont tous dans le même sens",
     testimonials: [
       {
-        quote:
-          "Je passe moins de temps à reconstituer le contexte, et plus de temps à coacher.",
+        quote: "Je passe moins de temps à reconstituer le contexte, et plus de temps à coacher.",
         name: "Thomas",
         role: "Coach indépendant",
         organization: "Académie A",
@@ -162,9 +155,8 @@ export const landingCopy = {
     logos: ["Académie A", "Performance Lab B", "Golf Studio C", "Club D"],
   },
   pricing: {
-    title: "Une offre adaptée à votre niveau d'organisation.",
-    subtitle:
-      "Vous avancez à votre rythme, sans changer votre façon de coacher.",
+    title: "De l'indépendant à la structure multi-coachs",
+    subtitle: "Vous avancez à votre rythme, sans changer votre façon de coacher.",
     summaries: [
       "Solo : idéal pour poser un suivi propre en coaching individuel.",
       "Pro : pour gagner du temps, produire mieux et renforcer la fidélisation.",

@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import type { DemoMediaAsset } from "./fixtures";
+import styles from "./demo.module.css";
 
 type MediaGalleryMockProps = {
   assets: DemoMediaAsset[];
@@ -15,6 +16,7 @@ export default function MediaGalleryMock({
   ready,
   onMarkReady,
 }: MediaGalleryMockProps) {
+  const actionButtonClass = `${styles.ctaPulse} inline-flex items-center justify-center rounded-full border border-emerald-200/70 bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-slate-900 shadow-[0_10px_28px_rgba(16,185,129,0.34)] transition-all duration-300 hover:brightness-105 hover:shadow-[0_14px_36px_rgba(56,189,248,0.32)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/75`;
   const [selectedIndex, setSelectedIndex] = useState(0);
   const selectedAsset = assets[selectedIndex] ?? assets[0] ?? null;
 
@@ -69,7 +71,7 @@ export default function MediaGalleryMock({
         <button
           type="button"
           onClick={onMarkReady}
-          className="rounded-full border border-emerald-300/50 bg-emerald-400/15 px-4 py-2 text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-emerald-100 transition hover:bg-emerald-400/25"
+          className={actionButtonClass}
         >
           {ready ? "Image ajoutée au rapport" : "Ajouter l’image au rapport"}
         </button>

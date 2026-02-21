@@ -15,6 +15,20 @@ export default function AuthCallbackPage() {
     const completeSignIn = async () => {
       const url = new URL(window.location.href);
       const code = url.searchParams.get("code");
+      const flow = url.searchParams.get("flow");
+      const next = url.searchParams.get("next");
+      const clickedEmail = (url.searchParams.get("email") ?? "").trim().toLowerCase();
+      const oldEmail = (url.searchParams.get("oldEmail") ?? "").trim().toLowerCase();
+      const newEmail = (url.searchParams.get("newEmail") ?? "").trim().toLowerCase();
+      const providerMessage = (url.searchParams.get("message") ?? "").trim();
+
+      const withQueryParams = (path: string, params: Record<string, string>) => {
+        const target = new URL(path, window.location.origin);
+        for (const [key, value] of Object.entries(params)) {
+          target.searchParams.set(key, value);
+        }
+        return `${target.pathname}${target.search}`;
+      };
 
       if (code) {
         const { error } = await supabase.auth.exchangeCodeForSession(code);
@@ -38,6 +52,48 @@ export default function AuthCallbackPage() {
         if (!response.ok) {
           await supabase.auth.signOut();
           setMessage(payload.error ?? "Acces refuse.");
+          return;
+        }
+
+        if (flow === "email-change") {
+          const defaultTarget = "/auth/email-change";
+          const safeNext = next && next.startsWith("/") ? next : defaultTarget;
+          const currentEmail = (data.session.user.email ?? "").trim().toLowerCase();
+          const pendingNewEmail = (
+            (data.session.user as { new_email?: string | null }).new_email ?? ""
+          )
+            .trim()
+            .toLowerCase();
+
+          const isEmailChangeScreen = safeNext.startsWith("/auth/email-change");
+          if (!isEmailChangeScreen) {
+            router.replace(withQueryParams(safeNext, { emailChange: "confirmed" }));
+            return;
+          }
+
+          let source: "old" | "new" | "unknown" = "unknown";
+          if (clickedEmail && pendingNewEmail && clickedEmail === pendingNewEmail) {
+            source = "new";
+          } else if (clickedEmail && currentEmail && clickedEmail === currentEmail) {
+            source = "old";
+          } else if (clickedEmail && !pendingNewEmail) {
+            source = clickedEmail === currentEmail ? "new" : "old";
+          }
+
+          const nextParams: Record<string, string> = { source };
+          if (oldEmail) {
+            nextParams.oldEmail = oldEmail;
+          }
+          if (newEmail) {
+            nextParams.newEmail = newEmail;
+          }
+          if (providerMessage) {
+            nextParams.legacyMessage = providerMessage;
+          }
+
+          router.replace(
+            withQueryParams("/auth/email-change", nextParams)
+          );
           return;
         }
 

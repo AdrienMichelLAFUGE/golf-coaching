@@ -4,6 +4,7 @@ import {
   createSupabaseAdminClient,
   createSupabaseServerClientFromRequest,
 } from "@/lib/supabase/server";
+import { env } from "@/env";
 import { recordActivity } from "@/lib/activity-log";
 import { formatZodError, parseRequestJson } from "@/lib/validation";
 
@@ -13,6 +14,124 @@ const updateEmailSchema = z.object({
 
 type StudentAccountRow = {
   student_id: string;
+};
+
+const AUTH_SESSION_MISSING_ERROR = "Auth session missing!";
+
+type SupabaseAuthErrorPayload = {
+  error?: string;
+  message?: string;
+  error_description?: string;
+  msg?: string;
+  code?: string | number;
+};
+
+type AuthEmailUpdateResult = {
+  ok: boolean;
+  error: string | null;
+  requiresEmailConfirmation: boolean;
+};
+
+const resolveEmailChangeRedirectTo = ({
+  oldEmail,
+  newEmail,
+}: {
+  oldEmail: string;
+  newEmail: string;
+}) => {
+  const origin = env.NEXT_PUBLIC_SITE_URL.replace(/\/+$/, "");
+  const params = new URLSearchParams({
+    flow: "email-change",
+    next: "/auth/email-change",
+    oldEmail,
+    newEmail,
+  });
+  return `${origin}/auth/callback?${params.toString()}`;
+};
+
+const updateAuthEmailWithBearer = async ({
+  authHeader,
+  email,
+  emailRedirectTo,
+}: {
+  authHeader: string | null;
+  email: string;
+  emailRedirectTo: string;
+}): Promise<AuthEmailUpdateResult> => {
+  if (!authHeader) {
+    return {
+      ok: false,
+      error: AUTH_SESSION_MISSING_ERROR,
+      requiresEmailConfirmation: false,
+    };
+  }
+
+  try {
+    const response = await fetch(`${env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/user`, {
+      method: "PUT",
+      headers: {
+        apikey: env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+        Authorization: authHeader,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email,
+        email_redirect_to: emailRedirectTo,
+      }),
+    });
+
+    if (response.ok) {
+      return { ok: true, error: null, requiresEmailConfirmation: true };
+    }
+
+    const payload = (await response.json().catch(() => null)) as SupabaseAuthErrorPayload | null;
+    const fallbackMessage =
+      payload?.error_description ??
+      payload?.message ??
+      payload?.msg ??
+      payload?.error ??
+      `Auth update failed (${response.status}).`;
+
+    return {
+      ok: false,
+      error: fallbackMessage,
+      requiresEmailConfirmation: false,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error instanceof Error && error.message
+          ? error.message
+          : "Mise a jour email impossible.",
+      requiresEmailConfirmation: false,
+    };
+  }
+};
+
+const updateAuthEmailWithAdminFallback = async ({
+  admin,
+  userId,
+  email,
+}: {
+  admin: ReturnType<typeof createSupabaseAdminClient>;
+  userId: string;
+  email: string;
+}): Promise<AuthEmailUpdateResult> => {
+  const { error } = await admin.auth.admin.updateUserById(userId, { email });
+  if (error) {
+    return {
+      ok: false,
+      error: error.message ?? "Mise a jour email admin impossible.",
+      requiresEmailConfirmation: false,
+    };
+  }
+
+  return {
+    ok: true,
+    error: null,
+    requiresEmailConfirmation: false,
+  };
 };
 
 export async function PATCH(request: Request) {
@@ -91,12 +210,62 @@ export async function PATCH(request: Request) {
   }
 
   const shouldUpdateAuthEmail = normalizedEmail !== currentEmail;
+  let requiresEmailConfirmation = false;
   if (shouldUpdateAuthEmail) {
-    const { error: authUpdateError } = await supabase.auth.updateUser({
-      email: normalizedEmail,
+    const emailRedirectTo = resolveEmailChangeRedirectTo({
+      oldEmail: currentEmail || normalizedEmail,
+      newEmail: normalizedEmail,
     });
+    const authHeader = request.headers.get("authorization");
+    const { error: authUpdateError } = await supabase.auth.updateUser(
+      {
+        email: normalizedEmail,
+      },
+      {
+        emailRedirectTo,
+      }
+    );
 
-    if (authUpdateError) {
+    let authUpdateErrorMessage: string | null = authUpdateError
+      ? authUpdateError.message ?? "Mise a jour email auth impossible."
+      : null;
+
+    const isSessionMissing =
+      (authUpdateError?.message ?? "")
+        .toLowerCase()
+        .includes(AUTH_SESSION_MISSING_ERROR.toLowerCase());
+
+    if (isSessionMissing) {
+      const fallbackResult = await updateAuthEmailWithBearer({
+        authHeader,
+        email: normalizedEmail,
+        emailRedirectTo,
+      });
+      if (fallbackResult.ok) {
+        authUpdateErrorMessage = null;
+        requiresEmailConfirmation = fallbackResult.requiresEmailConfirmation;
+      } else {
+        authUpdateErrorMessage = fallbackResult.error;
+      }
+    } else if (!authUpdateErrorMessage) {
+      requiresEmailConfirmation = true;
+    }
+
+    if (authUpdateErrorMessage) {
+      const adminFallbackResult = await updateAuthEmailWithAdminFallback({
+        admin,
+        userId,
+        email: normalizedEmail,
+      });
+      if (adminFallbackResult.ok) {
+        authUpdateErrorMessage = null;
+        requiresEmailConfirmation = adminFallbackResult.requiresEmailConfirmation;
+      } else {
+        authUpdateErrorMessage = adminFallbackResult.error;
+      }
+    }
+
+    if (authUpdateErrorMessage) {
       await recordActivity({
         admin,
         level: "error",
@@ -104,10 +273,10 @@ export async function PATCH(request: Request) {
         actorUserId: userId,
         entityType: "profile",
         entityId: userId,
-        message: authUpdateError.message ?? "Mise a jour email auth impossible.",
+        message: authUpdateErrorMessage,
       });
       return NextResponse.json(
-        { error: authUpdateError.message ?? "Mise a jour email impossible." },
+        { error: authUpdateErrorMessage },
         { status: 400 }
       );
     }
@@ -161,6 +330,6 @@ export async function PATCH(request: Request) {
     ok: true,
     email: normalizedEmail,
     syncedStudentCount: studentIds.length,
-    requiresEmailConfirmation: shouldUpdateAuthEmail,
+    requiresEmailConfirmation,
   });
 }

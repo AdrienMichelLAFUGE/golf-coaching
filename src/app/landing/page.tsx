@@ -1,4 +1,4 @@
-import { existsSync } from "fs";
+import { existsSync, statSync } from "fs";
 import { join } from "path";
 import Image from "next/image";
 import Link from "next/link";
@@ -9,19 +9,21 @@ import LoginRoleSelectorButton from "@/components/marketing/LoginRoleSelectorBut
 import { getSiteBaseUrl } from "@/lib/env/public";
 import { pricingPlansSchema, type PricingPlan } from "@/lib/pricing/types";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
-import SectionsReadyIllustration from "./illustrations/SectionsReadyIllustration";
 import LandingReveal from "./landing-reveal";
-import StickyLandingHeader from "./StickyLandingHeader";
 import Testimonial from "./Testimonial";
 import { landingCopy } from "./landing-copy";
 
 function resolveLandingScreenshot(fileName: string, fallbackSrc: string): string {
   const screenshotPath = join(process.cwd(), "public", "landing", "screenshots", fileName);
-  return existsSync(screenshotPath) ? `/landing/screenshots/${fileName}` : fallbackSrc;
+  if (!existsSync(screenshotPath)) {
+    return fallbackSrc;
+  }
+
+  const version = Math.trunc(statSync(screenshotPath).mtimeMs);
+  return `/landing/screenshots/${fileName}?v=${version}`;
 }
 
 export default async function LandingPage() {
-  const showSocialProof = false;
   let pricingPlans: PricingPlan[] = [];
   let pricingPlansError: string | null = null;
 
@@ -53,10 +55,15 @@ export default async function LandingPage() {
   }
 
   const siteBaseUrl = getSiteBaseUrl();
-  const dashboardOverviewImageSrc = resolveLandingScreenshot(
-    "dashboard-eleve-overview.png",
+  const dashboardEleveV2ImageSrc = resolveLandingScreenshot(
+    "dashboard-eleve-v2.png",
     "/landing/graphs/vitesse-club-balle.png"
   );
+  const dashboardEleveV2MobileImageSrc = resolveLandingScreenshot(
+    "dashboard-eleve-v2-mobile.png",
+    dashboardEleveV2ImageSrc
+  );
+  const dashboardOverviewImageSrc = dashboardEleveV2ImageSrc;
   const coachDashboardImageSrc = resolveLandingScreenshot(
     "dashboard-coach.png",
     "/landing/graphs/tpi-exemple.png"
@@ -67,7 +74,7 @@ export default async function LandingPage() {
   );
   const calendarStudentImageSrc = resolveLandingScreenshot(
     "calendar-student.png",
-    dashboardOverviewImageSrc
+    dashboardEleveV2MobileImageSrc
   );
   const groupManagementImageSrc = resolveLandingScreenshot(
     "gestion-groupe.png",
@@ -105,8 +112,10 @@ export default async function LandingPage() {
     },
   };
 
+  const leadTestimonial = landingCopy.socialProof.testimonials[0] ?? null;
+
   return (
-    <main className="relative min-h-screen px-4 pb-28 pt-12 md:px-8 md:pb-36 md:pt-16">
+    <main className="relative min-h-screen overflow-x-hidden px-4 pb-28 pt-12 md:px-8 md:pb-36 md:pt-16">
       <LandingReveal />
       <div className="pointer-events-none absolute -left-40 top-[-160px] h-[360px] w-[360px] rounded-full bg-emerald-400/15 blur-[120px]" />
       <div className="pointer-events-none absolute -right-32 top-[80px] h-[320px] w-[320px] rounded-full bg-sky-400/15 blur-[120px]" />
@@ -121,12 +130,9 @@ export default async function LandingPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareApplicationJsonLd) }}
       />
 
-      <div className="mx-auto max-w-6xl space-y-20 md:space-y-28">
-        <header className="reveal" data-reveal-stagger>
-          <div
-            className="flex flex-wrap items-center justify-between gap-4"
-            data-reveal-item
-          >
+      <div className="mx-auto flex max-w-6xl flex-col gap-20 md:gap-28">
+        <header className="reveal order-1" data-reveal-stagger>
+          <div className="flex items-center justify-between gap-3" data-reveal-item>
             <Link href="/" className="flex min-w-0 items-center gap-2">
               <Image
                 src="/branding/logo.png"
@@ -146,38 +152,139 @@ export default async function LandingPage() {
               />
             </Link>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <LoginRoleSelectorButton
-                location="landing_header"
-                className="rounded-full border border-white/15 bg-white/5 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10 active:scale-[0.98]"
-              />
-              <TrackedCtaLink
-                href="/login/coach?mode=signup"
-                tracking={{
-                  id: "landing_header_signup",
-                  location: "landing_header",
-                  target: "/login/coach?mode=signup",
-                }}
-                className="inline-flex rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 active:scale-[0.98]"
-              >
-                Créer un compte coach
-              </TrackedCtaLink>
-            </div>
+            <TrackedCtaLink
+              href="/login/coach?mode=signup"
+              tracking={{
+                id: "landing_header_signup",
+                location: "landing_header",
+                target: "/login/coach?mode=signup",
+              }}
+              className="inline-flex shrink-0 rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-[0.66rem] font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 active:scale-[0.98] sm:px-5 sm:text-xs"
+            >
+              Créer un compte
+            </TrackedCtaLink>
+          </div>
+
+          <div className="mt-2 flex justify-end" data-reveal-item>
+            <LoginRoleSelectorButton
+              location="landing_header"
+              className="rounded-full border border-transparent bg-transparent px-2 py-1 text-[0.63rem] font-medium uppercase tracking-[0.18em] text-[var(--muted)] transition hover:text-[var(--text)] active:scale-[0.98]"
+            />
           </div>
         </header>
 
-        <Hero />
+        <div className="order-2">
+          <Hero />
+        </div>
 
-        <StickyLandingHeader />
+        <section
+          className="reveal order-5 relative overflow-hidden rounded-[30px] bg-gradient-to-br from-white/70 via-white/50 to-emerald-100/35 p-6 shadow-[0_20px_48px_rgba(15,23,42,0.12)] md:p-8"
+          data-reveal-stagger
+        >
+          <div className="pointer-events-none absolute -left-16 top-8 h-40 w-40 rounded-full bg-emerald-300/20 blur-3xl" />
+          <div className="pointer-events-none absolute -right-10 bottom-2 h-44 w-44 rounded-full bg-sky-300/20 blur-3xl" />
 
-        <section className="reveal relative overflow-visible" data-reveal-stagger>
+          <div className="relative space-y-6" data-reveal-item>
+            <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
+              Vue d&apos;ensemble
+            </p>
+            <h2 className="max-w-3xl text-2xl font-semibold leading-tight text-[var(--text)] md:text-3xl">
+              Un système structuré pour le coaching moderne.
+            </h2>
+          </div>
+
+          <div className="relative mt-8 grid gap-4 md:grid-cols-3">
+            <article
+              className="rounded-2xl bg-white/75 p-4 shadow-[0_10px_24px_rgba(15,23,42,0.1)]"
+              data-reveal-item
+            >
+              <p className="text-[0.62rem] font-semibold uppercase tracking-[0.2em] text-emerald-700/90">
+                01
+              </p>
+              <h3 className="mt-2 text-sm font-semibold text-slate-900">
+                Organisation des élèves
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-slate-700">
+                Fiches, historiques et groupes centralisés dans un seul espace de travail.
+              </p>
+            </article>
+
+            <article
+              className="rounded-2xl bg-white/75 p-4 shadow-[0_10px_24px_rgba(15,23,42,0.1)]"
+              data-reveal-item
+            >
+              <p className="text-[0.62rem] font-semibold uppercase tracking-[0.2em] text-sky-700/90">
+                02
+              </p>
+              <h3 className="mt-2 text-sm font-semibold text-slate-900">
+                Suivi structuré des séances
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-slate-700">
+                Calendrier, compte-rendus et progression reliés pour garder un cap clair.
+              </p>
+            </article>
+
+            <article
+              className="rounded-2xl bg-white/75 p-4 shadow-[0_10px_24px_rgba(15,23,42,0.1)]"
+              data-reveal-item
+            >
+              <p className="text-[0.62rem] font-semibold uppercase tracking-[0.2em] text-teal-700/90">
+                03
+              </p>
+              <h3 className="mt-2 text-sm font-semibold text-slate-900">
+                Analyse intelligente avec Tempo
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-slate-700">
+                Tempo relie les données élève, détecte les tendances et aide à prioriser vos décisions de coaching.
+              </p>
+            </article>
+          </div>
+
+          <figure
+            className="relative mt-8 overflow-visible rounded-[22px] bg-white/80 p-1 shadow-[0_16px_36px_rgba(15,23,42,0.14)]"
+            data-reveal-item
+          >
+            <Image
+              src={dashboardEleveV2ImageSrc}
+              alt="Visualisation globale de l'interface SwingFlow"
+              width={1700}
+              height={950}
+              className="h-auto w-full rounded-[18px]"
+            />
+            <div className="pointer-events-none absolute -bottom-4 -right-3 z-10 w-[38%] max-w-[210px] rounded-[16px] border border-white/40 bg-white/90 p-1 shadow-[0_14px_28px_rgba(15,23,42,0.2)] sm:-bottom-5 sm:-right-4 sm:w-[30%] md:max-w-[230px]">
+              <Image
+                src={dashboardEleveV2MobileImageSrc}
+                alt="Vue mobile de l'interface SwingFlow"
+                width={720}
+                height={1480}
+                className="h-auto w-full rounded-[12px]"
+              />
+            </div>
+          </figure>
+        </section>
+
+        <section
+          className="reveal order-7 rounded-[28px] border border-white/15 bg-white/8 p-6 md:p-8"
+          data-reveal-stagger
+        >
+          <div data-reveal-item>
+            <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
+              Pilotage saison &amp; groupes
+            </p>
+            <h2 className="mt-3 max-w-3xl text-3xl font-semibold leading-tight text-[var(--text)] md:text-4xl">
+              Un pilotage unifié des séances, des groupes et des décisions coach.
+            </h2>
+          </div>
+        </section>
+
+        <section className="reveal order-8 relative overflow-visible" data-reveal-stagger>
           <div className="pointer-events-none absolute -left-16 top-8 h-48 w-48 rounded-full bg-emerald-300/20 blur-3xl" />
           <div className="pointer-events-none absolute -right-20 bottom-4 h-56 w-56 rounded-full bg-sky-300/20 blur-3xl" />
 
           <div className="grid gap-10 lg:grid-cols-[1fr_1.1fr] lg:items-start">
             <div className="space-y-5" data-reveal-item>
               <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
-                Calendrier structure
+                Calendrier structuré
               </p>
               <h2 className="text-3xl font-semibold leading-tight text-[var(--text)] md:text-4xl">
                 {landingCopy.calendarFeature.title}
@@ -203,26 +310,27 @@ export default async function LandingPage() {
 
               <div className="flex flex-wrap items-center gap-3 pt-1">
                 <TrackedCtaLink
-                  href="/demo"
-                  tracking={{
-                    id: "landing_calendar_demo",
-                    location: "calendar_feature",
-                    target: "/demo",
-                  }}
-                  className="inline-flex rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 active:scale-[0.98]"
-                >
-                  {landingCopy.calendarFeature.primaryCta}
-                </TrackedCtaLink>
-                <TrackedCtaLink
                   href="/login/coach?mode=signup"
                   tracking={{
                     id: "landing_calendar_signup",
                     location: "calendar_feature",
                     target: "/login/coach?mode=signup",
                   }}
-                  className="rounded-full border border-white/15 bg-white/5 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10 active:scale-[0.98]"
+                  
+                  className="inline-flex rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 active:scale-[0.98]"
                 >
                   {landingCopy.calendarFeature.secondaryCta}
+                </TrackedCtaLink>
+                <TrackedCtaLink
+                  href="/demo"
+                  tracking={{
+                    id: "landing_calendar_demo",
+                    location: "calendar_feature",
+                    target: "/demo",
+                  }}
+                  className="rounded-full border border-white/15 bg-white/5 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/10 active:scale-[0.98]"
+                >
+                  {landingCopy.calendarFeature.primaryCta}
                 </TrackedCtaLink>
               </div>
             </div>
@@ -252,7 +360,7 @@ export default async function LandingPage() {
         </section>
 
         <section
-          className="reveal relative overflow-visible rounded-[30px] border border-white/15 bg-gradient-to-br from-white/75 via-white/45 to-emerald-100/40 p-8 shadow-[0_20px_56px_rgba(15,23,42,0.12)] md:p-10"
+          className="reveal order-9 relative overflow-visible rounded-[30px] border border-white/15 bg-gradient-to-br from-white/75 via-white/45 to-emerald-100/40 p-8 shadow-[0_20px_56px_rgba(15,23,42,0.12)] md:p-10"
           data-reveal-stagger
         >
           <div className="pointer-events-none absolute -left-16 top-8 h-44 w-44 rounded-full bg-emerald-300/25 blur-3xl" />
@@ -319,7 +427,7 @@ export default async function LandingPage() {
             </div>
           </div>
         </section>
-        <section className="reveal relative overflow-hidden" data-reveal-stagger>
+        <section className="reveal order-3 relative overflow-hidden" data-reveal-stagger>
           <div className="max-w-3xl space-y-6" data-reveal-item>
               <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
                 Problèmes
@@ -350,13 +458,13 @@ export default async function LandingPage() {
 
               <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[0.66rem] uppercase tracking-[0.2em] text-[var(--muted)]">
                 <span className="h-2 w-2 rounded-full bg-amber-400/80 animate-pulse" />
-                Temps perdu en préparation
+                Le problème n&apos;est pas le manque de données. C&apos;est l&apos;absence de structure.
               </div>
           </div>
         </section>
 
         <section
-          className="reveal relative overflow-visible rounded-[34px] border border-white/20 bg-gradient-to-br from-emerald-100/60 via-white/65 to-sky-100/55 px-8 py-10 shadow-[0_24px_60px_rgba(15,23,42,0.1)] md:px-10"
+          className="reveal order-4 relative overflow-visible rounded-[34px] border border-white/20 bg-gradient-to-br from-emerald-100/60 via-white/65 to-sky-100/55 px-8 py-10 shadow-[0_24px_60px_rgba(15,23,42,0.1)] md:px-10"
           data-reveal-stagger
         >
           <div className="pointer-events-none absolute -left-16 top-6 h-40 w-40 rounded-full bg-emerald-300/25 blur-3xl" />
@@ -418,56 +526,7 @@ export default async function LandingPage() {
             </div>
           </div>
         </section>
-
-        <section
-          id="fonctionnalites"
-          className="reveal scroll-mt-28"
-          data-reveal-stagger
-        >
-          <div className="grid gap-10 lg:grid-cols-[0.72fr_1.28fr]">
-            <div className="lg:sticky lg:top-28 lg:self-start" data-reveal-item>
-              <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
-                Fonctionnalités
-              </p>
-              <h2 className="mt-3 text-3xl font-semibold leading-tight text-[var(--text)] md:text-4xl">
-                {landingCopy.features.title}
-              </h2>
-              <p className="mt-4 text-sm leading-relaxed text-[var(--muted)]">
-                Moins de friction entre vos outils, plus de continuité dans vos décisions.
-              </p>
-
-              <div className="mt-8 flex items-center gap-4 rounded-2xl border border-white/15 bg-white/10 p-4">
-                <div className="h-14 w-14">
-                  <SectionsReadyIllustration />
-                </div>
-                <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Workflow stable, coaching vivant
-                </p>
-              </div>
-            </div>
-
-            <ol className="space-y-8">
-              {landingCopy.features.items.map((item, index) => (
-                <li
-                  key={item.title}
-                  className={`relative pl-12 ${index % 2 === 1 ? "lg:translate-x-8" : ""}`}
-                  data-reveal-item
-                >
-                  <span className="absolute left-0 top-0.5 flex h-8 w-8 items-center justify-center rounded-full border border-white/20 bg-white/75 text-xs font-semibold text-slate-700">
-                    {index + 1}
-                  </span>
-                  <h3 className="text-xl font-semibold text-[var(--text)]">{item.title}</h3>
-                  <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--muted)]">
-                    {item.description}
-                  </p>
-                  <span className="mt-3 block h-px w-24 bg-gradient-to-r from-emerald-400/60 to-transparent" />
-                </li>
-              ))}
-            </ol>
-          </div>
-        </section>
-
-        <section className="reveal relative overflow-hidden" data-reveal-stagger>
+        <section className="reveal order-10 relative overflow-hidden" data-reveal-stagger>
           <div className="max-w-3xl" data-reveal-item>
             <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">Bénéfices</p>
             <h2 className="mt-3 text-3xl font-semibold leading-tight text-[var(--text)] md:text-4xl">
@@ -512,7 +571,7 @@ export default async function LandingPage() {
           </div>
         </section>
 
-        <section className="reveal" data-reveal-stagger>
+        <section className="reveal order-12" data-reveal-stagger>
           <div className="max-w-3xl" data-reveal-item>
             <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
               Cas d&apos;usage
@@ -567,45 +626,26 @@ export default async function LandingPage() {
           </div>
         </section>
 
-        {showSocialProof ? (
-          <section className="reveal" data-reveal-stagger>
+        {leadTestimonial ? (
+          <section className="reveal order-11" data-reveal-stagger>
             <div className="max-w-3xl" data-reveal-item>
               <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
-                Preuve sociale
+                Témoignage
               </p>
               <h2 className="mt-3 text-3xl font-semibold leading-tight text-[var(--text)] md:text-4xl">
-                {landingCopy.socialProof.title}
+                Ce que les coachs ressentent sur une vraie semaine.
               </h2>
             </div>
 
-            <div className="mt-8 grid gap-4 lg:grid-cols-3">
-              {landingCopy.socialProof.testimonials.map((testimonial, index) => (
-                <div key={testimonial.quote} data-reveal-item>
-                  <Testimonial
-                    {...testimonial}
-                    tone={index === 1 ? "sky" : index === 2 ? "amber" : "emerald"}
-                  />
-                </div>
-              ))}
-            </div>
-
-            <div
-              className="mt-7 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-b border-white/10 py-4 text-xs uppercase tracking-[0.24em] text-[var(--muted)]"
-              data-reveal-item
-            >
-              {landingCopy.socialProof.logos.map((logo, index) => (
-                <span key={logo} className="inline-flex items-center gap-4">
-                  {index > 0 ? <span className="opacity-40">/</span> : null}
-                  <span>{logo}</span>
-                </span>
-              ))}
+            <div className="mt-8 max-w-3xl" data-reveal-item>
+              <Testimonial {...leadTestimonial} tone="emerald" />
             </div>
           </section>
         ) : null}
 
         <section
           id="pricing"
-          className="reveal scroll-mt-28"
+          className="reveal order-13 scroll-mt-28"
           data-reveal-stagger
         >
           <div className="mx-auto max-w-3xl text-center" data-reveal-item>
@@ -629,7 +669,7 @@ export default async function LandingPage() {
 
         <section
           id="faq"
-          className="reveal scroll-mt-28"
+          className="reveal order-15 scroll-mt-28"
           data-reveal-stagger
         >
           <div className="max-w-3xl" data-reveal-item>
@@ -658,7 +698,7 @@ export default async function LandingPage() {
         </section>
 
         <section
-          className="reveal relative overflow-hidden rounded-[34px] border border-white/20 bg-gradient-to-r from-slate-900/90 via-slate-800/90 to-emerald-900/80 p-8 text-white shadow-[0_26px_60px_rgba(15,23,42,0.35)] md:p-10"
+          className="reveal order-14 relative overflow-hidden rounded-[34px] border border-white/20 bg-gradient-to-r from-slate-900/90 via-slate-800/90 to-emerald-900/80 p-8 text-white shadow-[0_26px_60px_rgba(15,23,42,0.35)] md:p-10"
           data-reveal-stagger
         >
           <div className="pointer-events-none absolute -left-20 -bottom-24 h-52 w-52 rounded-full bg-emerald-300/20 blur-3xl" />
@@ -694,7 +734,7 @@ export default async function LandingPage() {
           </div>
         </section>
 
-        <footer className="pt-10 text-xs text-[var(--muted)]">
+        <footer className="order-16 pt-10 text-xs text-[var(--muted)]">
           <div className="mx-auto max-w-6xl border-t border-white/10 pt-6">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <p>(c)2026 SwingFlow - Tous droits réservés</p>
@@ -725,4 +765,5 @@ export default async function LandingPage() {
     </main>
   );
 }
+
 

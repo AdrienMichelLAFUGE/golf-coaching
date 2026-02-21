@@ -58,9 +58,11 @@
 
 .localDots {
   position: absolute;
-  left: 50%;
-  bottom: 0.75rem;
-  transform: translateX(-50%);
+  top: 0.75rem;
+  right: 0.75rem;
+  left: auto;
+  bottom: auto;
+  transform: none;
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -69,7 +71,8 @@
   background: rgba(15, 23, 42, 0.52);
   backdrop-filter: blur(8px);
   padding: 0.35rem 0.5rem;
-  z-index: 8;
+  z-index: 12;
+  max-width: calc(100% - 1.5rem);
 }
 
 .dot {
@@ -153,6 +156,59 @@
   color: #bbf7d0;
 }
 
+.ctaShiny,
+.ctaShinySoft {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  animation: ctaGlowPulse 2.6s ease-in-out infinite;
+}
+
+.ctaShiny::after,
+.ctaShinySoft::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: -220% -35%;
+  background: linear-gradient(
+    110deg,
+    rgba(255, 255, 255, 0) 36%,
+    rgba(255, 255, 255, 0.45) 50%,
+    rgba(255, 255, 255, 0) 64%
+  );
+  transform: translateX(-120%) rotate(14deg);
+  animation: ctaSweep 3.1s ease-in-out infinite;
+  z-index: 1;
+}
+
+.ctaShinySoft {
+  animation-duration: 3s;
+}
+
+.ctaShiny:disabled,
+.ctaShinySoft:disabled {
+  animation: none;
+}
+
+.ctaShiny:disabled::after,
+.ctaShinySoft:disabled::after {
+  display: none;
+}
+
+.ctaPulse,
+.ctaPulseSoft {
+  animation: ctaPulse 1.45s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+.ctaPulseSoft {
+  animation-duration: 1.7s;
+}
+
+.ctaPulse:disabled,
+.ctaPulseSoft:disabled {
+  animation: none;
+}
+
 .toastStack {
   position: fixed;
   top: 1rem;
@@ -220,6 +276,125 @@
       var(--typing-delay, 0ms) both;
 }
 
+.tempoFeatureInline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  vertical-align: middle;
+}
+
+.tempoFeatureLabel {
+  line-height: 1;
+  font-weight: 800;
+  background-image: linear-gradient(
+    120deg,
+    rgb(5, 150, 105),
+    rgb(2, 132, 199),
+    rgb(15, 118, 110),
+    rgb(5, 150, 105)
+  );
+  background-size: 260% 260%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  text-shadow:
+    0 0 8px rgba(14, 165, 233, 0.34),
+    0 0 14px rgba(16, 185, 129, 0.24);
+  animation: tempoFeatureTextShift 1.7s linear infinite;
+}
+
+.tempoFeatureChip {
+  border-radius: 9999px;
+  padding: 0.12rem 0.38rem;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  background: rgba(14, 165, 233, 0.14);
+  color: rgb(3, 105, 161);
+  box-shadow: 0 0 0 1px rgba(14, 165, 233, 0.24) inset;
+}
+
+.tempoFeatureButton {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  gap: 0.34rem;
+  border: 1px solid rgba(14, 165, 233, 0.3);
+  background: linear-gradient(
+    130deg,
+    rgba(240, 253, 250, 0.95),
+    rgba(236, 254, 255, 0.94)
+  );
+  color: rgb(3, 105, 161);
+  box-shadow:
+    0 12px 24px rgba(15, 23, 42, 0.2),
+    0 0 0 1px rgba(14, 165, 233, 0.14) inset;
+}
+
+.tempoFeatureButtonCompact {
+  padding-inline: 0.74rem;
+  padding-block: 0.42rem;
+  font-size: 0.64rem;
+  letter-spacing: 0.14em;
+  animation: ctaPulseTight 1.45s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+.tempoFeatureButton::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: -8px;
+  z-index: -1;
+  border-radius: inherit;
+  background: radial-gradient(
+    circle,
+    rgba(14, 165, 233, 0.25) 0%,
+    rgba(16, 185, 129, 0.16) 35%,
+    rgba(14, 165, 233, 0) 72%
+  );
+  filter: blur(12px);
+  opacity: 0.46;
+  transform: scale(1);
+  transition:
+    opacity 220ms ease,
+    transform 320ms ease;
+  animation: tempoFeatureGlowBreathe 2.2s ease-in-out infinite;
+}
+
+.tempoFeatureButton:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 14px 28px rgba(15, 23, 42, 0.24),
+    0 0 0 1px rgba(16, 185, 129, 0.2) inset;
+}
+
+.tempoFeatureButton:hover::after {
+  opacity: 0.58;
+  transform: scale(1.04);
+}
+
+.tempoFeatureButton:hover .tempoFeatureChip {
+  background: rgba(16, 185, 129, 0.16);
+  color: rgb(6, 95, 70);
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.26) inset;
+}
+
+.tempoFeatureButtonCompact:disabled {
+  animation: none;
+}
+
+.tempoAssistantPanel {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid rgba(14, 165, 233, 0.3);
+  background:
+    radial-gradient(circle at 14% 4%, rgba(16, 185, 129, 0.16), transparent 52%),
+    radial-gradient(circle at 92% 8%, rgba(56, 189, 248, 0.2), transparent 54%),
+    linear-gradient(140deg, rgba(14, 116, 144, 0.16), rgba(15, 23, 42, 0.42));
+}
+
 @keyframes pulse {
   0% {
     box-shadow: 0 0 0 0 rgba(134, 239, 172, 0.42);
@@ -229,6 +404,103 @@
   }
   100% {
     box-shadow: 0 0 0 0 rgba(134, 239, 172, 0);
+  }
+}
+
+@keyframes ctaGlowPulse {
+  0%,
+  100% {
+    transform: translateY(0);
+    filter: saturate(1);
+  }
+  50% {
+    transform: translateY(-1px);
+    filter: saturate(1.08);
+  }
+}
+
+@keyframes ctaSweep {
+  0% {
+    transform: translateX(-140%) rotate(14deg);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.7;
+  }
+  60% {
+    opacity: 0.85;
+  }
+  100% {
+    transform: translateX(140%) rotate(14deg);
+    opacity: 0;
+  }
+}
+
+@keyframes ctaPulse {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+    filter: saturate(1);
+    box-shadow:
+      0 10px 24px rgba(2, 6, 23, 0.24),
+      0 0 0 0 rgba(255, 255, 255, 0);
+  }
+  35% {
+    transform: translateY(-1px) scale(1.028);
+    filter: saturate(1.1);
+  }
+  50% {
+    transform: translateY(-1px) scale(1.045);
+    filter: saturate(1.16);
+    box-shadow:
+      0 16px 34px rgba(2, 6, 23, 0.34),
+      0 0 0 3px rgba(255, 255, 255, 0.45);
+  }
+}
+
+@keyframes ctaPulseTight {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+    filter: saturate(1);
+    box-shadow:
+      0 10px 22px rgba(2, 6, 23, 0.22),
+      0 0 0 0 rgba(255, 255, 255, 0);
+  }
+  35% {
+    transform: translateY(-1px) scale(1.008);
+    filter: saturate(1.08);
+  }
+  50% {
+    transform: translateY(-1px) scale(1.014);
+    filter: saturate(1.13);
+    box-shadow:
+      0 13px 28px rgba(2, 6, 23, 0.28),
+      0 0 0 1.5px rgba(255, 255, 255, 0.3);
+  }
+}
+
+@keyframes tempoFeatureTextShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes tempoFeatureGlowBreathe {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.56;
+    transform: scale(1.04);
   }
 }
 
@@ -268,11 +540,25 @@
   .dot,
   .globalDotButton,
   .coachmark,
+  .ctaShiny,
+  .ctaShinySoft,
+  .ctaPulse,
+  .ctaPulseSoft,
   .impactLabel,
   .typewriterText,
-  .typewriterBlock {
+  .typewriterBlock,
+  .tempoFeatureLabel,
+  .tempoFeatureButtonCompact,
+  .tempoFeatureButton,
+  .tempoFeatureButton::after {
     transition: none;
     animation: none;
+  }
+
+  .ctaShiny::after,
+  .ctaShinySoft::after {
+    animation: none;
+    opacity: 0;
   }
 }
 
@@ -318,4 +604,30 @@
   background: rgba(255, 255, 255, 0.97);
   color: #0f172a;
   box-shadow: 0 12px 26px rgba(15, 23, 42, 0.14);
+}
+
+:global(:root[data-theme="dark"]) .tempoFeatureButton {
+  border-color: rgba(56, 189, 248, 0.34);
+  background: linear-gradient(
+    130deg,
+    rgba(6, 78, 59, 0.42),
+    rgba(8, 47, 73, 0.5)
+  );
+  box-shadow:
+    0 12px 24px rgba(2, 6, 23, 0.34),
+    0 0 0 1px rgba(56, 189, 248, 0.18) inset;
+}
+
+:global(:root[data-theme="dark"]) .tempoFeatureChip {
+  background: rgba(56, 189, 248, 0.2);
+  color: rgb(186, 230, 253);
+  box-shadow: 0 0 0 1px rgba(125, 211, 252, 0.28) inset;
+}
+
+:global(:root[data-theme="dark"]) .tempoAssistantPanel {
+  border-color: rgba(56, 189, 248, 0.36);
+  background:
+    radial-gradient(circle at 16% 2%, rgba(16, 185, 129, 0.2), transparent 52%),
+    radial-gradient(circle at 92% 4%, rgba(56, 189, 248, 0.24), transparent 56%),
+    linear-gradient(140deg, rgba(14, 116, 144, 0.22), rgba(15, 23, 42, 0.58));
 }

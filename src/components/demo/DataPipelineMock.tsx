@@ -1,7 +1,8 @@
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import FZChart from "./FZChart";
 import type { DataTechnology, DemoMediaAsset, Smart2MoveFixture } from "./fixtures";
+import styles from "./demo.module.css";
 
 type DataPipelineMockProps = {
   importVisual: DemoMediaAsset;
@@ -65,9 +66,13 @@ export default function DataPipelineMock({
   onImport,
   onExtract,
 }: DataPipelineMockProps) {
+  const importButtonClass = `${styles.ctaPulseSoft} inline-flex items-center justify-center rounded-full border border-sky-200/65 bg-gradient-to-r from-sky-200 via-cyan-100 to-emerald-100 px-3 py-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate-900 shadow-[0_10px_24px_rgba(56,189,248,0.3)] transition-all duration-300 hover:brightness-105 hover:shadow-[0_14px_32px_rgba(14,165,233,0.32)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/75`;
+  const extractButtonClass = `${styles.ctaPulse} inline-flex items-center justify-center rounded-full border border-emerald-200/70 bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-3 py-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate-900 shadow-[0_10px_24px_rgba(16,185,129,0.34)] transition-all duration-300 hover:brightness-105 hover:shadow-[0_14px_32px_rgba(56,189,248,0.32)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/75 disabled:cursor-default disabled:opacity-55`;
   const [impactPlaced, setImpactPlaced] = useState(false);
   const [transitionPlaced, setTransitionPlaced] = useState(false);
   const [extractLaunched, setExtractLaunched] = useState(false);
+  const autoPlacementTimersRef = useRef<number[]>([]);
+  const autoPlacementStartedRef = useRef(false);
 
   useEffect(() => {
     if (technology !== "smart2move") {
@@ -85,6 +90,39 @@ export default function DataPipelineMock({
     () => (transitionPlaced ? { left: "48%", top: "63%" } : { left: "57%", top: "38%" }),
     [transitionPlaced]
   );
+
+  useEffect(() => {
+    const clearAutoPlacementTimers = () => {
+      autoPlacementTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+      autoPlacementTimersRef.current = [];
+    };
+
+    if (!imported || showAnalysis) {
+      autoPlacementStartedRef.current = false;
+      clearAutoPlacementTimers();
+      return;
+    }
+
+    if (autoPlacementStartedRef.current) {
+      return;
+    }
+
+    autoPlacementStartedRef.current = true;
+    clearAutoPlacementTimers();
+
+    autoPlacementTimersRef.current.push(
+      window.setTimeout(() => {
+        setImpactPlaced(true);
+      }, 1200)
+    );
+    autoPlacementTimersRef.current.push(
+      window.setTimeout(() => {
+        setTransitionPlaced(true);
+      }, 2400)
+    );
+
+    return clearAutoPlacementTimers;
+  }, [imported, showAnalysis]);
 
   return (
     <div className="space-y-4">
@@ -143,7 +181,7 @@ export default function DataPipelineMock({
             <button
               type="button"
               data-testid="data-step-import"
-              className="rounded-full border border-cyan-300/45 bg-cyan-400/15 px-3 py-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-cyan-100 transition hover:bg-cyan-400/25"
+              className={importButtonClass}
               onClick={() => {
                 setImpactPlaced(false);
                 setTransitionPlaced(false);
@@ -164,7 +202,7 @@ export default function DataPipelineMock({
               Étape 2 · Pré-traitement
             </p>
             <h4 className="mt-1 text-sm font-semibold text-[var(--text)]">
-              Placez les marqueurs Impact et Transition sur le graphe
+              Placement automatique des marqueurs Impact et Transition
             </h4>
 
             <div className="mt-4 rounded-2xl border border-white/12 bg-slate-900/40 p-4">
@@ -191,28 +229,24 @@ export default function DataPipelineMock({
               </div>
 
               <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => setImpactPlaced(true)}
+                <span
                   className={`rounded-full border px-3 py-1 text-[0.62rem] uppercase tracking-[0.16em] transition ${
                     impactPlaced
                       ? "border-emerald-300/45 bg-emerald-400/12 text-emerald-100"
-                      : "border-white/15 bg-white/8 text-[var(--text)] hover:bg-white/12"
+                      : "border-white/15 bg-white/8 text-[var(--text)]"
                   }`}
                 >
-                  {impactPlaced ? "Impact placé" : "Placer impact"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTransitionPlaced(true)}
+                  {impactPlaced ? "Impact placé" : "Placement impact..."}
+                </span>
+                <span
                   className={`rounded-full border px-3 py-1 text-[0.62rem] uppercase tracking-[0.16em] transition ${
                     transitionPlaced
                       ? "border-emerald-300/45 bg-emerald-400/12 text-emerald-100"
-                      : "border-white/15 bg-white/8 text-[var(--text)] hover:bg-white/12"
+                      : "border-white/15 bg-white/8 text-[var(--text)]"
                   }`}
                 >
-                  {transitionPlaced ? "Transition placée" : "Placer transition"}
-                </button>
+                  {transitionPlaced ? "Transition placée" : "Placement transition..."}
+                </span>
               </div>
             </div>
           </article>
@@ -233,7 +267,7 @@ export default function DataPipelineMock({
                 setExtractLaunched(true);
                 onExtract();
               }}
-              className="rounded-full border border-emerald-300/45 bg-emerald-400/15 px-3 py-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-emerald-100 transition hover:bg-emerald-400/25 disabled:cursor-default disabled:opacity-55"
+              className={extractButtonClass}
             >
               Extraire
             </button>

@@ -40,8 +40,8 @@ export default function PropagationFlowMock({
   }, [activeCount, payload.length]);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
-      <aside className="rounded-2xl border border-white/12 bg-white/8 p-4">
+    <div className="grid min-w-0 gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+      <aside className="min-w-0 rounded-2xl border border-white/12 bg-white/8 p-4">
         <p className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">Propagation IA</p>
         <h3 className="mt-2 text-lg font-semibold text-[var(--text)]">
           {axis?.title ?? "Choisissez un axe"}
@@ -73,7 +73,7 @@ export default function PropagationFlowMock({
         </div>
       </aside>
 
-      <div className="relative overflow-hidden rounded-2xl border border-white/12 bg-white/6 p-4">
+      <div className="relative min-w-0 overflow-hidden rounded-2xl border border-white/12 bg-white/6 p-4">
         {running ? (
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
             {PARTICLES.map((particle) => (
@@ -113,7 +113,7 @@ export default function PropagationFlowMock({
                 <span className="text-[0.62rem] uppercase tracking-[0.18em] text-[var(--muted)]">
                   {entry.section}
                 </span>
-                <p className="mt-1 text-sm leading-relaxed text-[var(--text)]">
+                <p className="mt-1 break-words text-sm leading-relaxed text-[var(--text)]">
                   {active ? entry.value : "Section vide"}
                 </p>
 

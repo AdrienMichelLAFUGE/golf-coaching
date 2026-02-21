@@ -88,7 +88,6 @@ const readApiError = async (response: Response, fallback: string) => {
 
 export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
   const router = useRouter();
-  const [email, setEmail] = useState<string | null>(null);
   const [requests, setRequests] = useState<ProposalRow[]>([]);
   const [requestsLoading, setRequestsLoading] = useState(false);
   const [requestsError, setRequestsError] = useState("");
@@ -113,15 +112,15 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
   const searchAbortRef = useRef<AbortController | null>(null);
 
   useThemePreference();
-  const { profile, isWorkspaceAdmin } = useProfile();
+  const { profile, isWorkspaceAdmin, userEmail } = useProfile();
 
   const roleLabel = profile?.role === "student" ? "Eleve" : "Coach";
   const needsProfileName =
     !!profile && profile.role !== "student" && !(profile.full_name ?? "").trim();
-  const avatarFallback = (profile?.full_name || email || "Coach").charAt(0).toUpperCase();
+  const avatarFallback = (profile?.full_name || userEmail || "Coach").charAt(0).toUpperCase();
   const brandIconUrl = "/branding/logo.png";
   const brandWordmarkUrl = "/branding/wordmark.png";
-  const displayName = (profile?.full_name ?? "").trim() || (email ?? "Compte");
+  const displayName = (profile?.full_name ?? "").trim() || (userEmail ?? "Compte");
   const isStudent = profile?.role === "student";
 
   const pendingLinkRequests = useMemo(
@@ -340,22 +339,6 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
     },
     [loadReportShareInvites, router]
   );
-
-  useEffect(() => {
-    let active = true;
-
-    const loadUser = async () => {
-      const { data } = await supabase.auth.getUser();
-      if (!active) return;
-      setEmail(data.user?.email ?? null);
-    };
-
-    void loadUser();
-
-    return () => {
-      active = false;
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -781,7 +764,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
                 {displayName}
               </p>
               <p className="max-w-[220px] truncate text-xs text-[var(--muted)]">
-                <span className="hidden min-[1050px]:inline">{email ?? roleLabel}</span>
+                <span className="hidden min-[1050px]:inline">{userEmail ?? roleLabel}</span>
                 <span className="min-[1050px]:hidden">{roleLabel}</span>
               </p>
             </div>

@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { z } from "zod";
 import { supabase } from "@/lib/supabase/client";
 import RoleGuard from "../../_components/role-guard";
@@ -23,8 +23,17 @@ type StudentProfile = {
   created_at?: string | null;
 };
 
+type PendingEmailChange = {
+  oldEmail: string;
+  nextEmail: string;
+};
+
 const STORAGE_BUCKET = "coach-assets";
 const MAX_AVATAR_SIZE = 2 * 1024 * 1024;
+const EMAIL_CHANGE_STORAGE_PREFIX = "student-email-change-pending:";
+const EMAIL_CHANGE_GLOBAL_STORAGE_KEY = "student-email-change-last";
+const getPendingEmailChangeStorageKey = (studentId: string) =>
+  `${EMAIL_CHANGE_STORAGE_PREFIX}${studentId}`;
 const passwordSchema = z.string().min(8);
 const emailSchema = z.string().trim().email().max(320);
 const urlSchema = z.string().url();
@@ -136,6 +145,7 @@ const StepTwoStatusIcon = ({
 
 export default function StudentSettingsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { profile, userEmail, organization, refresh } = useProfile();
   const [student, setStudent] = useState<StudentProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -182,6 +192,7 @@ export default function StudentSettingsPage() {
   const [parentSecretCodeRegenerating, setParentSecretCodeRegenerating] = useState(false);
   const [parentSecretCodeError, setParentSecretCodeError] = useState("");
   const [parentSecretCodeMessage, setParentSecretCodeMessage] = useState("");
+  const emailChangeConfirmed = searchParams.get("emailChange") === "confirmed";
 
   const loadParentInvitations = async (studentId: string) => {
     setParentInvitationsLoading(true);
@@ -364,6 +375,80 @@ export default function StudentSettingsPage() {
       cancelled = true;
     };
   }, [profile?.id, profile?.avatar_url, organization?.id, userEmail]);
+
+  useEffect(() => {
+    if (!emailChangeConfirmed || !student?.id || typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.removeItem(getPendingEmailChangeStorageKey(student.id));
+    window.localStorage.removeItem(EMAIL_CHANGE_GLOBAL_STORAGE_KEY);
+  }, [emailChangeConfirmed, student?.id]);
+
+  useEffect(() => {
+    if (emailChangeConfirmed || !student?.id || typeof window === "undefined") {
+      return;
+    }
+
+    const currentSessionEmail = (userEmail ?? "").trim().toLowerCase();
+    if (!currentSessionEmail) {
+      return;
+    }
+
+    const storageKey = getPendingEmailChangeStorageKey(student.id);
+    const rawPending = window.localStorage.getItem(storageKey);
+    if (!rawPending) {
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(rawPending) as PendingEmailChange;
+      const pendingNextEmail = parsed.nextEmail.trim().toLowerCase();
+      if (!pendingNextEmail || pendingNextEmail !== currentSessionEmail) {
+        return;
+      }
+    } catch {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      window.localStorage.removeItem(storageKey);
+      window.localStorage.removeItem(EMAIL_CHANGE_GLOBAL_STORAGE_KEY);
+      setStudentEmailMessage(
+        `Email confirme. Tu peux desormais te connecter avec ${currentSessionEmail}.`
+      );
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [emailChangeConfirmed, student?.id, userEmail]);
+
+  const pendingEmailChange: PendingEmailChange | null =
+    emailChangeConfirmed || !student?.id || typeof window === "undefined"
+      ? null
+      : (() => {
+          const rawPending = window.localStorage.getItem(
+            getPendingEmailChangeStorageKey(student.id)
+          );
+          if (!rawPending) {
+            return null;
+          }
+
+          try {
+            const parsed = JSON.parse(rawPending) as PendingEmailChange;
+            if (
+              typeof parsed.oldEmail === "string" &&
+              parsed.oldEmail.length > 0 &&
+              typeof parsed.nextEmail === "string" &&
+              parsed.nextEmail.length > 0
+            ) {
+              return parsed;
+            }
+          } catch {
+            return null;
+          }
+
+          return null;
+        })();
 
   const handleCreateParentInvitation = async () => {
     if (!student?.id) return;
@@ -669,6 +754,7 @@ export default function StudentSettingsPage() {
     }
 
     const normalizedEmail = parsedEmail.data.toLowerCase();
+    const previousEmail = (student.email ?? userEmail ?? "").trim().toLowerCase();
 
     setStudentEmailSaving(true);
 
@@ -712,11 +798,32 @@ export default function StudentSettingsPage() {
       prev ? { ...prev, email: parsedResponse.data.email } : prev
     );
     setStudentEmailInput(parsedResponse.data.email);
-    setStudentEmailMessage(
-      parsedResponse.data.requiresEmailConfirmation
-        ? "Email synchronise. Valide la confirmation dans ta boite mail."
-        : "Email synchronise sur tous tes workspaces lies."
-    );
+    if (parsedResponse.data.requiresEmailConfirmation) {
+      const pendingChange: PendingEmailChange = {
+        oldEmail: previousEmail || "ton email actuel",
+        nextEmail: normalizedEmail,
+      };
+      if (typeof window !== "undefined" && student.id) {
+        window.localStorage.setItem(
+          getPendingEmailChangeStorageKey(student.id),
+          JSON.stringify(pendingChange)
+        );
+        window.localStorage.setItem(
+          EMAIL_CHANGE_GLOBAL_STORAGE_KEY,
+          JSON.stringify({
+            oldEmail: pendingChange.oldEmail,
+            newEmail: pendingChange.nextEmail,
+          })
+        );
+      }
+      setStudentEmailMessage("Demande envoyee. Verification email requise.");
+    } else {
+      if (typeof window !== "undefined" && student.id) {
+        window.localStorage.removeItem(getPendingEmailChangeStorageKey(student.id));
+        window.localStorage.removeItem(EMAIL_CHANGE_GLOBAL_STORAGE_KEY);
+      }
+      setStudentEmailMessage("Email synchronise sur tous tes workspaces lies.");
+    }
     setStudentEmailSaving(false);
     void refresh();
   };
@@ -842,6 +949,45 @@ export default function StudentSettingsPage() {
                   ) : null}
                   {studentEmailMessage ? (
                     <p className="mt-2 text-sm text-emerald-200">{studentEmailMessage}</p>
+                  ) : null}
+                  {pendingEmailChange && !emailChangeConfirmed ? (
+                    <div className="mt-3 rounded-2xl border border-amber-300/30 bg-amber-500/10 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-500">
+                        Action requise
+                      </p>
+                      <ol className="mt-2 space-y-1 text-xs text-[var(--text)]">
+                        <li>
+                          1. Ouvre le mail envoye sur{" "}
+                          <span className="font-semibold text-[var(--text)]">
+                            {pendingEmailChange.oldEmail}
+                          </span>{" "}
+                          puis clique sur le lien.
+                        </li>
+                        <li>
+                          2. Un second mail est envoye sur{" "}
+                          <span className="font-semibold text-[var(--text)]">
+                            {pendingEmailChange.nextEmail}
+                          </span>
+                          , valide-le aussi.
+                        </li>
+                        <li>
+                          3. Tant que la confirmation n est pas terminee, connecte-toi avec{" "}
+                          <span className="font-semibold text-[var(--text)]">
+                            {pendingEmailChange.oldEmail}
+                          </span>
+                          .
+                        </li>
+                      </ol>
+                    </div>
+                  ) : null}
+                  {emailChangeConfirmed ? (
+                    <p className="mt-2 text-sm text-emerald-200">
+                      Email confirme. Tu peux desormais te connecter avec{" "}
+                      <span className="font-semibold">
+                        {(student?.email ?? studentEmailInput).trim().toLowerCase()}
+                      </span>
+                      .
+                    </p>
                   ) : null}
                 </div>
                 <div>

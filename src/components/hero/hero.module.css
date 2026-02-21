@@ -2,8 +2,8 @@
   /* No "boxed" panel: this section should feel integrated with the page. */
   border-radius: 0;
   padding: 2rem 0;
-  /* More scroll runway so sticky + morph can complete before the next section appears. */
-  min-height: 400vh;
+  /* Autoplay now handles the main morph, so the section does not need excessive scroll runway. */
+  min-height: 120vh;
   display: flex;
   background: transparent;
   border: none;
@@ -68,6 +68,28 @@
   line-height: 1.55;
 }
 
+.tempoWord {
+  display: inline-block;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  background-image: linear-gradient(
+    120deg,
+    rgb(5, 150, 105),
+    rgb(2, 132, 199),
+    rgb(15, 118, 110),
+    rgb(5, 150, 105)
+  );
+  background-size: 260% 260%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  text-shadow:
+    0 0 8px rgba(14, 165, 233, 0.34),
+    0 0 14px rgba(16, 185, 129, 0.24);
+  animation: tempo-word-shift 1.7s linear infinite;
+}
+
 .ctaRow {
   margin-top: 1.5rem;
   display: flex;
@@ -130,6 +152,32 @@
   text-transform: uppercase;
   letter-spacing: 0.22em;
   color: rgba(15, 23, 42, 0.6);
+}
+
+.heroStatic {
+  min-height: auto;
+}
+
+.heroStatic .grid {
+  display: block;
+}
+
+.heroStatic .left {
+  max-width: 46rem;
+  position: static;
+  height: auto;
+}
+
+.heroStatic .narrative {
+  min-height: auto;
+  height: auto;
+}
+
+.heroStatic .layer {
+  position: static;
+  inset: auto;
+  pointer-events: auto;
+  justify-content: flex-start;
 }
 
 .storyKicker {
@@ -279,6 +327,16 @@
   opacity: 0.98;
 }
 
+@keyframes tempo-word-shift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
 @media (min-width: 900px) {
   .grid {
     grid-template-columns: 1.05fr 0.95fr;
@@ -358,6 +416,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .tempoWord {
+    animation: none;
+  }
+
   /* Reduced motion: render the final organized state. */
   .tabletOverlay {
     opacity: 1;

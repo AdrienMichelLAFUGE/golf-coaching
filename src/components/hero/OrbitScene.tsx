@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useEffect, useRef, useState } from "react";
-import { useReducedMotion, useScroll } from "framer-motion";
+import { type MotionValue, useReducedMotion, useScroll } from "framer-motion";
 
 import styles from "./hero.module.css";
 import { clamp01, lerp, smoothstep } from "./orbitMath";
@@ -76,8 +76,10 @@ const computeGridOffsets = (layout: {
 
 export default function OrbitScene({
   heroRef,
+  progress,
 }: {
   heroRef: React.RefObject<HTMLElement | HTMLDivElement | null>;
+  progress?: MotionValue<number>;
 }) {
   const reducedMotion = useReducedMotion();
   const [isMobile, setIsMobile] = useState(false);
@@ -94,6 +96,7 @@ export default function OrbitScene({
     target: heroRef,
     offset: ["start start", "end start"],
   });
+  const progressValue = progress ?? scrollYProgress;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -193,7 +196,7 @@ export default function OrbitScene({
         return;
       }
 
-      const p = clamp01(scrollYProgress.get());
+      const p = clamp01(progressValue.get());
       const m = smoothstep(MORPH_START, MORPH_END, p);
       const rs = 1 - m;
 
@@ -251,7 +254,7 @@ export default function OrbitScene({
       }
       rafRef.current = null;
     };
-  }, [isStatic, scrollYProgress]);
+  }, [isStatic, progressValue]);
 
   return (
     <div className={styles.stageWrap}>

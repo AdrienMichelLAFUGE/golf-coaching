@@ -1,5 +1,4 @@
-﻿import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { act, render, screen } from "@testing-library/react";
 import DataPipelineMock from "./DataPipelineMock";
 import { DEMO_MEDIA_FIXTURE, DEMO_SMART2MOVE } from "./fixtures";
 
@@ -34,27 +33,37 @@ describe("DataPipelineMock", () => {
     expect(handlers.onSelectTechnology).toHaveBeenCalledWith("smart2move");
   });
 
-  it("requires impact + transition placement before extraction", async () => {
-    const user = userEvent.setup();
-    render(
-      <DataPipelineMock
-        importVisual={DEMO_MEDIA_FIXTURE.dataScene.importVisual}
-        technology="smart2move"
-        imported={true}
-        preprocessed={false}
-        analyzed={false}
-        smart2move={DEMO_SMART2MOVE}
-        {...handlers}
-      />
-    );
+  it("auto-places impact + transition after delays before extraction", () => {
+    jest.useFakeTimers();
+    try {
+      render(
+        <DataPipelineMock
+          importVisual={DEMO_MEDIA_FIXTURE.dataScene.importVisual}
+          technology="smart2move"
+          imported={true}
+          preprocessed={false}
+          analyzed={false}
+          smart2move={DEMO_SMART2MOVE}
+          {...handlers}
+        />
+      );
 
-    const extractButton = screen.getByRole("button", { name: "Extraire" });
-    expect(extractButton).toBeDisabled();
+      const extractButton = screen.getByRole("button", { name: "Extraire" });
+      expect(extractButton).toBeDisabled();
 
-    await user.click(screen.getByRole("button", { name: "Placer impact" }));
-    expect(extractButton).toBeDisabled();
+      act(() => {
+        jest.advanceTimersByTime(1300);
+      });
+      expect(screen.getByText(/Impact placé/i)).toBeInTheDocument();
+      expect(extractButton).toBeDisabled();
 
-    await user.click(screen.getByRole("button", { name: "Placer transition" }));
-    expect(extractButton).toBeEnabled();
+      act(() => {
+        jest.advanceTimersByTime(1200);
+      });
+      expect(screen.getByText(/Transition placée/i)).toBeInTheDocument();
+      expect(extractButton).toBeEnabled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

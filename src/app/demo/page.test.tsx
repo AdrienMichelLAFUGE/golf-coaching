@@ -16,7 +16,7 @@ const SECTION_IDS = [
 ] as const;
 
 describe("/demo page", () => {
-  it("renders all expected sections and mode toggle", () => {
+  it("renders all expected sections without mode libre toggle", () => {
     const { container } = render(<DemoRoutePage />);
 
     SECTION_IDS.forEach((sectionId) => {
@@ -25,6 +25,6 @@ describe("/demo page", () => {
       ).toBeInTheDocument();
     });
 
-    expect(screen.getByLabelText("Mode libre")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Mode libre")).not.toBeInTheDocument();
   });
 });

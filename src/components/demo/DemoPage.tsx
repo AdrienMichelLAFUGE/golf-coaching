@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import LoginRoleSelectorButton from "@/components/marketing/LoginRoleSelectorButton";
 import {
   useCallback,
   useEffect,
@@ -14,7 +13,6 @@ import {
 } from "react";
 import CalendarMock from "./CalendarMock";
 import CoachDashboardMock from "./CoachDashboardMock";
-import Coachmark from "./Coachmark";
 import DataPipelineMock from "./DataPipelineMock";
 import HorizontalCarousel from "./HorizontalCarousel";
 import LayoutSelectorMock from "./LayoutSelectorMock";
@@ -47,10 +45,13 @@ import {
 
 type SlideMap = Record<SectionId, number>;
 
+const CTA_BASE_CLASS =
+  "inline-flex items-center justify-center rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 active:scale-[0.98]";
 const PRIMARY_BUTTON_CLASS =
-  "inline-flex items-center justify-center rounded-full border border-emerald-300/40 bg-emerald-400/20 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-100 transition hover:bg-emerald-400/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70";
+  `${CTA_BASE_CLASS} ${styles.ctaPulse} border border-emerald-200/70 bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 text-slate-900 shadow-[0_10px_28px_rgba(16,185,129,0.34)] hover:brightness-105 hover:shadow-[0_14px_36px_rgba(56,189,248,0.32)] focus-visible:ring-emerald-300/75`;
 const SECONDARY_BUTTON_CLASS =
-  "inline-flex items-center justify-center rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text)] transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/70";
+  `${CTA_BASE_CLASS} ${styles.ctaPulseSoft} border border-sky-200/65 bg-gradient-to-r from-sky-200 via-cyan-100 to-emerald-100 text-slate-900 shadow-[0_10px_28px_rgba(56,189,248,0.28)] hover:brightness-105 hover:shadow-[0_14px_36px_rgba(14,165,233,0.3)] focus-visible:ring-sky-300/75`;
+const TEMPO_BUTTON_CLASS = `${CTA_BASE_CLASS} ${styles.tempoFeatureButton} ${styles.tempoFeatureButtonCompact}`;
 
 const initialSlidesState = SECTION_ORDER.reduce<SlideMap>((acc, sectionId) => {
   acc[sectionId] = 0;
@@ -108,7 +109,6 @@ export default function DemoPage() {
     }, {} as Record<SectionId, HTMLElement | null>)
   );
 
-  const [guidedMode, setGuidedMode] = useState(true);
   const [activeSection, setActiveSection] = useState<SectionId>("hero");
   const [activeSlides, setActiveSlides] = useState<SlideMap>(initialSlidesState);
   const [scenarioState, setScenarioStateState] =
@@ -126,6 +126,20 @@ export default function DemoPage() {
   const [publishState, setPublishState] = useState<"idle" | "publishing" | "done">("idle");
   const [propagationRunning, setPropagationRunning] = useState(false);
   const [propagationActiveCount, setPropagationActiveCount] = useState(0);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const previousTheme = root.getAttribute("data-theme");
+    root.setAttribute("data-theme", "dark");
+
+    return () => {
+      if (previousTheme === null) {
+        root.removeAttribute("data-theme");
+      } else {
+        root.setAttribute("data-theme", previousTheme);
+      }
+    };
+  }, []);
 
   const setScenarioState = useCallback((patch: Partial<ScenarioState>) => {
     setScenarioStateState((previous) => ({ ...previous, ...patch }));
@@ -179,9 +193,6 @@ export default function DemoPage() {
     );
   }, []);
 
-  const selectedLayoutPreset =
-    DEMO_LAYOUT_PRESETS.find((preset) => preset.id === scenarioState.layoutPresetId) ??
-    DEMO_LAYOUT_PRESETS[0];
   const selectedAxis =
     DEMO_IA_SUGGESTIONS.find((axis) => axis.id === scenarioState.selectedIaAxisId) ?? null;
   const isStudentCalendarSlideActive =
@@ -286,14 +297,19 @@ export default function DemoPage() {
   ]);
 
   const handleStartPropagation = useCallback(() => {
-    if (!selectedAxis || propagationRunning) return;
+    if (propagationRunning) return;
+    const axisForPropagation = selectedAxis ?? DEMO_IA_SUGGESTIONS[0] ?? null;
+    if (!axisForPropagation) return;
 
     setPropagationRunning(true);
     setPropagationActiveCount(0);
+    if (!selectedAxis) {
+      setScenarioState({ selectedIaAxisId: axisForPropagation.id });
+    }
     setScenarioState({ propagated: false, reportFilled: false });
     scrollToSlide("editor-ai", 2);
 
-    selectedAxis.sectionPayload.forEach((_, index) => {
+    axisForPropagation.sectionPayload.forEach((_, index) => {
       scheduleTimeout(() => {
         setPropagationActiveCount(index + 1);
       }, 480 + index * 760);
@@ -304,14 +320,11 @@ export default function DemoPage() {
         setPropagationRunning(false);
         setScenarioState({ propagated: true, reportFilled: true });
         pushToast("Contenu propagé dans le rapport.", "success");
-        if (guidedMode) {
-          scrollToSlide("editor-ai", 3);
-        }
+        scrollToSlide("editor-ai", 3);
       },
-      480 + selectedAxis.sectionPayload.length * 760 + 450
+      480 + axisForPropagation.sectionPayload.length * 760 + 450
     );
   }, [
-    guidedMode,
     propagationRunning,
     pushToast,
     scheduleTimeout,
@@ -328,11 +341,9 @@ export default function DemoPage() {
       setPublishState("done");
       setScenarioState({ published: true });
       pushToast("Rapport publié avec succès.", "success");
-      if (guidedMode) {
-        scrollToSlide("publish-read", 1);
-      }
+      scrollToSlide("publish-read", 1);
     }, 600);
-  }, [guidedMode, publishState, pushToast, scheduleTimeout, scrollToSlide, setScenarioState]);
+  }, [publishState, pushToast, scheduleTimeout, scrollToSlide, setScenarioState]);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -385,19 +396,6 @@ export default function DemoPage() {
     <main className="relative">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_0%_0%,rgba(16,185,129,0.12),transparent_45%),radial-gradient(circle_at_100%_10%,rgba(56,189,248,0.16),transparent_48%)]" />
 
-      <div className="fixed right-4 top-4 z-30">
-        <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-white/20 bg-slate-900/65 px-3 py-1.5 text-[0.66rem] font-semibold uppercase tracking-[0.18em] text-[var(--text)] backdrop-blur-md">
-          <input
-            type="checkbox"
-            className="h-3.5 w-3.5 accent-emerald-400"
-            checked={!guidedMode}
-            onChange={(event) => setGuidedMode(!event.target.checked)}
-            aria-label="Mode libre"
-          />
-          Mode libre
-        </label>
-      </div>
-
       <ProgressDots
         sectionOrder={SECTION_ORDER}
         labels={SECTION_LABELS}
@@ -430,14 +428,6 @@ export default function DemoPage() {
                 >
                   Démarrer la démo
                 </button>
-                <button
-                  type="button"
-                  className={SECONDARY_BUTTON_CLASS}
-                  onClick={() => scrollToSection("final-cta")}
-                >
-                  Passer
-                </button>
-                {guidedMode ? <Coachmark label="Cliquez pour commencer" /> : null}
               </div>
             </div>
           </HorizontalCarousel>
@@ -473,9 +463,6 @@ export default function DemoPage() {
                 >
                   Ajouter un élève
                 </button>
-                {guidedMode && activeSlides["add-student"] === 0 ? (
-                  <Coachmark label="Ouvrir la modale" />
-                ) : null}
               </div>
             </div>
 
@@ -515,9 +502,6 @@ export default function DemoPage() {
                 >
                   Créer
                 </button>
-                {guidedMode && activeSlides["add-student"] === 1 ? (
-                  <Coachmark label="Valider la création" />
-                ) : null}
               </div>
             </div>
 
@@ -556,33 +540,7 @@ export default function DemoPage() {
             <div className="flex h-full w-full flex-col justify-between gap-4">
               <header className="space-y-2">
                 <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">Étape 2</p>
-                <h2 className="text-2xl font-semibold text-[var(--text)]">Dashboard élève</h2>
-              </header>
-              <TpiProfileMock
-                profile={DEMO_TPI_PROFILE}
-                imported={false}
-                isImporting={false}
-                importPhase="idle"
-                importProgress={0}
-              />
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  className={PRIMARY_BUTTON_CLASS}
-                  onClick={() => scrollToSlide("student-dashboard", 1)}
-                >
-                  Importer un profil TPI
-                </button>
-                {guidedMode && activeSlides["student-dashboard"] === 0 ? (
-                  <Coachmark label="Lancer l'import" />
-                ) : null}
-              </div>
-            </div>
-
-            <div className="flex h-full w-full flex-col justify-between gap-4">
-              <header className="space-y-2">
-                <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">Import TPI</p>
-                <h3 className="text-xl font-semibold text-[var(--text)]">Upload puis analyse</h3>
+                <h2 className="text-2xl font-semibold text-[var(--text)]">Dashboard élève + Import TPI</h2>
               </header>
               <TpiProfileMock
                 profile={DEMO_TPI_PROFILE}
@@ -596,9 +554,10 @@ export default function DemoPage() {
                   <button
                     type="button"
                     className={PRIMARY_BUTTON_CLASS}
+                    disabled={tpiImportState.loading}
                     onClick={handleStartImportTpi}
                   >
-                    Lancer l’import
+                    Lancer l&apos;import
                   </button>
                 ) : (
                   <button
@@ -672,48 +631,11 @@ export default function DemoPage() {
                   type="button"
                   className={PRIMARY_BUTTON_CLASS}
                   disabled={!scenarioState.layoutPresetId}
-                  onClick={() => scrollToSlide("create-report", 2)}
+                  onClick={() => scrollToSection("editor-ai")}
                 >
                   Continuer
                 </button>
-                {guidedMode && !scenarioState.layoutPresetId ? (
-                  <Coachmark label="Choisir Rapide" />
-                ) : null}
               </div>
-            </div>
-
-            <div className="flex h-full w-full flex-col justify-between gap-4">
-              <header className="space-y-2">
-                <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">Préparation</p>
-                <h3 className="text-xl font-semibold text-[var(--text)]">Rapport pour {demoStudentName}</h3>
-              </header>
-              <Card>
-                <p className="text-sm text-[var(--muted)]">
-                  Flow verrouillé sur{" "}
-                  <span className="font-semibold text-[var(--text)]">{selectedLayoutPreset.title}</span>{" "}
-                  pour garder un enchaînement rapide dans la démo.
-                </p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                  {selectedLayoutPreset.sections.map((section, index) => (
-                    <article
-                      key={`selected-layout-${section}`}
-                      className="rounded-xl border border-sky-300/30 bg-sky-400/10 px-3 py-3"
-                    >
-                      <p className="text-[0.62rem] uppercase tracking-[0.16em] text-sky-100">
-                        Section {index + 1}
-                      </p>
-                      <p className="mt-1 text-sm font-semibold text-[var(--text)]">{section}</p>
-                    </article>
-                  ))}
-                </div>
-              </Card>
-              <button
-                type="button"
-                className={PRIMARY_BUTTON_CLASS}
-                onClick={() => scrollToSection("editor-ai")}
-              >
-                Valider
-              </button>
             </div>
           </HorizontalCarousel>
         </Section>
@@ -727,11 +649,18 @@ export default function DemoPage() {
             sectionId="editor-ai"
             activeIndex={activeSlides["editor-ai"]}
             onActiveIndexChange={(index) => updateSlideIndex("editor-ai", index)}
+            showLocalDots={false}
           >
-            <div className="flex h-full w-full flex-col justify-between gap-4">
+            <div className="flex h-full w-full min-w-0 flex-col justify-between gap-4 overflow-y-auto pb-12 pr-1 sm:pb-10">
               <header className="space-y-2">
                 <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">Étape 4</p>
-                <h2 className="text-2xl font-semibold text-[var(--text)]">Éditeur + IA</h2>
+                <h2 className="text-2xl font-semibold text-[var(--text)]">
+                  Éditeur +{" "}
+                  <span className={styles.tempoFeatureInline}>
+                    <span className={styles.tempoFeatureLabel}>Tempo</span>
+                    <span className={styles.tempoFeatureChip}>IA</span>
+                  </span>
+                </h2>
               </header>
               <ReportEditorMock
                 report={DEMO_REPORT}
@@ -741,21 +670,25 @@ export default function DemoPage() {
               />
               <button
                 type="button"
-                className={PRIMARY_BUTTON_CLASS}
+                className={`${TEMPO_BUTTON_CLASS} self-center`}
+                aria-label="Assistant Tempo IA"
                 onClick={() => scrollToSlide("editor-ai", 1)}
               >
-                Assistant IA
+                <span className={styles.tempoFeatureLabel}>Assistant Tempo</span>
+                <span className={styles.tempoFeatureChip}>IA</span>
               </button>
             </div>
 
-            <div className="flex h-full w-full flex-col justify-between gap-4">
+            <div className="flex h-full w-full min-w-0 flex-col justify-between gap-4 overflow-y-auto pb-12 pr-1 sm:pb-10">
               <header className="space-y-2">
-                <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">Suggestions IA</p>
+                <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
+                  Suggestions Tempo IA
+                </p>
                 <h3 className="text-xl font-semibold text-[var(--text)]">
                   Choisissez l’axe à propager
                 </h3>
               </header>
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid min-w-0 gap-3 xl:grid-cols-2">
                 {DEMO_IA_SUGGESTIONS.map((suggestion) => {
                   const selected = scenarioState.selectedIaAxisId === suggestion.id;
                   return (
@@ -771,14 +704,14 @@ export default function DemoPage() {
                           reportFilled: false,
                         });
                       }}
-                      className={`rounded-2xl border px-4 py-4 text-left transition ${
+                      className={`min-w-0 rounded-2xl border px-4 py-4 text-left transition ${
                         selected
                           ? "border-cyan-300/55 bg-cyan-400/12"
                           : "border-white/12 bg-white/8 hover:border-white/25"
                       }`}
                     >
                       <p className="text-sm font-semibold text-[var(--text)]">{suggestion.title}</p>
-                      <ul className="mt-2 space-y-1 text-xs text-[var(--muted)]">
+                      <ul className="mt-2 space-y-1 break-words text-xs text-[var(--muted)]">
                         {suggestion.bullets.map((bullet) => (
                           <li key={bullet}>⬢ {bullet}</li>
                         ))}
@@ -790,19 +723,16 @@ export default function DemoPage() {
               <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  className={PRIMARY_BUTTON_CLASS}
-                  disabled={!scenarioState.selectedIaAxisId}
+                  className={`${TEMPO_BUTTON_CLASS} self-center`}
                   onClick={handleStartPropagation}
                 >
-                  Propagation (1 clic)
+                  <span className={styles.tempoFeatureLabel}>Propagation</span>
+                  <span className={styles.tempoFeatureChip}>IA</span>
                 </button>
-                {guidedMode && !scenarioState.selectedIaAxisId ? (
-                  <Coachmark label="Sélectionnez un axe" />
-                ) : null}
               </div>
             </div>
 
-            <div className="flex h-full w-full flex-col justify-between gap-4">
+            <div className="flex h-full w-full min-w-0 flex-col justify-between gap-4 overflow-y-auto pb-12 pr-1 sm:pb-10">
               <header className="space-y-2">
                 <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">Propagation</p>
                 <h3 className="text-xl font-semibold text-[var(--text)]">
@@ -818,7 +748,7 @@ export default function DemoPage() {
               />
             </div>
 
-            <div className="flex h-full w-full flex-col justify-between gap-4">
+            <div className="flex h-full w-full min-w-0 flex-col justify-between gap-4 overflow-y-auto pb-12 pr-1 sm:pb-10">
               <header className="space-y-2">
                 <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">Rapport rempli</p>
                 <h3 className="text-xl font-semibold text-[var(--text)]">Version finale de l’édition</h3>
@@ -973,17 +903,6 @@ export default function DemoPage() {
                   ? "Le rapport est publié et disponible en lecture."
                   : "Publication en cours, génération de la version partagée..."}
               </Card>
-              {!guidedMode && publishState === "done" ? (
-                <div className="text-center">
-                  <button
-                    type="button"
-                    className={PRIMARY_BUTTON_CLASS}
-                    onClick={() => scrollToSlide("publish-read", 1)}
-                  >
-                    Ouvrir la lecture
-                  </button>
-                </div>
-              ) : null}
             </div>
 
             <div className="flex h-full w-full flex-col gap-4">
@@ -1187,15 +1106,6 @@ export default function DemoPage() {
               <div className="flex flex-wrap gap-3">
                 <Link href="/login/coach?mode=signup" className={PRIMARY_BUTTON_CLASS}>
                   Créer mon compte coach
-                </Link>
-                <LoginRoleSelectorButton
-                  location="demo_final_cta"
-                  className={SECONDARY_BUTTON_CLASS}
-                  label="Se connecter"
-                  menuDirection="up"
-                />
-                <Link href="/#contact" className={SECONDARY_BUTTON_CLASS}>
-                  Demander une démo
                 </Link>
               </div>
               <footer className="pt-4 text-xs uppercase tracking-[0.2em] text-[var(--muted)]">

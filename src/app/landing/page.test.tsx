@@ -111,7 +111,7 @@ describe("Landing page", () => {
     const ui = await LandingPage();
     const { container } = render(ui);
 
-    expect(container.querySelector("#fonctionnalites")).not.toBeNull();
+    expect(container.querySelector('[data-testid="hero-placeholder"]')).not.toBeNull();
     expect(container.querySelector("#pricing")).not.toBeNull();
     expect(container.querySelector("#faq")).not.toBeNull();
 
@@ -133,4 +133,3 @@ describe("Landing page", () => {
     ).toBe(true);
   });
 });
-

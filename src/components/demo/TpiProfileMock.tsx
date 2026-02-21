@@ -57,7 +57,7 @@ export default function TpiProfileMock({
 
   return (
     <section className="rounded-2xl border border-teal-200/30 bg-slate-900/55 p-4">
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+      <div className="space-y-3">
         <div>
           <h3 className="text-lg font-semibold text-[var(--text)]">
             Profil TPI
@@ -82,13 +82,6 @@ export default function TpiProfileMock({
             </span>
           </div>
         </div>
-
-        <button
-          type="button"
-          className="rounded-full border border-teal-300/50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-teal-100 transition hover:bg-teal-300/10"
-        >
-          Parcourir
-        </button>
       </div>
 
       {isImporting ? (

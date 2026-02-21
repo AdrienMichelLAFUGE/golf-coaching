@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import AuthHashRedirect from "./_components/auth-hash-redirect";
 import LandingPage from "./landing/page";
 
 export const metadata: Metadata = {
@@ -8,5 +9,10 @@ export const metadata: Metadata = {
 };
 
 export default function Home() {
-  return <LandingPage />;
+  return (
+    <>
+      <AuthHashRedirect />
+      <LandingPage />
+    </>
+  );
 }

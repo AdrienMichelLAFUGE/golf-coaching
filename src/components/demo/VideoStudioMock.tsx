@@ -1,5 +1,6 @@
 import Image from "next/image";
 import type { DemoMediaAsset } from "./fixtures";
+import styles from "./demo.module.css";
 
 type VideoStudioMockProps = {
   thumb: DemoMediaAsset;
@@ -14,6 +15,7 @@ export default function VideoStudioMock({
   ready,
   onMarkReady,
 }: VideoStudioMockProps) {
+  const actionButtonClass = `${styles.ctaPulseSoft} inline-flex items-center justify-center rounded-full border border-sky-200/65 bg-gradient-to-r from-sky-200 via-cyan-100 to-emerald-100 px-4 py-2 text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-slate-900 shadow-[0_10px_28px_rgba(56,189,248,0.28)] transition-all duration-300 hover:brightness-105 hover:shadow-[0_14px_36px_rgba(14,165,233,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/75`;
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_0.42fr]">
       <article className="rounded-2xl border border-white/12 bg-white/8 p-3">
@@ -47,7 +49,7 @@ export default function VideoStudioMock({
         <button
           type="button"
           onClick={onMarkReady}
-          className="rounded-full border border-sky-300/50 bg-sky-400/15 px-4 py-2 text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-sky-100 transition hover:bg-sky-400/25"
+          className={actionButtonClass}
         >
           {ready ? "Vidéo prête" : "Ajouter la vidéo"}
         </button>

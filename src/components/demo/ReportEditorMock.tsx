@@ -30,9 +30,9 @@ function InputMock({
       <span className="mb-1 block text-[0.63rem] uppercase tracking-[0.2em] text-[var(--muted)]">
         {label}
       </span>
-      <span className="block rounded-xl border border-white/12 bg-white/7 px-3 py-2 text-sm text-[var(--text)]">
+      <span className="block min-w-0 rounded-xl border border-white/12 bg-white/7 px-3 py-2 text-sm text-[var(--text)]">
         <span
-          className={animateTyping ? styles.typewriterText : ""}
+          className={animateTyping ? styles.typewriterBlock : "block whitespace-normal break-words"}
           style={
             animateTyping
               ? ({
@@ -60,8 +60,8 @@ export default function ReportEditorMock({
   const propagationSections = useMemo(() => axis?.sectionPayload ?? [], [axis]);
 
   return (
-    <div className="grid h-full w-full gap-4 lg:grid-cols-[1.12fr_0.88fr]">
-      <article className="rounded-2xl border border-white/15 bg-slate-900/55 p-4">
+    <div className="grid h-full w-full min-w-0 gap-4 lg:grid-cols-[1.12fr_0.88fr]">
+      <article className="min-w-0 rounded-2xl border border-white/15 bg-slate-900/55 p-4">
         <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-[var(--text)]">Éditeur de rapport</h3>
           <span className="rounded-full border border-emerald-300/40 bg-emerald-400/12 px-2.5 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-emerald-100">
@@ -94,8 +94,14 @@ export default function ReportEditorMock({
         </div>
       </article>
 
-      <aside className="rounded-2xl border border-sky-300/30 bg-sky-400/12 p-4">
-        <h4 className="text-sm font-semibold text-[var(--text)]">Assistant IA</h4>
+      <aside className={`${styles.tempoAssistantPanel} min-w-0 rounded-2xl p-4`}>
+        <h4 className="flex items-center gap-2 text-sm font-semibold text-[var(--text)]">
+          <span>Assistant</span>
+          <span className={styles.tempoFeatureInline}>
+            <span className={styles.tempoFeatureLabel}>Tempo</span>
+            <span className={styles.tempoFeatureChip}>IA</span>
+          </span>
+        </h4>
         <p className="mt-1 text-xs text-[var(--muted)]">
           {axis
             ? `Axe sélectionné: ${axis.title}`
