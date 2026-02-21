@@ -67,7 +67,7 @@ export async function POST(request: Request) {
 
   const { data: student, error: studentError } = await supabase
     .from("students")
-    .select("id, org_id, email, first_name, last_name")
+    .select("id, org_id, email, first_name, last_name, activated_at")
     .eq("id", studentId)
     .maybeSingle();
 
@@ -131,7 +131,10 @@ export async function POST(request: Request) {
 
   const linkedUserId =
     (existingStudentAccount as { user_id: string } | null)?.user_id ?? null;
-  if (linkedUserId && linkedUserId !== userId) {
+  const relinkRequested = Boolean(linkedUserId && linkedUserId !== userId);
+  const canRelinkUnactivatedStudent = relinkRequested && !student.activated_at;
+
+  if (relinkRequested && !canRelinkUnactivatedStudent) {
     await recordActivity({
       admin,
       level: "warn",
@@ -201,7 +204,7 @@ export async function POST(request: Request) {
     }
   }
 
-  if (!linkedUserId) {
+  if (!linkedUserId || linkedUserId !== userId) {
     const { error: linkError } = await admin.from("student_accounts").upsert(
       [
         {
@@ -258,6 +261,7 @@ export async function POST(request: Request) {
       invited,
       emailSent,
       targetUserId: userId,
+      relinked: canRelinkUnactivatedStudent,
     },
   });
 

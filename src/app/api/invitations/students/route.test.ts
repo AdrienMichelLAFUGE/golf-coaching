@@ -244,6 +244,7 @@ describe("POST /api/invitations/students", () => {
               email: "student@example.com",
               first_name: "Camille",
               last_name: "Dupont",
+              activated_at: "2026-01-10T10:00:00.000Z",
             },
             error: null,
           });
@@ -303,5 +304,97 @@ describe("POST /api/invitations/students", () => {
 
     expect(response.status).toBe(409);
     expect(upsertMock).not.toHaveBeenCalled();
+  });
+
+  it("relinks student account when student is not activated yet", async () => {
+    const supabase = {
+      auth: {
+        getUser: async () => ({ data: { user: { id: "coach-1" } }, error: null }),
+      },
+      from: (table: string) => {
+        if (table === "profiles") {
+          return buildSelectMaybeSingle({
+            data: { role: "coach", org_id: "org-1" },
+            error: null,
+          });
+        }
+        if (table === "students") {
+          return buildSelectMaybeSingle({
+            data: {
+              id: "student-1",
+              org_id: "org-1",
+              email: "student@example.com",
+              first_name: "Camille",
+              last_name: "Dupont",
+              activated_at: null,
+            },
+            error: null,
+          });
+        }
+        return buildSelectMaybeSingle({ data: null, error: null });
+      },
+    } as SupabaseClient;
+
+    const upsertMock = jest.fn(async () => ({ error: null }));
+    const admin = {
+      auth: {
+        admin: {
+          listUsers: async () => ({
+            data: {
+              users: [{ id: "student-user-1", email: "student@example.com" }],
+              nextPage: null,
+            },
+            error: null,
+          }),
+          inviteUserByEmail: jest.fn(),
+        },
+      },
+      from: (table: string) => {
+        if (table === "student_accounts") {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({
+                  data: { user_id: "student-user-2" },
+                  error: null,
+                }),
+              }),
+            }),
+            upsert: upsertMock,
+          };
+        }
+        if (table === "profiles") {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({
+                  data: { id: "student-user-1", role: "student", org_id: "org-1" },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === "students") {
+          return {
+            update: () => ({
+              eq: async () => ({ error: null }),
+            }),
+          };
+        }
+        return {};
+      },
+    };
+
+    serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
+    serverMocks.createSupabaseAdminClient.mockReturnValue(admin);
+
+    const response = await POST(buildRequest({ studentId: "student-1" }));
+
+    expect(response.status).toBe(200);
+    expect(upsertMock).toHaveBeenCalledWith(
+      [{ student_id: "student-1", user_id: "student-user-1" }],
+      { onConflict: "student_id" }
+    );
   });
 });

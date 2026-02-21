@@ -111,6 +111,9 @@ const CAPTION_LIMIT = 150;
 const CLARIFY_THRESHOLD = 0.8;
 const SMART2MOVE_IMPORT_TUTORIAL_HINT_ID =
   "smart2move_import_single_graph_screenshot";
+const getCaptionDraftKey = (sectionId: string, index: number) => `${sectionId}::${index}`;
+const getFinalizeUsageStorageKey = (reportId: string) =>
+  `gc.report.finalize.used.${reportId}`;
 type StickyAiHintKey = "assistant" | "datas" | "finalize";
 
 const STICKY_AI_HINT_IDS: Record<StickyAiHintKey, string> = {
@@ -269,6 +272,7 @@ type LocalDraft = {
   builderStep: "layout" | "sections" | "report";
   selectedLayoutId?: string;
   selectedLayoutOptionId?: string;
+  aiFinalizeUsed?: boolean;
   savedAt: string;
 };
 
@@ -663,6 +667,7 @@ export default function CoachReportBuilderPage() {
     savedAt: string | null;
   } | null>(null);
   const [localDraftHandled, setLocalDraftHandled] = useState(false);
+  const [aiFinalizeUsed, setAiFinalizeUsed] = useState(false);
   const [sectionTemplates, setSectionTemplates] =
     useState<SectionTemplate[]>(starterSections);
   const [templatesLoading, setTemplatesLoading] = useState(false);
@@ -712,6 +717,7 @@ export default function CoachReportBuilderPage() {
   const [reportSections, setReportSectionsState] = useState<ReportSection[]>(
     defaultReportSections.map(createSection)
   );
+  const [captionDrafts, setCaptionDrafts] = useState<Record<string, string>>({});
   const reportUndoStackRef = useRef<ReportSection[][]>([]);
   const reportUndoPreviousRef = useRef<ReportSection[] | null>(null);
   const reportUndoSkipNextRef = useRef(false);
@@ -1815,6 +1821,31 @@ export default function CoachReportBuilderPage() {
     }
   }, [pendingSectionDeletion, reportSections]);
 
+  useEffect(() => {
+    setCaptionDrafts((prev) => {
+      const keys = Object.keys(prev);
+      if (keys.length === 0) return prev;
+      const validKeys = new Set<string>();
+      reportSections.forEach((section) => {
+        if (section.type !== "image" && section.type !== "video") return;
+        section.mediaUrls.forEach((_, index) => {
+          validKeys.add(getCaptionDraftKey(section.id, index));
+        });
+      });
+
+      let changed = false;
+      const next: Record<string, string> = {};
+      keys.forEach((key) => {
+        if (!validKeys.has(key)) {
+          changed = true;
+          return;
+        }
+        next[key] = prev[key];
+      });
+      return changed ? next : prev;
+    });
+  }, [reportSections]);
+
   const setLayoutNotice = (message: string, type: "idle" | "error" | "success") => {
     setLayoutMessage(message);
     setLayoutMessageType(type);
@@ -2236,6 +2267,16 @@ export default function CoachReportBuilderPage() {
           };
         })
       );
+      setCaptionDrafts((prev) => {
+        const prefix = `${sectionId}::`;
+        const draftKeys = Object.keys(prev).filter((key) => key.startsWith(prefix));
+        if (draftKeys.length === 0) return prev;
+        const next = { ...prev };
+        draftKeys.forEach((key) => {
+          delete next[key];
+        });
+        return next;
+      });
     }
 
     setUploadingSections((prev) => ({ ...prev, [sectionId]: false }));
@@ -2350,6 +2391,16 @@ export default function CoachReportBuilderPage() {
           };
         })
       );
+      setCaptionDrafts((prev) => {
+        const prefix = `${sectionId}::`;
+        const draftKeys = Object.keys(prev).filter((key) => key.startsWith(prefix));
+        if (draftKeys.length === 0) return prev;
+        const next = { ...prev };
+        draftKeys.forEach((key) => {
+          delete next[key];
+        });
+        return next;
+      });
     }
 
     if (warning) {
@@ -2370,19 +2421,55 @@ export default function CoachReportBuilderPage() {
         };
       })
     );
+    setCaptionDrafts((prev) => {
+      const prefix = `${sectionId}::`;
+      const draftKeys = Object.keys(prev).filter((key) => key.startsWith(prefix));
+      if (draftKeys.length === 0) return prev;
+      const next = { ...prev };
+      draftKeys.forEach((key) => {
+        delete next[key];
+      });
+      return next;
+    });
   };
 
   const handleCaptionChange = (sectionId: string, index: number, value: string) => {
     const trimmed = value.slice(0, CAPTION_LIMIT);
+    const key = getCaptionDraftKey(sectionId, index);
+    setCaptionDrafts((prev) => {
+      if (prev[key] === trimmed) return prev;
+      return { ...prev, [key]: trimmed };
+    });
+  };
+
+  const handleCaptionBlur = (sectionId: string, index: number) => {
+    const key = getCaptionDraftKey(sectionId, index);
+    let draftValue: string | undefined;
+    setCaptionDrafts((prev) => {
+      if (!(key in prev)) return prev;
+      draftValue = prev[key];
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+
+    if (typeof draftValue !== "string") return;
+    const committedValue = draftValue;
+
     setReportSections((prev) =>
       prev.map((section) => {
         if (section.id !== sectionId) return section;
+        const current = section.mediaCaptions[index] ?? "";
+        if (current === committedValue) return section;
         const nextCaptions = [...section.mediaCaptions];
-        nextCaptions[index] = trimmed;
+        nextCaptions[index] = committedValue;
         return { ...section, mediaCaptions: nextCaptions };
       })
     );
   };
+
+  const getCaptionValue = (sectionId: string, index: number, value: string) =>
+    captionDrafts[getCaptionDraftKey(sectionId, index)] ?? value;
 
   const handleWorkingNotesInput = (event: React.FormEvent<HTMLTextAreaElement>) => {
     setWorkingNotes(event.currentTarget.value);
@@ -3581,6 +3668,7 @@ export default function CoachReportBuilderPage() {
     setWorkingClub(draft.workingClub ?? "");
     setSelectedLayoutId(draft.selectedLayoutId ?? "");
     setSelectedLayoutOptionId(draft.selectedLayoutOptionId ?? "");
+    setAiFinalizeUsed(Boolean(draft.aiFinalizeUsed));
     // After a restore, show the editor step so the user immediately sees recovered content.
     setBuilderStep(normalizeBuilderStep(draft.builderStep));
   }, [clearReportUndoHistory, setReportSections]);
@@ -3604,6 +3692,7 @@ export default function CoachReportBuilderPage() {
       builderStep,
       selectedLayoutId: selectedLayoutId || undefined,
       selectedLayoutOptionId: selectedLayoutOptionId || undefined,
+      aiFinalizeUsed,
       savedAt: new Date().toISOString(),
     };
     window.localStorage.setItem(key, JSON.stringify(payload));
@@ -3618,6 +3707,7 @@ export default function CoachReportBuilderPage() {
     reportSections,
     selectedLayoutId,
     selectedLayoutOptionId,
+    aiFinalizeUsed,
     studentId,
     requestedStudentId,
     legacyDraftKey,
@@ -3747,6 +3837,7 @@ export default function CoachReportBuilderPage() {
     setAiPreviews({});
     setAiSummary("");
     setAiError("");
+    setAiFinalizeUsed(false);
     setSectionsMessage("");
     setSectionsMessageType("idle");
     setStatusMessage("");
@@ -4291,13 +4382,36 @@ export default function CoachReportBuilderPage() {
       return;
     }
 
+    const sectionsForSave =
+      Object.keys(captionDrafts).length > 0
+        ? reportSections.map((section) => {
+            if (section.type !== "image" && section.type !== "video") return section;
+            if (section.mediaUrls.length === 0) return section;
+            let changed = false;
+            const nextCaptions = [...section.mediaCaptions];
+            for (let index = 0; index < section.mediaUrls.length; index += 1) {
+              const draft = captionDrafts[getCaptionDraftKey(section.id, index)];
+              if (typeof draft !== "string") continue;
+              if ((nextCaptions[index] ?? "") === draft) continue;
+              nextCaptions[index] = draft;
+              changed = true;
+            }
+            return changed ? { ...section, mediaCaptions: nextCaptions } : section;
+          })
+        : reportSections;
+
+    if (sectionsForSave !== reportSections) {
+      setReportSections(sectionsForSave, { trackHistory: false });
+      setCaptionDrafts({});
+    }
+
     if (!title.trim()) {
       setStatusMessage("Ajoute un titre au rapport.");
       setStatusType("error");
       return;
     }
 
-    if (reportSections.length === 0) {
+    if (sectionsForSave.length === 0) {
       setStatusMessage("Ajoute au moins une section.");
       setStatusType("error");
       return;
@@ -4310,7 +4424,7 @@ export default function CoachReportBuilderPage() {
     }
 
     const videoError = validateVideoSections(
-      reportSections.map((section) => ({
+      sectionsForSave.map((section) => ({
         type: section.type,
         mediaUrls: section.mediaUrls,
       }))
@@ -4406,11 +4520,18 @@ export default function CoachReportBuilderPage() {
         return;
       }
 
-      reportId = report.id;
-      setEditingReportId(reportId);
+      const createdReportId = report.id;
+      reportId = createdReportId;
+      if (typeof window !== "undefined" && aiFinalizeUsed) {
+        window.localStorage.setItem(
+          getFinalizeUsageStorageKey(createdReportId),
+          "true"
+        );
+      }
+      setEditingReportId(createdReportId);
       setEditingReportOrgId(organization.id);
       skipResetRef.current = true;
-      router.replace(`/app/coach/rapports/nouveau?reportId=${reportId}`);
+      router.replace(`/app/coach/rapports/nouveau?reportId=${createdReportId}`);
       setSentAt(null);
     }
 
@@ -4421,7 +4542,7 @@ export default function CoachReportBuilderPage() {
       return;
     }
 
-    const sectionsPayload = reportSections.map((section, index) => ({
+    const sectionsPayload = sectionsForSave.map((section, index) => ({
       org_id: organization.id,
       report_id: reportId,
       title: section.title,
@@ -4493,7 +4614,7 @@ export default function CoachReportBuilderPage() {
   };
 
   const shouldSuggestFinalizeBeforePublish =
-    canUseAiFull && !aiFullLocked && hasFinalizeActions;
+    canUseAiFull && !aiFullLocked && hasFinalizeActions && !aiFinalizeUsed;
 
   const handlePublishWithHint = () => {
     if (!shouldSuggestFinalizeBeforePublish) {
@@ -5345,6 +5466,16 @@ export default function CoachReportBuilderPage() {
       return;
     }
 
+    if (!aiFinalizeUsed) {
+      setAiFinalizeUsed(true);
+    }
+    if (typeof window !== "undefined" && editingReportId) {
+      window.localStorage.setItem(
+        getFinalizeUsageStorageKey(editingReportId),
+        "true"
+      );
+    }
+
     setAiBusyId("finalize");
     try {
       if (needsTextContext) {
@@ -5787,6 +5918,18 @@ export default function CoachReportBuilderPage() {
     }
     resetBuilderState();
   }, [searchParams, editingReportId, resetBuilderState]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!editingReportId) {
+      setAiFinalizeUsed(false);
+      return;
+    }
+    const stored = window.localStorage.getItem(
+      getFinalizeUsageStorageKey(editingReportId)
+    );
+    setAiFinalizeUsed(stored === "true");
+  }, [editingReportId]);
 
   useLayoutEffect(() => {
     resizeAllSectionTextareas();
@@ -9795,7 +9938,11 @@ export default function CoachReportBuilderPage() {
                                           <div className="flex items-center gap-2">
                                             <input
                                               type="text"
-                                              value={section.mediaCaptions[index] ?? ""}
+                                              value={getCaptionValue(
+                                                section.id,
+                                                index,
+                                                section.mediaCaptions[index] ?? ""
+                                              )}
                                               onChange={(event) =>
                                                 handleCaptionChange(
                                                   section.id,
@@ -9803,14 +9950,20 @@ export default function CoachReportBuilderPage() {
                                                   event.target.value
                                                 )
                                               }
+                                              onBlur={() =>
+                                                handleCaptionBlur(section.id, index)
+                                              }
                                               maxLength={CAPTION_LIMIT}
                                               placeholder="Ajouter une legende..."
                                               className="flex-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-[var(--text)] placeholder:text-zinc-400"
                                             />
                                             <span className="text-[0.6rem] text-white/50">
                                               {
-                                                (section.mediaCaptions[index] ?? "")
-                                                  .length
+                                                getCaptionValue(
+                                                  section.id,
+                                                  index,
+                                                  section.mediaCaptions[index] ?? ""
+                                                ).length
                                               }
                                               /{CAPTION_LIMIT}
                                             </span>
@@ -9881,7 +10034,11 @@ export default function CoachReportBuilderPage() {
                                           <div className="flex items-center gap-2">
                                             <input
                                               type="text"
-                                              value={section.mediaCaptions[index] ?? ""}
+                                              value={getCaptionValue(
+                                                section.id,
+                                                index,
+                                                section.mediaCaptions[index] ?? ""
+                                              )}
                                               onChange={(event) =>
                                                 handleCaptionChange(
                                                   section.id,
@@ -9889,14 +10046,20 @@ export default function CoachReportBuilderPage() {
                                                   event.target.value
                                                 )
                                               }
+                                              onBlur={() =>
+                                                handleCaptionBlur(section.id, index)
+                                              }
                                               maxLength={CAPTION_LIMIT}
                                               placeholder="Ajouter une description..."
                                               className="flex-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-[var(--text)] placeholder:text-zinc-400"
                                             />
                                             <span className="text-[0.6rem] text-white/50">
                                               {
-                                                (section.mediaCaptions[index] ?? "")
-                                                  .length
+                                                getCaptionValue(
+                                                  section.id,
+                                                  index,
+                                                  section.mediaCaptions[index] ?? ""
+                                                ).length
                                               }
                                               /{CAPTION_LIMIT}
                                             </span>
