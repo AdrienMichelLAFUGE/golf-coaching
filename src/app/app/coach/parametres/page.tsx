@@ -101,7 +101,7 @@ const normalizeSections = (value: string) => {
 };
 
 export default function CoachSettingsPage() {
-  const { refresh, planTier } = useProfile();
+  const { refresh, planTier, workspaceType } = useProfile();
   const [profile, setProfile] = useState<ProfileSettings | null>(null);
   const [organization, setOrganization] = useState<OrganizationSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -158,6 +158,7 @@ export default function CoachSettingsPage() {
     [reportDefaultSections]
   );
   const entitlements = PLAN_ENTITLEMENTS[planTier];
+  const isOrgWorkspace = workspaceType === "org";
   const aiLocked = !entitlements.aiEnabled;
   const openPremiumModal = () => setPremiumModalOpen(true);
   const closePremiumModal = () => setPremiumModalOpen(false);
@@ -1006,7 +1007,7 @@ export default function CoachSettingsPage() {
             ) : null}
           </section>
 
-          <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">
+          <section className={`grid gap-6 ${isOrgWorkspace ? "lg:grid-cols-[1fr_1fr]" : ""}`}>
             <div className="panel rounded-2xl p-6">
               <h3 className="text-lg font-semibold text-[var(--text)]">Profil coach</h3>
               <div className="mt-4 space-y-4">
@@ -1076,145 +1077,151 @@ export default function CoachSettingsPage() {
                     <p className="mt-2 text-xs text-[var(--muted)]">Upload en cours...</p>
                   ) : null}
                 </div>
-                <div>
-                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                    Bio courte
-                  </label>
-                  <textarea
-                    rows={4}
-                    value={bio}
-                    onChange={(event) => setBio(event.target.value)}
-                    placeholder="Coach golf, specialiste swing..."
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="panel rounded-2xl p-6">
-              <h3 className="text-lg font-semibold text-[var(--text)]">Organisation</h3>
-              <div className="mt-4 space-y-4">
-                <div>
-                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                    Nom de structure
-                  </label>
-                  <input
-                    type="text"
-                    value={orgName}
-                    onChange={(event) => setOrgName(event.target.value)}
-                    placeholder="OneGolf Academy"
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                    Logo
-                  </label>
-                  <div
-                    onDragOver={(event) => event.preventDefault()}
-                    onDragEnter={() => setLogoDragging(true)}
-                    onDragLeave={() => setLogoDragging(false)}
-                    onDrop={(event) => handleDrop(event, "logo")}
-                    className={`mt-2 rounded-2xl border border-dashed px-4 py-3 transition ${
-                      logoDragging
-                        ? "border-[var(--accent)] bg-[var(--accent)]/10"
-                        : "border-white/10 bg-white/5"
-                    }`}
-                  >
-                    <div className="flex flex-wrap items-center gap-4">
-                      {logoUrl ? (
-                        <img
-                          src={logoUrl}
-                          alt="Logo organisation"
-                          className="h-14 w-14 rounded-xl border border-white/10 object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-white/10 bg-white/10 text-xs text-[var(--muted)]">
-                          Logo
-                        </div>
-                      )}
-                      <div className="space-y-1 text-xs text-[var(--muted)]">
-                        <p>Glisse un logo ici.</p>
-                        <button
-                          type="button"
-                          onClick={() => logoInputRef.current?.click()}
-                          className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
-                        >
-                          Parcourir
-                        </button>
-                        <p className="text-[0.65rem]">PNG ou JPG, 2 Mo max.</p>
-                      </div>
-                    </div>
-                    <input
-                      ref={logoInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={(event) => {
-                        handleFileInput(event.target.files, "logo");
-                        event.currentTarget.value = "";
-                      }}
-                      className="hidden"
-                    />
-                  </div>
-                  {uploadingLogo ? (
-                    <p className="mt-2 text-xs text-[var(--muted)]">Upload en cours...</p>
-                  ) : null}
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex-1">
+                {isOrgWorkspace ? (
+                  <div>
                     <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                      Couleur d accent
+                      Bio courte
                     </label>
-                    <input
-                      type="text"
-                      value={accentColor}
-                      onChange={(event) => setAccentColor(event.target.value)}
-                      placeholder="#6ee7b7"
+                    <textarea
+                      rows={4}
+                      value={bio}
+                      onChange={(event) => setBio(event.target.value)}
+                      placeholder="Coach golf, specialiste swing..."
                       className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
                     />
                   </div>
-                  <input
-                    type="color"
-                    value={accentColor}
-                    onChange={(event) => setAccentColor(event.target.value)}
-                    className="mt-8 h-10 w-10 rounded-lg border border-white/10 bg-[var(--bg-elevated)]"
-                    aria-label="Choisir la couleur d accent"
-                  />
-                </div>
+                ) : null}
               </div>
             </div>
+
+            {isOrgWorkspace ? (
+              <div className="panel rounded-2xl p-6">
+                <h3 className="text-lg font-semibold text-[var(--text)]">Organisation</h3>
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Nom de structure
+                    </label>
+                    <input
+                      type="text"
+                      value={orgName}
+                      onChange={(event) => setOrgName(event.target.value)}
+                      placeholder="OneGolf Academy"
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Logo
+                    </label>
+                    <div
+                      onDragOver={(event) => event.preventDefault()}
+                      onDragEnter={() => setLogoDragging(true)}
+                      onDragLeave={() => setLogoDragging(false)}
+                      onDrop={(event) => handleDrop(event, "logo")}
+                      className={`mt-2 rounded-2xl border border-dashed px-4 py-3 transition ${
+                        logoDragging
+                          ? "border-[var(--accent)] bg-[var(--accent)]/10"
+                          : "border-white/10 bg-white/5"
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center gap-4">
+                        {logoUrl ? (
+                          <img
+                            src={logoUrl}
+                            alt="Logo organisation"
+                            className="h-14 w-14 rounded-xl border border-white/10 object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-white/10 bg-white/10 text-xs text-[var(--muted)]">
+                            Logo
+                          </div>
+                        )}
+                        <div className="space-y-1 text-xs text-[var(--muted)]">
+                          <p>Glisse un logo ici.</p>
+                          <button
+                            type="button"
+                            onClick={() => logoInputRef.current?.click()}
+                            className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--text)] transition hover:bg-white/20"
+                          >
+                            Parcourir
+                          </button>
+                          <p className="text-[0.65rem]">PNG ou JPG, 2 Mo max.</p>
+                        </div>
+                      </div>
+                      <input
+                        ref={logoInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={(event) => {
+                          handleFileInput(event.target.files, "logo");
+                          event.currentTarget.value = "";
+                        }}
+                        className="hidden"
+                      />
+                    </div>
+                    {uploadingLogo ? (
+                      <p className="mt-2 text-xs text-[var(--muted)]">Upload en cours...</p>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                        Couleur d accent
+                      </label>
+                      <input
+                        type="text"
+                        value={accentColor}
+                        onChange={(event) => setAccentColor(event.target.value)}
+                        placeholder="#6ee7b7"
+                        className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                      />
+                    </div>
+                    <input
+                      type="color"
+                      value={accentColor}
+                      onChange={(event) => setAccentColor(event.target.value)}
+                      className="mt-8 h-10 w-10 rounded-lg border border-white/10 bg-[var(--bg-elevated)]"
+                      aria-label="Choisir la couleur d accent"
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </section>
 
-          <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">
-            <div className="panel rounded-2xl p-6">
-              <h3 className="text-lg font-semibold text-[var(--text)]">Emails</h3>
-              <div className="mt-4 space-y-4">
-                <div>
-                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                    Nom expediteur
-                  </label>
-                  <input
-                    type="text"
-                    value={emailSender}
-                    onChange={(event) => setEmailSender(event.target.value)}
-                    placeholder="Coach Adrien"
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                    Email de reponse
-                  </label>
-                  <input
-                    type="email"
-                    value={emailReplyTo}
-                    onChange={(event) => setEmailReplyTo(event.target.value)}
-                    placeholder="contact@tonclub.fr"
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
-                  />
+          <section className={`grid gap-6 ${isOrgWorkspace ? "lg:grid-cols-[1fr_1fr]" : ""}`}>
+            {isOrgWorkspace ? (
+              <div className="panel rounded-2xl p-6">
+                <h3 className="text-lg font-semibold text-[var(--text)]">Emails</h3>
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Nom expediteur
+                    </label>
+                    <input
+                      type="text"
+                      value={emailSender}
+                      onChange={(event) => setEmailSender(event.target.value)}
+                      placeholder="Coach Adrien"
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Email de reponse
+                    </label>
+                    <input
+                      type="email"
+                      value={emailReplyTo}
+                      onChange={(event) => setEmailReplyTo(event.target.value)}
+                      placeholder="contact@tonclub.fr"
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : null}
 
             <div className="panel rounded-2xl p-6">
               <h3 className="text-lg font-semibold text-[var(--text)]">
@@ -1441,70 +1448,72 @@ export default function CoachSettingsPage() {
             </div>
           </section>
 
-          <section className="panel rounded-2xl p-6">
-            <h3 className="text-lg font-semibold text-[var(--text)]">
-              Rapports par defaut
-            </h3>
-            <div className="mt-4 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-              <div className="space-y-4">
-                <div>
-                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                    Modele de titre
-                  </label>
-                  <input
-                    type="text"
-                    value={reportTitleTemplate}
-                    onChange={(event) => setReportTitleTemplate(event.target.value)}
-                    placeholder="Bilan - {eleve} - {date}"
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
-                  />
+          {isOrgWorkspace ? (
+            <section className="panel rounded-2xl p-6">
+              <h3 className="text-lg font-semibold text-[var(--text)]">
+                Rapports par defaut
+              </h3>
+              <div className="mt-4 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Modele de titre
+                    </label>
+                    <input
+                      type="text"
+                      value={reportTitleTemplate}
+                      onChange={(event) => setReportTitleTemplate(event.target.value)}
+                      placeholder="Bilan - {eleve} - {date}"
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Signature
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={reportSignature}
+                      onChange={(event) => setReportSignature(event.target.value)}
+                      placeholder="Coach Adrien - OneGolf"
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                      Sections par defaut (1 par ligne)
+                    </label>
+                    <textarea
+                      rows={6}
+                      value={reportDefaultSections}
+                      onChange={(event) => setReportDefaultSections(event.target.value)}
+                      placeholder="Resume de la seance"
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                    Signature
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={reportSignature}
-                    onChange={(event) => setReportSignature(event.target.value)}
-                    placeholder="Coach Adrien - OneGolf"
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                    Sections par defaut (1 par ligne)
-                  </label>
-                  <textarea
-                    rows={6}
-                    value={reportDefaultSections}
-                    onChange={(event) => setReportDefaultSections(event.target.value)}
-                    placeholder="Resume de la seance"
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
-                  />
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                    Apercu
+                  </p>
+                  <div className="mt-3 space-y-2 text-sm text-[var(--text)]">
+                    {previewSections.length === 0 ? (
+                      <p className="text-[var(--muted)]">Aucune section definie.</p>
+                    ) : (
+                      previewSections.map((section) => (
+                        <div
+                          key={section}
+                          className="rounded-xl border border-white/5 bg-white/5 px-3 py-2"
+                        >
+                          {section}
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Apercu
-                </p>
-                <div className="mt-3 space-y-2 text-sm text-[var(--text)]">
-                  {previewSections.length === 0 ? (
-                    <p className="text-[var(--muted)]">Aucune section definie.</p>
-                  ) : (
-                    previewSections.map((section) => (
-                      <div
-                        key={section}
-                        className="rounded-xl border border-white/5 bg-white/5 px-3 py-2"
-                      >
-                        {section}
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-          </section>
+            </section>
+          ) : null}
 
           <section className="panel rounded-2xl p-6">
             <h3 className="text-lg font-semibold text-[var(--text)]">Mot de passe</h3>

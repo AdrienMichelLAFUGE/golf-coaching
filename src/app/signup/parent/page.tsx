@@ -51,8 +51,11 @@ function ParentSignupContent() {
       email: trimmedEmail,
       password: trimmedPassword,
       options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
         data: {
           role: "parent",
+          locale: "fr",
+          preferred_locale: "fr",
           full_name: null,
         },
       },

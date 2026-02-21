@@ -8,6 +8,14 @@ import {
 const ORG_NAME = "SwingFlow";
 const SUPPORT_EMAIL = "contact@swingflow.fr";
 
+const resolveReturnTo = (value?: string | string[] | null) => {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw) return "/landing";
+  if (!raw.startsWith("/") || raw.startsWith("//")) return "/landing";
+  if (raw.includes("\\")) return "/landing";
+  return raw;
+};
+
 const replaceCompliancePlaceholders = (value: string) =>
   value
     .replaceAll(MESSAGE_CHARTER_TEMPLATE.orgNamePlaceholder, ORG_NAME)
@@ -83,7 +91,13 @@ function ComplianceSection({
   );
 }
 
-export default function ConformiteMessageriePage() {
+export default async function ConformiteMessageriePage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const resolvedSearchParams = await searchParams;
+  const returnTo = resolveReturnTo(resolvedSearchParams?.returnTo ?? null);
   const privacyNotice = replaceCompliancePlaceholders(MESSAGE_PRIVACY_NOTICE_TEMPLATE);
   const charter = replaceCompliancePlaceholders(MESSAGE_CHARTER_TEMPLATE.body);
   const cguAdditional = replaceCompliancePlaceholders(MESSAGE_CGU_ADDITIONAL_TEMPLATE);
@@ -129,7 +143,7 @@ export default function ConformiteMessageriePage() {
 
       <div>
         <Link
-          href="/landing"
+          href={returnTo}
           className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:bg-white/10 hover:text-[var(--text)]"
         >
           Retour

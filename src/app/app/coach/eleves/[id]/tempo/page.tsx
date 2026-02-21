@@ -17,6 +17,7 @@ import PageBack from "../../../../_components/page-back";
 import ToastStack from "../../../../_components/toast-stack";
 import useToastStack from "../../../../_components/use-toast-stack";
 import TempoIntroHintModal from "../../../../_components/tempo-intro-hint-modal";
+import { useProfile } from "../../../../_components/profile-context";
 import StudentTabs from "../student-tabs";
 import {
   dismissDidacticHint,
@@ -259,11 +260,28 @@ const getDecisionPriorityMeta = (priority: number) => {
   };
 };
 
+const LockedIcon = ({ className = "h-3 w-3" }: { className?: string }) => (
+  <svg
+    viewBox="0 0 24 24"
+    className={className}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <rect x="3" y="11" width="18" height="10" rx="2" />
+    <path d="M7 11V8a5 5 0 0 1 10 0v3" />
+  </svg>
+);
+
 export default function StudentTempoPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const studentId = typeof params?.id === "string" ? params.id : "";
   const { toasts, pushToast, dismissToast } = useToastStack(7600);
+  const { planTier } = useProfile();
 
   const [pageLoading, setPageLoading] = useState(true);
   const [accessError, setAccessError] = useState("");
@@ -342,6 +360,11 @@ export default function StudentTempoPage() {
   const activeDecisionRun = decisionRuns[0] ?? null;
   const hasDecisionPlan = decisionAxes.length === 3;
   const draftSessionCandidateId = selectedNotesSessionId;
+  const isFreePlan = planTier === "free";
+  const decisionModeLocked = isFreePlan;
+  const reportModeLocked = isFreePlan;
+  const draftReportLocked = isFreePlan;
+  const builderAccessLocked = isFreePlan;
   const selectedDecisionSessionLabel = useMemo(() => {
     const selected = decisionSessions.find((session) => session.id === selectedDecisionSessionId);
     return selected ? buildSessionLabel(selected) : "Session non selectionnee";
@@ -353,6 +376,21 @@ export default function StudentTempoPage() {
   const decisionSummaryConstat =
     clampText(decisionConstat.trim() || activeDecisionRun?.constat || "", 180) ||
     "Constat non renseigne";
+  const notifyTempoLockedFeature = useCallback(
+    (feature: "decision" | "report" | "draft" | "builder") => {
+      const message =
+        feature === "decision"
+          ? "Aide a la decision disponible a partir du plan Pro."
+          : feature === "report"
+            ? "Redaction rapport depuis Tempo disponible a partir du plan Pro."
+            : feature === "draft"
+              ? "Creation de brouillon depuis notes disponible a partir du plan Pro."
+              : "Acces au builder depuis Tempo disponible a partir du plan Pro.";
+      setStatusMessage(message);
+      pushToast(message, "info");
+    },
+    [pushToast]
+  );
 
   const loadTempoContext = useCallback(async () => {
     if (!studentId) return;
@@ -549,6 +587,10 @@ export default function StudentTempoPage() {
 
   const createDraftReport = useCallback(
     async (sessionId: string, title?: string) => {
+      if (draftReportLocked) {
+        notifyTempoLockedFeature("draft");
+        return;
+      }
       if (!sessionId) return;
       setDraftCreating(true);
       setStatusMessage("");
@@ -599,7 +641,7 @@ export default function StudentTempoPage() {
         setDraftCreating(false);
       }
     },
-    [pushToast, router]
+    [draftReportLocked, notifyTempoLockedFeature, pushToast, router]
   );
 
   const runDecisionAxes = useCallback(
@@ -608,6 +650,10 @@ export default function StudentTempoPage() {
       sourceContent: string,
       clarifications: Array<{ question: string; answer: string }>
     ) => {
+      if (decisionModeLocked) {
+        notifyTempoLockedFeature("decision");
+        return;
+      }
       if (!tempoContext) return;
       setDecisionGenerating(true);
       setDecisionPhase("axes");
@@ -715,13 +761,19 @@ export default function StudentTempoPage() {
       decisionClub,
       decisionConstat,
       decisionIntent,
+      decisionModeLocked,
       loadDecisionRuns,
       loadSessions,
+      notifyTempoLockedFeature,
       pushToast,
     ]
   );
 
   const handleGenerateDecision = useCallback(async () => {
+    if (decisionModeLocked) {
+      notifyTempoLockedFeature("decision");
+      return;
+    }
     if (!decisionClub.trim() || !decisionConstat.trim()) {
       const message = "Renseigne au minimum le club et le constat.";
       setStatusMessage(message);
@@ -821,8 +873,10 @@ export default function StudentTempoPage() {
     decisionClub,
     decisionConstat,
     decisionIntent,
+    decisionModeLocked,
     tempoContext,
     getDecisionSession,
+    notifyTempoLockedFeature,
     pushToast,
     runDecisionAxes,
   ]);
@@ -1095,6 +1149,10 @@ export default function StudentTempoPage() {
   };
 
   const startNewDecisionSession = async () => {
+    if (decisionModeLocked) {
+      notifyTempoLockedFeature("decision");
+      return;
+    }
     try {
       const created = await createSession(
         "decision",
@@ -1118,6 +1176,13 @@ export default function StudentTempoPage() {
       pushToast(message, "error");
     }
   };
+
+  useEffect(() => {
+    if (!isFreePlan) return;
+    if (tempoMode !== "notes") {
+      setTempoMode("notes");
+    }
+  }, [isFreePlan, tempoMode]);
 
   const stepDecisionCarousel = useCallback(
     (direction: 1 | -1) => {
@@ -1266,10 +1331,27 @@ export default function StudentTempoPage() {
             actions={
               <button
                 type="button"
-                onClick={() => router.push(`/app/coach/rapports/nouveau?studentId=${studentId}`)}
-                className="rounded-full bg-emerald-100 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-900 transition hover:bg-emerald-200"
+                onClick={() => {
+                  if (builderAccessLocked) {
+                    notifyTempoLockedFeature("builder");
+                    return;
+                  }
+                  router.push(`/app/coach/rapports/nouveau?studentId=${studentId}`);
+                }}
+                className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-wide transition ${
+                  builderAccessLocked
+                    ? "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                    : "bg-emerald-100 text-emerald-900 hover:bg-emerald-200"
+                }`}
               >
-                Ouvrir le builder
+                {builderAccessLocked ? (
+                  <span className="inline-flex items-center gap-1">
+                    <LockedIcon />
+                    <span>Ouvrir le builder (Pro)</span>
+                  </span>
+                ) : (
+                  "Ouvrir le builder"
+                )}
               </button>
             }
           />
@@ -1277,24 +1359,52 @@ export default function StudentTempoPage() {
           <section className="tempo-mode-switcher rounded-2xl p-4 shadow-[0_10px_28px_rgba(15,23,42,0.08)]">
             <div className="flex flex-wrap items-center gap-2">
               {[
-                { id: "notes" as const, label: "Prise de notes" },
-                { id: "decision" as const, label: "Aide a la decision" },
-                { id: "report" as const, label: "Redaction rapport" },
+                { id: "notes" as const, label: "Prise de notes", locked: false },
+                {
+                  id: "decision" as const,
+                  label: "Aide a la decision",
+                  locked: decisionModeLocked,
+                },
+                {
+                  id: "report" as const,
+                  label: "Redaction rapport",
+                  locked: reportModeLocked,
+                },
               ].map((mode) => (
                 <button
                   key={mode.id}
                   type="button"
-                  onClick={() => setTempoMode(mode.id)}
+                  onClick={() => {
+                    if (mode.locked) {
+                      notifyTempoLockedFeature(mode.id === "decision" ? "decision" : "report");
+                      return;
+                    }
+                    setTempoMode(mode.id);
+                  }}
                   className={`tempo-mode-pill rounded-full px-3 py-1.5 text-[0.68rem] font-semibold uppercase tracking-wide transition ${
-                    tempoMode === mode.id
+                    mode.locked
+                      ? "cursor-not-allowed opacity-55"
+                      : tempoMode === mode.id
                       ? "tempo-mode-pill-active"
                       : "tempo-mode-pill-idle"
                   }`}
                 >
-                  {mode.label}
+                  {mode.locked ? (
+                    <span className="inline-flex items-center gap-1">
+                      <LockedIcon />
+                      <span>{mode.label} (Pro)</span>
+                    </span>
+                  ) : (
+                    mode.label
+                  )}
                 </button>
               ))}
             </div>
+            {isFreePlan ? (
+              <p className="mt-3 text-xs text-amber-700">
+                Plan Free: seul le mode Prise de notes est disponible dans Tempo.
+              </p>
+            ) : null}
             {sessionsLoading ? (
               <p className="mt-3 text-sm text-slate-600">Synchronisation des sessions...</p>
             ) : null}
@@ -1320,11 +1430,30 @@ export default function StudentTempoPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => void createDraftReport(selectedNotesSessionId)}
-                    disabled={!selectedNotesSessionId || draftCreating}
-                    className="rounded-full bg-emerald-100 px-3 py-1.5 text-[0.68rem] font-semibold uppercase tracking-wide text-emerald-900 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={() => {
+                      if (draftReportLocked) {
+                        notifyTempoLockedFeature("draft");
+                        return;
+                      }
+                      void createDraftReport(selectedNotesSessionId);
+                    }}
+                    disabled={draftCreating || (!selectedNotesSessionId && !draftReportLocked)}
+                    className={`rounded-full px-3 py-1.5 text-[0.68rem] font-semibold uppercase tracking-wide transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                      draftReportLocked
+                        ? "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                        : "bg-emerald-100 text-emerald-900 hover:bg-emerald-200"
+                    }`}
                   >
-                    {draftCreating ? "Creation..." : "Creer brouillon rapport"}
+                    {draftCreating ? (
+                      "Creation..."
+                    ) : draftReportLocked ? (
+                      <span className="inline-flex items-center gap-1">
+                        <LockedIcon />
+                        <span>Creer brouillon rapport (Pro)</span>
+                      </span>
+                    ) : (
+                      "Creer brouillon rapport"
+                    )}
                   </button>
                 </div>
               </div>
@@ -1913,26 +2042,72 @@ export default function StudentTempoPage() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <button
                   type="button"
-                  onClick={() => router.push(`/app/coach/rapports/nouveau?studentId=${studentId}`)}
-                  className="rounded-xl bg-emerald-100 px-4 py-3 text-left transition hover:bg-emerald-200"
+                  onClick={() => {
+                    if (builderAccessLocked) {
+                      notifyTempoLockedFeature("builder");
+                      return;
+                    }
+                    router.push(`/app/coach/rapports/nouveau?studentId=${studentId}`);
+                  }}
+                  className={`rounded-xl px-4 py-3 text-left transition ${
+                    builderAccessLocked
+                      ? "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                      : "bg-emerald-100 hover:bg-emerald-200"
+                  }`}
                 >
-                  <p className="text-[0.68rem] font-semibold uppercase tracking-wide text-emerald-900">
-                    Ouvrir redaction
+                  <p
+                    className={`text-[0.68rem] font-semibold uppercase tracking-wide ${
+                      builderAccessLocked ? "text-slate-600" : "text-emerald-900"
+                    }`}
+                  >
+                    {builderAccessLocked ? (
+                      <span className="inline-flex items-center gap-1">
+                        <LockedIcon />
+                        <span>Ouvrir redaction (Pro)</span>
+                      </span>
+                    ) : (
+                      "Ouvrir redaction"
+                    )}
                   </p>
-                  <p className="mt-1 text-sm text-emerald-900">
+                  <p
+                    className={`mt-1 text-sm ${builderAccessLocked ? "text-slate-600" : "text-emerald-900"}`}
+                  >
                     Demarre un rapport avec l eleve preselectionne.
                   </p>
                 </button>
                 <button
                   type="button"
-                  onClick={() => void createDraftReport(draftSessionCandidateId)}
-                  disabled={!draftSessionCandidateId || draftCreating}
-                  className="rounded-xl bg-slate-100 px-4 py-3 text-left transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={() => {
+                    if (draftReportLocked) {
+                      notifyTempoLockedFeature("draft");
+                      return;
+                    }
+                    void createDraftReport(draftSessionCandidateId);
+                  }}
+                  disabled={draftCreating || (!draftSessionCandidateId && !draftReportLocked)}
+                  className={`rounded-xl px-4 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                    draftReportLocked
+                      ? "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                      : "bg-slate-100 hover:bg-slate-200"
+                  }`}
                 >
-                  <p className="text-[0.68rem] font-semibold uppercase tracking-wide text-slate-900">
-                    {draftCreating ? "Creation..." : "Brouillon depuis notes"}
+                  <p
+                    className={`text-[0.68rem] font-semibold uppercase tracking-wide ${
+                      draftReportLocked ? "text-slate-600" : "text-slate-900"
+                    }`}
+                  >
+                    {draftCreating ? (
+                      "Creation..."
+                    ) : draftReportLocked ? (
+                      <span className="inline-flex items-center gap-1">
+                        <LockedIcon />
+                        <span>Brouillon depuis notes (Pro)</span>
+                      </span>
+                    ) : (
+                      "Brouillon depuis notes"
+                    )}
                   </p>
-                  <p className="mt-1 text-sm text-slate-700">
+                  <p className={`mt-1 text-sm ${draftReportLocked ? "text-slate-600" : "text-slate-700"}`}>
                     Convertit les notes de la session active en brouillon puis ouvre le builder.
                   </p>
                 </button>
@@ -1955,47 +2130,52 @@ export default function StudentTempoPage() {
                 onClick={() => setShowContextDetails((previous) => !previous)}
                 className="rounded-full bg-slate-100 px-3 py-1.5 text-[0.62rem] font-semibold uppercase tracking-wide text-slate-800 transition hover:bg-slate-200"
               >
-                {showContextDetails ? "Masquer details" : "Voir details"}
+                {showContextDetails ? "Reduire" : "Etendre"}
               </button>
             </div>
-            <p className="text-xs text-slate-600">
-              Contexte compacte pour limiter le cout tokens.
-            </p>
-            <div className="grid gap-2 md:grid-cols-2">
-              <article className="rounded-xl bg-slate-50 p-3">
-                <p className="text-[0.62rem] font-semibold uppercase tracking-wide text-slate-700">
-                  TPI / CPI
+            {!showContextDetails ? (
+              <p className="text-xs text-slate-600">
+                Section reduite. Clique sur &quot;Etendre&quot; pour afficher le contexte IA.
+              </p>
+            ) : (
+              <>
+                <p className="text-xs text-slate-600">
+                  Contexte compacte pour limiter le cout tokens.
                 </p>
-                <p className="mt-1 text-sm text-slate-900">
-                  {compactLine(tempoContext?.summaries.tpi || "")}
-                </p>
-              </article>
-              <article className="rounded-xl bg-slate-50 p-3">
-                <p className="text-[0.62rem] font-semibold uppercase tracking-wide text-slate-700">
-                  Rapports publies
-                </p>
-                <p className="mt-1 text-sm text-slate-900">
-                  {compactLine(tempoContext?.summaries.reports || "")}
-                </p>
-              </article>
-              <article className="rounded-xl bg-slate-50 p-3">
-                <p className="text-[0.62rem] font-semibold uppercase tracking-wide text-slate-700">
-                  Datas radar
-                </p>
-                <p className="mt-1 text-sm text-slate-900">
-                  {compactLine(tempoContext?.summaries.radar || "")}
-                </p>
-              </article>
-              <article className="rounded-xl bg-slate-50 p-3">
-                <p className="text-[0.62rem] font-semibold uppercase tracking-wide text-slate-700">
-                  Tests normalises
-                </p>
-                <p className="mt-1 text-sm text-slate-900">
-                  {compactLine(tempoContext?.summaries.tests || "")}
-                </p>
-              </article>
-            </div>
-            {showContextDetails ? (
+                <div className="grid gap-2 md:grid-cols-2">
+                  <article className="rounded-xl bg-slate-50 p-3">
+                    <p className="text-[0.62rem] font-semibold uppercase tracking-wide text-slate-700">
+                      TPI / CPI
+                    </p>
+                    <p className="mt-1 text-sm text-slate-900">
+                      {compactLine(tempoContext?.summaries.tpi || "")}
+                    </p>
+                  </article>
+                  <article className="rounded-xl bg-slate-50 p-3">
+                    <p className="text-[0.62rem] font-semibold uppercase tracking-wide text-slate-700">
+                      Rapports publies
+                    </p>
+                    <p className="mt-1 text-sm text-slate-900">
+                      {compactLine(tempoContext?.summaries.reports || "")}
+                    </p>
+                  </article>
+                  <article className="rounded-xl bg-slate-50 p-3">
+                    <p className="text-[0.62rem] font-semibold uppercase tracking-wide text-slate-700">
+                      Datas radar
+                    </p>
+                    <p className="mt-1 text-sm text-slate-900">
+                      {compactLine(tempoContext?.summaries.radar || "")}
+                    </p>
+                  </article>
+                  <article className="rounded-xl bg-slate-50 p-3">
+                    <p className="text-[0.62rem] font-semibold uppercase tracking-wide text-slate-700">
+                      Tests normalises
+                    </p>
+                    <p className="mt-1 text-sm text-slate-900">
+                      {compactLine(tempoContext?.summaries.tests || "")}
+                    </p>
+                  </article>
+                </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <article className="rounded-xl bg-slate-50 p-3">
                   <p className="text-[0.62rem] font-semibold uppercase tracking-wide text-slate-700">
@@ -2030,7 +2210,8 @@ export default function StudentTempoPage() {
                   </p>
                 </article>
               </div>
-            ) : null}
+              </>
+            )}
           </section>
         </div>
       )}

@@ -23,6 +23,7 @@ import RoleGuard from "../../../_components/role-guard";
 import { useProfile } from "../../../_components/profile-context";
 import PageBack from "../../../_components/page-back";
 import PageHeader from "../../../_components/page-header";
+import StudentCreateModal from "../../../_components/student-create-modal";
 import PremiumOfferModal from "../../../_components/premium-offer-modal";
 import Badge from "../../../_components/badge";
 import RadarReviewModal from "../../../_components/radar-review-modal";
@@ -793,6 +794,7 @@ export default function CoachReportBuilderPage() {
   const [stickyActionsExpanded, setStickyActionsExpanded] = useState(false);
   const [studentPickerOpen, setStudentPickerOpen] = useState(false);
   const [studentPickerQuery, setStudentPickerQuery] = useState("");
+  const [studentCreateModalOpen, setStudentCreateModalOpen] = useState(false);
   const [radarFiles, setRadarFiles] = useState<RadarFile[]>([]);
   const [radarImageUrls, setRadarImageUrls] = useState<Record<string, string>>({});
   const [radarLoading, setRadarLoading] = useState(false);
@@ -2509,7 +2511,7 @@ export default function CoachReportBuilderPage() {
     });
   };
 
-  const loadStudents = async () => {
+  const loadStudents = useCallback(async () => {
     setStudentsLoading(true);
     setStudentsLoaded(false);
     const { data, error } = await supabase
@@ -2523,11 +2525,28 @@ export default function CoachReportBuilderPage() {
     if (error) {
       setStatusMessage(error.message);
       setStatusType("error");
-      return;
+      return [];
     }
 
-    setStudents(data ?? []);
-  };
+    const nextStudents = (data ?? []) as StudentOption[];
+    setStudents(nextStudents);
+    return nextStudents;
+  }, []);
+
+  const handleStudentCreatedFromPicker = useCallback(async () => {
+    const previousIds = new Set(students.map((student) => student.id));
+    const refreshedStudents = await loadStudents();
+    const createdStudent =
+      refreshedStudents.find((student) => !previousIds.has(student.id)) ??
+      refreshedStudents[0] ??
+      null;
+
+    if (createdStudent) {
+      setStudentId(createdStudent.id);
+      setStudentPickerOpen(false);
+      setStudentPickerQuery("");
+    }
+  }, [loadStudents, students]);
 
   const loadRadarImageUrls = useCallback(async (files: RadarFile[]) => {
     const smart2MoveFiles = files.filter(
@@ -5776,8 +5795,8 @@ export default function CoachReportBuilderPage() {
   }, [reportSections]);
 
   useLayoutEffect(() => {
-    loadStudents();
-  }, []);
+    void loadStudents();
+  }, [loadStudents]);
 
   useEffect(() => {
     if (!studentId) {
@@ -6103,6 +6122,7 @@ export default function CoachReportBuilderPage() {
     sectionCreateModalOpen ||
     pendingSectionDeletion !== null ||
     studentPickerOpen ||
+    studentCreateModalOpen ||
     radarImportOpen ||
     smart2MoveMarkersModalOpen ||
     clarifyOpen ||
@@ -10561,6 +10581,18 @@ export default function CoachReportBuilderPage() {
                     </button>
                     <button
                       type="button"
+                      onClick={() => setLayoutCustomType("video")}
+                      className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
+                        layoutCustomType === "video"
+                          ? "border-pink-300 bg-pink-150 text-[var(--text)]"
+                          : "border-white/10 bg-white/5 text-[var(--muted)]"
+                      }`}
+                      aria-pressed={layoutCustomType === "video"}
+                    >
+                      Video
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => {
                         if (!radarAddonEnabled) {
                           openRadarAddonModal();
@@ -10582,6 +10614,11 @@ export default function CoachReportBuilderPage() {
                   {layoutCustomType === "image" ? (
                     <p className="mt-2 text-[0.6rem] text-[var(--muted)]">
                       Les images seront ajoutees a la fin du rapport.
+                    </p>
+                  ) : layoutCustomType === "video" ? (
+                    <p className="mt-2 text-[0.6rem] text-[var(--muted)]">
+                      Video: 1 section max par rapport, {VIDEO_PER_SECTION_LIMIT} videos max
+                      ({VIDEO_DURATION_LIMIT_SECONDS}s chacune).
                     </p>
                   ) : layoutCustomType === "radar" ? (
                     <p className="mt-2 text-[0.6rem] text-[var(--muted)]">
@@ -12898,29 +12935,57 @@ export default function CoachReportBuilderPage() {
                   )}
                 </div>
 
-                <div className="mt-5 flex items-center justify-end gap-2">
+                <div className="mt-5 flex items-center justify-between gap-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      setStudentPickerOpen(false);
-                      setStudentPickerQuery("");
-                      setBuilderStep("layout");
-                    }}
-                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                    onClick={() => setStudentCreateModalOpen(true)}
+                    className="inline-flex items-center gap-2 rounded-full border border-emerald-300/30 bg-emerald-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-emerald-400/20"
                   >
-                    Retour
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-3.5 w-3.5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M12 5v14" />
+                      <path d="M5 12h14" />
+                    </svg>
+                    Ajouter un eleve
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => router.push("/app/coach/rapports")}
-                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
-                  >
-                    Annuler
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStudentPickerOpen(false);
+                        setStudentPickerQuery("");
+                        setBuilderStep("layout");
+                      }}
+                      className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                    >
+                      Retour
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => router.push("/app/coach/rapports")}
+                      className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                    >
+                      Annuler
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
+        ) : null}
+        {studentCreateModalOpen ? (
+          <StudentCreateModal
+            onClose={() => setStudentCreateModalOpen(false)}
+            afterCreate={handleStudentCreatedFromPicker}
+          />
         ) : null}
         {radarImportOpen ? (
           <div

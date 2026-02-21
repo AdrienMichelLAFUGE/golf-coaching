@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { resolveEffectivePlanTier } from "@/lib/plans";
 import { useProfile } from "./profile-context";
+import PremiumOfferModal from "./premium-offer-modal";
 
 type WorkspaceOption = {
   id: string;
@@ -48,10 +49,27 @@ const BuildingIcon = () => (
   </svg>
 );
 
+const LockedIcon = ({ className = iconClass }: { className?: string }) => (
+  <svg
+    viewBox="0 0 24 24"
+    className={className}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <rect x="3" y="11" width="18" height="10" rx="2" />
+    <path d="M7 11V8a5 5 0 0 1 10 0v3" />
+  </svg>
+);
+
 export default function WorkspaceSwitcher() {
   const { profile, organization, memberships, personalWorkspace, refresh } = useProfile();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [premiumModalOpen, setPremiumModalOpen] = useState(false);
   const [switchingId, setSwitchingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
@@ -336,23 +354,27 @@ export default function WorkspaceSwitcher() {
               <button
                 type="button"
                 role="menuitem"
-                disabled={!canCreateOrg}
                 onClick={() => {
-                  if (!canCreateOrg) return;
+                  if (!canCreateOrg) {
+                    setOpen(false);
+                    setPremiumModalOpen(true);
+                    return;
+                  }
                   setOpen(false);
                   router.push("/app#workspace-create-org");
                 }}
                 className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left transition ${
                   canCreateOrg
                     ? "border border-emerald-300/40 bg-emerald-400/10 text-emerald-100 hover:border-emerald-300/70"
-                    : "border border-white/10 text-[var(--muted)] opacity-60"
+                    : "border border-white/10 text-[var(--muted)] hover:border-violet-300/50 hover:bg-violet-400/10 hover:text-[var(--text)]"
                 }`}
               >
-                <span className="text-[0.7rem] uppercase tracking-wide">
+                <span className="inline-flex items-center gap-2 text-[0.7rem] uppercase tracking-wide">
+                  {!canCreateOrg ? <LockedIcon className="h-3.5 w-3.5" /> : null}
                   Creer une organisation
                 </span>
                 <span className="text-[0.6rem] uppercase tracking-wide text-[var(--muted)]">
-                  {canCreateOrg ? "Disponible" : "IA requise"}
+                  {canCreateOrg ? "Disponible" : "Plan Free"}
                 </span>
               </button>
             </div>
@@ -360,6 +382,7 @@ export default function WorkspaceSwitcher() {
           {error ? <p className="mt-2 px-3 text-[0.7rem] text-red-300">{error}</p> : null}
         </div>
       ) : null}
+      <PremiumOfferModal open={premiumModalOpen} onClose={() => setPremiumModalOpen(false)} />
     </div>
   );
 }

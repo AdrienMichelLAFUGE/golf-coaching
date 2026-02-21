@@ -1,7 +1,22 @@
 import Link from "next/link";
 import LandingReveal from "../landing/landing-reveal";
 
-export default function CgvPage() {
+const resolveReturnTo = (value?: string | string[] | null) => {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw) return "/landing";
+  if (!raw.startsWith("/") || raw.startsWith("//")) return "/landing";
+  if (raw.includes("\\")) return "/landing";
+  return raw;
+};
+
+export default async function CgvPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const resolvedSearchParams = await searchParams;
+  const returnTo = resolveReturnTo(resolvedSearchParams?.returnTo ?? null);
+
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-16 text-[var(--text)]">
       <LandingReveal />
@@ -170,10 +185,10 @@ export default function CgvPage() {
 
       <div>
         <Link
-          href="/landing"
+          href={returnTo}
           className="text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
         >
-          Retour à la landing
+          Retour
         </Link>
       </div>
     </main>

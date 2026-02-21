@@ -1016,6 +1016,11 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
       ? (organization.name ?? "votre organisation")
       : "SwingFlow";
   const charterSupportEmail = "contact@swingflow.fr";
+  const complianceReturnTo = useMemo(() => {
+    const basePath = roleScope === "coach" ? "/app/coach/messages" : "/app/eleve/messages";
+    const params = searchParams.toString();
+    return params ? `${basePath}?${params}` : basePath;
+  }, [roleScope, searchParams]);
 
   const messages = threadData?.messages ?? [];
   const nextCursor = threadData?.nextCursor ?? null;
@@ -1218,7 +1223,7 @@ export default function MessagesShell({ roleScope }: MessagesShellProps) {
             <p className="mt-2 text-xs text-[var(--muted)]">
               Voir les textes juridiques:{" "}
               <Link
-                href="/conformite-messagerie"
+                href={`/conformite-messagerie?returnTo=${encodeURIComponent(complianceReturnTo)}`}
                 target="_blank"
                 className="underline underline-offset-4"
               >

@@ -73,6 +73,11 @@ export default function LoginClient({
   const parentSignupHref = nextPath
     ? `/signup/parent?next=${encodeURIComponent(nextPath)}`
     : "/signup/parent";
+  const coachSignupReturnTo = nextPath
+    ? `/login/coach?mode=signup&next=${encodeURIComponent(nextPath)}`
+    : "/login/coach?mode=signup";
+  const cguHref = `/cgu?returnTo=${encodeURIComponent(coachSignupReturnTo)}`;
+  const cgvHref = `/cgv?returnTo=${encodeURIComponent(coachSignupReturnTo)}`;
 
   async function ensureProfile() {
     const { data: sessionData } = await supabase.auth.getSession();
@@ -211,13 +216,17 @@ export default function LoginClient({
     trimmedFullName: string
   ) => {
     const acceptedAt = new Date().toISOString();
+    const emailRedirectTo = `${window.location.origin}/auth/callback`;
     const { data, error } = await supabase.auth.signUp({
       email: trimmedEmail,
       password: trimmedPassword,
       options: {
+        emailRedirectTo,
         data: {
           role: "coach",
           full_name: trimmedFullName,
+          locale: "fr",
+          preferred_locale: "fr",
           terms_accepted: true,
           terms_accepted_at: acceptedAt,
           cgu_accepted: true,
@@ -549,7 +558,7 @@ export default function LoginClient({
                     <span>
                       J accepte les{" "}
                       <a
-                        href="/cgu"
+                        href={cguHref}
                         target="_blank"
                         rel="noreferrer"
                         className="font-semibold text-[var(--text)] underline decoration-white/30 underline-offset-2 hover:decoration-white/70"
@@ -558,7 +567,7 @@ export default function LoginClient({
                       </a>{" "}
                       et les{" "}
                       <a
-                        href="/cgv"
+                        href={cgvHref}
                         target="_blank"
                         rel="noreferrer"
                         className="font-semibold text-[var(--text)] underline decoration-white/30 underline-offset-2 hover:decoration-white/70"

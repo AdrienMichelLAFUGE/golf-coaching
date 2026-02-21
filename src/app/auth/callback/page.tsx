@@ -7,7 +7,7 @@ import { resolvePostLoginPath } from "@/lib/auth/post-login-path";
 
 export default function AuthCallbackPage() {
   const router = useRouter();
-  const [message, setMessage] = useState("Signing you in...");
+  const [message, setMessage] = useState("Connexion en cours...");
 
   useEffect(() => {
     let active = true;
@@ -34,7 +34,7 @@ export default function AuthCallbackPage() {
         const { error } = await supabase.auth.exchangeCodeForSession(code);
         if (!active) return;
         if (error) {
-          setMessage("Sign-in failed. Please try again.");
+          setMessage("Connexion impossible. Reessaie.");
           return;
         }
       }
@@ -106,7 +106,19 @@ export default function AuthCallbackPage() {
         return;
       }
 
-      setMessage("No session found. Please sign in again.");
+      const normalizedProviderMessage = providerMessage.toLowerCase();
+      if (normalizedProviderMessage.includes("please proceed to sign in")) {
+        setMessage("Email confirme. Tu peux maintenant te connecter.");
+        return;
+      }
+      if (normalizedProviderMessage.includes("confirm link sent to the other email")) {
+        setMessage(
+          "Lien valide. Une autre confirmation email reste a valider pour finaliser la modification."
+        );
+        return;
+      }
+
+      setMessage("Session introuvable. Connecte-toi a nouveau.");
     };
 
     completeSignIn();

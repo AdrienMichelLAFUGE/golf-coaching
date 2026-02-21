@@ -3,13 +3,15 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-const isSupabaseAuthHash = (hash: string) => {
+const LEGACY_EMAIL_CHANGE_MESSAGE = "confirm link sent to the other email";
+
+const parseSupabaseAuthHash = (hash: string) => {
   if (!hash.startsWith("#") || !hash.includes("=")) {
-    return false;
+    return null;
   }
 
   const params = new URLSearchParams(hash.slice(1));
-  return (
+  const isSupabaseHash =
     params.has("message") ||
     params.has("error") ||
     params.has("error_code") ||
@@ -17,8 +19,18 @@ const isSupabaseAuthHash = (hash: string) => {
     params.has("access_token") ||
     params.has("refresh_token") ||
     params.has("type") ||
-    params.has("sb")
-  );
+    params.has("sb");
+
+  if (!isSupabaseHash) {
+    return null;
+  }
+
+  return params;
+};
+
+const isLegacyEmailChangeHash = (params: URLSearchParams) => {
+  const message = (params.get("message") ?? "").trim().toLowerCase();
+  return message.includes(LEGACY_EMAIL_CHANGE_MESSAGE);
 };
 
 export default function AuthHashRedirect() {
@@ -26,20 +38,30 @@ export default function AuthHashRedirect() {
 
   useEffect(() => {
     const hash = window.location.hash;
-    if (!isSupabaseAuthHash(hash)) {
+    const params = parseSupabaseAuthHash(hash);
+    if (!params) {
       return;
     }
 
-    const params = new URLSearchParams(hash.slice(1));
     const message = (params.get("message") ?? "").trim();
 
-    const target = new URL("/auth/email-change", window.location.origin);
-    target.searchParams.set("source", "unknown");
-    if (message.length > 0) {
-      target.searchParams.set("legacyMessage", message);
+    if (isLegacyEmailChangeHash(params)) {
+      const target = new URL("/auth/email-change", window.location.origin);
+      target.searchParams.set("source", "unknown");
+      if (message.length > 0) {
+        target.searchParams.set("legacyMessage", message);
+      }
+
+      router.replace(`${target.pathname}${target.search}`);
+      return;
     }
 
-    router.replace(`${target.pathname}${target.search}`);
+    const callbackTarget = new URL("/auth/callback", window.location.origin);
+    if (message.length > 0) {
+      callbackTarget.searchParams.set("message", message);
+    }
+
+    router.replace(`${callbackTarget.pathname}${callbackTarget.search}${hash}`);
   }, [router]);
 
   return null;
