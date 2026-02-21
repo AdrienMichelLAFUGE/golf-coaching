@@ -49,7 +49,16 @@ type AiPayload = {
   propagateMode?: "empty" | "append";
   tpiContext?: string;
   clarifications?: { question: string; answer: string }[];
-  axesSelections?: { section: string; title: string; summary: string }[];
+  axesSelections?: Array<{
+    section: string;
+    title: string;
+    summary: string;
+    tpiReasoning?: {
+      tpiLink?: string;
+      playerLimitation?: string;
+      golfCompensation?: string;
+    };
+  }>;
   settings?: Partial<AiSettings>;
 };
 
@@ -74,7 +83,20 @@ const aiPayloadSchema = z.object({
     .array(z.object({ question: z.string(), answer: z.string() }))
     .optional(),
   axesSelections: z
-    .array(z.object({ section: z.string(), title: z.string(), summary: z.string() }))
+    .array(
+      z.object({
+        section: z.string(),
+        title: z.string(),
+        summary: z.string(),
+        tpiReasoning: z
+          .object({
+            tpiLink: z.string().optional(),
+            playerLimitation: z.string().optional(),
+            golfCompensation: z.string().optional(),
+          })
+          .optional(),
+      })
+    )
     .optional(),
   settings: z
     .object({
@@ -520,7 +542,15 @@ const extractAxes = (response: {
 }): {
   axes: Array<{
     section: string;
-    options: Array<{ title: string; summary: string }>;
+    options: Array<{
+      title: string;
+      summary: string;
+      tpiReasoning: {
+        tpiLink: string;
+        playerLimitation: string;
+        golfCompensation: string;
+      };
+    }>;
   }>;
 } | null => {
   const raw = response.output_text?.trim();
@@ -546,7 +576,15 @@ const extractAxes = (response: {
         return parseJsonPayload(parts.join("\n").trim()) as {
           axes: Array<{
             section: string;
-            options: Array<{ title: string; summary: string }>;
+            options: Array<{
+              title: string;
+              summary: string;
+              tpiReasoning: {
+                tpiLink: string;
+                playerLimitation: string;
+                golfCompensation: string;
+              };
+            }>;
           }>;
         };
       } catch (error) {
@@ -564,7 +602,15 @@ const extractAxes = (response: {
     return parseJsonPayload(raw) as {
       axes: Array<{
         section: string;
-        options: Array<{ title: string; summary: string }>;
+        options: Array<{
+          title: string;
+          summary: string;
+          tpiReasoning: {
+            tpiLink: string;
+            playerLimitation: string;
+            golfCompensation: string;
+          };
+        }>;
       }>;
     };
   } catch (error) {
@@ -992,7 +1038,16 @@ export async function POST(request: Request) {
       .join("\n");
 
     const axesText = (payload.axesSelections ?? [])
-      .map((item) => `- ${item.section}: ${item.title} - ${item.summary}`.trim())
+      .map((item) => {
+        const tpiLink = item.tpiReasoning?.tpiLink?.trim();
+        const limitation = item.tpiReasoning?.playerLimitation?.trim();
+        const compensation = item.tpiReasoning?.golfCompensation?.trim();
+        const tpiBlock =
+          tpiLink || limitation || compensation
+            ? ` | TPI: ${tpiLink || "n/a"} | Limitation: ${limitation || "n/a"} | Compensation: ${compensation || "n/a"}`
+            : "";
+        return `- ${item.section}: ${item.title} - ${item.summary}${tpiBlock}`.trim();
+      })
       .join("\n");
 
     const sectionsList = (payload.allSections ?? [])
@@ -1137,7 +1192,8 @@ export async function POST(request: Request) {
                 format: {
                   type: "json_schema" as const,
                   name: "axes",
-                  description: "Retourne un objet JSON avec axes (section, options).",
+                  description:
+                    "Retourne un objet JSON avec axes (section, exactement 2 options), incluant un raisonnement TPI structure.",
                   schema: {
                     type: "object",
                     additionalProperties: false,
@@ -1151,14 +1207,42 @@ export async function POST(request: Request) {
                             section: { type: "string" },
                             options: {
                               type: "array",
+                              minItems: 2,
+                              maxItems: 2,
                               items: {
                                 type: "object",
                                 additionalProperties: false,
                                 properties: {
-                                  title: { type: "string" },
-                                  summary: { type: "string" },
+                                  title: { type: "string", minLength: 6, maxLength: 90 },
+                                  summary: { type: "string", minLength: 30, maxLength: 220 },
+                                  tpiReasoning: {
+                                    type: "object",
+                                    additionalProperties: false,
+                                    properties: {
+                                      tpiLink: {
+                                        type: "string",
+                                        minLength: 20,
+                                        maxLength: 260,
+                                      },
+                                      playerLimitation: {
+                                        type: "string",
+                                        minLength: 20,
+                                        maxLength: 260,
+                                      },
+                                      golfCompensation: {
+                                        type: "string",
+                                        minLength: 20,
+                                        maxLength: 260,
+                                      },
+                                    },
+                                    required: [
+                                      "tpiLink",
+                                      "playerLimitation",
+                                      "golfCompensation",
+                                    ],
+                                  },
                                 },
-                                required: ["title", "summary"],
+                                required: ["title", "summary", "tpiReasoning"],
                               },
                             },
                           },
@@ -1324,7 +1408,7 @@ export async function POST(request: Request) {
                 type: "input_text",
                 text:
                   `${userPrompt}\n\nIMPORTANT: Reponds en JSON valide. ` +
-                  "Limite chaque resume a 160 caracteres maximum.",
+                  "Retourne exactement 2 options par section, et renseigne tpiReasoning (tpiLink, playerLimitation, golfCompensation). Limite chaque resume a 220 caracteres maximum.",
               },
             ],
           },

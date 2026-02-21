@@ -1302,7 +1302,7 @@ export default function StudentTempoPage() {
           </section>
 
           {tempoMode === "notes" ? (
-            <section className="space-y-4 rounded-2xl bg-white/80 p-5 shadow-[0_10px_28px_rgba(15,23,42,0.08)]">
+            <section className="tempo-surface-panel space-y-4 rounded-2xl bg-white/80 p-5 shadow-[0_10px_28px_rgba(15,23,42,0.08)]">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">Prise de notes</h2>
@@ -1474,7 +1474,7 @@ export default function StudentTempoPage() {
           ) : null}
 
           {tempoMode === "decision" ? (
-            <section className="space-y-4 rounded-2xl bg-white/80 p-5 shadow-[0_10px_28px_rgba(15,23,42,0.08)]">
+            <section className="tempo-surface-panel space-y-4 rounded-2xl bg-white/80 p-5 shadow-[0_10px_28px_rgba(15,23,42,0.08)]">
               <div className="tempo-decision-hero relative overflow-hidden rounded-2xl p-4 sm:p-5">
                 <span className="tempo-decision-orb tempo-decision-orb-a" aria-hidden="true" />
                 <span className="tempo-decision-orb tempo-decision-orb-b" aria-hidden="true" />
@@ -1902,7 +1902,7 @@ export default function StudentTempoPage() {
           ) : null}
 
           {tempoMode === "report" ? (
-            <section className="space-y-4 rounded-2xl bg-white/80 p-5 shadow-[0_10px_28px_rgba(15,23,42,0.08)]">
+            <section className="tempo-surface-panel space-y-4 rounded-2xl bg-white/80 p-5 shadow-[0_10px_28px_rgba(15,23,42,0.08)]">
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">Redaction du rapport</h2>
                 <p className="text-sm text-slate-600">
@@ -1945,7 +1945,7 @@ export default function StudentTempoPage() {
             </section>
           ) : null}
 
-          <section className="space-y-3 rounded-2xl bg-white/75 p-4 shadow-[0_10px_28px_rgba(15,23,42,0.08)]">
+          <section className="tempo-surface-panel space-y-3 rounded-2xl bg-white/75 p-4 shadow-[0_10px_28px_rgba(15,23,42,0.08)]">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-900">
                 Contexte IA exploite
@@ -2101,22 +2101,56 @@ export default function StudentTempoPage() {
       ) : null}
 
       {clarifyOpen ? (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/60 p-4">
-          <div className="w-full max-w-2xl rounded-3xl bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.35)]">
-            <div className="mb-4">
-              <p className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-emerald-700">
-                Etape de clarification
-              </p>
-              <h3 className="mt-1 text-lg font-semibold text-slate-900">
-                Quelques questions avant de proposer les 3 axes
-              </h3>
-              <p className="mt-1 text-sm text-slate-700">
-                Reponds rapidement pour que Tempo priorise les recommandations.
-              </p>
+        <div className="fixed inset-0 z-[120] overflow-y-auto bg-black/70 px-4 py-10">
+          <div className="relative mx-auto flex w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-[var(--bg-elevated)] shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
+            <span className="pointer-events-none absolute -left-20 -top-16 h-56 w-56 rounded-full bg-emerald-300/20 blur-3xl" />
+            <span className="pointer-events-none absolute -right-24 top-10 h-56 w-56 rounded-full bg-sky-300/20 blur-3xl" />
+            <div className="flex items-start justify-between gap-4 p-6">
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                  Etape de clarification
+                </p>
+                <h3 className="mt-2 text-xl font-semibold text-[var(--text)]">
+                  Quelques questions avant de proposer les 3 axes
+                </h3>
+                <p className="mt-2 text-sm text-[var(--muted)]">
+                  Reponds rapidement pour que Tempo priorise les recommandations.
+                </p>
+                <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-[var(--text)]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                  {clarifyQuestions.length} question
+                  {clarifyQuestions.length > 1 ? "s" : ""} - flow express
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setClarifyOpen(false);
+                  setClarifyQuestions([]);
+                  setClarifyAnswers({});
+                  setPendingDecisionSessionId("");
+                  setPendingDecisionSource("");
+                }}
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-[var(--muted)] transition hover:bg-white/20 hover:text-[var(--text)]"
+                aria-label="Fermer"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M18 6L6 18" />
+                  <path d="M6 6l12 12" />
+                </svg>
+              </button>
             </div>
 
-            <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
-              {clarifyQuestions.map((question) => {
+            <div className="max-h-[60vh] space-y-4 overflow-y-auto px-6 pb-6">
+              {clarifyQuestions.map((question, index) => {
                 const currentValue = clarifyAnswers[question.id];
                 const selectedValues = arrayFromRecord(currentValue);
                 const textValue = Array.isArray(currentValue)
@@ -2124,17 +2158,31 @@ export default function StudentTempoPage() {
                   : (currentValue ?? "");
 
                 return (
-                  <article key={question.id} className="rounded-xl bg-slate-50 p-3">
-                    <p className="text-sm font-semibold text-slate-900">{question.question}</p>
+                  <article
+                    key={question.id}
+                    className="rounded-2xl bg-gradient-to-br from-white/20 via-white/12 to-transparent p-4 shadow-[0_10px_24px_rgba(15,23,42,0.14)]"
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-300/45 to-sky-300/35 text-[0.62rem] font-semibold text-[var(--text)]">
+                        {index + 1}
+                      </span>
+                      <p className="pt-0.5 text-sm font-semibold text-[var(--text)]">
+                        {question.question}
+                      </p>
+                    </div>
                     {question.type === "choices" && (question.choices?.length ?? 0) > 0 ? (
                       question.multi ? (
-                        <div className="mt-2 grid gap-2">
+                        <div className="mt-3 grid gap-2">
                           {question.choices?.map((choice) => {
                             const checked = selectedValues.includes(choice);
                             return (
                               <label
                                 key={choice}
-                                className="flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm text-slate-900"
+                                className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition ${
+                                  checked
+                                    ? "bg-gradient-to-r from-emerald-300/40 via-emerald-200/30 to-sky-300/35 text-[var(--text)] shadow-[0_6px_14px_rgba(16,185,129,0.24)]"
+                                    : "bg-white/18 text-[var(--text)] hover:bg-white/24"
+                                }`}
                               >
                                 <input
                                   type="checkbox"
@@ -2148,6 +2196,7 @@ export default function StudentTempoPage() {
                                       return { ...previous, [question.id]: next };
                                     });
                                   }}
+                                  className="accent-emerald-500"
                                 />
                                 <span>{choice}</span>
                               </label>
@@ -2155,26 +2204,34 @@ export default function StudentTempoPage() {
                           })}
                         </div>
                       ) : (
-                        <div className="mt-2 grid gap-2">
-                          {question.choices?.map((choice) => (
-                            <label
-                              key={choice}
-                              className="flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm text-slate-900"
-                            >
-                              <input
-                                type="radio"
-                                name={`clarify-${question.id}`}
-                                checked={textValue === choice}
-                                onChange={() =>
-                                  setClarifyAnswers((previous) => ({
-                                    ...previous,
-                                    [question.id]: choice,
-                                  }))
-                                }
-                              />
-                              <span>{choice}</span>
-                            </label>
-                          ))}
+                        <div className="mt-3 grid gap-2">
+                          {question.choices?.map((choice) => {
+                            const checked = textValue === choice;
+                            return (
+                              <label
+                                key={choice}
+                                className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition ${
+                                  checked
+                                    ? "bg-gradient-to-r from-emerald-300/40 via-emerald-200/30 to-sky-300/35 text-[var(--text)] shadow-[0_6px_14px_rgba(16,185,129,0.24)]"
+                                    : "bg-white/18 text-[var(--text)] hover:bg-white/24"
+                                }`}
+                              >
+                                <input
+                                  type="radio"
+                                  name={`clarify-${question.id}`}
+                                  checked={checked}
+                                  onChange={() =>
+                                    setClarifyAnswers((previous) => ({
+                                      ...previous,
+                                      [question.id]: choice,
+                                    }))
+                                  }
+                                  className="accent-emerald-500"
+                                />
+                                <span>{choice}</span>
+                              </label>
+                            );
+                          })}
                         </div>
                       )
                     ) : (
@@ -2188,7 +2245,7 @@ export default function StudentTempoPage() {
                         }
                         rows={3}
                         placeholder={question.placeholder || "Reponse rapide"}
-                        className="mt-2 w-full rounded-xl bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                        className="mt-3 w-full rounded-xl bg-white/16 px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] focus:outline-none"
                       />
                     )}
                   </article>
@@ -2196,7 +2253,7 @@ export default function StudentTempoPage() {
               })}
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2 px-6 py-4">
               <button
                 type="button"
                 onClick={() => {
@@ -2206,7 +2263,7 @@ export default function StudentTempoPage() {
                   setPendingDecisionSessionId("");
                   setPendingDecisionSource("");
                 }}
-                className="rounded-full bg-slate-100 px-3 py-1.5 text-[0.68rem] font-semibold uppercase tracking-wide text-slate-800 transition hover:bg-slate-200"
+                className="rounded-full bg-white/18 px-3 py-1.5 text-[0.68rem] font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/24"
               >
                 Annuler
               </button>
@@ -2214,7 +2271,7 @@ export default function StudentTempoPage() {
                 type="button"
                 onClick={() => void confirmClarifications()}
                 disabled={decisionGenerating}
-                className="rounded-full bg-emerald-100 px-3 py-1.5 text-[0.68rem] font-semibold uppercase tracking-wide text-emerald-900 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-3 py-1.5 text-[0.68rem] font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {decisionGenerating ? "Generation..." : "Generer les axes"}
               </button>
@@ -2699,6 +2756,122 @@ export default function StudentTempoPage() {
         .tempo-axis-pill-3 {
           color: rgb(6, 95, 70);
           background: rgba(209, 250, 229, 0.9);
+        }
+        :global(:root[data-theme="dark"]) .tempo-surface-panel {
+          background: linear-gradient(
+            160deg,
+            rgba(15, 23, 42, 0.9),
+            rgba(30, 41, 59, 0.86)
+          ) !important;
+          border: 1px solid rgba(148, 163, 184, 0.2);
+          box-shadow: 0 14px 30px rgba(2, 6, 23, 0.45) !important;
+        }
+        :global(:root[data-theme="dark"]) .tempo-surface-panel [class~="bg-white"],
+        :global(:root[data-theme="dark"]) .tempo-surface-panel [class~="bg-white/92"],
+        :global(:root[data-theme="dark"]) .tempo-surface-panel [class~="bg-white/88"],
+        :global(:root[data-theme="dark"]) .tempo-surface-panel [class~="bg-white/80"],
+        :global(:root[data-theme="dark"]) .tempo-surface-panel [class~="bg-slate-50"],
+        :global(:root[data-theme="dark"]) .tempo-surface-panel [class~="bg-slate-100"] {
+          background-color: rgba(30, 41, 59, 0.84) !important;
+        }
+        :global(:root[data-theme="dark"]) .tempo-surface-panel [class~="text-slate-900"] {
+          color: rgb(241, 245, 249) !important;
+        }
+        :global(:root[data-theme="dark"]) .tempo-surface-panel [class~="text-slate-800"] {
+          color: rgb(226, 232, 240) !important;
+        }
+        :global(:root[data-theme="dark"]) .tempo-surface-panel [class~="text-slate-700"] {
+          color: rgb(203, 213, 225) !important;
+        }
+        :global(:root[data-theme="dark"]) .tempo-surface-panel [class~="text-slate-600"] {
+          color: rgb(148, 163, 184) !important;
+        }
+        :global(:root[data-theme="dark"]) .tempo-surface-panel [class~="text-slate-500"] {
+          color: rgb(148, 163, 184) !important;
+        }
+        :global(:root[data-theme="dark"]) .tempo-mode-switcher {
+          border: 1px solid rgba(148, 163, 184, 0.22);
+          background:
+            radial-gradient(circle at 6% 20%, rgba(16, 185, 129, 0.16), transparent 35%),
+            radial-gradient(circle at 96% 8%, rgba(14, 165, 233, 0.17), transparent 35%),
+            linear-gradient(145deg, rgba(15, 23, 42, 0.88), rgba(30, 41, 59, 0.86));
+        }
+        :global(:root[data-theme="dark"]) .tempo-mode-pill-active {
+          color: rgb(209, 250, 229);
+          background: linear-gradient(
+            135deg,
+            rgba(16, 185, 129, 0.26),
+            rgba(14, 165, 233, 0.22)
+          );
+          box-shadow:
+            0 0 0 1px rgba(52, 211, 153, 0.28) inset,
+            0 10px 24px rgba(14, 165, 233, 0.2);
+        }
+        :global(:root[data-theme="dark"]) .tempo-mode-pill-idle {
+          color: rgb(203, 213, 225);
+          background: rgba(51, 65, 85, 0.74);
+        }
+        :global(:root[data-theme="dark"]) .tempo-mode-pill-idle:hover {
+          background: rgba(71, 85, 105, 0.84);
+          color: rgb(241, 245, 249);
+        }
+        :global(:root[data-theme="dark"]) .tempo-mode-switcher [class~="text-slate-600"] {
+          color: rgb(148, 163, 184) !important;
+        }
+        :global(:root[data-theme="dark"]) .tempo-decision-hero {
+          background:
+            radial-gradient(circle at 18% 24%, rgba(16, 185, 129, 0.22), transparent 48%),
+            radial-gradient(circle at 88% 18%, rgba(59, 130, 246, 0.24), transparent 52%),
+            linear-gradient(120deg, rgba(15, 23, 42, 0.92), rgba(30, 41, 59, 0.9));
+        }
+        :global(:root[data-theme="dark"]) .tempo-axis-card {
+          background: linear-gradient(
+            150deg,
+            rgba(15, 23, 42, 0.9),
+            rgba(30, 41, 59, 0.86)
+          );
+          box-shadow: 0 14px 30px rgba(2, 6, 23, 0.42);
+        }
+        :global(:root[data-theme="dark"]) .tempo-axis-carousel {
+          background:
+            radial-gradient(circle at 14% 18%, rgba(16, 185, 129, 0.14), transparent 46%),
+            radial-gradient(circle at 86% 20%, rgba(59, 130, 246, 0.16), transparent 52%),
+            linear-gradient(160deg, rgba(15, 23, 42, 0.86), rgba(30, 41, 59, 0.84));
+          border: 1px solid rgba(148, 163, 184, 0.18);
+        }
+        :global(:root[data-theme="dark"]) .tempo-axis-carousel-stage::after {
+          background: linear-gradient(
+            to bottom,
+            rgba(15, 23, 42, 0),
+            rgba(15, 23, 42, 0.96)
+          );
+        }
+        :global(:root[data-theme="dark"]) .tempo-axis-priority-1 {
+          background:
+            radial-gradient(circle at 88% 14%, rgba(248, 113, 113, 0.34), transparent 40%),
+            linear-gradient(150deg, rgba(153, 27, 27, 0.42), rgba(248, 113, 113, 0.22));
+        }
+        :global(:root[data-theme="dark"]) .tempo-axis-priority-2 {
+          background:
+            radial-gradient(circle at 88% 14%, rgba(251, 191, 36, 0.33), transparent 40%),
+            linear-gradient(150deg, rgba(154, 52, 18, 0.4), rgba(251, 191, 36, 0.22));
+        }
+        :global(:root[data-theme="dark"]) .tempo-axis-priority-3 {
+          background:
+            radial-gradient(circle at 88% 14%, rgba(52, 211, 153, 0.33), transparent 40%),
+            linear-gradient(150deg, rgba(6, 95, 70, 0.42), rgba(52, 211, 153, 0.2));
+        }
+        :global(:root[data-theme="dark"]) .tempo-axis-pill-1 {
+          color: rgb(254, 202, 202);
+          background: rgba(185, 28, 28, 0.35);
+        }
+        :global(:root[data-theme="dark"]) .tempo-axis-pill-2 {
+          color: rgb(254, 215, 170);
+          background: rgba(180, 83, 9, 0.34);
+        }
+        :global(:root[data-theme="dark"]) .tempo-axis-pill-3 {
+          color: rgb(167, 243, 208);
+          background: rgba(5, 150, 105, 0.3);
         }
         @media (max-width: 1600px) {
           .tempo-axis-carousel {

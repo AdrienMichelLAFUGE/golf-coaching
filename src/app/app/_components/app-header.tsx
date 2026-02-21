@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { useProfile } from "./profile-context";
@@ -17,6 +17,11 @@ import {
   MessageNotificationsResponseSchema,
   type MessageNotificationsResponse,
 } from "@/lib/messages/types";
+import {
+  GlobalSearchResponseSchema,
+  type GlobalSearchItem,
+  type GlobalSearchKind,
+} from "@/lib/search/global";
 
 type AppHeaderProps = {
   onToggleNav?: () => void;
@@ -51,6 +56,20 @@ type ReportShareInviteRow = {
   created_at: string;
 };
 
+const SEARCH_KIND_LABELS: Record<GlobalSearchKind, string> = {
+  page: "Page",
+  student: "Eleve",
+  report: "Rapport",
+  test: "Test",
+};
+
+const SEARCH_KIND_STYLES: Record<GlobalSearchKind, string> = {
+  page: "border-white/20 bg-white/10 text-[var(--muted)]",
+  student: "border-emerald-300/30 bg-emerald-400/15 text-emerald-100",
+  report: "border-sky-300/30 bg-sky-400/15 text-sky-100",
+  test: "border-violet-300/30 bg-violet-400/15 text-violet-100",
+};
+
 const isStudentLinkRequest = (proposal: ProposalRow) =>
   proposal.payload?.kind === "student_link_request";
 
@@ -83,6 +102,15 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
   const [messageLoading, setMessageLoading] = useState(false);
   const [messageError, setMessageError] = useState("");
   const [requestsOpen, setRequestsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<GlobalSearchItem[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [activeSearchIndex, setActiveSearchIndex] = useState(-1);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const searchContainerRef = useRef<HTMLDivElement | null>(null);
+  const searchAbortRef = useRef<AbortController | null>(null);
 
   useThemePreference();
   const { profile, isWorkspaceAdmin } = useProfile();
@@ -396,6 +424,168 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
     };
   }, [loadMessageNotifications]);
 
+  const clearSearch = useCallback(() => {
+    setSearchOpen(false);
+    setSearchQuery("");
+    setSearchResults([]);
+    setSearchError("");
+    setActiveSearchIndex(-1);
+  }, []);
+
+  const handleSelectSearchResult = useCallback(
+    (item: GlobalSearchItem) => {
+      clearSearch();
+      router.push(item.href);
+    },
+    [clearSearch, router]
+  );
+
+  useEffect(() => {
+    const query = searchQuery.trim();
+    setSearchError("");
+    if (query.length < 2) {
+      searchAbortRef.current?.abort();
+      setSearchLoading(false);
+      setSearchResults([]);
+      setActiveSearchIndex(-1);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(async () => {
+      searchAbortRef.current?.abort();
+      const controller = new AbortController();
+      searchAbortRef.current = controller;
+      setSearchLoading(true);
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (!token) {
+          setSearchResults([]);
+          setSearchError("Session invalide.");
+          setActiveSearchIndex(-1);
+          return;
+        }
+
+        const response = await fetch(`/api/search/global?q=${encodeURIComponent(query)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(await readApiError(response, "Recherche indisponible."));
+        }
+
+        const payload = await response.json();
+        const parsed = GlobalSearchResponseSchema.safeParse(payload);
+        if (!parsed.success) {
+          throw new Error("Reponse de recherche invalide.");
+        }
+
+        setSearchResults(parsed.data.items);
+        setActiveSearchIndex(parsed.data.items.length > 0 ? 0 : -1);
+        if (document.activeElement === searchInputRef.current) {
+          setSearchOpen(true);
+        }
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setSearchResults([]);
+        setActiveSearchIndex(-1);
+        setSearchError(error instanceof Error ? error.message : "Recherche indisponible.");
+        if (document.activeElement === searchInputRef.current) {
+          setSearchOpen(true);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setSearchLoading(false);
+        }
+      }
+    }, 180);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    return () => {
+      searchAbortRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (searchContainerRef.current?.contains(target)) return;
+      setSearchOpen(false);
+      setActiveSearchIndex(-1);
+    };
+    window.addEventListener("mousedown", handlePointerDown);
+    return () => window.removeEventListener("mousedown", handlePointerDown);
+  }, [searchOpen]);
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      if (event.key.toLowerCase() !== "k") return;
+      event.preventDefault();
+      searchInputRef.current?.focus();
+      if (searchQuery.trim().length >= 2) {
+        setSearchOpen(true);
+      }
+    };
+
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [searchQuery]);
+
+  const handleSearchKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === "Escape") {
+        setSearchOpen(false);
+        setActiveSearchIndex(-1);
+        return;
+      }
+
+      if (!searchOpen && event.key === "ArrowDown" && searchResults.length > 0) {
+        event.preventDefault();
+        setSearchOpen(true);
+        setActiveSearchIndex(0);
+        return;
+      }
+
+      if (event.key === "ArrowDown") {
+        if (searchResults.length === 0) return;
+        event.preventDefault();
+        setSearchOpen(true);
+        setActiveSearchIndex((current) =>
+          current >= searchResults.length - 1 ? 0 : current + 1
+        );
+        return;
+      }
+
+      if (event.key === "ArrowUp") {
+        if (searchResults.length === 0) return;
+        event.preventDefault();
+        setSearchOpen(true);
+        setActiveSearchIndex((current) =>
+          current <= 0 ? searchResults.length - 1 : current - 1
+        );
+        return;
+      }
+
+      if (event.key === "Enter") {
+        const nextItem =
+          activeSearchIndex >= 0 ? searchResults[activeSearchIndex] : searchResults[0];
+        if (!nextItem) return;
+        event.preventDefault();
+        handleSelectSearchResult(nextItem);
+      }
+    },
+    [activeSearchIndex, handleSelectSearchResult, searchOpen, searchResults]
+  );
+
+  const shouldShowSearchDropdown = searchOpen && searchQuery.trim().length >= 2;
+
   return (
     <header className="app-header sticky top-[var(--app-sticky-top)] z-40">
       <div className="relative flex w-full items-center gap-3 rounded-3xl bg-[var(--app-surface)] px-4 py-3 md:px-6 md:py-4">
@@ -413,7 +603,7 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
           </Link>
 
           <div className="hidden min-w-0 flex-1 min-[880px]:block">
-            <div className="relative w-[min(420px,45vw)]">
+            <div ref={searchContainerRef} className="relative w-[min(460px,48vw)]">
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]">
                 <svg
                   viewBox="0 0 24 24"
@@ -430,11 +620,100 @@ export default function AppHeader({ onToggleNav, isNavOpen }: AppHeaderProps) {
                 </svg>
               </span>
               <input
+                ref={searchInputRef}
                 type="search"
-                placeholder="Rechercher..."
+                value={searchQuery}
+                onChange={(event) => {
+                  setSearchQuery(event.target.value);
+                  if (event.target.value.trim().length >= 2) {
+                    setSearchOpen(true);
+                  } else {
+                    setSearchOpen(false);
+                  }
+                }}
+                onFocus={() => {
+                  if (searchQuery.trim().length >= 2) {
+                    setSearchOpen(true);
+                  }
+                }}
+                onKeyDown={handleSearchKeyDown}
+                placeholder="Rechercher partout... (Ctrl+K)"
                 aria-label="Rechercher"
+                aria-controls="global-search-results"
+                aria-activedescendant={
+                  activeSearchIndex >= 0
+                    ? `global-search-option-${activeSearchIndex}`
+                    : undefined
+                }
+                autoComplete="off"
                 className="w-full rounded-full bg-[var(--panel)] py-3 pl-9 pr-4 text-sm text-[var(--text)] placeholder:text-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200/50"
               />
+              {shouldShowSearchDropdown ? (
+                <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-[80] overflow-hidden rounded-2xl border border-white/10 bg-[var(--bg-elevated)] shadow-[var(--shadow-strong)]">
+                  <div
+                    id="global-search-results"
+                    role="listbox"
+                    aria-label="Resultats de recherche"
+                    className="max-h-[56vh] space-y-1 overflow-y-auto p-2"
+                  >
+                    {searchLoading ? (
+                      <p className="px-3 py-2 text-xs text-[var(--muted)]">
+                        Recherche en cours...
+                      </p>
+                    ) : searchError ? (
+                      <p className="px-3 py-2 text-xs text-red-400">{searchError}</p>
+                    ) : searchResults.length === 0 ? (
+                      <p className="px-3 py-2 text-xs text-[var(--muted)]">
+                        Aucun resultat pour &quot;{searchQuery.trim()}&quot;.
+                      </p>
+                    ) : (
+                      searchResults.map((item, index) => {
+                        const isActive = activeSearchIndex === index;
+                        return (
+                          <button
+                            key={`${item.kind}-${item.id}-${item.href}`}
+                            id={`global-search-option-${index}`}
+                            type="button"
+                            role="option"
+                            aria-selected={isActive}
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                            }}
+                            onMouseEnter={() => setActiveSearchIndex(index)}
+                            onClick={() => handleSelectSearchResult(item)}
+                            className={`flex w-full items-start justify-between gap-3 rounded-xl border px-3 py-2 text-left transition ${
+                              isActive
+                                ? "border-emerald-300/30 bg-emerald-400/15"
+                                : "border-transparent hover:border-white/15 hover:bg-white/5"
+                            }`}
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-semibold text-[var(--text)]">
+                                {item.title}
+                              </span>
+                              {item.subtitle ? (
+                                <span className="mt-0.5 block truncate text-xs text-[var(--muted)]">
+                                  {item.subtitle}
+                                </span>
+                              ) : null}
+                            </span>
+                            <span
+                              className={`shrink-0 rounded-full border px-2 py-0.5 text-[0.55rem] uppercase tracking-wide ${
+                                SEARCH_KIND_STYLES[item.kind]
+                              }`}
+                            >
+                              {SEARCH_KIND_LABELS[item.kind]}
+                            </span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                  <div className="border-t border-white/10 px-3 py-2 text-[0.65rem] uppercase tracking-wide text-[var(--muted)]">
+                    Fleches pour naviguer - Entree pour ouvrir - Echap pour fermer
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

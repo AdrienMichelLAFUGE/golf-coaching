@@ -351,6 +351,16 @@
   color: #be123c !important;
 }
 
+:root[data-theme="light"] .feature-video-badge {
+  border-color: rgba(190, 24, 93, 0.44) !important;
+  background-color: rgba(244, 63, 94, 0.22) !important;
+  color: #881337 !important;
+}
+
+:root[data-theme="light"] .feature-video-dot {
+  background-color: #be123c !important;
+}
+
 @theme inline {
   --color-background: var(--bg);
   --color-foreground: var(--text);
@@ -404,6 +414,16 @@
 
   .app-badge--nowrap {
     white-space: nowrap;
+  }
+
+  .feature-video-badge {
+    border-color: rgba(244, 114, 182, 0.38);
+    background-color: rgba(244, 114, 182, 0.12);
+    color: #fbcfe8;
+  }
+
+  .feature-video-dot {
+    background-color: #f9a8d4;
   }
 
   .panel {

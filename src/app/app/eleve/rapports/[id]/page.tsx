@@ -68,8 +68,8 @@ const featureTones = {
   },
   video: {
     label: "Video",
-    badge: "border-pink-300/30 bg-pink-400/10 text-pink-100",
-    dot: "bg-pink-300",
+    badge: "feature-video-badge",
+    dot: "feature-video-dot",
     panel: "border-pink-400/50 bg-pink-400/10",
     border: "border-pink-400/50",
   },

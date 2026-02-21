@@ -10,6 +10,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
   type SetStateAction,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -110,6 +111,57 @@ const CAPTION_LIMIT = 150;
 const CLARIFY_THRESHOLD = 0.8;
 const SMART2MOVE_IMPORT_TUTORIAL_HINT_ID =
   "smart2move_import_single_graph_screenshot";
+type StickyAiHintKey = "assistant" | "datas" | "finalize";
+
+const STICKY_AI_HINT_IDS: Record<StickyAiHintKey, string> = {
+  assistant: "report_builder_sticky_assistant_button",
+  datas: "report_builder_sticky_datas_button",
+  finalize: "report_builder_sticky_finalize_button",
+};
+
+const STICKY_AI_HINT_CONTENT: Record<
+  StickyAiHintKey,
+  { title: string; description: string; actionLabel: string }
+> = {
+  assistant: {
+    title: "Tempo IA",
+    description:
+      "Ouvre l assistant Tempo IA pour propager les constats et le travail en cours dans les sections du rapport.",
+    actionLabel: "Ouvrir Tempo IA",
+  },
+  datas: {
+    title: "Mode Datas",
+    description:
+      "Analyse les donnees radar et suggere automatiquement les graphes et insights pertinents pour les sections Datas.",
+    actionLabel: "Lancer mode datas",
+  },
+  finalize: {
+    title: "Finition IA",
+    description:
+      "Finalise le rapport avec les actions IA disponibles (resume, planification et traitement Datas IA).",
+    actionLabel: "Ouvrir finalisation",
+  },
+};
+
+type PropagationFxParticle = {
+  id: number;
+  top: number;
+  delay: number;
+  duration: number;
+};
+
+const PROPAGATION_FX_START_DELAY_MS = 2200;
+const PROPAGATION_FX_SHEEN_DURATION_MS = 2400;
+const PROPAGATION_FX_CLEANUP_MS = 5600;
+const PROPAGATION_FX_PARTICLES: ReadonlyArray<PropagationFxParticle> = Array.from(
+  { length: 14 },
+  (_, index) => ({
+    id: index,
+    top: 12 + ((index * 13) % 74),
+    delay: index * 0.03,
+    duration: 2.08 + (index % 4) * 0.17,
+  })
+);
 
 type ReportSection = {
   id: string;
@@ -176,10 +228,17 @@ type PropagationPayload = {
   tpiContext?: string;
 };
 
+type AxisTpiReasoning = {
+  tpiLink: string;
+  playerLimitation: string;
+  golfCompensation: string;
+};
+
 type AxisOption = {
   id: string;
   title: string;
   summary: string;
+  tpiReasoning: AxisTpiReasoning;
 };
 
 type AxesForSection = {
@@ -357,6 +416,9 @@ const normalizeSectionType = (value?: string | null): SectionType =>
         ? "radar"
         : "text";
 
+const normalizeBuilderStep = (value?: string | null): "layout" | "report" =>
+  value === "layout" ? "layout" : "report";
+
 type FeatureKey = "ai" | "image" | "video" | "radar" | "tpi";
 
 const featureTones = {
@@ -380,12 +442,12 @@ const featureTones = {
   },
   video: {
     label: "Video",
-    badge: "border-pink-300/30 bg-pink-400/10 text-pink-400",
-    chip: "border-pink-300/30 bg-pink-400/10 text-pink-400",
-    dot: "bg-pink-300",
+    badge: "feature-video-badge",
+    chip: "feature-video-badge",
+    dot: "feature-video-dot",
     panel: "border-pink-400/50 bg-pink-400/10",
     border: "border-pink-400/50",
-    button: "border-pink-300/40 bg-pink-400/10 text-pink-400",
+    button: "feature-video-badge",
   },
   radar: {
     label: "Datas",
@@ -406,6 +468,13 @@ const featureTones = {
     button: "border-rose-300/40 bg-rose-400/10 text-rose-100",
   },
 } as const;
+
+const TEMPO_FEATURE_BUTTON_TONE_CLASS = "tempo-ia-trigger";
+const TEMPO_FEATURE_BUTTON_LOCKED_TONE_CLASS = "tempo-ia-trigger tempo-ia-trigger-locked";
+const TEMPO_FEATURE_BUTTON_COMPACT_BASE_CLASS =
+  "inline-flex items-center justify-center rounded-full px-3 py-1.5 text-[0.68rem] font-semibold uppercase tracking-wide transition";
+const TEMPO_FEATURE_BUTTON_STICKY_BASE_CLASS =
+  "flex h-11 items-center overflow-hidden rounded-full shadow-[0_8px_24px_rgba(15,23,42,0.10)] transition-all duration-300 ease-in-out lg:h-12";
 
 const normalizeTags = (tags?: string[] | null) =>
   (tags ?? []).map((tag) => tag.toLowerCase());
@@ -458,6 +527,43 @@ const renderTemplateChip = (
       {template.title}
     </span>
   );
+};
+
+const TRAFFIC_WORD_REGEX = /\b(rouge|orange|vert)\b/gi;
+
+const getTrafficWordClass = (word: string) => {
+  const lower = word.toLowerCase();
+  if (lower === "rouge") return "font-semibold text-red-600 dark:text-red-400";
+  if (lower === "orange") return "font-semibold text-orange-600 dark:text-orange-400";
+  if (lower === "vert") return "font-semibold text-green-700 dark:text-green-400";
+  return "";
+};
+
+const renderTrafficWords = (text: string) => {
+  const normalized = text ?? "";
+  if (!normalized) return null;
+  const matches = Array.from(normalized.matchAll(TRAFFIC_WORD_REGEX));
+  if (matches.length === 0) return normalized;
+
+  let cursor = 0;
+  const nodes: ReactNode[] = [];
+  matches.forEach((match, index) => {
+    const start = match.index ?? 0;
+    const end = start + match[0].length;
+    if (start > cursor) {
+      nodes.push(normalized.slice(cursor, start));
+    }
+    nodes.push(
+      <span key={`${match[0]}-${start}-${index}`} className={getTrafficWordClass(match[0])}>
+        {match[0]}
+      </span>
+    );
+    cursor = end;
+  });
+  if (cursor < normalized.length) {
+    nodes.push(normalized.slice(cursor));
+  }
+  return nodes;
 };
 
 const buildDiffSegments = (original: string, updated: string): DiffSegment[] => {
@@ -576,7 +682,7 @@ export default function CoachReportBuilderPage() {
   const [layoutTemplateSearch, setLayoutTemplateSearch] = useState("");
   const [layoutTemplateSearchOpen, setLayoutTemplateSearchOpen] = useState(false);
   const initialBuilderStep = searchParams.get("reportId") ? "report" : "layout";
-  const [builderStep, setBuilderStep] = useState<"layout" | "sections" | "report">(
+  const [builderStep, setBuilderStep] = useState<"layout" | "report">(
     initialBuilderStep
   );
   const [selectedLayoutOptionId, setSelectedLayoutOptionId] = useState("");
@@ -663,11 +769,16 @@ export default function CoachReportBuilderPage() {
   const aiSettingsTitleId = useId();
   const aiFinalizeTitleId = useId();
   const publishFinalizeHintTitleId = useId();
+  const stickyAiHintTitleId = useId();
   const studentPickerTitleId = useId();
   const [aiAssistantModalOpen, setAiAssistantModalOpen] = useState(false);
   const [aiSettingsModalOpen, setAiSettingsModalOpen] = useState(false);
   const [aiFinalizeModalOpen, setAiFinalizeModalOpen] = useState(false);
   const [publishFinalizeHintOpen, setPublishFinalizeHintOpen] = useState(false);
+  const [stickyAiHintOpen, setStickyAiHintOpen] = useState(false);
+  const [stickyAiHintKey, setStickyAiHintKey] = useState<StickyAiHintKey | null>(null);
+  const [stickyAiHintDontShowAgain, setStickyAiHintDontShowAgain] = useState(false);
+  const stickyAiHintActionRef = useRef<(() => void) | null>(null);
   const [aiFinalizeDraft, setAiFinalizeDraft] = useState<AiFinalizeDraft>({
     runSummary: false,
     runPlan: false,
@@ -767,6 +878,26 @@ export default function CoachReportBuilderPage() {
   const [aiImagery, setAiImagery] = useState("equilibre");
   const [aiFocus, setAiFocus] = useState("mix");
   const [aiPropagationReview, setAiPropagationReview] = useState(true);
+  const aiPropagationReviewStorageKey = useMemo(() => {
+    const scope =
+      organization?.id ??
+      (typeof userEmail === "string" && userEmail.trim().length > 0
+        ? userEmail.trim().toLowerCase()
+        : "default");
+    return `gc.ai.propagation.review.${scope}`;
+  }, [organization?.id, userEmail]);
+  const setAiPropagationReviewPersisted = useCallback(
+    (updater: boolean | ((prev: boolean) => boolean)) => {
+      setAiPropagationReview((prev) => {
+        const next = typeof updater === "function" ? updater(prev) : updater;
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(aiPropagationReviewStorageKey, next ? "true" : "false");
+        }
+        return next;
+      });
+    },
+    [aiPropagationReviewStorageKey]
+  );
   const [aiSummary, setAiSummary] = useState("");
   const [aiError, setAiError] = useState("");
   const [aiBusyId, setAiBusyId] = useState<string | null>(null);
@@ -784,6 +915,12 @@ export default function CoachReportBuilderPage() {
   );
   const radarAiAutoTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const [aiPreviews, setAiPreviews] = useState<Record<string, AiPreview>>({});
+  const [propagationFxBySection, setPropagationFxBySection] = useState<
+    Record<string, number>
+  >({});
+  const propagationFxTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>(
+    {}
+  );
   const [clarifyOpen, setClarifyOpen] = useState(false);
   const [clarifyQuestions, setClarifyQuestions] = useState<ClarifyQuestion[]>([]);
   const [clarifyAnswers, setClarifyAnswers] = useState<
@@ -808,8 +945,6 @@ export default function CoachReportBuilderPage() {
   const [workingObservations, setWorkingObservations] = useState("");
   const [workingNotes, setWorkingNotes] = useState("");
   const [workingClub, setWorkingClub] = useState("");
-  const workingObservationsRef = useRef<HTMLTextAreaElement | null>(null);
-  const workingNotesRef = useRef<HTMLTextAreaElement | null>(null);
   const [uploadingSections, setUploadingSections] = useState<Record<string, boolean>>({});
   const [imageErrors, setImageErrors] = useState<Record<string, string>>({});
   const [activeTooltip, setActiveTooltip] = useState<
@@ -1537,6 +1672,90 @@ export default function CoachReportBuilderPage() {
     textarea.style.height = `${textarea.scrollHeight}px`;
   };
 
+  const resizeAllSectionTextareas = () => {
+    textareaRefs.current.forEach((textarea) => {
+      if (!textarea) return;
+      textarea.style.height = "auto";
+      textarea.style.height = `${textarea.scrollHeight}px`;
+    });
+  };
+
+  const scheduleSectionTextareaResize = () => {
+    if (typeof window === "undefined") return;
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        resizeAllSectionTextareas();
+      });
+    });
+  };
+
+  const triggerPropagationFx = useCallback((sectionIds: string[]) => {
+    if (sectionIds.length === 0) return;
+    const uniqueIds = Array.from(new Set(sectionIds));
+    const activationToken = Date.now();
+
+    setPropagationFxBySection((prev) => {
+      const next = { ...prev };
+      uniqueIds.forEach((sectionId, index) => {
+        next[sectionId] = activationToken + index;
+      });
+      return next;
+    });
+
+    uniqueIds.forEach((sectionId) => {
+      const existingTimer = propagationFxTimersRef.current[sectionId];
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+      }
+      propagationFxTimersRef.current[sectionId] = setTimeout(() => {
+        setPropagationFxBySection((prev) => {
+          if (!prev[sectionId]) return prev;
+          const next = { ...prev };
+          delete next[sectionId];
+          return next;
+        });
+        delete propagationFxTimersRef.current[sectionId];
+      }, PROPAGATION_FX_CLEANUP_MS);
+    });
+  }, []);
+
+  const playPropagationTextReveal = useCallback((sectionIds: string[]) => {
+    if (typeof window === "undefined") return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const uniqueIds = Array.from(new Set(sectionIds));
+    uniqueIds.forEach((sectionId) => {
+      const root = itemRefs.current.get(sectionId);
+      if (!root) return;
+      const textTargets = root.querySelectorAll<HTMLElement>("[data-propagation-text]");
+      textTargets.forEach((target, index) => {
+        target.animate(
+          [
+            { opacity: 0, transform: "translateX(-16px)", filter: "blur(2px)" },
+            { opacity: 1, transform: "translateX(0px)", filter: "blur(0px)" },
+          ],
+          {
+            duration: 760,
+            delay: index * 40,
+            easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+            fill: "both",
+          }
+        );
+      });
+    });
+  }, []);
+
+  const resizeWorkingTextareas = useCallback(() => {
+    if (typeof document === "undefined") return;
+    const nodes = document.querySelectorAll<HTMLTextAreaElement>(
+      '[data-working-textarea="observations"], [data-working-textarea="notes"]'
+    );
+    nodes.forEach((node) => {
+      node.style.height = "auto";
+      node.style.height = `${node.scrollHeight}px`;
+    });
+  }, []);
+
   const setSectionsNotice = (message: string, type: "idle" | "error" | "success") => {
     setSectionsMessage(message);
     setSectionsMessageType(type);
@@ -2166,21 +2385,13 @@ export default function CoachReportBuilderPage() {
   };
 
   const handleWorkingNotesInput = (event: React.FormEvent<HTMLTextAreaElement>) => {
-    const target = event.currentTarget;
-    const value = target.value;
-    // Avoid "shrink -> grow" on every keystroke which can cause Safari/iOS to auto-scroll.
-    target.style.height = `${target.scrollHeight}px`;
-    setWorkingNotes(value);
+    setWorkingNotes(event.currentTarget.value);
   };
 
   const handleWorkingObservationsInput = (
     event: React.FormEvent<HTMLTextAreaElement>
   ) => {
-    const target = event.currentTarget;
-    const value = target.value;
-    // Avoid "shrink -> grow" on every keystroke which can cause Safari/iOS to auto-scroll.
-    target.style.height = `${target.scrollHeight}px`;
-    setWorkingObservations(value);
+    setWorkingObservations(event.currentTarget.value);
   };
 
   const handleMoveSection = (index: number, direction: "up" | "down") => {
@@ -3190,14 +3401,6 @@ export default function CoachReportBuilderPage() {
       return;
     }
     applyLayoutOption(selectedLayoutOption, "replace");
-    setBuilderStep("sections");
-  };
-
-  const handleContinueFromSections = () => {
-    setBuilderStep("report");
-  };
-
-  const handleSkipSetup = () => {
     setBuilderStep("report");
   };
 
@@ -3379,7 +3582,7 @@ export default function CoachReportBuilderPage() {
     setSelectedLayoutId(draft.selectedLayoutId ?? "");
     setSelectedLayoutOptionId(draft.selectedLayoutOptionId ?? "");
     // After a restore, show the editor step so the user immediately sees recovered content.
-    setBuilderStep(draft.builderStep ?? "report");
+    setBuilderStep(normalizeBuilderStep(draft.builderStep));
   }, [clearReportUndoHistory, setReportSections]);
 
   const persistLocalDraft = useCallback(() => {
@@ -4418,7 +4621,12 @@ export default function CoachReportBuilderPage() {
   const callAiPropagation = async (
     payload: PropagationPayload & {
       clarifications?: { question: string; answer: string }[];
-      axesSelections?: { section: string; title: string; summary: string }[];
+      axesSelections?: {
+        section: string;
+        title: string;
+        summary: string;
+        tpiReasoning: AxisTpiReasoning;
+      }[];
     }
   ) => {
     setAiError("");
@@ -4606,12 +4814,26 @@ export default function CoachReportBuilderPage() {
       }
 
       let data: {
-        axes?: { section: string; options: { title: string; summary: string }[] }[];
+        axes?: {
+          section: string;
+          options: Array<{
+            title: string;
+            summary: string;
+            tpiReasoning: AxisTpiReasoning;
+          }>;
+        }[];
         error?: string;
       };
       try {
         data = JSON.parse(raw) as {
-          axes?: { section: string; options: { title: string; summary: string }[] }[];
+          axes?: {
+            section: string;
+            options: Array<{
+              title: string;
+              summary: string;
+              tpiReasoning: AxisTpiReasoning;
+            }>;
+          }[];
           error?: string;
         };
       } catch {
@@ -4736,10 +4958,21 @@ export default function CoachReportBuilderPage() {
 
     const withIds: AxesForSection[] = axes.map((entry) => ({
       section: entry.section,
-      options: entry.options.map((option, index) => ({
+      options: entry.options.slice(0, 2).map((option, index) => ({
         id: `${entry.section}-${index}`,
         title: option.title,
         summary: option.summary,
+        tpiReasoning: {
+          tpiLink:
+            option.tpiReasoning?.tpiLink?.trim() ||
+            "Lien TPI non precise par l IA pour cet axe.",
+          playerLimitation:
+            option.tpiReasoning?.playerLimitation?.trim() ||
+            "Limitation joueur non explicitee.",
+          golfCompensation:
+            option.tpiReasoning?.golfCompensation?.trim() ||
+            "Compensation golf non detaillee.",
+        },
       })),
     }));
 
@@ -4757,45 +4990,74 @@ export default function CoachReportBuilderPage() {
     setAxesOpen(true);
   };
 
-  const applyPropagationSuggestions = (
+  const applyPropagationSuggestions = async (
     suggestions: { title: string; content: string }[]
   ) => {
+    const previewedIds = new Set(Object.keys(aiPreviews));
+    const readySuggestions = suggestions
+      .map((suggestion) => {
+        const target = reportSections.find(
+          (item) => item.title.toLowerCase() === suggestion.title.toLowerCase()
+        );
+        if (!target) return null;
+        if (previewedIds.has(target.id)) return null;
+        const content = suggestion.content?.trim();
+        if (!content) return null;
+        previewedIds.add(target.id);
+        const base = target.content.trim();
+        const combined = base ? `${base}\n\n${content}` : content;
+        return {
+          sectionId: target.id,
+          original: target.content,
+          suggestion: combined,
+        };
+      })
+      .filter(
+        (
+          item
+        ): item is { sectionId: string; original: string; suggestion: string } =>
+          item !== null
+      );
+
+    if (readySuggestions.length === 0) return;
+
+    const targetSectionIds = readySuggestions.map((item) => item.sectionId);
+    triggerPropagationFx(targetSectionIds);
+
+    await new Promise<void>((resolve) => {
+      if (typeof window === "undefined" || PROPAGATION_FX_START_DELAY_MS <= 0) {
+        resolve();
+        return;
+      }
+      window.setTimeout(resolve, PROPAGATION_FX_START_DELAY_MS);
+    });
+
     if (aiPropagationReview) {
       setAiPreviews((prev) => {
         const next = { ...prev };
-        suggestions.forEach((suggestion) => {
-          const target = reportSections.find(
-            (item) => item.title.toLowerCase() === suggestion.title.toLowerCase()
-          );
-          if (!target) return;
-          if (next[target.id]) return;
-          const content = suggestion.content?.trim();
-          if (!content) return;
-          const base = target.content.trim();
-          const combined = base ? `${base}\n\n${content}` : content;
-          next[target.id] = {
-            original: target.content,
-            suggestion: combined,
+        readySuggestions.forEach((item) => {
+          if (next[item.sectionId]) return;
+          next[item.sectionId] = {
+            original: item.original,
+            suggestion: item.suggestion,
             mode: "propagate",
           };
         });
         return next;
       });
+      window.requestAnimationFrame(() => {
+        playPropagationTextReveal(targetSectionIds);
+      });
       return;
     }
 
-    const previewedIds = new Set(Object.keys(aiPreviews));
     const suggestionMap = new Map(
-      suggestions.map((item) => [item.title.toLowerCase(), item.content])
+      readySuggestions.map((item) => [item.sectionId, item.suggestion])
     );
     setReportSections((prev) =>
       prev.map((section) => {
-        if (previewedIds.has(section.id)) return section;
-        const suggestion = suggestionMap.get(section.title.toLowerCase());
-        const content = suggestion?.trim();
-        if (!content) return section;
-        const base = section.content.trim();
-        const combined = base ? `${base}\n\n${content}` : content;
+        const combined = suggestionMap.get(section.id);
+        if (!combined) return section;
         return {
           ...section,
           content: combined,
@@ -4804,15 +5066,26 @@ export default function CoachReportBuilderPage() {
         };
       })
     );
+    window.requestAnimationFrame(() => {
+      playPropagationTextReveal(targetSectionIds);
+      scheduleSectionTextareaResize();
+    });
+    scheduleSectionTextareaResize();
   };
 
   const runPropagationBatch = async (
     payloads: PropagationPayload[],
     clarifications?: { question: string; answer: string }[],
-    axesSelections?: { section: string; title: string; summary: string }[]
+    axesSelections?: {
+      section: string;
+      title: string;
+      summary: string;
+      tpiReasoning: AxisTpiReasoning;
+    }[]
   ) => {
     if (payloads.length === 0) return;
     setAiBusyId("propagate");
+    const mergedSuggestions: { title: string; content: string }[] = [];
     for (const payload of payloads) {
       const axesForPayload = axesSelections
         ? axesSelections.filter((item) => payload.targetSections.includes(item.section))
@@ -4823,14 +5096,19 @@ export default function CoachReportBuilderPage() {
         axesSelections: axesForPayload,
       });
       if (suggestions) {
-        applyPropagationSuggestions(suggestions);
+        mergedSuggestions.push(...suggestions);
       }
+    }
+    if (mergedSuggestions.length > 0) {
+      await applyPropagationSuggestions(mergedSuggestions);
     }
     setAiBusyId(null);
   };
 
   const handleAiPropagateFromWorking = async () => {
     if (!canUseAiFull) return;
+    setAiAssistantModalOpen(false);
+    setAiSettingsModalOpen(false);
     if (!studentId) {
       setAiError("Choisis un eleve avant de lancer la propagation.");
       return;
@@ -4989,6 +5267,46 @@ export default function CoachReportBuilderPage() {
     setAiFinalizeModalOpen(true);
   };
 
+  const runStickyAiAction = useCallback(
+    (key: StickyAiHintKey, action: () => void) => {
+      const hintId = STICKY_AI_HINT_IDS[key];
+      const state = getDidacticHintState(hintId);
+      if (state.dismissedAt) {
+        action();
+        return;
+      }
+      markDidacticHintSeen(hintId);
+      stickyAiHintActionRef.current = action;
+      setStickyAiHintKey(key);
+      setStickyAiHintDontShowAgain(false);
+      setStickyAiHintOpen(true);
+    },
+    []
+  );
+
+  const closeStickyAiHint = () => {
+    stickyAiHintActionRef.current = null;
+    setStickyAiHintOpen(false);
+    setStickyAiHintKey(null);
+    setStickyAiHintDontShowAgain(false);
+  };
+
+  const handleStickyAiHintCancel = () => {
+    if (stickyAiHintDontShowAgain && stickyAiHintKey) {
+      dismissDidacticHint(STICKY_AI_HINT_IDS[stickyAiHintKey]);
+    }
+    closeStickyAiHint();
+  };
+
+  const handleStickyAiHintConfirm = () => {
+    const action = stickyAiHintActionRef.current;
+    if (stickyAiHintDontShowAgain && stickyAiHintKey) {
+      dismissDidacticHint(STICKY_AI_HINT_IDS[stickyAiHintKey]);
+    }
+    closeStickyAiHint();
+    action?.();
+  };
+
   const handleAiFinalize = async (draft: AiFinalizeDraft) => {
     if (!canUseAiFull) return;
     const shouldRunSummary = draft.runSummary && finalizeSummaryTargets.length > 0;
@@ -5054,28 +5372,98 @@ export default function CoachReportBuilderPage() {
           }
         }
 
-        setAiPreviews((prev) => {
-          const next = { ...prev };
-          summaryTargets.forEach((target) => {
-            const text = summaryMap.get(target.id);
-            if (!text) return;
-            next[target.id] = {
-              original: target.content,
-              suggestion: text,
-              mode: "finalize",
-            };
+        const readyFinalizeSuggestionsMap = new Map<
+          string,
+          { original: string; suggestion: string }
+        >();
+        summaryTargets.forEach((target) => {
+          const text = summaryMap.get(target.id);
+          if (!text) return;
+          readyFinalizeSuggestionsMap.set(target.id, {
+            original: target.content,
+            suggestion: text,
           });
-          planTargets.forEach((target) => {
-            const text = planMap.get(target.id);
-            if (!text) return;
-            next[target.id] = {
-              original: target.content,
-              suggestion: text,
-              mode: "finalize",
-            };
-          });
-          return next;
         });
+        planTargets.forEach((target) => {
+          const text = planMap.get(target.id);
+          if (!text) return;
+          readyFinalizeSuggestionsMap.set(target.id, {
+            original: target.content,
+            suggestion: text,
+          });
+        });
+
+        const readyFinalizeSuggestions = Array.from(readyFinalizeSuggestionsMap.entries()).map(
+          ([sectionId, value]) => ({
+            sectionId,
+            original: value.original,
+            suggestion: value.suggestion,
+          })
+        );
+        if (readyFinalizeSuggestions.length > 0) {
+          const targetSectionIds = readyFinalizeSuggestions.map((item) => item.sectionId);
+          triggerPropagationFx(targetSectionIds);
+
+          await new Promise<void>((resolve) => {
+            if (typeof window === "undefined" || PROPAGATION_FX_START_DELAY_MS <= 0) {
+              resolve();
+              return;
+            }
+            window.setTimeout(resolve, PROPAGATION_FX_START_DELAY_MS);
+          });
+
+          if (aiPropagationReview) {
+            setAiPreviews((prev) => {
+              const next = { ...prev };
+              readyFinalizeSuggestions.forEach((item) => {
+                next[item.sectionId] = {
+                  original: item.original,
+                  suggestion: item.suggestion,
+                  mode: "finalize",
+                };
+              });
+              return next;
+            });
+            if (typeof window !== "undefined") {
+              window.requestAnimationFrame(() => {
+                playPropagationTextReveal(targetSectionIds);
+              });
+            }
+          } else {
+            const finalizeSuggestions = new Map<string, string>(
+              readyFinalizeSuggestions.map((item) => [item.sectionId, item.suggestion])
+            );
+
+            setAiPreviews((prev) => {
+              if (Object.keys(prev).length === 0) return prev;
+              const next = { ...prev };
+              readyFinalizeSuggestions.forEach((item) => {
+                delete next[item.sectionId];
+              });
+              return next;
+            });
+
+            setReportSections((prev) =>
+              prev.map((section) => {
+                const suggestion = finalizeSuggestions.get(section.id);
+                if (!suggestion) return section;
+                return {
+                  ...section,
+                  content: suggestion,
+                  contentFormatted: null,
+                  contentFormatHash: null,
+                };
+              })
+            );
+            if (typeof window !== "undefined") {
+              window.requestAnimationFrame(() => {
+                playPropagationTextReveal(targetSectionIds);
+                scheduleSectionTextareaResize();
+              });
+            }
+            scheduleSectionTextareaResize();
+          }
+        }
       }
 
       if (shouldRunAutoDetect) {
@@ -5172,11 +5560,18 @@ export default function CoachReportBuilderPage() {
           section: entry.section,
           title: option.title,
           summary: option.summary,
+          tpiReasoning: option.tpiReasoning,
         };
       })
       .filter(
-        (item): item is { section: string; title: string; summary: string } =>
-          item !== null
+        (
+          item
+        ): item is {
+          section: string;
+          title: string;
+          summary: string;
+          tpiReasoning: AxisTpiReasoning;
+        } => item !== null
       );
 
     closeAxesModal();
@@ -5203,6 +5598,7 @@ export default function CoachReportBuilderPage() {
       delete next[id];
       return next;
     });
+    scheduleSectionTextareaResize();
   };
 
   const handleAiReject = (id: string) => {
@@ -5304,6 +5700,15 @@ export default function CoachReportBuilderPage() {
   }, []);
 
   useEffect(() => {
+    return () => {
+      Object.values(propagationFxTimersRef.current).forEach((timer) => {
+        clearTimeout(timer);
+      });
+      propagationFxTimersRef.current = {};
+    };
+  }, []);
+
+  useEffect(() => {
     setLocalDraftPrompt(null);
     setLocalDraftHandled(false);
   }, [requestedStudentId]);
@@ -5384,14 +5789,14 @@ export default function CoachReportBuilderPage() {
   }, [searchParams, editingReportId, resetBuilderState]);
 
   useLayoutEffect(() => {
-    textareaRefs.current.forEach((textarea) => {
-      if (!textarea) return;
-      textarea.style.height = "auto";
-      textarea.style.height = `${textarea.scrollHeight}px`;
-    });
+    resizeAllSectionTextareas();
   }, [reportSectionStructureKey]);
 
-  // Note: workingNotes/workingObservations are auto-sized on input to avoid iOS scroll jumps.
+  useLayoutEffect(() => {
+    resizeWorkingTextareas();
+  }, [workingObservations, workingNotes, aiAssistantModalOpen, resizeWorkingTextareas]);
+
+  // Keep duplicated "working context" textareas (page + modal) in sync.
 
   useEffect(() => {
     if (!activeTooltip) return;
@@ -5424,6 +5829,20 @@ export default function CoachReportBuilderPage() {
     organization?.ai_focus,
     organization,
   ]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem(aiPropagationReviewStorageKey);
+    if (stored === "false") {
+      setAiPropagationReview(false);
+      return;
+    }
+    if (stored === "true") {
+      setAiPropagationReview(true);
+      return;
+    }
+    setAiPropagationReview(true);
+  }, [aiPropagationReviewStorageKey]);
 
   useEffect(() => {
     if (!organization?.id) return;
@@ -5536,6 +5955,7 @@ export default function CoachReportBuilderPage() {
     premiumModalOpen ||
     aiAssistantModalOpen ||
     aiSettingsModalOpen ||
+    stickyAiHintOpen ||
     sectionLibraryOpen ||
     sectionCreateModalOpen ||
     pendingSectionDeletion !== null ||
@@ -5566,14 +5986,29 @@ export default function CoachReportBuilderPage() {
   const showLayoutTools = false;
   const isReportStep = activeBuilderStep === "report";
   const showSectionsPanel = !isReportStep;
+  const showSectionsReviewStep = false;
   const reportGridClass = isReportStep ? "lg:grid-cols-1" : "lg:grid-cols-[0.9fr_1.1fr]";
   const stickyActionShapeClass = stickyActionsExpanded
-    ? "w-[9.75rem] justify-start px-3 lg:w-[10.75rem] lg:px-3.5"
-    : "w-11 justify-center px-0 lg:w-12";
+    ? "w-[9.75rem] justify-start pl-3 pr-3 lg:w-[10.75rem] lg:pl-3.5 lg:pr-3.5"
+    : "w-11 justify-start pl-[0.875rem] pr-0 lg:w-12 lg:pl-[1rem] lg:pr-0";
+  const getTempoFeatureToneClass = (locked: boolean) =>
+    locked ? TEMPO_FEATURE_BUTTON_LOCKED_TONE_CLASS : TEMPO_FEATURE_BUTTON_TONE_CLASS;
+  const tempoFeatureToneClass = aiFullLocked
+    ? getTempoFeatureToneClass(true)
+    : getTempoFeatureToneClass(false);
+  const tempoFeatureCompactButtonClass = `${TEMPO_FEATURE_BUTTON_COMPACT_BASE_CLASS} ${tempoFeatureToneClass}`;
+  const tempoFeatureStickyToneClass = `${tempoFeatureToneClass} tempo-ia-trigger-sticky`;
+  const tempoFeatureStickyButtonClass = `${TEMPO_FEATURE_BUTTON_STICKY_BASE_CLASS} ${tempoFeatureStickyToneClass} ${stickyActionShapeClass}`;
+  const tempoDatasStickyToneClass = aiFullLocked
+    ? tempoFeatureStickyToneClass
+    : "tempo-datas-trigger-sticky";
+  const tempoDatasStickyButtonClass = `${TEMPO_FEATURE_BUTTON_STICKY_BASE_CLASS} ${tempoDatasStickyToneClass} ${stickyActionShapeClass}`;
+  const tempoFeatureActionButtonClass = `${TEMPO_FEATURE_BUTTON_COMPACT_BASE_CLASS} font-semibold ${tempoFeatureToneClass}`;
+  const tempoFeatureResetButtonClass = `${TEMPO_FEATURE_BUTTON_COMPACT_BASE_CLASS} ${getTempoFeatureToneClass(false)}`;
   const stickyActionLabelClass = stickyActionsExpanded
     ? "ml-2 max-w-[6.5rem] translate-x-0 opacity-100"
     : "ml-0 max-w-0 -translate-x-1 opacity-0";
-  const stickyActionCount = 7;
+  const stickyActionCount = 6;
   const getStickyActionDelay = (index: number) => {
     const stepMs = 45;
     const orderIndex = Math.min(index, stickyActionCount - 1);
@@ -5596,6 +6031,9 @@ export default function CoachReportBuilderPage() {
     aiFinalizeDraft.runSummary ||
     aiFinalizeDraft.runPlan ||
     aiFinalizeDraft.runAutoDetectDatas;
+  const activeStickyAiHint = stickyAiHintKey
+    ? STICKY_AI_HINT_CONTENT[stickyAiHintKey]
+    : null;
 
   return (
     <RoleGuard allowedRoles={["owner", "coach", "staff"]}>
@@ -5753,10 +6191,265 @@ export default function CoachReportBuilderPage() {
               inset 0 0 16px rgba(var(--guide-color), 0.16);
             animation: reportGuideHalo 1.1s ease-in-out infinite;
           }
+          .tempo-ia-trigger {
+            position: relative;
+            isolation: isolate;
+            letter-spacing: 0.14em;
+            font-weight: 700;
+            border: none;
+            background: transparent;
+            color: rgb(15, 23, 42);
+            box-shadow: none;
+          }
+          .tempo-ia-trigger::after {
+            content: "";
+            position: absolute;
+            inset: -10px;
+            z-index: -2;
+            border-radius: 9999px;
+            background: radial-gradient(
+              circle,
+              rgba(14, 165, 233, 0.25) 0%,
+              rgba(16, 185, 129, 0.16) 35%,
+              rgba(14, 165, 233, 0) 72%
+            );
+            filter: blur(12px);
+            opacity: 0.42;
+            transform: scale(1);
+            transition:
+              opacity 220ms ease,
+              transform 320ms ease;
+            animation: tempoTabGlowBreathe 2.2s ease-in-out infinite;
+          }
+          .tempo-ia-trigger-label {
+            line-height: 1;
+            font-weight: 800;
+            background-image: linear-gradient(
+              120deg,
+              rgb(5, 150, 105),
+              rgb(2, 132, 199),
+              rgb(15, 118, 110),
+              rgb(5, 150, 105)
+            );
+            background-size: 260% 260%;
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            -webkit-text-fill-color: transparent;
+            text-shadow:
+              0 0 8px rgba(14, 165, 233, 0.34),
+              0 0 14px rgba(16, 185, 129, 0.24);
+            will-change: background-position;
+            animation: tempoTextShift 1.7s linear infinite;
+          }
+          .tempo-ia-trigger-chip {
+            border-radius: 9999px;
+            padding: 0.12rem 0.36rem;
+            font-size: 0.5rem;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            line-height: 1;
+            background: rgba(14, 165, 233, 0.1);
+            color: rgb(3, 105, 161);
+            box-shadow: 0 0 0 1px rgba(14, 165, 233, 0.22) inset;
+            transition:
+              background-color 220ms ease,
+              color 220ms ease,
+              box-shadow 220ms ease;
+          }
+          .tempo-ia-trigger:hover {
+            transform: translateY(-1px);
+          }
+          .tempo-ia-trigger:hover::after {
+            opacity: 0.5;
+            transform: scale(1.03);
+          }
+          .tempo-ia-trigger:hover .tempo-ia-trigger-chip {
+            background: rgba(16, 185, 129, 0.16);
+            color: rgb(6, 95, 70);
+            box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.25) inset;
+          }
+          .tempo-ia-trigger-sticky {
+            border: 1px solid rgba(14, 165, 233, 0.3);
+            background: linear-gradient(
+              130deg,
+              rgba(240, 253, 250, 0.95),
+              rgba(236, 254, 255, 0.93)
+            );
+            color: rgb(3, 105, 161);
+            box-shadow:
+              0 12px 24px rgba(15, 23, 42, 0.2),
+              0 0 0 1px rgba(14, 165, 233, 0.14) inset;
+          }
+          .tempo-ia-trigger-sticky::after {
+            opacity: 0.54;
+            transform: scale(1.02);
+          }
+          .tempo-ia-trigger-sticky svg {
+            color: rgb(3, 105, 161);
+            filter: drop-shadow(0 0 8px rgba(14, 165, 233, 0.38));
+          }
+          .tempo-ia-trigger-sticky:hover {
+            transform: translateY(-1px);
+            box-shadow:
+              0 14px 28px rgba(15, 23, 42, 0.24),
+              0 0 0 1px rgba(16, 185, 129, 0.2) inset;
+          }
+          .tempo-datas-trigger-sticky {
+            position: relative;
+            isolation: isolate;
+            letter-spacing: 0.14em;
+            font-weight: 700;
+            border: 1px solid rgba(167, 139, 250, 0.38);
+            background: linear-gradient(
+              130deg,
+              rgba(245, 243, 255, 0.96),
+              rgba(238, 242, 255, 0.94)
+            );
+            color: rgb(109, 40, 217);
+            box-shadow:
+              0 12px 24px rgba(15, 23, 42, 0.2),
+              0 0 0 1px rgba(167, 139, 250, 0.22) inset;
+          }
+          .tempo-datas-trigger-sticky::after {
+            content: "";
+            position: absolute;
+            inset: -10px;
+            z-index: -2;
+            border-radius: 9999px;
+            background: radial-gradient(
+              circle,
+              rgba(167, 139, 250, 0.28) 0%,
+              rgba(192, 132, 252, 0.18) 38%,
+              rgba(167, 139, 250, 0) 76%
+            );
+            filter: blur(12px);
+            opacity: 0.54;
+            transform: scale(1.02);
+            animation: tempoDatasGlowBreathe 2.2s ease-in-out infinite;
+            transition:
+              opacity 220ms ease,
+              transform 320ms ease;
+          }
+          .tempo-datas-trigger-sticky svg {
+            color: rgb(109, 40, 217);
+            filter: drop-shadow(0 0 8px rgba(167, 139, 250, 0.42));
+          }
+          .tempo-datas-trigger-sticky .tempo-ia-trigger-label {
+            background-image: linear-gradient(
+              120deg,
+              rgb(124, 58, 237),
+              rgb(147, 51, 234),
+              rgb(99, 102, 241),
+              rgb(124, 58, 237)
+            );
+            text-shadow:
+              0 0 8px rgba(167, 139, 250, 0.34),
+              0 0 14px rgba(147, 51, 234, 0.24);
+            animation: tempoDatasTextShift 1.9s linear infinite;
+          }
+          .tempo-datas-trigger-sticky .tempo-ia-trigger-chip {
+            background: rgba(167, 139, 250, 0.14);
+            color: rgb(107, 33, 168);
+            box-shadow: 0 0 0 1px rgba(167, 139, 250, 0.28) inset;
+          }
+          .tempo-datas-trigger-sticky:hover {
+            transform: translateY(-1px);
+            box-shadow:
+              0 14px 28px rgba(15, 23, 42, 0.24),
+              0 0 0 1px rgba(167, 139, 250, 0.3) inset;
+          }
+          .tempo-datas-trigger-sticky:hover::after {
+            opacity: 0.62;
+            transform: scale(1.05);
+          }
+          .tempo-ia-trigger-locked {
+            color: rgb(100, 116, 139);
+            opacity: 0.9;
+          }
+          .tempo-ia-trigger-locked::after {
+            opacity: 0.08;
+            transform: scale(1);
+            animation: none;
+          }
+          .tempo-ia-trigger-locked:hover {
+            transform: none;
+          }
+          .tempo-ia-trigger-locked .tempo-ia-trigger-label {
+            background-image: none;
+            color: rgb(100, 116, 139);
+            -webkit-text-fill-color: currentColor;
+            text-shadow: none;
+            animation: none;
+          }
+          .tempo-ia-trigger-locked .tempo-ia-trigger-chip {
+            background: rgba(148, 163, 184, 0.12);
+            color: rgb(100, 116, 139);
+            box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.18) inset;
+          }
+          .tempo-ia-trigger-locked.tempo-ia-trigger-sticky {
+            border-color: rgba(148, 163, 184, 0.26);
+            background: linear-gradient(
+              130deg,
+              rgba(248, 250, 252, 0.95),
+              rgba(241, 245, 249, 0.92)
+            );
+            color: rgb(100, 116, 139);
+            box-shadow: 0 12px 24px rgba(15, 23, 42, 0.16);
+          }
+          .tempo-ia-trigger-locked.tempo-ia-trigger-sticky svg {
+            color: rgb(100, 116, 139);
+            filter: none;
+          }
+          .report-propagation-fx-layer {
+            pointer-events: none;
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            overflow: hidden;
+            border-radius: inherit;
+          }
+          .report-propagation-fx-sheen {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(
+              108deg,
+              rgba(34, 211, 238, 0) 8%,
+              rgba(34, 211, 238, 0.16) 26%,
+              rgba(16, 185, 129, 0.2) 45%,
+              rgba(56, 189, 248, 0.14) 62%,
+              rgba(34, 211, 238, 0) 82%
+            );
+            transform: translateX(-118%);
+            opacity: 0;
+            animation: reportPropagationSheen 720ms ease-out forwards;
+          }
+          .report-propagation-fx-particle {
+            position: absolute;
+            left: -8px;
+            width: 0.34rem;
+            height: 0.34rem;
+            border-radius: 9999px;
+            background: rgba(125, 211, 252, 0.95);
+            box-shadow:
+              0 0 0 1px rgba(255, 255, 255, 0.38),
+              0 0 12px rgba(56, 189, 248, 0.72),
+              0 0 22px rgba(16, 185, 129, 0.38);
+            opacity: 0;
+            animation-name: reportPropagationParticle;
+            animation-timing-function: ease-out;
+            animation-iteration-count: 1;
+            animation-fill-mode: both;
+          }
           @media (prefers-reduced-motion: reduce) {
             .report-guide-attention,
             .report-guide-attention::before,
-            .report-guide-attention::after {
+            .report-guide-attention::after,
+            .tempo-ia-trigger::after,
+            .tempo-ia-trigger-label,
+            .tempo-datas-trigger-sticky::after,
+            .report-propagation-fx-sheen,
+            .report-propagation-fx-particle {
               animation: none;
             }
           }
@@ -5835,6 +6528,75 @@ export default function CoachReportBuilderPage() {
               transform: scale(1.05);
             }
           }
+          @keyframes tempoTextShift {
+            0%,
+            100% {
+              background-position: 0% 50%;
+            }
+            50% {
+              background-position: 100% 50%;
+            }
+          }
+          @keyframes tempoTabGlowBreathe {
+            0%,
+            100% {
+              opacity: 0.56;
+              transform: scale(1.01);
+            }
+            50% {
+              opacity: 0.86;
+              transform: scale(1.06);
+            }
+          }
+          @keyframes tempoDatasTextShift {
+            0%,
+            100% {
+              background-position: 0% 50%;
+            }
+            50% {
+              background-position: 100% 50%;
+            }
+          }
+          @keyframes tempoDatasGlowBreathe {
+            0%,
+            100% {
+              opacity: 0.56;
+              transform: scale(1.02);
+            }
+            50% {
+              opacity: 0.9;
+              transform: scale(1.08);
+            }
+          }
+          @keyframes reportPropagationSheen {
+            0% {
+              transform: translateX(-118%);
+              opacity: 0;
+            }
+            22% {
+              opacity: 1;
+            }
+            100% {
+              transform: translateX(118%);
+              opacity: 0;
+            }
+          }
+          @keyframes reportPropagationParticle {
+            0% {
+              left: -8px;
+              opacity: 0;
+              transform: scale(0.72);
+            }
+            14% {
+              opacity: 1;
+              transform: scale(1);
+            }
+            100% {
+              left: calc(100% + 8px);
+              opacity: 0;
+              transform: scale(0.32);
+            }
+          }
         `}</style>
         <div className="space-y-6">
           <PageHeader
@@ -5852,21 +6614,10 @@ export default function CoachReportBuilderPage() {
                 ? "Mets a jour les sections et le contenu du rapport."
                 : activeBuilderStep === "layout"
                   ? "Choisis un layout de depart pour structurer le rapport."
-                  : activeBuilderStep === "sections"
-                    ? "Selectionne et organise les sections avant la redaction."
-                    : "Remplis le contenu et ajuste les sections au fil du rapport."
+                  : "Remplis le contenu et ajuste les sections au fil du rapport."
             }
             actions={
               <>
-                {!isEditing && activeBuilderStep !== "report" ? (
-                  <button
-                    type="button"
-                    onClick={handleSkipSetup}
-                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
-                  >
-                    Passer
-                  </button>
-                ) : null}
                 {activeBuilderStep === "report" ? (
                   <button
                     type="button"
@@ -5972,24 +6723,39 @@ export default function CoachReportBuilderPage() {
                 <Badge as="div" className={`mt-3 ${modeBadgeTone}`}>
                   <span className="min-w-0 break-words">Vous travaillez dans {modeLabel}</span>
                 </Badge>
-                <div className="mt-4 flex flex-wrap items-center gap-2 text-[0.6rem] uppercase tracking-[0.25em] text-[var(--muted)]">
+                <ol className="mt-4 flex flex-wrap items-center gap-3 text-[0.6rem] uppercase tracking-[0.25em] text-[var(--muted)] select-none">
                   {[
                     { id: "layout", label: "Layout" },
-                    { id: "sections", label: "Sections" },
                     { id: "report", label: "Rapport" },
-                  ].map((step, index) => (
-                    <span
-                      key={step.id}
-                      className={`rounded-full border px-3 py-1 ${
-                        activeBuilderStep === step.id
-                          ? "border-emerald-300/40 bg-emerald-400/10 text-emerald-100"
-                          : "border-white/10 bg-white/5"
-                      }`}
-                    >
-                      {index + 1}. {step.label}
-                    </span>
-                  ))}
-                </div>
+                  ].map((step, index, list) => {
+                    const isActive = activeBuilderStep === step.id;
+                    return (
+                      <li key={step.id} className="inline-flex items-center gap-2">
+                        <span
+                          className={`font-semibold ${
+                            isActive ? "text-emerald-200" : "text-[var(--muted)]/70"
+                          }`}
+                          aria-hidden="true"
+                        >
+                          {index + 1}.
+                        </span>
+                        <span
+                          className={`${
+                            isActive ? "text-emerald-100" : "text-[var(--muted)]"
+                          }`}
+                        >
+                          {step.label}
+                        </span>
+                        {index < list.length - 1 ? (
+                          <span
+                            className="ml-1 h-px w-5 bg-white/15"
+                            aria-hidden="true"
+                          />
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ol>
                 {loadingReport ? (
                   <p className="mt-3 text-sm text-[var(--muted)]">
                     Chargement du rapport...
@@ -6022,11 +6788,7 @@ export default function CoachReportBuilderPage() {
                     type="button"
                     onClick={handleAiLayoutClick}
                     aria-disabled={aiFullLocked}
-                    className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
-                      aiFullLocked
-                        ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
-                        : "border-emerald-300/30 bg-emerald-400/10 text-emerald-100 hover:bg-emerald-400/20"
-                    }`}
+                    className={tempoFeatureCompactButtonClass}
                   >
                     <span className="flex items-center gap-2">
                       {aiFullLocked ? (
@@ -6042,8 +6804,24 @@ export default function CoachReportBuilderPage() {
                           <rect x="3" y="11" width="18" height="11" rx="2" />
                           <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                         </svg>
-                      ) : null}
-                      Layout IA
+                      ) : (
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-3.5 w-3.5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M12 3l1.6 3.7L17 8.3l-3.4 1.6L12 13.5l-1.6-3.6L7 8.3l3.4-1.6L12 3z" />
+                          <path d="M5 14l.8 1.9L7.8 17l-2 1-.8 2-.8-2-2-1 2-.9L5 14z" />
+                          <path d="M19 14l.8 1.9 2 1-2 .9-.8 2-.8-2-2-1 2-.9L19 14z" />
+                        </svg>
+                      )}
+                      <span className="tempo-ia-trigger-label">Layout</span>
+                      <span className="tempo-ia-trigger-chip">IA</span>
                     </span>
                   </button>
                 </div>
@@ -6178,13 +6956,6 @@ export default function CoachReportBuilderPage() {
                       className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90 disabled:opacity-60"
                     >
                       Continuer
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSkipSetup}
-                      className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
-                    >
-                      Passer au rapport
                     </button>
                   </div>
                   {layoutMessage ? (
@@ -6846,7 +7617,7 @@ export default function CoachReportBuilderPage() {
                       Nouvelle section
                     </p>
                     <p className="mt-1 text-xs text-[var(--muted)]">
-                      Un titre clair aide l assistant IA a etre plus pertinent.
+                      Un titre clair aide Tempo IA a etre plus pertinent.
                     </p>
                     <label className="mt-3 block text-xs uppercase tracking-wide text-[var(--muted)]">
                       Nom de la section
@@ -7246,7 +8017,7 @@ export default function CoachReportBuilderPage() {
                 </div>
               ) : null}
 
-              {activeBuilderStep === "sections" ? (
+              {showSectionsReviewStep ? (
                 <div className="panel relative rounded-2xl p-6">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -7379,10 +8150,10 @@ export default function CoachReportBuilderPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={handleContinueFromSections}
+                      onClick={() => setBuilderStep("report")}
                       className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90"
                     >
-                      Passer au rapport
+                      Continuer
                     </button>
                   </div>
                 </div>
@@ -7537,7 +8308,9 @@ export default function CoachReportBuilderPage() {
                             </span>
                             <div>
                               <p className="text-xs uppercase tracking-[0.2em]">
-                                Assistant IA
+                                <span className="normal-case">
+                                  Tempo <sup className="text-[0.62em] leading-none">IA</sup>
+                                </span>
                               </p>
                               <p className="text-sm text-amber-100/80">
                                 Debloque l IA complete (Pro/Entreprise)
@@ -7552,7 +8325,9 @@ export default function CoachReportBuilderPage() {
                     ) : null}
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                        Assistant IA
+                        <span className="normal-case">
+                          Tempo <sup className="text-[0.62em] leading-none">IA</sup>
+                        </span>
                       </p>
                       <span
                         className={`rounded-md border border-dashed px-2 py-1 text-[0.55rem] uppercase tracking-wide select-none ${
@@ -7568,7 +8343,7 @@ export default function CoachReportBuilderPage() {
                       </span>
                     </div>
                     <p className="mt-2 hidden text-xs text-[var(--muted)] md:block">
-                      L assistant IA utilise le profil TPI, les datas de seance et tes
+                      Tempo IA utilise le profil TPI, les datas de seance et tes
                       constats/travaux en cours quand ils sont disponibles.
                     </p>
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border-white/10 bg-white/5 px-4 py-3">
@@ -7587,7 +8362,7 @@ export default function CoachReportBuilderPage() {
                         role="switch"
                         aria-checked={aiPropagationReview}
                         aria-label="Basculer la validation apres propagation"
-                        onClick={() => setAiPropagationReview((prev) => !prev)}
+                        onClick={() => setAiPropagationReviewPersisted((prev) => !prev)}
                         disabled={aiFullLocked}
                         className={`relative inline-flex h-8 w-14 items-center rounded-full border px-1 transition ${
                           aiFullLocked
@@ -7617,11 +8392,7 @@ export default function CoachReportBuilderPage() {
                           }
                           handleAiSummary();
                         }}
-                        className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
-                          aiFullLocked
-                            ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
-                            : "border-white/10 bg-white/10 text-[var(--text)]"
-                        }`}
+                        className={`${tempoFeatureActionButtonClass} disabled:opacity-60`}
                       >
                         <span className="flex items-center gap-2">
                           {aiFullLocked ? (
@@ -7638,7 +8409,9 @@ export default function CoachReportBuilderPage() {
                               <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                             </svg>
                           ) : null}
-                          {aiBusyId === "summary" ? "IA..." : "Resume du rapport"}
+                          <span className="tempo-ia-trigger-label">
+                            {aiBusyId === "summary" ? "IA..." : "Resume du rapport"}
+                          </span>
                         </span>
                       </button>
                       <button
@@ -7655,11 +8428,7 @@ export default function CoachReportBuilderPage() {
                           setRadarAiQuestions(DEFAULT_RADAR_AI_QUESTIONS);
                           void loadRadarAiQuestions();
                         }}
-                        className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
-                          aiFullLocked
-                            ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
-                            : "border-violet-300/40 bg-violet-400/15 text-violet-100"
-                        }`}
+                        className={`${tempoFeatureActionButtonClass} disabled:opacity-60`}
                       >
                         <span className="flex items-center gap-2">
                           {aiFullLocked ? (
@@ -7676,7 +8445,9 @@ export default function CoachReportBuilderPage() {
                               <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                             </svg>
                           ) : null}
-                          {radarAiAutoBusy ? "IA..." : "Auto detect datas graph"}
+                          <span className="tempo-ia-trigger-label">
+                            {radarAiAutoBusy ? "IA..." : "Auto detect datas graph"}
+                          </span>
                         </span>
                       </button>
                       <button
@@ -7689,11 +8460,7 @@ export default function CoachReportBuilderPage() {
                           }
                           openAiFinalizeModal();
                         }}
-                        className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
-                          aiFullLocked
-                            ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
-                            : "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
-                        }`}
+                        className={`${tempoFeatureActionButtonClass} disabled:opacity-60`}
                       >
                         <span className="flex items-center gap-2">
                           {aiFullLocked ? (
@@ -7710,7 +8477,9 @@ export default function CoachReportBuilderPage() {
                               <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                             </svg>
                           ) : null}
-                          {aiBusyId === "finalize" ? "IA..." : "Finaliser"}
+                          <span className="tempo-ia-trigger-label">
+                            {aiBusyId === "finalize" ? "IA..." : "Finaliser"}
+                          </span>
                         </span>
                       </button>
                     </div>
@@ -7754,9 +8523,10 @@ export default function CoachReportBuilderPage() {
                         <button
                           type="button"
                           onClick={resetAiSettings}
-                          className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                          className={tempoFeatureResetButtonClass}
                         >
-                          Reinitialiser IA
+                          <span className="tempo-ia-trigger-label">Reinitialiser</span>
+                          <span className="tempo-ia-trigger-chip">IA</span>
                         </button>
                       </div>
                       <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1fr]">
@@ -7873,11 +8643,7 @@ export default function CoachReportBuilderPage() {
                               }
                               handleAiPropagateFromWorking();
                             }}
-                            className={`rounded-full border px-3.5 py-1.5 text-[0.65rem] font-semibold uppercase tracking-wide transition disabled:opacity-60 ${
-                              aiFullLocked
-                                ? "border-amber-300/35 bg-amber-400/15 text-amber-200"
-                                : "border-emerald-300/40 bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 text-zinc-900 shadow-[0_10px_24px_rgba(16,185,129,0.3)] hover:brightness-105"
-                            }`}
+                            className={`${tempoFeatureActionButtonClass} disabled:opacity-60`}
                           >
                             <span className="flex items-center gap-2">
                               {aiFullLocked ? (
@@ -7908,7 +8674,9 @@ export default function CoachReportBuilderPage() {
                                   <path d="M13 6l6 6-6 6" />
                                 </svg>
                               )}
-                              {aiBusyId === "propagate" ? "IA..." : "Propager"}
+                              <span className="tempo-ia-trigger-label">
+                                {aiBusyId === "propagate" ? "IA..." : "Propager"}
+                              </span>
                             </span>
                           </button>
                         </div>
@@ -7943,13 +8711,8 @@ export default function CoachReportBuilderPage() {
                             Constats
                           </label>
                           <textarea
-                            ref={(node) => {
-                              workingObservationsRef.current = node;
-                              if (node) {
-                                node.style.height = `${node.scrollHeight}px`;
-                              }
-                            }}
                             rows={3}
+                            data-working-textarea="observations"
                             placeholder="Ex: chemin de club trop a gauche, perte de posture..."
                             value={workingObservations}
                             onInput={handleWorkingObservationsInput}
@@ -7961,13 +8724,8 @@ export default function CoachReportBuilderPage() {
                             Travail en cours
                           </label>
                           <textarea
-                            ref={(node) => {
-                              workingNotesRef.current = node;
-                              if (node) {
-                                node.style.height = `${node.scrollHeight}px`;
-                              }
-                            }}
                             rows={3}
+                            data-working-textarea="notes"
                             placeholder="Ex: stabiliser l'appui pied droit au backswing."
                             value={workingNotes}
                             onInput={handleWorkingNotesInput}
@@ -8116,54 +8874,13 @@ export default function CoachReportBuilderPage() {
                     </button>
                     <button
                       type="button"
-                      disabled={!!aiBusyId}
-                      onClick={() => {
-                        if (aiFullLocked) {
-                          openPremiumModal();
-                          return;
-                        }
-                        handleAiSummary();
-                      }}
-                      className={`flex h-11 items-center overflow-hidden rounded-full border shadow-[0_10px_24px_rgba(0,0,0,0.28)] transition-all duration-300 ease-in-out disabled:opacity-60 lg:h-12 ${stickyActionShapeClass} ${
-                        aiFullLocked
-                          ? "border-amber-300 bg-amber-50 text-amber-700"
-                          : "border-black/15 bg-white/95 text-zinc-700 hover:bg-zinc-100"
-                      }`}
+                      onClick={() =>
+                        runStickyAiAction("assistant", () => setAiAssistantModalOpen(true))
+                      }
+                      className={tempoFeatureStickyButtonClass}
                       style={{ transitionDelay: getStickyActionDelay(3) }}
-                      aria-label="Resume du rapport"
-                      title={aiBusyId === "summary" ? "IA..." : "Resume du rapport"}
-                    >
-                      <span className="shrink-0">
-                        <svg
-                          viewBox="0 0 24 24"
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden="true"
-                        >
-                          <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
-                          <path d="M14 3v5h5" />
-                          <path d="M8 13h8" />
-                          <path d="M8 17h5" />
-                        </svg>
-                      </span>
-                      <span
-                        className={`inline-flex items-center overflow-hidden whitespace-nowrap text-[0.58rem] font-semibold uppercase leading-none tracking-wide transition-all duration-300 ease-in-out ${stickyActionLabelClass}`}
-                        style={{ transitionDelay: getStickyLabelDelay(3) }}
-                      >
-                        Resume rapide
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setAiAssistantModalOpen(true)}
-                      className={`flex h-11 items-center overflow-hidden rounded-full border border-cyan-300 bg-cyan-50 text-cyan-700 shadow-[0_10px_24px_rgba(0,0,0,0.28)] transition-all duration-300 ease-in-out hover:bg-cyan-100 lg:h-12 ${stickyActionShapeClass}`}
-                      style={{ transitionDelay: getStickyActionDelay(4) }}
-                      aria-label="Ouvrir l assistant IA"
-                      title="Assistant IA"
+                      aria-label="Ouvrir Tempo IA"
+                      title="Tempo IA"
                     >
                       <span className="shrink-0">
                         <svg
@@ -8183,31 +8900,30 @@ export default function CoachReportBuilderPage() {
                       </span>
                       <span
                         className={`inline-flex items-center overflow-hidden whitespace-nowrap text-[0.58rem] font-semibold uppercase leading-none tracking-wide transition-all duration-300 ease-in-out ${stickyActionLabelClass}`}
-                        style={{ transitionDelay: getStickyLabelDelay(4) }}
+                        style={{ transitionDelay: getStickyLabelDelay(3) }}
                       >
-                        Assistant IA
+                        <span className="tempo-ia-trigger-label">Tempo</span>
+                        <span className="tempo-ia-trigger-chip">IA</span>
                       </span>
                     </button>
                     <button
                       type="button"
                       disabled={radarAiAutoBusy}
-                      onClick={() => {
-                        if (aiFullLocked) {
-                          openPremiumModal();
-                          return;
-                        }
-                        setRadarAiQaAnswers({});
-                        setRadarAiQaError("");
-                        setRadarAiQaOpen(true);
-                        setRadarAiQuestions(DEFAULT_RADAR_AI_QUESTIONS);
-                        void loadRadarAiQuestions();
-                      }}
-                      className={`flex h-11 items-center overflow-hidden rounded-full border shadow-[0_10px_24px_rgba(0,0,0,0.28)] transition-all duration-300 ease-in-out disabled:opacity-60 lg:h-12 ${stickyActionShapeClass} ${
-                        aiFullLocked
-                          ? "border-amber-300 bg-amber-50 text-amber-700"
-                          : "border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100"
-                      }`}
-                      style={{ transitionDelay: getStickyActionDelay(5) }}
+                      onClick={() =>
+                        runStickyAiAction("datas", () => {
+                          if (aiFullLocked) {
+                            openPremiumModal();
+                            return;
+                          }
+                          setRadarAiQaAnswers({});
+                          setRadarAiQaError("");
+                          setRadarAiQaOpen(true);
+                          setRadarAiQuestions(DEFAULT_RADAR_AI_QUESTIONS);
+                          void loadRadarAiQuestions();
+                        })
+                      }
+                      className={`${tempoDatasStickyButtonClass} disabled:opacity-60`}
+                      style={{ transitionDelay: getStickyActionDelay(4) }}
                       aria-label="Auto detect datas graphs"
                       title={radarAiAutoBusy ? "IA..." : "Auto detect datas graphs"}
                     >
@@ -8232,27 +8948,25 @@ export default function CoachReportBuilderPage() {
                       </span>
                       <span
                         className={`inline-flex items-center overflow-hidden whitespace-nowrap text-[0.58rem] font-semibold uppercase leading-none tracking-wide transition-all duration-300 ease-in-out ${stickyActionLabelClass}`}
-                        style={{ transitionDelay: getStickyLabelDelay(5) }}
+                        style={{ transitionDelay: getStickyLabelDelay(4) }}
                       >
-                        Mode datas
+                        <span className="tempo-ia-trigger-label">Mode datas</span>
                       </span>
                     </button>
                     <button
                       type="button"
                       disabled={!!aiBusyId}
-                      onClick={() => {
-                        if (aiFullLocked) {
-                          openPremiumModal();
-                          return;
-                        }
-                        openAiFinalizeModal();
-                      }}
-                      className={`flex h-11 items-center overflow-hidden rounded-full border shadow-[0_10px_24px_rgba(0,0,0,0.28)] transition-all duration-300 ease-in-out disabled:opacity-60 lg:h-12 ${stickyActionShapeClass} ${
-                        aiFullLocked
-                          ? "border-amber-300 bg-amber-50 text-amber-700"
-                          : "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                      }`}
-                      style={{ transitionDelay: getStickyActionDelay(6) }}
+                      onClick={() =>
+                        runStickyAiAction("finalize", () => {
+                          if (aiFullLocked) {
+                            openPremiumModal();
+                            return;
+                          }
+                          openAiFinalizeModal();
+                        })
+                      }
+                      className={`${tempoFeatureStickyButtonClass} disabled:opacity-60`}
+                      style={{ transitionDelay: getStickyActionDelay(5) }}
                       aria-label="Finaliser"
                       title={aiBusyId === "finalize" ? "IA..." : "Finaliser"}
                     >
@@ -8272,9 +8986,9 @@ export default function CoachReportBuilderPage() {
                       </span>
                       <span
                         className={`inline-flex items-center overflow-hidden whitespace-nowrap text-[0.58rem] font-semibold uppercase leading-none tracking-wide transition-all duration-300 ease-in-out ${stickyActionLabelClass}`}
-                        style={{ transitionDelay: getStickyLabelDelay(6) }}
+                        style={{ transitionDelay: getStickyLabelDelay(5) }}
                       >
-                        Finition IA
+                        <span className="tempo-ia-trigger-label">Finition IA</span>
                       </span>
                     </button>
                   </div>
@@ -8312,6 +9026,7 @@ export default function CoachReportBuilderPage() {
                         section.type === "image" ||
                         section.type === "video" ||
                         section.type === "radar";
+                      const propagationFxToken = propagationFxBySection[section.id];
 
                       return (
                         <div key={`${section.id}-slot`} className="space-y-3">
@@ -8353,6 +9068,34 @@ export default function CoachReportBuilderPage() {
                                   : "border-white/10 bg-white/5"
                             }`}
                           >
+                            {propagationFxToken ? (
+                              <div
+                                key={`propagation-fx-${section.id}-${propagationFxToken}`}
+                                className="report-propagation-fx-layer"
+                                aria-hidden="true"
+                              >
+                                <span
+                                  className="report-propagation-fx-sheen"
+                                  style={{
+                                    animationDelay: `${PROPAGATION_FX_START_DELAY_MS}ms`,
+                                    animationDuration: `${PROPAGATION_FX_SHEEN_DURATION_MS}ms`,
+                                  }}
+                                />
+                                {PROPAGATION_FX_PARTICLES.map((particle) => (
+                                  <span
+                                    key={`${section.id}-propagation-particle-${particle.id}-${propagationFxToken}`}
+                                    className="report-propagation-fx-particle"
+                                    style={{
+                                      top: `${particle.top}%`,
+                                      animationDelay: `${
+                                        PROPAGATION_FX_START_DELAY_MS / 1000 + particle.delay
+                                      }s`,
+                                      animationDuration: `${particle.duration}s`,
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                            ) : null}
                             <div className="flex flex-col gap-3 md:flex-row md:items-center">
                               <div className="flex min-w-0 w-full items-center gap-3 md:flex-1">
                                 {dragEnabled ? (
@@ -8425,7 +9168,7 @@ export default function CoachReportBuilderPage() {
                                           }-${section.id}`}
                                           className={`rounded-full border px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition hover:opacity-90 ${
                                             section.type === "video"
-                                              ? "border-pink-300/40 bg-pink-400/15 text-pink-400"
+                                              ? "feature-video-badge"
                                               : "border-sky-300/40 bg-sky-400/20 text-sky-100"
                                           }`}
                                         >
@@ -8576,6 +9319,7 @@ export default function CoachReportBuilderPage() {
                               <>
                                 <textarea
                                   rows={4}
+                                  data-propagation-text
                                   placeholder="Ecris le contenu de cette section..."
                                   value={section.content}
                                   onInput={(event) =>
@@ -8642,7 +9386,10 @@ export default function CoachReportBuilderPage() {
                                         </button>
                                       </div>
                                     </div>
-                                    <p className="mt-2 whitespace-pre-wrap text-sm text-[var(--text)]">
+                                    <p
+                                      data-propagation-text
+                                      className="mt-2 whitespace-pre-wrap text-sm text-[var(--text)]"
+                                    >
                                       {aiPreviews[section.id].mode === "improve"
                                         ? buildDiffSegments(
                                             aiPreviews[section.id].original,
@@ -8682,11 +9429,9 @@ export default function CoachReportBuilderPage() {
                                       }
                                       handleAiImprove(section);
                                     }}
-                                    className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
+                                    className={`${TEMPO_FEATURE_BUTTON_COMPACT_BASE_CLASS} ${getTempoFeatureToneClass(
                                       aiProofreadLocked
-                                        ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
-                                        : "border-white/10 bg-white/10 text-[var(--text)]"
-                                    }`}
+                                    )} disabled:opacity-60`}
                                   >
                                     <span className="flex items-center gap-2">
                                       {aiProofreadLocked ? (
@@ -8709,7 +9454,14 @@ export default function CoachReportBuilderPage() {
                                           <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                                         </svg>
                                       ) : null}
-                                      {aiBusyId === section.id ? "IA..." : "IA relire"}
+                                      {aiBusyId === section.id ? (
+                                        <span className="tempo-ia-trigger-label">IA...</span>
+                                      ) : (
+                                        <>
+                                          <span className="tempo-ia-trigger-label">Relire</span>
+                                          <span className="tempo-ia-trigger-chip">IA</span>
+                                        </>
+                                      )}
                                     </span>
                                   </button>
                                   <button
@@ -8722,11 +9474,9 @@ export default function CoachReportBuilderPage() {
                                       }
                                       handleAiWrite(section);
                                     }}
-                                    className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition hover:bg-white/20 disabled:opacity-60 ${
+                                    className={`${TEMPO_FEATURE_BUTTON_COMPACT_BASE_CLASS} ${getTempoFeatureToneClass(
                                       aiFullLocked
-                                        ? "border-amber-300/30 bg-amber-400/10 text-amber-200"
-                                        : "border-white/10 bg-white/10 text-[var(--text)]"
-                                    }`}
+                                    )} disabled:opacity-60`}
                                   >
                                     <span className="flex items-center gap-2">
                                       {aiFullLocked ? (
@@ -8749,7 +9499,14 @@ export default function CoachReportBuilderPage() {
                                           <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                                         </svg>
                                       ) : null}
-                                      {aiBusyId === section.id ? "IA..." : "IA completer"}
+                                      {aiBusyId === section.id ? (
+                                        <span className="tempo-ia-trigger-label">IA...</span>
+                                      ) : (
+                                        <>
+                                          <span className="tempo-ia-trigger-label">Completer</span>
+                                          <span className="tempo-ia-trigger-chip">IA</span>
+                                        </>
+                                      )}
                                     </span>
                                   </button>
                                 </div>
@@ -9732,7 +10489,9 @@ export default function CoachReportBuilderPage() {
               <div className="flex items-start justify-between gap-4 p-6">
                 <div>
                   <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                    Assistant IA
+                    <span className="normal-case">
+                      Tempo <sup className="text-[0.62em] leading-none">IA</sup>
+                    </span>
                   </p>
                   <h3 className="mt-2 text-xl font-semibold text-[var(--text)]">
                     Layout optimise
@@ -10720,7 +11479,7 @@ export default function CoachReportBuilderPage() {
                   id={aiAssistantTitleId}
                   className="text-center text-base font-semibold text-[var(--text)]"
                 >
-                  Assistant IA
+                  Tempo <sup className="text-[0.62em] leading-none">IA</sup>
                 </h3>
                 <button
                   type="button"
@@ -10744,10 +11503,7 @@ export default function CoachReportBuilderPage() {
                 </button>
               </div>
               <div className="max-h-[70vh] space-y-4 overflow-y-auto px-6 py-5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                    Assistant IA
-                  </p>
+                <div className="flex flex-wrap items-center justify-end gap-2">
                   <span
                     className={`rounded-md border border-dashed px-2 py-1 text-[0.55rem] uppercase tracking-wide select-none ${
                       aiEnabled
@@ -10760,6 +11516,41 @@ export default function CoachReportBuilderPage() {
                   >
                     {aiStatusLabel}
                   </span>
+                </div>
+                <div className="flex items-center justify-between gap-3 rounded-2xl bg-white/5 px-4 py-3">
+                  <div>
+                    <p className="text-[0.65rem] uppercase tracking-[0.2em] text-[var(--muted)]">
+                      Validation apres propagation
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--muted)]">
+                      {aiPropagationReview
+                        ? "Le coach valide chaque section avant insertion."
+                        : "L IA remplit automatiquement les sections."}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={aiPropagationReview}
+                    aria-label="Basculer la validation apres propagation"
+                    onClick={() => setAiPropagationReviewPersisted((prev) => !prev)}
+                    disabled={aiFullLocked}
+                    className={`relative inline-flex h-8 w-14 items-center rounded-full border px-1 transition ${
+                      aiFullLocked
+                        ? "cursor-not-allowed border-white/10 bg-white/5 opacity-60"
+                        : "border-white/10 bg-white/10 hover:border-white/30"
+                    }`}
+                  >
+                    <span
+                      className={`absolute left-1 top-1 flex h-6 w-6 items-center justify-center rounded-full border text-[0.55rem] font-semibold uppercase shadow-[0_6px_12px_rgba(0,0,0,0.25)] transition-transform ${
+                        aiPropagationReview
+                          ? "translate-x-0 border-emerald-300/40 bg-emerald-400/20 text-emerald-100"
+                          : "translate-x-6 border-rose-300/40 bg-rose-400/20 text-rose-100"
+                      }`}
+                    >
+                      {aiPropagationReview ? "On" : "Off"}
+                    </span>
+                  </button>
                 </div>
                 {radarAiAutoBusy ? (
                   <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
@@ -10815,11 +11606,7 @@ export default function CoachReportBuilderPage() {
                           }
                           handleAiPropagateFromWorking();
                         }}
-                        className={`rounded-full border px-3.5 py-1.5 text-[0.65rem] font-semibold uppercase tracking-wide transition disabled:opacity-60 ${
-                          aiFullLocked
-                            ? "border-amber-300/35 bg-amber-400/15 text-amber-200"
-                            : "border-emerald-300/40 bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 text-zinc-900 shadow-[0_10px_24px_rgba(16,185,129,0.3)] hover:brightness-105"
-                        }`}
+                        className={`${tempoFeatureActionButtonClass} disabled:opacity-60`}
                       >
                         <span className="flex items-center gap-2">
                           {aiFullLocked ? (
@@ -10850,7 +11637,9 @@ export default function CoachReportBuilderPage() {
                               <path d="M13 6l6 6-6 6" />
                             </svg>
                           )}
-                          {aiBusyId === "propagate" ? "IA..." : "Propager"}
+                          <span className="tempo-ia-trigger-label">
+                            {aiBusyId === "propagate" ? "IA..." : "Propager"}
+                          </span>
                         </span>
                       </button>
                     </div>
@@ -10881,13 +11670,8 @@ export default function CoachReportBuilderPage() {
                         Constats
                       </label>
                       <textarea
-                        ref={(node) => {
-                          workingObservationsRef.current = node;
-                          if (node) {
-                            node.style.height = `${node.scrollHeight}px`;
-                          }
-                        }}
                         rows={3}
+                        data-working-textarea="observations"
                         placeholder="Ex: chemin de club trop a gauche, perte de posture..."
                         value={workingObservations}
                         onInput={handleWorkingObservationsInput}
@@ -10899,13 +11683,8 @@ export default function CoachReportBuilderPage() {
                         Travail en cours
                       </label>
                       <textarea
-                        ref={(node) => {
-                          workingNotesRef.current = node;
-                          if (node) {
-                            node.style.height = `${node.scrollHeight}px`;
-                          }
-                        }}
                         rows={3}
+                        data-working-textarea="notes"
                         placeholder="Ex: stabiliser l'appui pied droit au backswing."
                         value={workingNotes}
                         onInput={handleWorkingNotesInput}
@@ -11030,41 +11809,6 @@ export default function CoachReportBuilderPage() {
                 </button>
               </div>
               <div className="max-h-[70vh] space-y-4 overflow-y-auto px-6 py-5">
-                <div className="flex items-center justify-between gap-3 rounded-2xl border-white/10 bg-white/5 px-4 py-3">
-                  <div>
-                    <p className="text-[0.65rem] uppercase tracking-[0.2em] text-[var(--muted)]">
-                      Validation apres propagation
-                    </p>
-                    <p className="mt-1 text-xs text-[var(--muted)]">
-                      {aiPropagationReview
-                        ? "Le coach valide chaque section avant insertion."
-                        : "L IA remplit automatiquement les sections."}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={aiPropagationReview}
-                    aria-label="Basculer la validation apres propagation"
-                    onClick={() => setAiPropagationReview((prev) => !prev)}
-                    disabled={aiFullLocked}
-                    className={`relative inline-flex h-8 w-14 items-center rounded-full border px-1 transition ${
-                      aiFullLocked
-                        ? "cursor-not-allowed border-white/10 bg-white/5 opacity-60"
-                        : "border-white/10 bg-white/10 hover:border-white/30"
-                    }`}
-                  >
-                    <span
-                      className={`absolute left-1 top-1 flex h-6 w-6 items-center justify-center rounded-full border text-[0.55rem] font-semibold uppercase shadow-[0_6px_12px_rgba(0,0,0,0.25)] transition-transform ${
-                        aiPropagationReview
-                          ? "translate-x-0 border-emerald-300/40 bg-emerald-400/20 text-emerald-100"
-                          : "translate-x-6 border-rose-300/40 bg-rose-400/20 text-rose-100"
-                      }`}
-                    >
-                      {aiPropagationReview ? "On" : "Off"}
-                    </span>
-                  </button>
-                </div>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-xs text-[var(--muted)]">
                     Reinitialise les reglages IA aux valeurs par defaut.
@@ -11072,9 +11816,10 @@ export default function CoachReportBuilderPage() {
                   <button
                     type="button"
                     onClick={resetAiSettings}
-                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                    className={tempoFeatureResetButtonClass}
                   >
-                    Reinitialiser IA
+                    <span className="tempo-ia-trigger-label">Reinitialiser</span>
+                    <span className="tempo-ia-trigger-chip">IA</span>
                   </button>
                 </div>
                 <div className="grid gap-3">
@@ -11367,6 +12112,57 @@ export default function CoachReportBuilderPage() {
             </div>
           </div>
         ) : null}
+        {stickyAiHintOpen && activeStickyAiHint ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={stickyAiHintTitleId}
+          >
+            <button
+              type="button"
+              aria-label="Fermer"
+              className="absolute inset-0 bg-black/35 backdrop-blur-sm"
+              onClick={handleStickyAiHintCancel}
+            />
+            <div className="relative w-full max-w-md rounded-2xl bg-[var(--bg-elevated)] p-6 shadow-[var(--shadow-strong)]">
+              <p className="text-[0.65rem] uppercase tracking-[0.22em] text-[var(--muted)]">
+                Tempo IA
+              </p>
+              <h3 id={stickyAiHintTitleId} className="mt-1 text-lg font-semibold text-[var(--text)]">
+                {activeStickyAiHint.title}
+              </h3>
+              <p className="mt-2 text-sm text-[var(--muted)]">
+                {activeStickyAiHint.description}
+              </p>
+              <label className="mt-4 flex items-start gap-2 text-xs text-[var(--muted)]">
+                <input
+                  type="checkbox"
+                  checked={stickyAiHintDontShowAgain}
+                  onChange={(event) => setStickyAiHintDontShowAgain(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-white/20 bg-[var(--bg-elevated)]"
+                />
+                <span>Ne plus afficher cette aide pour ce bouton</span>
+              </label>
+              <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleStickyAiHintCancel}
+                  className="rounded-full bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                >
+                  Plus tard
+                </button>
+                <button
+                  type="button"
+                  onClick={handleStickyAiHintConfirm}
+                  className="rounded-full bg-gradient-to-r from-emerald-300 via-emerald-200 to-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-900 transition hover:opacity-90"
+                >
+                  {activeStickyAiHint.actionLabel}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
         {sectionLibraryOpen ? (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -11528,66 +12324,164 @@ export default function CoachReportBuilderPage() {
                     filteredSectionLibrarySections.map((section) => {
                       const featureKey = getSectionFeatureKey(section);
                       const isLocked = isFeatureLocked(featureKey);
+                      const isEditingSection = editingSection === section.title;
                       return (
                         <div
                           key={`library-${section.title}-${section.type}`}
                           className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3"
                         >
-                          <div className="min-w-0">
-                            <p className="truncate text-sm text-[var(--text)]">{section.title}</p>
-                            <div className="mt-1">
-                              {renderFeatureBadge(featureKey) ?? (
-                                <span className="text-[0.55rem] uppercase tracking-wide text-[var(--muted)]">
-                                  Texte
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (isLocked) {
-                                openFeatureModal(featureKey);
-                                return;
-                              }
-                              handleAddToReport(section);
-                            }}
-                            title={isLocked ? "Option requise" : "Ajouter"}
-                            className={`flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--text)] transition hover:bg-white/20 ${
-                              isLocked ? "cursor-not-allowed opacity-60" : ""
-                            }`}
-                            aria-label="Ajouter au rapport"
-                            aria-disabled={isLocked}
-                          >
-                            {isLocked ? (
-                              <svg
-                                viewBox="0 0 24 24"
-                                className="h-4 w-4"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                aria-hidden="true"
-                              >
-                                <rect x="5" y="11" width="14" height="9" rx="2" />
-                                <path d="M8 11V8a4 4 0 0 1 8 0v3" />
-                              </svg>
+                          <div className="min-w-0 flex-1">
+                            {isEditingSection ? (
+                              <input
+                                type="text"
+                                value={editingValue}
+                                onChange={(event) => setEditingValue(event.target.value)}
+                                className="w-full rounded-lg border border-white/10 bg-[var(--bg-elevated)] px-3 py-1 text-sm text-[var(--text)]"
+                              />
                             ) : (
-                              <svg
-                                viewBox="0 0 24 24"
-                                className="h-4 w-4"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <path d="M12 5v14" />
-                                <path d="M5 12h14" />
-                              </svg>
+                              <>
+                                <p className="truncate text-sm text-[var(--text)]">{section.title}</p>
+                                <div className="mt-1">
+                                  {renderFeatureBadge(featureKey) ?? (
+                                    <span className="text-[0.55rem] uppercase tracking-wide text-[var(--muted)]">
+                                      Texte
+                                    </span>
+                                  )}
+                                </div>
+                              </>
                             )}
-                          </button>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            {isEditingSection ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={handleSaveEdit}
+                                  className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--text)] transition hover:bg-white/20"
+                                  aria-label="Valider"
+                                  title="Valider"
+                                >
+                                  <svg
+                                    viewBox="0 0 24 24"
+                                    className="h-4 w-4"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <path d="M5 12l4 4L19 6" />
+                                  </svg>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleCancelEdit}
+                                  className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                                  aria-label="Annuler"
+                                  title="Annuler"
+                                >
+                                  <svg
+                                    viewBox="0 0 24 24"
+                                    className="h-4 w-4"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <path d="M15 6l-6 6 6 6" />
+                                  </svg>
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (isLocked) {
+                                      openFeatureModal(featureKey);
+                                      return;
+                                    }
+                                    handleAddToReport(section);
+                                  }}
+                                  title={isLocked ? "Option requise" : "Ajouter"}
+                                  className={`flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[var(--text)] transition hover:bg-white/20 ${
+                                    isLocked ? "cursor-not-allowed opacity-60" : ""
+                                  }`}
+                                  aria-label="Ajouter au rapport"
+                                  aria-disabled={isLocked}
+                                >
+                                  {isLocked ? (
+                                    <svg
+                                      viewBox="0 0 24 24"
+                                      className="h-4 w-4"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      aria-hidden="true"
+                                    >
+                                      <rect x="5" y="11" width="14" height="9" rx="2" />
+                                      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+                                    </svg>
+                                  ) : (
+                                    <svg
+                                      viewBox="0 0 24 24"
+                                      className="h-4 w-4"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    >
+                                      <path d="M12 5v14" />
+                                      <path d="M5 12h14" />
+                                    </svg>
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditSection(section)}
+                                  className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                                  aria-label="Modifier la section"
+                                  title="Modifier"
+                                >
+                                  <svg
+                                    viewBox="0 0 24 24"
+                                    className="h-4 w-4"
+                                    fill="currentColor"
+                                    aria-hidden="true"
+                                  >
+                                    <circle cx="5" cy="12" r="1.8" />
+                                    <circle cx="12" cy="12" r="1.8" />
+                                    <circle cx="19" cy="12" r="1.8" />
+                                  </svg>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleRemoveFromAvailable(section)}
+                                  className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:border-red-400/40 hover:bg-red-500/20 hover:text-red-300"
+                                  aria-label="Supprimer la section"
+                                  title="Supprimer"
+                                >
+                                  <svg
+                                    viewBox="0 0 24 24"
+                                    className="h-4 w-4"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    aria-hidden="true"
+                                  >
+                                    <path d="M18 6L6 18" />
+                                    <path d="M6 6l12 12" />
+                                  </svg>
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </div>
                       );
                     })
@@ -11847,7 +12741,7 @@ export default function CoachReportBuilderPage() {
                     onClick={() => {
                       setStudentPickerOpen(false);
                       setStudentPickerQuery("");
-                      setBuilderStep("sections");
+                      setBuilderStep("layout");
                     }}
                     className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
                   >
@@ -12142,11 +13036,15 @@ export default function CoachReportBuilderPage() {
         ) : null}
         {clarifyOpen ? (
           <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 px-4 py-10">
-            <div className="mx-auto flex w-full max-w-2xl flex-col rounded-3xl border border-white/10 bg-[var(--bg-elevated)] shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
+            <div className="relative mx-auto flex w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-[var(--bg-elevated)] shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
+              <span className="pointer-events-none absolute -left-20 -top-16 h-56 w-56 rounded-full bg-emerald-300/20 blur-3xl" />
+              <span className="pointer-events-none absolute -right-24 top-10 h-56 w-56 rounded-full bg-sky-300/20 blur-3xl" />
               <div className="flex items-start justify-between gap-4 p-6">
                 <div>
                   <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                    Assistant IA
+                    <span className="normal-case">
+                      Tempo <sup className="text-[0.62em] leading-none">IA</sup>
+                    </span>
                   </p>
                   <h3 className="mt-2 text-xl font-semibold text-[var(--text)]">
                     Precisions rapides
@@ -12155,11 +13053,16 @@ export default function CoachReportBuilderPage() {
                     Quelques questions pour affiner la propagation et eviter toute
                     approximation.
                   </p>
+                  <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-[var(--text)]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                    {clarifyQuestions.length} question
+                    {clarifyQuestions.length > 1 ? "s" : ""} - flow express
+                  </div>
                 </div>
                 <button
                   type="button"
                   onClick={closeClarifyModal}
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-[var(--muted)] transition hover:bg-white/20 hover:text-[var(--text)]"
                   aria-label="Fermer"
                 >
                   <svg
@@ -12177,21 +13080,16 @@ export default function CoachReportBuilderPage() {
                 </button>
               </div>
               <div className="flex flex-wrap items-center gap-2 px-6 text-xs text-[var(--muted)]">
-                <Badge tone="muted" size="sm">
-                  {clarifyQuestions.length} question
-                  {clarifyQuestions.length > 1 ? "s" : ""}
-                </Badge>
                 {clarifyConfidence !== null ? (
-                  <Badge
-                    size="sm"
+                  <span
                     className={
                       clarifyConfidence >= CLARIFY_THRESHOLD
-                        ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-200"
-                        : "border-amber-300/30 bg-amber-400/10 text-amber-200"
+                        ? "rounded-full bg-emerald-400/20 px-2.5 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-emerald-100"
+                        : "rounded-full bg-amber-400/20 px-2.5 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-amber-100"
                     }
                   >
                     Certitude {Math.round(clarifyConfidence * 100)}%
-                  </Badge>
+                  </span>
                 ) : null}
               </div>
               <div className="mt-5 max-h-[60vh] space-y-4 overflow-y-auto px-6 pb-6">
@@ -12201,11 +13099,16 @@ export default function CoachReportBuilderPage() {
                   return (
                     <div
                       key={question.id}
-                      className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                      className="rounded-2xl bg-gradient-to-br from-white/20 via-white/12 to-transparent p-4 shadow-[0_10px_24px_rgba(15,23,42,0.14)]"
                     >
-                      <p className="text-sm font-semibold text-[var(--text)]">
-                        {index + 1}. {question.question}
-                      </p>
+                      <div className="flex items-start gap-3">
+                        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-300/45 to-sky-300/35 text-[0.62rem] font-semibold text-[var(--text)]">
+                          {index + 1}
+                        </span>
+                        <p className="pt-0.5 text-sm font-semibold text-[var(--text)]">
+                          {question.question}
+                        </p>
+                      </div>
                       {question.type === "choices" &&
                       question.choices &&
                       question.choices.length > 0 ? (
@@ -12234,10 +13137,10 @@ export default function CoachReportBuilderPage() {
                                       return { ...prev, [question.id]: choice };
                                     });
                                   }}
-                                  className={`rounded-full border px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
+                                  className={`rounded-full px-3 py-1 text-[0.65rem] uppercase tracking-wide transition ${
                                     selected
-                                      ? "border-emerald-300/40 bg-emerald-400/20 text-emerald-100"
-                                      : "border-white/10 bg-white/5 text-[var(--muted)] hover:text-[var(--text)]"
+                                      ? "bg-gradient-to-r from-emerald-300/40 via-emerald-200/30 to-sky-300/35 text-[var(--text)] shadow-[0_6px_14px_rgba(16,185,129,0.24)]"
+                                      : "bg-white/18 text-[var(--text)] hover:bg-white/24"
                                   }`}
                                 >
                                   {choice}
@@ -12259,7 +13162,7 @@ export default function CoachReportBuilderPage() {
                                 }))
                               }
                               placeholder="Ta reponse perso..."
-                              className="mt-2 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                              className="mt-2 w-full rounded-xl bg-white/16 px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]"
                             />
                           </div>
                         </div>
@@ -12274,18 +13177,18 @@ export default function CoachReportBuilderPage() {
                             }))
                           }
                           placeholder={question.placeholder ?? "Ta reponse..."}
-                          className="mt-3 w-full rounded-xl border border-white/10 bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500"
+                          className="mt-3 w-full rounded-xl bg-white/16 px-3 py-2 text-sm text-[var(--text)] placeholder:text-zinc-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]"
                         />
                       )}
                     </div>
                   );
                 })}
               </div>
-              <div className="flex flex-wrap items-center justify-end gap-3 border-t border-white/10 px-6 py-4">
+              <div className="flex flex-wrap items-center justify-end gap-3 px-6 py-4">
                 <button
                   type="button"
                   onClick={closeClarifyModal}
-                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                  className="rounded-full bg-white/18 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--text)] transition hover:bg-white/24"
                 >
                   Annuler
                 </button>
@@ -12305,24 +13208,27 @@ export default function CoachReportBuilderPage() {
         ) : null}
         {axesOpen ? (
           <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 px-4 py-10">
-            <div className="mx-auto flex w-full max-w-3xl flex-col rounded-3xl border border-white/10 bg-[var(--bg-elevated)] shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
+            <div className="mx-auto flex w-full max-w-3xl flex-col rounded-3xl bg-[var(--bg-elevated)] shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
               <div className="flex items-start justify-between gap-4 p-6">
                 <div>
                   <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                    Assistant IA
+                    <span className="normal-case">
+                      Tempo <sup className="text-[0.62em] leading-none">IA</sup>
+                    </span>
                   </p>
                   <h3 className="mt-2 text-xl font-semibold text-[var(--text)]">
                     Choisir un axe par section
                   </h3>
                   <p className="mt-2 text-sm text-[var(--muted)]">
                     Selectionne l angle de reponse le plus pertinent pour chaque section.
-                    L IA generera ensuite le contenu.
+                    Chaque axe inclut le chainage TPI {">"} limitation joueur {">"}
+                    compensation golf.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={closeAxesModal}
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[var(--muted)] transition hover:text-[var(--text)]"
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-[var(--muted)] transition hover:bg-white/15 hover:text-[var(--text)]"
                   aria-label="Fermer"
                 >
                   <svg
@@ -12343,11 +13249,11 @@ export default function CoachReportBuilderPage() {
                 {axesBySection.map((entry) => (
                   <div
                     key={entry.section}
-                    className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                    className="rounded-2xl bg-gradient-to-br from-white/16 via-white/10 to-transparent p-4 shadow-[0_12px_30px_rgba(2,6,23,0.3)]"
                   >
-                    <p className="text-sm font-semibold text-[var(--text)]">
-                      {entry.section}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-[var(--text)]">{entry.section}</p>
+                    </div>
                     <div className="mt-3 grid gap-3 md:grid-cols-2">
                       {entry.options.map((option) => {
                         const selected = axesSelection[entry.section] === option.id;
@@ -12361,18 +13267,54 @@ export default function CoachReportBuilderPage() {
                                 [entry.section]: option.id,
                               }))
                             }
-                            className={`rounded-2xl border p-3 text-left text-sm transition ${
+                            className={`group flex h-full flex-col rounded-2xl p-3 text-left text-sm transition ${
                               selected
-                                ? "border-emerald-300/40 bg-emerald-400/10 text-emerald-100"
-                                : "border-white/10 bg-white/5 text-[var(--muted)] hover:text-[var(--text)]"
+                                ? "bg-gradient-to-br from-emerald-300/32 via-cyan-300/24 to-sky-300/22 text-[var(--text)] shadow-[0_12px_28px_rgba(16,185,129,0.2)]"
+                                : "bg-white/12 text-[var(--text)] hover:bg-white/18"
                             }`}
                           >
-                            <p className="text-sm font-semibold text-[var(--text)]">
-                              {option.title}
+                            <div className="flex min-h-[3.25rem] items-start justify-between gap-2">
+                              <p className="text-sm font-semibold text-[var(--text)]">
+                                {renderTrafficWords(option.title)}
+                              </p>
+                              <span
+                                className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[0.65rem] ${
+                                  selected
+                                    ? "bg-emerald-300/35 text-[var(--text)]"
+                                    : "bg-white/25 text-[var(--muted)] group-hover:text-[var(--text)]"
+                                }`}
+                                aria-hidden="true"
+                              >
+                                {selected ? "OK" : "+"}
+                              </span>
+                            </div>
+                            <p className="mt-1 min-h-[4.4rem] text-xs leading-relaxed text-[var(--muted)]">
+                              {renderTrafficWords(option.summary)}
                             </p>
-                            <p className="mt-1 text-xs text-[var(--muted)]">
-                              {option.summary}
-                            </p>
+
+                            <div className="mt-3 rounded-xl bg-gradient-to-br from-cyan-300/28 via-emerald-300/18 to-sky-200/10 p-2.5">
+                              <p className="text-[0.6rem] font-semibold uppercase tracking-[0.16em] text-[var(--text)]/80">
+                                Raisonnement TPI - limitation - compensation golf
+                              </p>
+                              <div className="mt-2 min-h-[6.8rem] space-y-1.5 text-[0.72rem] leading-relaxed text-[var(--text)]">
+                                <p>
+                                  <span className="font-semibold text-sky-100">TPI:</span>{" "}
+                                  {renderTrafficWords(option.tpiReasoning.tpiLink)}
+                                </p>
+                                <p>
+                                  <span className="font-semibold text-sky-100">
+                                    Limitation joueur:
+                                  </span>{" "}
+                                  {renderTrafficWords(option.tpiReasoning.playerLimitation)}
+                                </p>
+                                <p>
+                                  <span className="font-semibold text-sky-100">
+                                    Compensation golf:
+                                  </span>{" "}
+                                  {renderTrafficWords(option.tpiReasoning.golfCompensation)}
+                                </p>
+                              </div>
+                            </div>
                           </button>
                         );
                       })}
@@ -12380,11 +13322,11 @@ export default function CoachReportBuilderPage() {
                   </div>
                 ))}
               </div>
-              <div className="flex flex-wrap items-center justify-end gap-3 border-t border-white/10 px-6 py-4">
+              <div className="flex flex-wrap items-center justify-end gap-3 px-6 py-4">
                 <button
                   type="button"
                   onClick={closeAxesModal}
-                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:text-[var(--text)]"
+                  className="rounded-full bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)] transition hover:bg-white/15 hover:text-[var(--text)]"
                 >
                   Annuler
                 </button>

@@ -215,4 +215,132 @@ describe("POST /api/ai", () => {
     const body = await response.json();
     expect(body.text).toBe("Texte corrige");
   });
+
+  it("returns axes with tpi reasoning for axes action", async () => {
+    const OpenAI = jest.requireMock("openai") as jest.Mock;
+    OpenAI.mockImplementationOnce(() => ({
+      responses: {
+        create: jest.fn().mockResolvedValue({
+          output_text: JSON.stringify({
+            axes: [
+              {
+                section: "Diagnostic swing",
+                options: [
+                  {
+                    title: "Axe Rouge: stabiliser la posture",
+                    summary:
+                      "Prioriser un repere stable au sommet pour reduire les variations de chemin.",
+                    tpiReasoning: {
+                      tpiLink: "Rotation thoracique limitee et compensation en extension.",
+                      playerLimitation:
+                        "Difficulte a conserver l inclinaison pendant la transition.",
+                      golfCompensation:
+                        "Drill tempo + repere visuel d appui pour stabiliser le contact.",
+                    },
+                  },
+                  {
+                    title: "Axe Orange: regularite des appuis",
+                    summary:
+                      "Mettre l accent sur la cadence des appuis pour limiter les variations de face.",
+                    tpiReasoning: {
+                      tpiLink: "Controle lombo-pelvien variable sous fatigue.",
+                      playerLimitation:
+                        "Instabilite pied droit sur la fin de backswing sous pression.",
+                      golfCompensation:
+                        "Routine d ancrage et transition plus progressive sur 3 repetitions.",
+                    },
+                  },
+                ],
+              },
+            ],
+          }),
+          usage: null,
+        }),
+      },
+    }));
+
+    const supabase = {
+      auth: {
+        getUser: async () => ({
+          data: { user: { id: "user-1", email: "coach@example.com" } },
+          error: null,
+        }),
+      },
+      from: (table: string) => {
+        if (table === "profiles") {
+          return buildSelectMaybeSingle({
+            data: { role: "coach", org_id: "org-1" },
+            error: null,
+          });
+        }
+        if (table === "organizations") {
+          return buildSelectMaybeSingle({
+            data: {
+              id: "org-1",
+              ai_model: "gpt-5-mini",
+              ai_tone: null,
+              ai_tech_level: null,
+              ai_style: null,
+              ai_length: null,
+              ai_imagery: null,
+              ai_focus: null,
+            },
+            error: null,
+          });
+        }
+        return buildSelectMaybeSingle({ data: null, error: null });
+      },
+    } as SupabaseClient;
+
+    serverMocks.createSupabaseServerClientFromRequest.mockReturnValue(supabase);
+    serverMocks.createSupabaseAdminClient.mockReturnValue({
+      from: (table: string) => {
+        if (table === "organizations") {
+          return buildSelectMaybeSingle({
+            data: {
+              plan_tier: "pro",
+              plan_tier_override: null,
+              plan_tier_override_starts_at: null,
+              plan_tier_override_expires_at: null,
+              plan_tier_override_unlimited: false,
+              id: "org-1",
+              workspace_type: "personal",
+              owner_profile_id: "user-1",
+              stripe_status: null,
+              stripe_current_period_end: null,
+              stripe_price_id: null,
+            },
+            error: null,
+          });
+        }
+        return buildSelectMaybeSingle({ data: null, error: null });
+      },
+    });
+
+    const response = await POST(
+      buildRequest({
+        action: "axes",
+        sectionTitle: "Constats",
+        sectionContent: "Perte de posture en transition sur fers moyens.",
+        targetSections: ["Diagnostic swing"],
+        allSections: [{ title: "Diagnostic swing", content: "" }],
+        tpiContext: "Rotation thoracique limitee, controle lombo-pelvien variable.",
+      })
+    );
+    if (!response) {
+      throw new Error("Missing response");
+    }
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(Array.isArray(body.axes)).toBe(true);
+    expect(body.axes[0]?.options?.length).toBe(2);
+    expect(body.axes[0]?.options?.[0]?.tpiReasoning).toEqual(
+      expect.objectContaining({
+        tpiLink: expect.any(String),
+        playerLimitation: expect.any(String),
+        golfCompensation: expect.any(String),
+      })
+    );
+  });
 });

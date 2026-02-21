@@ -168,10 +168,21 @@ Ne mets pas de titre.
 
 {base} {styleHint}
 Tu dois proposer 2 axes de reponse par section cible.
-Pour chaque section, donne un titre court et un resume d une phrase.
-Limite chaque resume a 160 caracteres maximum.
-Utilise le profil TPI: rouge = limitation physique avec compensation probable, orange = limitation moins impactante, vert = capacite ok donc probleme souvent de comprehension/technique.
-Ne propose pas de contenu final, uniquement des axes.
+Pour chaque axe, tu dois fournir:
+- title: titre court et concret.
+- summary: 1 phrase actionnable liee au probleme en cours.
+- tpiReasoning.tpiLink: lien explicite entre les details TPI et l axe (cite les details utiles, pas juste la couleur).
+- tpiReasoning.playerLimitation: limitation probable du joueur pour cet axe.
+- tpiReasoning.golfCompensation: compensation golf/technique probable associee.
+
+Important:
+- Retourne strictement 2 options par section (ni plus, ni moins).
+- Utilise le detail du profil TPI s il est disponible (pas uniquement rouge/orange/vert).
+- Si TPI est incomplet, reste prudent et indique une hypothese explicite dans tpiReasoning.tpiLink.
+- Rouge = limitation forte probable.
+- Orange = limitation moderee probable.
+- Vert = capacite disponible, chercher plutot comprehension/coordination/technique.
+- Ne propose pas de contenu final, uniquement des axes.
 Renvoie strictement du JSON conforme au schema demande (guillemets doubles requis pour le JSON).
 
 ## ai_api_decision_axes
@@ -283,6 +294,8 @@ Sections cibles a remplir:
 {targetsList}
 
 {clarificationsBlock}
+
+{tpiBlock}
 
 ## ai_api_user_decision_axes
 

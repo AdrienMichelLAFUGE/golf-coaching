@@ -106,8 +106,8 @@ const featureTones = {
   },
   video: {
     label: "Video",
-    badge: "border-pink-300/30 bg-pink-400/10 text-pink-100",
-    dot: "bg-pink-300",
+    badge: "feature-video-badge",
+    dot: "feature-video-dot",
     panel: "border-pink-400/50 bg-pink-400/10",
     border: "border-pink-400/50",
   },
@@ -432,6 +432,14 @@ export default function CoachReportDetailPage() {
         {renderFeatureBadge(featureKey)}
       </div>
     );
+  };
+
+  const shouldSectionSpanFullWidth = (section: ReportSection) => {
+    if (section.type === "radar") return true;
+    if (section.type === "image" || section.type === "video") {
+      return (section.media_urls?.length ?? 0) > 1;
+    }
+    return false;
   };
 
   const renderSectionContent = (section: ReportSection) => {
@@ -1185,7 +1193,7 @@ export default function CoachReportDetailPage() {
                 </div>
                 <div className="hidden gap-10 lg:grid lg:grid-cols-2">
                   {sections.map((section) => {
-                    const isWide = section.type === "image" || section.type === "radar";
+                    const isWide = shouldSectionSpanFullWidth(section);
                     return (
                       <article
                         key={section.id}
