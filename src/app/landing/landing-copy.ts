@@ -156,10 +156,10 @@ export const landingCopy = {
   },
   pricing: {
     title: "De l'indépendant à la structure multi-coachs",
-    subtitle: "Vous avancez à votre rythme, sans changer votre façon de coacher.",
+    subtitle: "Vous avancez à votre rythme, avec Tempo IA intégré dans votre flux de coaching.",
     summaries: [
       "Solo : idéal pour poser un suivi propre en coaching individuel.",
-      "Pro : pour gagner du temps, produire mieux et renforcer la fidélisation.",
+      "Pro : pour gagner du temps avec Tempo IA, produire mieux et renforcer la fidélisation.",
       "Structure : pour piloter plusieurs coachs avec un cadre commun solide.",
     ],
     primaryCta: "Choisir mon plan",

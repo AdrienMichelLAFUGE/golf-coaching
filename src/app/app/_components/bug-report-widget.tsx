@@ -124,7 +124,7 @@ export default function BugReportWidget() {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="inline-flex items-center gap-2 rounded-full bg-rose-600 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-white shadow-[0_14px_28px_rgba(0,0,0,0.28)] transition hover:bg-rose-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
+          className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-2 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-[var(--muted)] shadow-[0_8px_18px_rgba(0,0,0,0.2)] backdrop-blur-sm transition hover:bg-white/16 hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/60"
         >
           <svg
             viewBox="0 0 24 24"
@@ -136,9 +136,9 @@ export default function BugReportWidget() {
             strokeLinejoin="round"
             aria-hidden="true"
           >
-            <path d="M12 9v4" />
+            <circle cx="12" cy="12" r="9" />
+            <path d="M9.3 9.2a2.7 2.7 0 0 1 5.3.8c0 1.8-2.1 2.2-2.5 3.5" />
             <path d="M12 17h.01" />
-            <path d="M10.3 3.9L1.8 18.2A1.9 1.9 0 0 0 3.4 21h17.2a1.9 1.9 0 0 0 1.6-2.8L13.7 3.9a1.9 1.9 0 0 0-3.4 0z" />
           </svg>
           <span className="hidden sm:inline">Besoin d&apos;aide ?</span>
           <span className="sm:hidden">Aide</span>

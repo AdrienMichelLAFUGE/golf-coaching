@@ -1302,7 +1302,7 @@ export default function StudentTempoPage() {
           </section>
 
           {tempoMode === "notes" ? (
-            <section className="tempo-surface-panel space-y-4 rounded-2xl bg-white/80 p-5 shadow-[0_10px_28px_rgba(15,23,42,0.08)]">
+            <section className="tempo-surface-panel space-y-4 overflow-x-hidden rounded-2xl bg-white/80 p-5 shadow-[0_10px_28px_rgba(15,23,42,0.08)]">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">Prise de notes</h2>
@@ -1510,13 +1510,13 @@ export default function StudentTempoPage() {
               </div>
 
               <div
-                className={`grid gap-3 ${
+                className={`grid min-w-0 gap-3 ${
                   hasDecisionPlan
                     ? "xl:grid-cols-[minmax(0,0.42fr)_minmax(0,1.58fr)]"
                     : "xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]"
                 }`}
               >
-                <div className="tempo-slide-in-left space-y-2 rounded-2xl bg-slate-50 p-3.5">
+                <div className="tempo-slide-in-left min-w-0 space-y-2 rounded-2xl bg-slate-50 p-3.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <label className="text-xs font-semibold uppercase tracking-wide text-slate-700">
                       Session decision
@@ -1647,7 +1647,7 @@ export default function StudentTempoPage() {
                   </div>
                 </div>
 
-                <div className="tempo-axis-pane tempo-slide-in-right space-y-3 rounded-2xl bg-slate-50 p-3.5">
+                <div className="tempo-axis-pane tempo-slide-in-right min-w-0 space-y-3 rounded-2xl bg-slate-50 p-3.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
                       Axes prioritaires de la seance
@@ -2586,6 +2586,7 @@ export default function StudentTempoPage() {
         .tempo-axis-pane {
           width: 100%;
           max-width: 100%;
+          min-width: 0;
         }
         .tempo-axis-carousel {
           --tempo-slide-width: 76%;
@@ -2879,11 +2880,17 @@ export default function StudentTempoPage() {
           }
         }
         @media (max-width: 900px) {
+          .tempo-slide-in-left {
+            width: 100%;
+            max-width: 42rem;
+            margin-left: auto;
+            margin-right: auto;
+          }
           .tempo-axis-pane {
-            width: 100vw;
-            max-width: 100vw;
-            margin-left: calc(50% - 50vw);
-            margin-right: calc(50% - 50vw);
+            width: 100%;
+            max-width: 100%;
+            margin-left: auto;
+            margin-right: auto;
             border-radius: 0.95rem;
             padding-left: 0.75rem;
             padding-right: 0.75rem;
